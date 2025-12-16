@@ -7,7 +7,6 @@ const scenarioSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "Classroom",
     required: true,
-    index: true,
   },
   week: {
     type: Number,
@@ -96,7 +95,10 @@ scenarioSchema.statics.createScenario = async function (
   const week = await this.getNextWeekNumber(classId);
 
   // Validate variables if provided
-  if (scenarioData.variables && Object.keys(scenarioData.variables).length > 0) {
+  if (
+    scenarioData.variables &&
+    Object.keys(scenarioData.variables).length > 0
+  ) {
     const validation = await this.validateScenarioVariables(
       classId,
       scenarioData.variables
@@ -235,10 +237,11 @@ scenarioSchema.methods.canPublish = async function () {
 
   // Check if another scenario is active
   const activeScenario = await this.constructor.getActiveScenario(this.classId);
-  return !activeScenario || activeScenario._id.toString() === this._id.toString();
+  return (
+    !activeScenario || activeScenario._id.toString() === this._id.toString()
+  );
 };
 
 const Scenario = mongoose.model("Scenario", scenarioSchema);
 
 module.exports = Scenario;
-

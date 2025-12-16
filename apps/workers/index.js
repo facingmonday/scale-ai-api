@@ -75,19 +75,9 @@ const emailAdapter = new BullAdapter(queues.emailSending, {
   allowRetries: !readOnlyMode,
   description: "Email sending jobs",
 });
-const smsAdapter = new BullAdapter(queues.smsSending, {
-  readOnlyMode,
-  allowRetries: !readOnlyMode,
-  description: "SMS sending jobs",
-});
-const pushAdapter = new BullAdapter(queues.pushSending, {
-  readOnlyMode,
-  allowRetries: !readOnlyMode,
-  description: "Push sending jobs",
-});
 
 createBullBoard({
-  queues: [pdfAdapter, emailAdapter, smsAdapter, pushAdapter],
+  queues: [pdfAdapter, emailAdapter],
   serverAdapter: serverAdapter,
   options: {
     uiConfig: {

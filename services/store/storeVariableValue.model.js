@@ -6,7 +6,6 @@ const storeVariableValueSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "Store",
     required: true,
-    index: true,
   },
   variableKey: {
     type: String,
@@ -20,7 +19,10 @@ const storeVariableValueSchema = new mongoose.Schema({
 }).add(baseSchema);
 
 // Compound indexes for performance
-storeVariableValueSchema.index({ storeId: 1, variableKey: 1 }, { unique: true });
+storeVariableValueSchema.index(
+  { storeId: 1, variableKey: 1 },
+  { unique: true }
+);
 storeVariableValueSchema.index({ storeId: 1 });
 storeVariableValueSchema.index({ organization: 1, storeId: 1 });
 
@@ -92,4 +94,3 @@ const StoreVariableValue = mongoose.model(
 );
 
 module.exports = StoreVariableValue;
-

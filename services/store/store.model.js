@@ -7,13 +7,11 @@ const storeSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "Classroom",
     required: true,
-    index: true,
   },
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Member",
     required: true,
-    index: true,
   },
   shopName: {
     type: String,
@@ -222,4 +220,3 @@ storeSchema.methods.canModify = function () {
 const Store = mongoose.model("Store", storeSchema);
 
 module.exports = Store;
-

@@ -16,20 +16,19 @@ class ServiceWorkerRegistry {
    */
   registerDefaultWorkers() {
     // Ticket Reminder Worker - System-wide job
-    this.registerWorker("ticket-reminder", {
-      name: "Ticket Reminder Worker",
-      description:
-        "Sends reminder emails to ticket holders the day before their events",
-      isSystemWorker: true, // Runs across all organizations
-      requiresOrganization: false,
-      defaultSchedule: "0 11 * * *", // 10 AM CST (3 PM UTC)
-      timezone: "America/Chicago",
-      maxExecutionTime: 5 * 60 * 1000, // 5 minutes
-      retryOnFailure: true,
-      maxRetries: 3,
-      enabled: true,
-    });
-
+    // this.registerWorker("ticket-reminder", {
+    //   name: "Ticket Reminder Worker",
+    //   description:
+    //     "Sends reminder emails to ticket holders the day before their events",
+    //   isSystemWorker: true, // Runs across all organizations
+    //   requiresOrganization: false,
+    //   defaultSchedule: "0 11 * * *", // 10 AM CST (3 PM UTC)
+    //   timezone: "America/Chicago",
+    //   maxExecutionTime: 5 * 60 * 1000, // 5 minutes
+    //   retryOnFailure: true,
+    //   maxRetries: 3,
+    //   enabled: true,
+    // });
     // Daily Stats Worker - Organization-specific job
     // this.registerWorker("daily-stats", {
     //   name: "Daily Stats Worker",
@@ -44,7 +43,6 @@ class ServiceWorkerRegistry {
     //   maxRetries: 2,
     //   enabled: true,
     // });
-
     // // Email Digest Worker - Organization-specific (example)
     // this.registerWorker("email-digest", {
     //   name: "Email Digest Worker",
@@ -58,20 +56,19 @@ class ServiceWorkerRegistry {
     //   maxRetries: 2,
     //   enabled: false, // Disabled by default, organizations can enable
     // });
-
     // // Data Cleanup Worker - System-wide (example)
-    this.registerWorker("cart-cleanup", {
-      name: "Cart Cleanup Worker",
-      description: "Expires abandoned carts whose expiresAt is in the past",
-      isSystemWorker: true,
-      requiresOrganization: false,
-      defaultSchedule: "*/15 * * * *", // Every 5 minutes
-      timezone: "America/Chicago",
-      maxExecutionTime: 60 * 1000, // 1 minute
-      retryOnFailure: true,
-      maxRetries: 1,
-      enabled: true,
-    });
+    // this.registerWorker("cart-cleanup", {
+    //   name: "Cart Cleanup Worker",
+    //   description: "Expires abandoned carts whose expiresAt is in the past",
+    //   isSystemWorker: true,
+    //   requiresOrganization: false,
+    //   defaultSchedule: "*/15 * * * *", // Every 5 minutes
+    //   timezone: "America/Chicago",
+    //   maxExecutionTime: 60 * 1000, // 1 minute
+    //   retryOnFailure: true,
+    //   maxRetries: 1,
+    //   enabled: true,
+    // });
   }
 
   /**

@@ -11,8 +11,8 @@
     "dev:api": "nodemon apps/api/index.js",
     "dev:webhooks": "nodemon apps/webhooks/index.js",
     "dev:workers": "nodemon apps/workers/index.js",
-    "dev:all": "concurrently -k -n api,webhooks,workers -c blue,green,magenta,cyan,red,purple \"npm:dev:api\" \"npm:dev:webhooks\" \"npm:dev:workers\"",
-    "start:all": "concurrently -k -n api,webhooks,workers -c blue,green,magenta,cyan,red,purple \"npm:start:api\" \"npm:start:webhooks\" \"npm:start:workers\"",
+    "dev:all": "concurrently -k -n api,webhooks,workers -c blue,green,magenta \"npm:dev:api\" \"npm:dev:webhooks\" \"npm:dev:workers\"",
+    "start:all": "concurrently -k -n api,webhooks,workers -c blue,green,magenta \"npm:start:api\" \"npm:start:webhooks\" \"npm:start:workers\"",
     "postinstall": "if [ \"$SKIP_PUPPETEER_INSTALL\" != \"1\" ]; then npx puppeteer browsers install; fi",
     "ngrok": "ngrok start --config ~/.ngrok/ngrok.yml --all",
     "email:preview": "node apps/email-preview/index.js"

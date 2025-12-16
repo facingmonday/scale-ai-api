@@ -267,15 +267,18 @@ function setupJobRefreshSchedule(scheduledJobs) {
  */
 function initializeQueueWorkers() {
   try {
-    const { initPdfWorker } = require("../../lib/queues/pdf-worker");
+    // PDF generation disabled for now
+    // const { initPdfWorker } = require("../../lib/queues/pdf-worker");
     const { initEmailWorker } = require("../../lib/queues/email-worker");
-    const { initSmsWorker } = require("../../lib/queues/sms-worker");
-    const { initPushWorker } = require("../../lib/queues/push-worker");
+    // SMS worker disabled - not sending SMS messages
+    // const { initSmsWorker } = require("../../lib/queues/sms-worker");
+    // Push notifications disabled - not using push notifications
+    // const { initPushWorker } = require("../../lib/queues/push-worker");
 
-    initPdfWorker();
+    // initPdfWorker();
     initEmailWorker();
-    initSmsWorker();
-    initPushWorker();
+    // initSmsWorker();
+    // initPushWorker();
 
     console.log("✅ Queue workers initialized");
   } catch (error) {

@@ -7,7 +7,6 @@ const scenarioOutcomeSchema = new mongoose.Schema({
     ref: "Scenario",
     required: true,
     unique: true,
-    index: true,
   },
   actualWeather: {
     type: String,
@@ -32,7 +31,7 @@ const scenarioOutcomeSchema = new mongoose.Schema({
 }).add(baseSchema);
 
 // Indexes for performance
-scenarioOutcomeSchema.index({ scenarioId: 1 });
+// scenarioId already has a unique index from unique: true
 scenarioOutcomeSchema.index({ approved: 1 });
 scenarioOutcomeSchema.index({ organization: 1, scenarioId: 1 });
 

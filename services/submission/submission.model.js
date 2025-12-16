@@ -8,19 +8,16 @@ const submissionSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "Classroom",
     required: true,
-    index: true,
   },
   scenarioId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Scenario",
     required: true,
-    index: true,
   },
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Member",
     required: true,
-    index: true,
   },
   variables: {
     type: mongoose.Schema.Types.Mixed,
