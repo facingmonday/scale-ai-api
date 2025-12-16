@@ -1,0 +1,75 @@
+{
+  "member": {
+    "firstName": "Michael",
+    "lastName": "Thompson",
+    "email": "michael.thompson@example.com",
+    "maskedEmail": "m***l@example.com"
+  },
+  "event": {
+    "title": "Summer Music Festival 2025",
+    "_id": "event_summer2025"
+  },
+  "order": {
+    "_id": "order_cancelled_xyz456",
+    "createdDate": "2025-06-15T10:30:00.000Z",
+    "status": "cancelled",
+    "subTotal": 45000,
+    "tax": 3600,
+    "total": 48600,
+    "lineItems": [
+      {
+        "ticketType": {
+          "name": "VIP Pass",
+          "_id": "tickettype_vip001"
+        },
+        "quantity": 2,
+        "unitPrice": 15000,
+        "totalPrice": 30000,
+        "tickets": [
+          {
+            "ticketNumber": "VIP-001234"
+          },
+          {
+            "ticketNumber": "VIP-001235"
+          }
+        ],
+        "selectedOptions": [
+          {
+            "ticketTypeOption": {
+              "name": "Meal Preference"
+            },
+            "value": "Vegetarian"
+          },
+          {
+            "ticketTypeOption": {
+              "name": "Parking"
+            },
+            "value": "Premium Parking"
+          }
+        ]
+      },
+      {
+        "ticketType": {
+          "name": "General Admission",
+          "_id": "tickettype_ga001"
+        },
+        "quantity": 2,
+        "unitPrice": 7500,
+        "totalPrice": 15000,
+        "tickets": [
+          {
+            "ticketNumber": "GA-005678"
+          },
+          {
+            "ticketNumber": "GA-005679"
+          }
+        ],
+        "selectedOptions": []
+      }
+    ]
+  },
+  "organization": {
+    "name": "Northwest Events",
+    "email": "support@northwestevents.com"
+  }
+}

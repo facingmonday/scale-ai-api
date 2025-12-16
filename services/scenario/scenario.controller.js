@@ -1,0 +1,584 @@
+const Scenario = require("./scenario.model");
+const ScenarioOutcome = require("./scenarioOutcome.model");
+const Classroom = require("../classroom/classroom.model");
+const Enrollment = require("../enrollment/enrollment.model");
+const Member = require("../members/member.model");
+const classroomService = require("../classroom/lib/classroomService");
+const enrollmentService = require("../enrollment/lib/enrollmentService");
+const { enqueueEmailSending } = require("../../lib/queues/email-worker");
+
+/**
+ * Create scenario
+ * POST /api/admin/scenario
+ */
+exports.createScenario = async function (req, res) {
+  try {
+    const { classId, title, description, variables } = req.body;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    // Validate required fields
+    if (!classId) {
+      return res.status(400).json({ error: "classId is required" });
+    }
+    if (!title) {
+      return res.status(400).json({ error: "title is required" });
+    }
+
+    // Verify admin access
+    await classroomService.validateAdminAccess(
+      classId,
+      clerkUserId,
+      organizationId
+    );
+
+    // Create scenario using static method
+    const scenario = await Scenario.createScenario(
+      classId,
+      { title, description, variables },
+      organizationId,
+      clerkUserId
+    );
+
+    // Queue email notifications to all enrolled students (async, don't block response)
+    queueScenarioCreatedEmails(scenario, classId, organizationId).catch(
+      (error) => {
+        console.error("Error queueing scenario created emails:", error);
+        // Don't throw - we don't want to fail scenario creation if emails fail
+      }
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Scenario created successfully",
+      data: scenario,
+    });
+  } catch (error) {
+    console.error("Error creating scenario:", error);
+    if (error.message.includes("Invalid scenario variables")) {
+      return res.status(400).json({ error: error.message });
+    }
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    if (error.name === "ValidationError") {
+      return res.status(400).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Update scenario
+ * PUT /api/admin/scenario/:scenarioId
+ */
+exports.updateScenario = async function (req, res) {
+  try {
+    const { scenarioId } = req.params;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    // Find scenario
+    const scenario = await Scenario.getScenarioById(scenarioId, organizationId);
+
+    if (!scenario) {
+      return res.status(404).json({ error: "Scenario not found" });
+    }
+
+    // Verify admin access
+    await classroomService.validateAdminAccess(
+      scenario.classId,
+      clerkUserId,
+      organizationId
+    );
+
+    // Check if can be edited
+    if (!scenario.canEdit()) {
+      return res.status(400).json({
+        error: "Scenario cannot be edited after it has been published and closed",
+      });
+    }
+
+    // Validate variables if provided
+    if (req.body.variables && Object.keys(req.body.variables).length > 0) {
+      const validation = await Scenario.validateScenarioVariables(
+        scenario.classId,
+        req.body.variables
+      );
+
+      if (!validation.isValid) {
+        return res.status(400).json({
+          error: `Invalid scenario variables: ${validation.errors.map((e) => e.message).join(", ")}`,
+        });
+      }
+    }
+
+    // Update allowed fields
+    const allowedFields = ["title", "description", "variables"];
+    allowedFields.forEach((field) => {
+      if (req.body[field] !== undefined) {
+        scenario[field] = req.body[field];
+      }
+    });
+
+    scenario.updatedBy = clerkUserId;
+    await scenario.save();
+
+    res.json({
+      success: true,
+      message: "Scenario updated successfully",
+      data: scenario,
+    });
+  } catch (error) {
+    console.error("Error updating scenario:", error);
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    if (error.name === "ValidationError") {
+      return res.status(400).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Publish scenario
+ * POST /api/admin/scenario/:scenarioId/publish
+ */
+exports.publishScenario = async function (req, res) {
+  try {
+    const { scenarioId } = req.params;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    // Find scenario
+    const scenario = await Scenario.getScenarioById(scenarioId, organizationId);
+
+    if (!scenario) {
+      return res.status(404).json({ error: "Scenario not found" });
+    }
+
+    // Verify admin access
+    await classroomService.validateAdminAccess(
+      scenario.classId,
+      clerkUserId,
+      organizationId
+    );
+
+    // Check if can be published
+    const canPublish = await scenario.canPublish();
+    if (!canPublish) {
+      return res.status(400).json({
+        error: "Scenario cannot be published. Another scenario may already be active, or this scenario is already published/closed.",
+      });
+    }
+
+    // Publish scenario
+    await scenario.publish(clerkUserId);
+
+    // TODO: Notify students (email notification)
+
+    res.json({
+      success: true,
+      message: "Scenario published successfully",
+      data: scenario,
+    });
+  } catch (error) {
+    console.error("Error publishing scenario:", error);
+    if (error.message.includes("already published")) {
+      return res.status(400).json({ error: error.message });
+    }
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Set scenario outcome
+ * POST /api/admin/scenario/:scenarioId/outcome
+ */
+exports.setScenarioOutcome = async function (req, res) {
+  try {
+    const { scenarioId } = req.params;
+    const { actualWeather, demandShift, notes, randomEventsEnabled } =
+      req.body;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    // Find scenario
+    const scenario = await Scenario.getScenarioById(scenarioId, organizationId);
+
+    if (!scenario) {
+      return res.status(404).json({ error: "Scenario not found" });
+    }
+
+    // Verify admin access
+    await classroomService.validateAdminAccess(
+      scenario.classId,
+      clerkUserId,
+      organizationId
+    );
+
+    // Create or update outcome using static method
+    const outcome = await ScenarioOutcome.createOrUpdateOutcome(
+      scenarioId,
+      { actualWeather, demandShift, notes, randomEventsEnabled },
+      organizationId,
+      clerkUserId
+    );
+
+    res.json({
+      success: true,
+      message: "Scenario outcome set successfully",
+      data: outcome,
+    });
+  } catch (error) {
+    console.error("Error setting scenario outcome:", error);
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    if (error.name === "ValidationError") {
+      return res.status(400).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Preview AI outcomes (placeholder)
+ * POST /api/admin/scenario/:scenarioId/preview
+ */
+exports.previewScenario = async function (req, res) {
+  try {
+    const { scenarioId } = req.params;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    // Find scenario
+    const scenario = await Scenario.getScenarioById(scenarioId, organizationId);
+
+    if (!scenario) {
+      return res.status(404).json({ error: "Scenario not found" });
+    }
+
+    // Verify admin access
+    await classroomService.validateAdminAccess(
+      scenario.classId,
+      clerkUserId,
+      organizationId
+    );
+
+    // Get outcome
+    const outcome = await ScenarioOutcome.getOutcomeByScenario(scenarioId);
+
+    if (!outcome) {
+      return res.status(400).json({
+        error: "Scenario outcome must be set before previewing",
+      });
+    }
+
+    // TODO: Implement AI simulation preview
+    // This will be implemented when AI Service is created
+    res.json({
+      success: true,
+      message: "Preview functionality will be implemented with AI Service",
+      data: {
+        scenario: scenario.toObject(),
+        outcome: outcome.toObject(),
+        previewResults: [], // Placeholder
+      },
+    });
+  } catch (error) {
+    console.error("Error previewing scenario:", error);
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Approve scenario and run AI (placeholder)
+ * POST /api/admin/scenario/:scenarioId/approve
+ */
+exports.approveScenario = async function (req, res) {
+  try {
+    const { scenarioId } = req.params;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    // Find scenario
+    const scenario = await Scenario.getScenarioById(scenarioId, organizationId);
+
+    if (!scenario) {
+      return res.status(404).json({ error: "Scenario not found" });
+    }
+
+    // Verify admin access
+    await classroomService.validateAdminAccess(
+      scenario.classId,
+      clerkUserId,
+      organizationId
+    );
+
+    // Get outcome
+    const outcome = await ScenarioOutcome.getOutcomeByScenario(scenarioId);
+
+    if (!outcome) {
+      return res.status(400).json({
+        error: "Scenario outcome must be set before approving",
+      });
+    }
+
+    // TODO: Implement AI simulation and ledger entry creation
+    // This will be implemented when AI Service and Ledger Service are created
+    // For now, just approve the outcome and close the scenario
+    await outcome.approve(clerkUserId);
+    await scenario.close(clerkUserId);
+
+    res.json({
+      success: true,
+      message: "Scenario approved. AI simulation and ledger creation will be implemented.",
+      data: {
+        scenario: scenario.toObject(),
+        outcome: outcome.toObject(),
+      },
+    });
+  } catch (error) {
+    console.error("Error approving scenario:", error);
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Rerun scenario (placeholder)
+ * POST /api/admin/scenario/:scenarioId/rerun
+ */
+exports.rerunScenario = async function (req, res) {
+  try {
+    const { scenarioId } = req.params;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    // Find scenario
+    const scenario = await Scenario.getScenarioById(scenarioId, organizationId);
+
+    if (!scenario) {
+      return res.status(404).json({ error: "Scenario not found" });
+    }
+
+    // Verify admin access
+    await classroomService.validateAdminAccess(
+      scenario.classId,
+      clerkUserId,
+      organizationId
+    );
+
+    // TODO: Implement rerun logic
+    // 1. Delete existing ledger entries
+    // 2. Re-run AI simulation
+    // 3. Write new ledger entries
+
+    res.json({
+      success: true,
+      message: "Rerun functionality will be implemented with AI Service and Ledger Service",
+      data: {
+        scenario: scenario.toObject(),
+      },
+    });
+  } catch (error) {
+    console.error("Error rerunning scenario:", error);
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Get current scenario (student-facing)
+ * GET /api/student/scenario/current
+ */
+exports.getCurrentScenario = async function (req, res) {
+  try {
+    const { classId } = req.query;
+    const member = req.user;
+
+    if (!classId) {
+      return res.status(400).json({ error: "classId query parameter is required" });
+    }
+
+    // Verify enrollment
+    const isEnrolled = await enrollmentService.isUserEnrolled(
+      classId,
+      member._id
+    );
+
+    if (!isEnrolled) {
+      return res.status(403).json({
+        error: "Not enrolled in this class",
+      });
+    }
+
+    // Get active scenario
+    const scenario = await Scenario.getActiveScenario(classId);
+
+    if (!scenario) {
+      return res.status(404).json({ error: "No active scenario found" });
+    }
+
+    // TODO: Get submission status for this student
+    // This will be implemented when Submission Service is created
+
+    res.json({
+      success: true,
+      data: {
+        scenario: {
+          id: scenario._id,
+          week: scenario.week,
+          title: scenario.title,
+          description: scenario.description,
+          variables: scenario.variables,
+        },
+        submissionStatus: null, // Placeholder
+      },
+    });
+  } catch (error) {
+    console.error("Error getting current scenario:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Queue email notifications for scenario creation
+ * @param {Object} scenario - Scenario document
+ * @param {string} classId - Class ID
+ * @param {string} organizationId - Organization ID
+ */
+async function queueScenarioCreatedEmails(scenario, classId, organizationId) {
+  try {
+    // Get classroom details
+    const classroom = await Classroom.findById(classId);
+    if (!classroom) {
+      console.error("Classroom not found for scenario email notification");
+      return;
+    }
+
+    // Get all enrolled students (members only, not admins)
+    const enrollments = await Enrollment.findByClass(classId);
+    const memberEnrollments = enrollments.filter((e) => e.role === "member");
+
+    if (memberEnrollments.length === 0) {
+      console.log("No enrolled students to notify about scenario creation");
+      return;
+    }
+
+    // Get member details and queue emails
+    const host = process.env.SCALE_COM_HOST || process.env.SCALE_API_HOST || "https://scale.ai";
+    const scenarioLink = `${host}/class/${classId}/scenario/${scenario._id}`;
+
+    const emailPromises = memberEnrollments.map(async (enrollment) => {
+      try {
+        // Get member details
+        const member = await Member.findById(enrollment.userId);
+        if (!member) {
+          console.warn(`Member not found for enrollment ${enrollment._id}`);
+          return;
+        }
+
+        // Get email from Clerk
+        const email = await member.getEmailFromClerk();
+        if (!email) {
+          console.warn(`No email found for member ${member._id}`);
+          return;
+        }
+
+        // Queue email job
+        await enqueueEmailSending({
+          recipient: {
+            email,
+            name: `${member.firstName || ""} ${member.lastName || ""}`.trim() || email,
+            memberId: member._id,
+          },
+          title: `New Scenario: ${scenario.title}`,
+          message: `A new scenario "${scenario.title}" has been added to ${classroom.name}.`,
+          templateSlug: "ScenarioCreatedEmail",
+          templateData: {
+            scenario: {
+              _id: scenario._id,
+              week: scenario.week,
+              title: scenario.title,
+              description: scenario.description,
+              link: scenarioLink,
+            },
+            classroom: {
+              _id: classroom._id,
+              name: classroom.name,
+              description: classroom.description,
+            },
+            member: {
+              _id: member._id,
+              firstName: member.firstName,
+              lastName: member.lastName,
+              name: `${member.firstName || ""} ${member.lastName || ""}`.trim(),
+              email,
+              clerkUserId: member.clerkUserId,
+            },
+            organization: {
+              _id: organizationId,
+            },
+            link: scenarioLink,
+            env: {
+              SCALE_COM_HOST: host,
+              SCALE_API_HOST: process.env.SCALE_API_HOST || host,
+            },
+          },
+          organizationId,
+        });
+
+        console.log(`📧 Queued scenario created email for ${email}`);
+      } catch (error) {
+        console.error(
+          `Error queueing email for enrollment ${enrollment._id}:`,
+          error.message
+        );
+        // Continue with other emails even if one fails
+      }
+    });
+
+    await Promise.allSettled(emailPromises);
+    console.log(
+      `✅ Queued ${memberEnrollments.length} scenario created email(s)`
+    );
+  } catch (error) {
+    console.error("Error in queueScenarioCreatedEmails:", error);
+    throw error;
+  }
+}
+

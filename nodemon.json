@@ -1,0 +1,12 @@
+{
+  "verbose": true,
+  "ignore": ["node_modules/**/node_modules", ".git", "*.test.js"],
+  "delay": 1000,
+  "exec": "node",
+  "signal": "SIGTERM",
+  "killTimeout": 5000,
+  "restartable": "rs",
+  "env": {
+    "NODE_ENV": "development"
+  }
+}

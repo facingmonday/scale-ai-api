@@ -1,0 +1,175 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Launch API",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "console": "integratedTerminal",
+      "program": "${workspaceFolder}/apps/api/index.js",
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Launch Ticketing",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "console": "integratedTerminal",
+      "program": "${workspaceFolder}/apps/ticketing/index.js",
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Launch QR Codes",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "console": "integratedTerminal",
+      "program": "${workspaceFolder}/apps/qrcodes/index.js",
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Launch Webhooks",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "console": "integratedTerminal",
+      "program": "${workspaceFolder}/apps/webhooks/index.js",
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Launch Cron",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "console": "integratedTerminal",
+      "program": "${workspaceFolder}/apps/cron/index.js",
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Launch Public",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "console": "integratedTerminal",
+      "program": "${workspaceFolder}/apps/public/index.js",
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Run Stripe",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "console": "integratedTerminal",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "stripe"
+      ]
+    },
+    // {
+    //   "type": "node",
+    //   "request": "launch",
+    //   "name": "Debug Current Test",
+    //   "program": "${workspaceFolder}/node_modules/jest/bin/jest.js",
+    //   "args": [
+    //     "${file}",
+    //     "--runInBand",
+    //     "--forceExit"
+    //   ],
+    //   "console": "integratedTerminal",
+    //   "internalConsoleOptions": "neverOpen"
+    // },
+    // {
+    //   "type": "node",
+    //   "request": "launch",
+    //   "name": "Debug processCheckout Test",
+    //   "program": "${workspaceFolder}/node_modules/jest/bin/jest.js",
+    //   "args": [
+    //     "services/order/tests/process-checkout.test.js",
+    //     "--runInBand",
+    //     "--forceExit"
+    //   ],
+    //   "console": "integratedTerminal",
+    //   "internalConsoleOptions": "neverOpen"
+    // },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Run Ngrok",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "console": "integratedTerminal",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "ngrok"
+      ]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug Cron App",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "console": "integratedTerminal",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "cron-app"
+      ],
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug Reminder Worker",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "console": "integratedTerminal", 
+      "program": "${workspaceFolder}/workers/lib/ticket-reminder-worker.js",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug Telnyx SMS Test",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "console": "integratedTerminal",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "test:telnyx"
+      ],
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug Telnyx Advanced Test",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "console": "integratedTerminal",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "test:telnyx:advanced"
+      ],
+      "envFile": "${workspaceFolder}/.env"
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "member": {
+    "firstName": "Sarah",
+    "name": "Sarah Johnson",
+    "email": "sarah.johnson@example.com"
+  },
+  "event": {
+    "title": "Summer Music Festival 2025",
+    "startDate": "2025-07-15T00:00:00.000Z",
+    "startTime": "18:00",
+    "endTime": "23:00",
+    "location": {
+      "name": "Riverside Amphitheater",
+      "address": "123 Park Avenue, Portland, OR 97201"
+    },
+    "description": "Join us for an unforgettable evening of live music featuring top artists from around the world. Bring your friends and family for a night of great entertainment under the stars!"
+  },
+  "ticket": {
+    "_id": "ticket_abc123",
+    "ticketNumber": "VIP-001234",
+    "ticketType": {
+      "name": "VIP Pass",
+      "_id": "tickettype_vip001"
+    },
+    "attendeeInfo": {
+      "name": "Sarah Johnson",
+      "email": "sarah.johnson@example.com"
+    },
+    "selectedOptions": [
+      {
+        "ticketTypeOption": {
+          "name": "Meal Preference"
+        },
+        "value": "Vegetarian"
+      },
+      {
+        "ticketTypeOption": {
+          "name": "Parking Pass"
+        },
+        "value": "Premium"
+      }
+    ],
+    "price": 15000,
+    "ticketPdfUrl": "https://kikits.com/tickets/download/ticket_abc123.pdf",
+    "updatedDate": "2025-06-01T14:30:00.000Z"
+  },
+  "env": {
+    "SCALE_COM_HOST": "https://kikits.com"
+  }
+}

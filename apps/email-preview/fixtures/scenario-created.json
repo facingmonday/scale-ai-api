@@ -1,0 +1,32 @@
+{
+  "scenario": {
+    "_id": "scenario_week3_2025",
+    "week": 3,
+    "title": "Back to School Rush",
+    "description": "Students return to campus, bringing increased demand and new challenges. Plan your inventory and staffing carefully to handle the surge in orders.",
+    "classId": "class_supply_chain_101_fall"
+  },
+  "classroom": {
+    "_id": "class_supply_chain_101_fall",
+    "name": "Supply Chain 101 – Fall",
+    "description": "Intro to supply chain concepts using simulation"
+  },
+  "member": {
+    "firstName": "Alex",
+    "lastName": "Martinez",
+    "name": "Alex Martinez",
+    "email": "alex.martinez@example.com",
+    "clerkUserId": "user_2abc123"
+  },
+  "organization": {
+    "_id": "org_123",
+    "name": "Business School",
+    "email": "admin@businessschool.edu"
+  },
+  "link": "https://scale.ai/class/class_supply_chain_101_fall/scenario/scenario_week3_2025",
+  "env": {
+    "SCALE_COM_HOST": "https://scale.ai",
+    "SCALE_API_HOST": "https://api.scale.ai"
+  }
+}
+

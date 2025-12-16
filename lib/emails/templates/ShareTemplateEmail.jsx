@@ -1,0 +1,427 @@
+const React = require("react");
+const {
+  Html,
+  Head,
+  Preview,
+  Tailwind,
+  Body,
+  Container,
+  Heading,
+  Section,
+  Text,
+  Button,
+} = require("@react-email/components");
+
+function formatDate(date) {
+  if (!date) return "";
+  const d = new Date(date);
+  return d.toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function formatTime(time) {
+  if (!time) return "";
+  const [h, m] = String(time)
+    .split(":")
+    .map((n) => parseInt(n, 10));
+  const period = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
+function formatDateTime(date) {
+  if (!date) return "";
+  const d = new Date(date);
+  return d.toLocaleString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "UTC",
+  });
+}
+
+function ShareTemplateEmail(props) {
+  const {
+    event = {},
+    ticket = {},
+    order = {},
+    member = {},
+    env = {},
+  } = props || {};
+  const previewText = `You're Invited! - ${event.title || "Event"}`;
+  const host = env.SCALE_COM_HOST || "https://kikits.com";
+
+  const addressLine =
+    event?.location?.address ||
+    event?.location?.address1 ||
+    event?.location?.formattedAddress ||
+    "";
+
+  const sharedByName = member.firstName
+    ? `${member.firstName}${member.lastName ? ` ${member.lastName}` : ""}`
+    : member.email;
+
+  return (
+    <Html>
+      <Head />
+      <Preview>{previewText}</Preview>
+      <Tailwind>
+        <Body
+          style={{
+            fontFamily: "'Helvetica Neue', Arial, sans-serif",
+            lineHeight: "1.6",
+            color: "#111",
+            margin: "0",
+            padding: "0",
+            backgroundColor: "#ffffff",
+          }}
+        >
+          <Container
+            style={{
+              maxWidth: "700px",
+              margin: "40px auto",
+              backgroundColor: "#ffffff",
+              border: "1px solid #ddd",
+              borderRadius: "8px",
+              boxShadow: "0 4px 12px rgba(0, 0, 0, 0.05)",
+              overflow: "hidden",
+            }}
+          >
+            {/* Header */}
+            <Section
+              style={{
+                backgroundColor: "#ff6b00",
+                color: "#fff",
+                textAlign: "center",
+                padding: "20px 20px 10px",
+              }}
+            >
+              <div style={{ textAlign: "center", marginBottom: "20px" }}>
+                <svg
+                  style={{
+                    height: "32px",
+                    width: "32px",
+                    stroke: "currentColor",
+                    fill: "currentColor",
+                    strokeWidth: "0",
+                    viewBox: "0 0 512 512",
+                    display: "inline-block",
+                    verticalAlign: "middle",
+                    marginRight: "12px",
+                  }}
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    fill="none"
+                    stroke="#ffffff"
+                    strokeMiterlimit="10"
+                    strokeWidth="32"
+                    d="M366.05 146a46.7 46.7 0 0 1-2.42-63.42 3.87 3.87 0 0 0-.22-5.26l-44.13-44.18a3.89 3.89 0 0 0-5.5 0l-70.34 70.34a23.62 23.62 0 0 0-5.71 9.24 23.66 23.66 0 0 1-14.95 15 23.7 23.7 0 0 0-9.25 5.71L33.14 313.78a3.89 3.89 0 0 0 0 5.5l44.13 44.13a3.87 3.87 0 0 0 5.26.22 46.69 46.69 0 0 1 65.84 65.84 3.87 3.87 0 0 0 .22 5.26l44.13 44.13a3.89 3.89 0 0 0 5.5 0l180.4-180.39a23.7 23.7 0 0 0 5.71-9.25 23.66 23.66 0 0 1 14.95-15 23.62 23.62 0 0 0 9.24-5.71l70.34-70.34a3.89 3.89 0 0 0 0-5.5l-44.13-44.13a3.87 3.87 0 0 0-5.26-.22 46.7 46.7 0 0 1-63.42-2.32z"
+                  />
+                  <path
+                    fill="none"
+                    stroke="#ffffff"
+                    strokeLinecap="round"
+                    strokeMiterlimit="10"
+                    strokeWidth="32"
+                    d="m250.5 140.44-16.51-16.51m60.53 60.53-11.01-11m55.03 55.03-11-11.01m60.53 60.53-16.51-16.51"
+                  />
+                </svg>
+                <span
+                  style={{
+                    fontFamily: "'Inter', Arial, sans-serif",
+                    fontWeight: "800",
+                    fontStyle: "italic",
+                    textTransform: "lowercase",
+                    fontSize: "1.8em",
+                    color: "white",
+                    verticalAlign: "middle",
+                  }}
+                >
+                  KIKITS
+                </span>
+              </div>
+              <Heading
+                style={{
+                  margin: "0",
+                  fontSize: "20px",
+                  textTransform: "uppercase",
+                  letterSpacing: "1px",
+                }}
+              >
+                You're Invited!
+              </Heading>
+            </Section>
+
+            {/* Main Content */}
+            <Section style={{ padding: "24px 32px", color: "#111" }}>
+              <div style={{ textAlign: "center", marginBottom: "24px" }}>
+                <Heading
+                  style={{
+                    marginTop: "0",
+                    fontSize: "18px",
+                    fontWeight: "600",
+                    color: "#222",
+                  }}
+                >
+                  You have 1 ticket for <strong>{event.title}</strong>
+                </Heading>
+                <Text style={{ marginBottom: "24px", textAlign: "center" }}>
+                  This ticket has been shared with you by {sharedByName}. To
+                  claim your ticket, please click the button below.
+                </Text>
+              </div>
+
+              <div
+                style={{
+                  textAlign: "center",
+                  fontSize: "22px",
+                  fontWeight: "bold",
+                  color: "#111",
+                  margin: "24px 0",
+                }}
+              >
+                Claim Your Ticket!
+              </div>
+
+              {/* Event Details */}
+              <div
+                style={{
+                  backgroundColor: "#f9f9f9",
+                  border: "1px solid #ddd",
+                  borderRadius: "6px",
+                  padding: "16px",
+                  color: "#111",
+                }}
+              >
+                <Heading
+                  style={{
+                    marginTop: "0",
+                    fontSize: "15px",
+                    fontWeight: "bold",
+                    textTransform: "uppercase",
+                    color: "#333",
+                  }}
+                >
+                  Event Details
+                </Heading>
+                <Text style={{ margin: "6px 0", fontSize: "14px" }}>
+                  <strong style={{ color: "#000" }}>Event:</strong>{" "}
+                  {event.title}
+                </Text>
+                <Text style={{ margin: "6px 0", fontSize: "14px" }}>
+                  <strong style={{ color: "#000" }}>Date:</strong>{" "}
+                  {formatDate(event.startDate)}
+                </Text>
+                {event.startTime ? (
+                  <Text style={{ margin: "6px 0", fontSize: "14px" }}>
+                    <strong style={{ color: "#000" }}>Time:</strong>{" "}
+                    {formatTime(event.startTime)}
+                    {event.endTime ? ` – ${formatTime(event.endTime)}` : ""}
+                  </Text>
+                ) : null}
+                {event.location ? (
+                  <Text style={{ margin: "6px 0", fontSize: "14px" }}>
+                    <strong style={{ color: "#000" }}>Location:</strong>{" "}
+                    {event.location.name}
+                    {addressLine ? `, ${addressLine}` : ""}
+                  </Text>
+                ) : null}
+              </div>
+
+              <div style={{ borderTop: "2px dashed #ddd", margin: "20px 0" }} />
+
+              {/* Ticket Information */}
+              <div style={{ marginBottom: "24px" }}>
+                <Heading
+                  style={{
+                    fontSize: "18px",
+                    fontWeight: "500",
+                    marginBottom: "16px",
+                    color: "#222",
+                  }}
+                >
+                  {ticket?.ticketType?.name}
+                </Heading>
+                <div
+                  style={{
+                    backgroundColor: "#fff",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "8px",
+                    padding: "16px",
+                    marginBottom: "12px",
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontWeight: "500",
+                        color: "#111",
+                        marginBottom: "4px",
+                        fontSize: "16px",
+                      }}
+                    >
+                      {ticket?.ticketType?.name}
+                    </div>
+                    <div
+                      style={{
+                        color: "#6b7280",
+                        fontSize: "14px",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      Ticket #{ticket?.ticketNumber}
+                    </div>
+                    {Array.isArray(ticket?.selectedOptions) &&
+                    ticket.selectedOptions.length > 0 ? (
+                      <div
+                        style={{
+                          color: "#6b7280",
+                          fontSize: "14px",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        {ticket.selectedOptions.map((opt, i) => (
+                          <span key={i}>
+                            {opt?.ticketTypeOption?.name}: {opt?.value}
+                            {i < ticket.selectedOptions.length - 1 ? ", " : ""}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                    {ticket?.price ? (
+                      <div style={{ color: "#6b7280", fontSize: "14px" }}>
+                        Price: $
+                        {typeof ticket.price === "number"
+                          ? (ticket.price / 100).toFixed(2)
+                          : ticket.price}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+
+              {/* Claim Button */}
+              <table
+                cellPadding="0"
+                cellSpacing="0"
+                border={0}
+                style={{
+                  margin: "28px auto",
+                  width: "80%",
+                  maxWidth: "260px",
+                }}
+              >
+                <tbody>
+                  <tr>
+                    <td style={{ textAlign: "center" }}>
+                      <Button
+                        href={`${host}/claim?ticketId=${ticket?._id || ""}`}
+                        style={{
+                          display: "inline-block",
+                          padding: "12px 24px",
+                          backgroundColor: "#ff6b00",
+                          color: "#fff",
+                          textDecoration: "none",
+                          textAlign: "center",
+                          textTransform: "uppercase",
+                          fontWeight: "bold",
+                          borderRadius: "5px",
+                          letterSpacing: "1px",
+                          fontSize: "14px",
+                        }}
+                      >
+                        Claim Your Ticket
+                      </Button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              {/* Important Notice */}
+              <div
+                style={{
+                  backgroundColor: "#fff8f1",
+                  border: "1px dashed #ffb57d",
+                  borderRadius: "6px",
+                  padding: "16px",
+                  margin: "24px 0",
+                  fontSize: "14px",
+                  color: "#333",
+                }}
+              >
+                <strong style={{ color: "#000" }}>Important:</strong>
+                <ul style={{ margin: "10px 0 0 20px", padding: "0" }}>
+                  <li>
+                    Each ticket has a unique QR code for scanning at entry.
+                  </li>
+                  <li>
+                    Please print or have your tickets ready on your device.
+                  </li>
+                  <li>
+                    Tickets are non-transferable and valid only for the
+                    registered attendee.
+                  </li>
+                </ul>
+              </div>
+
+              {/* Event Description */}
+              {event?.description ? (
+                <div style={{ marginTop: "20px" }}>
+                  <Heading
+                    style={{
+                      fontSize: "14px",
+                      textTransform: "uppercase",
+                      color: "#000",
+                      letterSpacing: "0.5px",
+                    }}
+                  >
+                    Event Description
+                  </Heading>
+                  <Text style={{ color: "#444", fontSize: "14px" }}>
+                    {event.description}
+                  </Text>
+                </div>
+              ) : null}
+            </Section>
+
+            {/* Footer */}
+            <Section
+              style={{
+                textAlign: "center",
+                padding: "20px",
+                color: "#888",
+                fontSize: "12px",
+                borderTop: "1px dashed #ddd",
+                backgroundColor: "#fff",
+              }}
+            >
+              <Text style={{ margin: "6px 0" }}>© Kikits</Text>
+              <Text style={{ margin: "6px 0" }}>
+                If you did not recognize this email, please contact us
+                immediately.
+              </Text>
+              <Text style={{ margin: "6px 0" }}>
+                <small>
+                  Tickets generated on {formatDateTime(order?.updatedDate)}
+                </small>
+              </Text>
+            </Section>
+          </Container>
+        </Body>
+      </Tailwind>
+    </Html>
+  );
+}
+
+module.exports = {
+  ShareTemplateEmail,
+  populatePaths: ["event.location", "event.defaultImage", "member"],
+};
