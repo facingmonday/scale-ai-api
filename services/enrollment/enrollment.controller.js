@@ -1,7 +1,6 @@
 const Classroom = require("../classroom/classroom.model");
 const Member = require("../members/member.model");
-const enrollmentService = require("./lib/enrollmentService");
-const classroomService = require("../classroom/lib/classroomService");
+const Enrollment = require("./enrollment.model");
 
 /**
  * Student joins class
@@ -34,8 +33,8 @@ exports.joinClass = async function (req, res) {
     // Determine role (admin if in adminIds, otherwise member)
     const role = classDoc.isAdmin(clerkUserId) ? "admin" : "member";
 
-    // Enroll user using enrollment service
-    const enrollment = await enrollmentService.enrollUser(
+    // Enroll user using Enrollment model
+    const enrollment = await Enrollment.enrollUser(
       classId,
       member._id,
       role,
@@ -77,14 +76,10 @@ exports.getClassRoster = async function (req, res) {
     const clerkUserId = req.clerkUser.id;
 
     // Validate admin access
-    await classroomService.validateAdminAccess(
-      classId,
-      clerkUserId,
-      organizationId
-    );
+    await Classroom.validateAdminAccess(classId, clerkUserId, organizationId);
 
-    // Get roster using enrollment service
-    const roster = await enrollmentService.getClassRoster(classId);
+    // Get roster using Enrollment model
+    const roster = await Enrollment.getClassRoster(classId);
 
     res.json({
       success: true,
@@ -113,14 +108,10 @@ exports.removeStudent = async function (req, res) {
     const clerkUserId = req.clerkUser.id;
 
     // Validate admin access
-    await classroomService.validateAdminAccess(
-      classId,
-      clerkUserId,
-      organizationId
-    );
+    await Classroom.validateAdminAccess(classId, clerkUserId, organizationId);
 
-    // Remove enrollment using enrollment service
-    await enrollmentService.removeEnrollment(classId, userId, clerkUserId);
+    // Remove enrollment using Enrollment model
+    await Enrollment.removeEnrollment(classId, userId, clerkUserId);
 
     res.json({
       success: true,

@@ -1,6 +1,6 @@
 const JobService = require("./lib/jobService");
 const SimulationWorker = require("./lib/simulationWorker");
-const classroomService = require("../classroom/lib/classroomService");
+const Classroom = require("../classroom/classroom.model");
 const Scenario = require("../scenario/scenario.model");
 
 /**
@@ -21,7 +21,7 @@ exports.getJobsByScenario = async function (req, res) {
     }
 
     // Verify admin access
-    await classroomService.validateAdminAccess(
+    await Classroom.validateAdminAccess(
       scenario.classId,
       clerkUserId,
       organizationId
@@ -72,7 +72,7 @@ exports.getJobById = async function (req, res) {
     }
 
     // Verify admin access
-    await classroomService.validateAdminAccess(
+    await Classroom.validateAdminAccess(
       scenario.classId,
       clerkUserId,
       organizationId
@@ -121,7 +121,7 @@ exports.retryJob = async function (req, res) {
     }
 
     // Verify admin access
-    await classroomService.validateAdminAccess(
+    await Classroom.validateAdminAccess(
       scenario.classId,
       clerkUserId,
       organizationId
@@ -129,7 +129,7 @@ exports.retryJob = async function (req, res) {
 
     // Reset and process job
     await job.reset();
-    
+
     // Process job asynchronously
     SimulationWorker.processJob(jobId).catch((error) => {
       console.error(`Error processing job ${jobId} after retry:`, error);
@@ -178,4 +178,3 @@ exports.processPendingJobs = async function (req, res) {
     res.status(500).json({ error: error.message });
   }
 };
-

@@ -1,7 +1,6 @@
 const Store = require("./store.model");
 const Enrollment = require("../enrollment/enrollment.model");
-const enrollmentService = require("../enrollment/lib/enrollmentService");
-const classroomService = require("../classroom/lib/classroomService");
+const Classroom = require("../classroom/classroom.model");
 
 /**
  * Create store
@@ -53,10 +52,7 @@ exports.createStore = async function (req, res) {
 
     // Verify user is enrolled in class
     const member = req.user;
-    const isEnrolled = await enrollmentService.isUserEnrolled(
-      classId,
-      member._id
-    );
+    const isEnrolled = await Enrollment.isUserEnrolled(classId, member._id);
 
     if (!isEnrolled) {
       return res.status(403).json({
@@ -116,7 +112,9 @@ exports.getStore = async function (req, res) {
     const member = req.user;
 
     if (!classId) {
-      return res.status(400).json({ error: "classId query parameter is required" });
+      return res
+        .status(400)
+        .json({ error: "classId query parameter is required" });
     }
 
     // Get store using static method
@@ -147,11 +145,7 @@ exports.getStudentStore = async function (req, res) {
     const clerkUserId = req.clerkUser.id;
 
     // Validate admin access
-    await classroomService.validateAdminAccess(
-      classId,
-      clerkUserId,
-      organizationId
-    );
+    await Classroom.validateAdminAccess(classId, clerkUserId, organizationId);
 
     // Get store using static method
     const store = await Store.getStoreByUser(classId, userId);
@@ -175,4 +169,3 @@ exports.getStudentStore = async function (req, res) {
     res.status(500).json({ error: error.message });
   }
 };
-

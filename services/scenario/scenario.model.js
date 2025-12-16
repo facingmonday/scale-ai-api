@@ -1,6 +1,8 @@
 const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
+const ScenarioVariableValue = require("./scenarioVariableValue.model");
+const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
 
 const scenarioSchema = new mongoose.Schema({
   classId: {
@@ -21,10 +23,6 @@ const scenarioSchema = new mongoose.Schema({
     type: String,
     default: "",
   },
-  variables: {
-    type: mongoose.Schema.Types.Mixed,
-    default: {},
-  },
   isPublished: {
     type: Boolean,
     default: false,
@@ -34,6 +32,12 @@ const scenarioSchema = new mongoose.Schema({
     default: false,
   },
 }).add(baseSchema);
+
+// Apply variable population plugin
+scenarioSchema.plugin(variablePopulationPlugin, {
+  variableValueModel: ScenarioVariableValue,
+  foreignKeyField: "scenarioId",
+});
 
 // Compound indexes for performance
 scenarioSchema.index({ classId: 1, week: 1 }, { unique: true });
@@ -83,7 +87,7 @@ scenarioSchema.statics.validateScenarioVariables = async function (
  * @param {Object} scenarioData - Scenario data (title, description, variables)
  * @param {string} organizationId - Organization ID
  * @param {string} clerkUserId - Clerk user ID for createdBy/updatedBy
- * @returns {Promise<Object>} Created scenario
+ * @returns {Promise<Object>} Created scenario with variables populated
  */
 scenarioSchema.statics.createScenario = async function (
   classId,
@@ -94,15 +98,12 @@ scenarioSchema.statics.createScenario = async function (
   // Get next week number
   const week = await this.getNextWeekNumber(classId);
 
+  // Extract variables from scenarioData
+  const { variables, ...scenarioFields } = scenarioData;
+
   // Validate variables if provided
-  if (
-    scenarioData.variables &&
-    Object.keys(scenarioData.variables).length > 0
-  ) {
-    const validation = await this.validateScenarioVariables(
-      classId,
-      scenarioData.variables
-    );
+  if (variables && Object.keys(variables).length > 0) {
+    const validation = await this.validateScenarioVariables(classId, variables);
 
     if (!validation.isValid) {
       throw new Error(
@@ -111,19 +112,53 @@ scenarioSchema.statics.createScenario = async function (
     }
 
     // Apply defaults
-    scenarioData.variables = await VariableDefinition.applyDefaults(
+    const variablesWithDefaults = await VariableDefinition.applyDefaults(
       classId,
       "scenario",
-      scenarioData.variables
+      variables
     );
+
+    // Create scenario document
+    const scenario = new this({
+      classId,
+      week,
+      title: scenarioFields.title,
+      description: scenarioFields.description || "",
+      isPublished: false,
+      isClosed: false,
+      organization: organizationId,
+      createdBy: clerkUserId,
+      updatedBy: clerkUserId,
+    });
+
+    await scenario.save();
+
+    // Create variable values if provided
+    const variableEntries = Object.entries(variablesWithDefaults);
+    const variableDocs = variableEntries.map(([key, value]) => ({
+      scenarioId: scenario._id,
+      variableKey: key,
+      value: value,
+      organization: organizationId,
+      createdBy: clerkUserId,
+      updatedBy: clerkUserId,
+    }));
+
+    if (variableDocs.length > 0) {
+      await ScenarioVariableValue.insertMany(variableDocs);
+    }
+
+    // Return scenario with variables populated (auto-loaded via plugin)
+    const createdScenario = await this.findById(scenario._id);
+    return createdScenario ? createdScenario.toObject() : null;
   }
 
+  // No variables provided
   const scenario = new this({
     classId,
     week,
-    title: scenarioData.title,
-    description: scenarioData.description || "",
-    variables: scenarioData.variables || {},
+    title: scenarioFields.title,
+    description: scenarioFields.description || "",
     isPublished: false,
     isClosed: false,
     organization: organizationId,
@@ -132,27 +167,35 @@ scenarioSchema.statics.createScenario = async function (
   });
 
   await scenario.save();
-  return scenario;
+  // Variables are automatically included via plugin
+  return scenario.toObject();
 };
 
 /**
  * Get active scenario (published and not closed)
  * @param {string} classId - Class ID
- * @returns {Promise<Object|null>} Active scenario or null
+ * @returns {Promise<Object|null>} Active scenario with variables or null
  */
 scenarioSchema.statics.getActiveScenario = async function (classId) {
-  return await this.findOne({
+  const scenario = await this.findOne({
     classId,
     isPublished: true,
     isClosed: false,
   }).sort({ week: -1 });
+
+  if (!scenario) {
+    return null;
+  }
+
+  // Variables are automatically included via plugin's post-init hook
+  return scenario.toObject();
 };
 
 /**
  * Get all scenarios for a class
  * @param {string} classId - Class ID
  * @param {Object} options - Options (includeClosed)
- * @returns {Promise<Array>} Array of scenarios
+ * @returns {Promise<Array>} Array of scenarios with variables
  */
 scenarioSchema.statics.getScenariosByClass = async function (
   classId,
@@ -163,14 +206,20 @@ scenarioSchema.statics.getScenariosByClass = async function (
     query.isClosed = false;
   }
 
-  return await this.find(query).sort({ week: 1 });
+  const scenarios = await this.find(query).sort({ week: 1 });
+
+  // Use plugin's efficient batch population
+  await this.populateVariablesForMany(scenarios);
+
+  // Variables are automatically included via plugin
+  return scenarios.map((scenario) => scenario.toObject());
 };
 
 /**
  * Get scenario by ID with class validation
  * @param {string} scenarioId - Scenario ID
  * @param {string} organizationId - Organization ID (optional, for validation)
- * @returns {Promise<Object|null>} Scenario or null
+ * @returns {Promise<Object|null>} Scenario with variables or null
  */
 scenarioSchema.statics.getScenarioById = async function (
   scenarioId,
@@ -181,10 +230,86 @@ scenarioSchema.statics.getScenarioById = async function (
     query.organization = organizationId;
   }
 
-  return await this.findOne(query);
+  const scenario = await this.findOne(query);
+  if (!scenario) {
+    return null;
+  }
+
+  // Variables are automatically included via plugin's post-init hook
+  return scenario.toObject();
 };
 
 // Instance methods
+
+/**
+ * Get variables for this scenario instance
+ * Uses cached variables if available, otherwise loads them
+ * @returns {Promise<Object>} Variables object
+ */
+scenarioSchema.methods.getVariables = async function () {
+  // Use plugin's cached variables or load them
+  return await this._loadVariables();
+};
+
+/**
+ * Update variables for this scenario
+ * @param {Object} variables - Variables object
+ * @param {string} organizationId - Organization ID
+ * @param {string} clerkUserId - Clerk user ID
+ * @returns {Promise<Object>} Updated variables object
+ */
+scenarioSchema.methods.updateVariables = async function (
+  variables,
+  organizationId,
+  clerkUserId
+) {
+  // Validate variables
+  const validation = await this.constructor.validateScenarioVariables(
+    this.classId,
+    variables
+  );
+
+  if (!validation.isValid) {
+    throw new Error(
+      `Invalid scenario variables: ${validation.errors.map((e) => e.message).join(", ")}`
+    );
+  }
+
+  // Apply defaults
+  const variablesWithDefaults = await VariableDefinition.applyDefaults(
+    this.classId,
+    "scenario",
+    variables
+  );
+
+  // Update or create variable values
+  const variableEntries = Object.entries(variablesWithDefaults);
+  for (const [key, value] of variableEntries) {
+    await ScenarioVariableValue.setVariable(
+      this._id,
+      key,
+      value,
+      organizationId,
+      clerkUserId
+    );
+  }
+
+  // Delete variables that are not in the new set
+  const existingVariables = await ScenarioVariableValue.find({
+    scenarioId: this._id,
+  });
+  const newKeys = new Set(Object.keys(variablesWithDefaults));
+  for (const existingVar of existingVariables) {
+    if (!newKeys.has(existingVar.variableKey)) {
+      await ScenarioVariableValue.deleteOne({ _id: existingVar._id });
+    }
+  }
+
+  // Reload variables to update cache
+  await this._loadVariables();
+
+  return variablesWithDefaults;
+};
 
 /**
  * Publish this scenario

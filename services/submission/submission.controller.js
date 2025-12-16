@@ -1,7 +1,7 @@
 const Submission = require("./submission.model");
 const Scenario = require("../scenario/scenario.model");
-const classroomService = require("../classroom/lib/classroomService");
-const enrollmentService = require("../enrollment/lib/enrollmentService");
+const Classroom = require("../classroom/classroom.model");
+const Enrollment = require("../enrollment/enrollment.model");
 
 /**
  * Submit weekly decisions
@@ -30,10 +30,7 @@ exports.submitWeeklyDecisions = async function (req, res) {
     const classId = scenario.classId;
 
     // Verify enrollment
-    const isEnrolled = await enrollmentService.isUserEnrolled(
-      classId,
-      member._id
-    );
+    const isEnrolled = await Enrollment.isUserEnrolled(classId, member._id);
 
     if (!isEnrolled) {
       return res.status(403).json({
@@ -76,7 +73,10 @@ exports.submitWeeklyDecisions = async function (req, res) {
     ) {
       return res.status(400).json({ error: error.message });
     }
-    if (error.message === "Scenario not found" || error.message === "Class not found") {
+    if (
+      error.message === "Scenario not found" ||
+      error.message === "Class not found"
+    ) {
       return res.status(404).json({ error: error.message });
     }
     if (error.name === "ValidationError") {
@@ -161,11 +161,7 @@ exports.getSubmissionsForScenario = async function (req, res) {
     const classId = scenario.classId;
 
     // Verify admin access
-    await classroomService.validateAdminAccess(
-      classId,
-      clerkUserId,
-      organizationId
-    );
+    await Classroom.validateAdminAccess(classId, clerkUserId, organizationId);
 
     // Get all submissions
     const submissions = await Submission.getSubmissionsByScenario(scenarioId);
@@ -216,4 +212,3 @@ exports.getSubmissionsForScenario = async function (req, res) {
     res.status(500).json({ error: error.message });
   }
 };
-

@@ -3,8 +3,6 @@ const ScenarioOutcome = require("../scenarioOutcome/scenarioOutcome.model");
 const Classroom = require("../classroom/classroom.model");
 const Enrollment = require("../enrollment/enrollment.model");
 const Member = require("../members/member.model");
-const classroomService = require("../classroom/lib/classroomService");
-const enrollmentService = require("../enrollment/lib/enrollmentService");
 const { enqueueEmailSending } = require("../../lib/queues/email-worker");
 const JobService = require("../job/lib/jobService");
 const LedgerService = require("../ledger/lib/ledgerService");
@@ -29,11 +27,7 @@ exports.createScenario = async function (req, res) {
     }
 
     // Verify admin access
-    await classroomService.validateAdminAccess(
-      classId,
-      clerkUserId,
-      organizationId
-    );
+    await Classroom.validateAdminAccess(classId, clerkUserId, organizationId);
 
     // Create scenario using static method
     const scenario = await Scenario.createScenario(
@@ -84,15 +78,19 @@ exports.updateScenario = async function (req, res) {
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
-    // Find scenario
-    const scenario = await Scenario.getScenarioById(scenarioId, organizationId);
+    // Find scenario (get Mongoose document, not plain object)
+    const query = { _id: scenarioId };
+    if (organizationId) {
+      query.organization = organizationId;
+    }
+    const scenario = await Scenario.findOne(query);
 
     if (!scenario) {
       return res.status(404).json({ error: "Scenario not found" });
     }
 
     // Verify admin access
-    await classroomService.validateAdminAccess(
+    await Classroom.validateAdminAccess(
       scenario.classId,
       clerkUserId,
       organizationId
@@ -106,35 +104,36 @@ exports.updateScenario = async function (req, res) {
       });
     }
 
-    // Validate variables if provided
-    if (req.body.variables && Object.keys(req.body.variables).length > 0) {
-      const validation = await Scenario.validateScenarioVariables(
-        scenario.classId,
-        req.body.variables
-      );
-
-      if (!validation.isValid) {
-        return res.status(400).json({
-          error: `Invalid scenario variables: ${validation.errors.map((e) => e.message).join(", ")}`,
-        });
-      }
-    }
-
-    // Update allowed fields
-    const allowedFields = ["title", "description", "variables"];
+    // Update allowed fields (excluding variables)
+    const allowedFields = ["title", "description"];
     allowedFields.forEach((field) => {
       if (req.body[field] !== undefined) {
         scenario[field] = req.body[field];
       }
     });
 
+    // Update variables if provided
+    if (req.body.variables !== undefined) {
+      await scenario.updateVariables(
+        req.body.variables,
+        organizationId,
+        clerkUserId
+      );
+    }
+
     scenario.updatedBy = clerkUserId;
     await scenario.save();
+
+    // Get updated scenario with variables populated
+    const updatedScenario = await Scenario.getScenarioById(
+      scenarioId,
+      organizationId
+    );
 
     res.json({
       success: true,
       message: "Scenario updated successfully",
-      data: scenario,
+      data: updatedScenario,
     });
   } catch (error) {
     console.error("Error updating scenario:", error);
@@ -169,7 +168,7 @@ exports.publishScenario = async function (req, res) {
     }
 
     // Verify admin access
-    await classroomService.validateAdminAccess(
+    await Classroom.validateAdminAccess(
       scenario.classId,
       clerkUserId,
       organizationId
@@ -227,7 +226,7 @@ exports.previewScenario = async function (req, res) {
     }
 
     // Verify admin access
-    await classroomService.validateAdminAccess(
+    await Classroom.validateAdminAccess(
       scenario.classId,
       clerkUserId,
       organizationId
@@ -312,7 +311,7 @@ exports.approveScenario = async function (req, res) {
     }
 
     // Verify admin access
-    await classroomService.validateAdminAccess(
+    await Classroom.validateAdminAccess(
       scenario.classId,
       clerkUserId,
       organizationId
@@ -388,7 +387,7 @@ exports.rerunScenario = async function (req, res) {
     }
 
     // Verify admin access
-    await classroomService.validateAdminAccess(
+    await Classroom.validateAdminAccess(
       scenario.classId,
       clerkUserId,
       organizationId
@@ -459,10 +458,7 @@ exports.getCurrentScenario = async function (req, res) {
     }
 
     // Verify enrollment
-    const isEnrolled = await enrollmentService.isUserEnrolled(
-      classId,
-      member._id
-    );
+    const isEnrolled = await Enrollment.isUserEnrolled(classId, member._id);
 
     if (!isEnrolled) {
       return res.status(403).json({

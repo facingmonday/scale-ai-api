@@ -1,5 +1,5 @@
 const LedgerService = require("./lib/ledgerService");
-const classroomService = require("../classroom/lib/classroomService");
+const Classroom = require("../classroom/classroom.model");
 const Scenario = require("../scenario/scenario.model");
 const Member = require("../members/member.model");
 
@@ -14,11 +14,7 @@ exports.getLedgerHistory = async function (req, res) {
     const clerkUserId = req.clerkUser.id;
 
     // Verify admin access
-    await classroomService.validateAdminAccess(
-      classId,
-      clerkUserId,
-      organizationId
-    );
+    await Classroom.validateAdminAccess(classId, clerkUserId, organizationId);
 
     const history = await LedgerService.getLedgerHistory(classId, userId);
 
@@ -56,7 +52,7 @@ exports.getLedgerEntriesByScenario = async function (req, res) {
     }
 
     // Verify admin access
-    await classroomService.validateAdminAccess(
+    await Classroom.validateAdminAccess(
       scenario.classId,
       clerkUserId,
       organizationId
@@ -139,7 +135,7 @@ exports.getLedgerEntry = async function (req, res) {
     }
 
     // Verify admin access
-    await classroomService.validateAdminAccess(
+    await Classroom.validateAdminAccess(
       scenario.classId,
       clerkUserId,
       organizationId
@@ -166,4 +162,3 @@ exports.getLedgerEntry = async function (req, res) {
     res.status(500).json({ error: error.message });
   }
 };
-

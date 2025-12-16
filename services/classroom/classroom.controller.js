@@ -1,7 +1,6 @@
 const Classroom = require("./classroom.model");
 const Member = require("../members/member.model");
-const classroomService = require("./lib/classroomService");
-const enrollmentService = require("../enrollment/lib/enrollmentService");
+const Enrollment = require("../enrollment/enrollment.model");
 const { sendEmail } = require("../../lib/sendGrid/sendEmail");
 
 /**
@@ -31,10 +30,10 @@ exports.createClass = async function (req, res) {
 
     await newClassroom.save();
 
-    // Auto-enroll creator as admin enrollment using enrollment service
+    // Auto-enroll creator as admin enrollment using Enrollment model
     const member = await Member.findOne({ clerkUserId });
     if (member) {
-      await enrollmentService.enrollUser(
+      await Enrollment.enrollUser(
         newClassroom._id,
         member._id,
         "admin",
@@ -67,17 +66,10 @@ exports.getClassDashboard = async function (req, res) {
     const clerkUserId = req.clerkUser.id;
 
     // Validate admin access
-    await classroomService.validateAdminAccess(
-      classId,
-      clerkUserId,
-      organizationId
-    );
+    await Classroom.validateAdminAccess(classId, clerkUserId, organizationId);
 
     // Get dashboard data
-    const dashboard = await classroomService.getDashboard(
-      classId,
-      organizationId
-    );
+    const dashboard = await Classroom.getDashboard(classId, organizationId);
 
     res.json({
       success: true,
@@ -111,14 +103,14 @@ exports.inviteStudent = async function (req, res) {
     }
 
     // Validate admin access
-    const classDoc = await classroomService.validateAdminAccess(
+    const classDoc = await Classroom.validateAdminAccess(
       classId,
       clerkUserId,
       organizationId
     );
 
     // Generate join link
-    const joinLink = classroomService.generateJoinLink(classId);
+    const joinLink = Classroom.generateJoinLink(classId);
 
     // Get sender info
     const senderMember = await Member.findOne({ clerkUserId });
@@ -173,5 +165,3 @@ exports.inviteStudent = async function (req, res) {
     res.status(500).json({ error: error.message });
   }
 };
-
-

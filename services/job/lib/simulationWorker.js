@@ -66,7 +66,7 @@ class SimulationWorker {
       };
     } catch (error) {
       console.error(`Error processing job ${jobId}:`, error);
-      
+
       // Mark job as failed
       await job.markFailed(error.message);
 
@@ -88,8 +88,8 @@ class SimulationWorker {
       );
     }
 
-    // Fetch scenario
-    const scenario = await Scenario.findById(job.scenarioId);
+    // Fetch scenario with variables populated
+    const scenario = await Scenario.getScenarioById(job.scenarioId);
     if (!scenario) {
       throw new Error(`Scenario not found: ${job.scenarioId}`);
     }
@@ -99,7 +99,9 @@ class SimulationWorker {
       job.scenarioId
     );
     if (!scenarioOutcome) {
-      throw new Error(`Scenario outcome not found for scenario ${job.scenarioId}`);
+      throw new Error(
+        `Scenario outcome not found for scenario ${job.scenarioId}`
+      );
     }
 
     // Fetch submission
@@ -206,4 +208,3 @@ class SimulationWorker {
 }
 
 module.exports = SimulationWorker;
-

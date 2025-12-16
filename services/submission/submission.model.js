@@ -2,6 +2,8 @@ const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
 const Scenario = require("../scenario/scenario.model");
+const SubmissionVariableValue = require("./submissionVariableValue.model");
+const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
 
 const submissionSchema = new mongoose.Schema({
   classId: {
@@ -19,19 +21,23 @@ const submissionSchema = new mongoose.Schema({
     ref: "Member",
     required: true,
   },
-  variables: {
-    type: mongoose.Schema.Types.Mixed,
-    required: true,
-    default: {},
-  },
   submittedAt: {
     type: Date,
     default: Date.now,
   },
 }).add(baseSchema);
 
+// Apply variable population plugin
+submissionSchema.plugin(variablePopulationPlugin, {
+  variableValueModel: SubmissionVariableValue,
+  foreignKeyField: "submissionId",
+});
+
 // Compound indexes for performance
-submissionSchema.index({ classId: 1, scenarioId: 1, userId: 1 }, { unique: true });
+submissionSchema.index(
+  { classId: 1, scenarioId: 1, userId: 1 },
+  { unique: true }
+);
 submissionSchema.index({ scenarioId: 1, userId: 1 });
 submissionSchema.index({ classId: 1, userId: 1 });
 submissionSchema.index({ scenarioId: 1 });
@@ -101,7 +107,10 @@ submissionSchema.statics.checkSubmissionOrder = async function (
   // This allows late joiners to start at the current scenario
   if (scenario.isPublished && !scenario.isClosed) {
     const activeScenario = await Scenario.getActiveScenario(classId);
-    if (activeScenario && activeScenario._id.toString() === scenarioId.toString()) {
+    if (
+      activeScenario &&
+      activeScenario._id.toString() === scenarioId.toString()
+    ) {
       return { canSubmit: true };
     }
   }
@@ -144,7 +153,7 @@ submissionSchema.statics.checkSubmissionOrder = async function (
  * @param {Object} variables - Variables object
  * @param {string} organizationId - Organization ID
  * @param {string} clerkUserId - Clerk user ID for createdBy/updatedBy
- * @returns {Promise<Object>} Created submission
+ * @returns {Promise<Object>} Created submission with variables populated
  */
 submissionSchema.statics.createSubmission = async function (
   classId,
@@ -176,7 +185,11 @@ submissionSchema.statics.createSubmission = async function (
   );
 
   // Check submission order
-  const orderCheck = await this.checkSubmissionOrder(classId, scenarioId, userId);
+  const orderCheck = await this.checkSubmissionOrder(
+    classId,
+    scenarioId,
+    userId
+  );
   if (!orderCheck.canSubmit) {
     throw new Error(orderCheck.reason || "Cannot submit out of order");
   }
@@ -193,11 +206,11 @@ submissionSchema.statics.createSubmission = async function (
     throw new Error("Scenario is closed");
   }
 
+  // Create submission document
   const submission = new this({
     classId,
     scenarioId,
     userId,
-    variables: variablesWithDefaults,
     submittedAt: new Date(),
     organization: organizationId,
     createdBy: clerkUserId,
@@ -205,7 +218,27 @@ submissionSchema.statics.createSubmission = async function (
   });
 
   await submission.save();
-  return submission;
+
+  // Create variable values if provided
+  if (variablesWithDefaults && Object.keys(variablesWithDefaults).length > 0) {
+    const variableEntries = Object.entries(variablesWithDefaults);
+    const variableDocs = variableEntries.map(([key, value]) => ({
+      submissionId: submission._id,
+      variableKey: key,
+      value: value,
+      organization: organizationId,
+      createdBy: clerkUserId,
+      updatedBy: clerkUserId,
+    }));
+
+    if (variableDocs.length > 0) {
+      await SubmissionVariableValue.insertMany(variableDocs);
+    }
+  }
+
+  // Return submission with variables populated (auto-loaded via plugin)
+  const createdSubmission = await this.findOne({ classId, scenarioId, userId });
+  return createdSubmission ? createdSubmission.toObject() : null;
 };
 
 /**
@@ -221,12 +254,19 @@ submissionSchema.statics.getSubmissionsByScenario = async function (
     select: "_id clerkUserId firstName lastName",
   });
 
-  return submissions.map((submission) => ({
-    userId: submission.userId._id,
-    clerkUserId: submission.userId.clerkUserId,
-    variables: submission.variables,
-    submittedAt: submission.submittedAt,
-  }));
+  // Use plugin's efficient batch population
+  await this.populateVariablesForMany(submissions);
+
+  // Variables are automatically included via plugin
+  return submissions.map((submission) => {
+    const submissionObj = submission.toObject();
+    return {
+      userId: submission.userId._id,
+      clerkUserId: submission.userId.clerkUserId,
+      variables: submissionObj.variables,
+      submittedAt: submissionObj.submittedAt,
+    };
+  });
 };
 
 /**
@@ -262,30 +302,54 @@ submissionSchema.statics.getMissingSubmissions = async function (
  * @param {string} classId - Class ID
  * @param {string} scenarioId - Scenario ID
  * @param {string} userId - Member ID
- * @returns {Promise<Object|null>} Submission or null
+ * @returns {Promise<Object|null>} Submission with variables or null
  */
 submissionSchema.statics.getSubmission = async function (
   classId,
   scenarioId,
   userId
 ) {
-  return await this.findOne({ classId, scenarioId, userId });
+  const submission = await this.findOne({ classId, scenarioId, userId });
+  if (!submission) {
+    return null;
+  }
+
+  // Variables are automatically included via plugin's post-init hook
+  return submission.toObject();
 };
 
 /**
  * Get all submissions for a user
  * @param {string} classId - Class ID
  * @param {string} userId - Member ID
- * @returns {Promise<Array>} Array of submissions
+ * @returns {Promise<Array>} Array of submissions with variables
  */
 submissionSchema.statics.getSubmissionsByUser = async function (
   classId,
   userId
 ) {
-  return await this.find({ classId, userId }).sort({ submittedAt: 1 });
+  const submissions = await this.find({ classId, userId }).sort({
+    submittedAt: 1,
+  });
+
+  // Use plugin's efficient batch population
+  await this.populateVariablesForMany(submissions);
+
+  // Variables are automatically included via plugin
+  return submissions.map((submission) => submission.toObject());
 };
 
 // Instance methods
+
+/**
+ * Get variables for this submission instance
+ * Uses cached variables if available, otherwise loads them
+ * @returns {Promise<Object>} Variables object
+ */
+submissionSchema.methods.getVariables = async function () {
+  // Use plugin's cached variables or load them
+  return await this._loadVariables();
+};
 
 /**
  * Check if submission can be edited
@@ -298,4 +362,3 @@ submissionSchema.methods.canEdit = function () {
 const Submission = mongoose.model("Submission", submissionSchema);
 
 module.exports = Submission;
-

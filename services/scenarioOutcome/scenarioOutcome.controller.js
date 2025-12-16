@@ -1,6 +1,6 @@
 const ScenarioOutcome = require("./scenarioOutcome.model");
 const Scenario = require("../scenario/scenario.model");
-const classroomService = require("../classroom/lib/classroomService");
+const Classroom = require("../classroom/classroom.model");
 
 /**
  * Set scenario outcome
@@ -9,8 +9,7 @@ const classroomService = require("../classroom/lib/classroomService");
 exports.setScenarioOutcome = async function (req, res) {
   try {
     const { scenarioId } = req.params;
-    const { actualWeather, demandShift, notes, randomEventsEnabled } =
-      req.body;
+    const { actualWeather, demandShift, notes, randomEventsEnabled } = req.body;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
@@ -22,7 +21,7 @@ exports.setScenarioOutcome = async function (req, res) {
     }
 
     // Verify admin access
-    await classroomService.validateAdminAccess(
+    await Classroom.validateAdminAccess(
       scenario.classId,
       clerkUserId,
       organizationId
@@ -74,7 +73,7 @@ exports.getScenarioOutcome = async function (req, res) {
     }
 
     // Verify admin access
-    await classroomService.validateAdminAccess(
+    await Classroom.validateAdminAccess(
       scenario.classId,
       clerkUserId,
       organizationId
@@ -121,7 +120,7 @@ exports.approveScenarioOutcome = async function (req, res) {
     }
 
     // Verify admin access
-    await classroomService.validateAdminAccess(
+    await Classroom.validateAdminAccess(
       scenario.classId,
       clerkUserId,
       organizationId
@@ -155,4 +154,3 @@ exports.approveScenarioOutcome = async function (req, res) {
     res.status(500).json({ error: error.message });
   }
 };
-

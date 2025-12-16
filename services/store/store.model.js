@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 const StoreVariableValue = require("./storeVariableValue.model");
+const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
 
 const storeSchema = new mongoose.Schema({
   classId: {
@@ -38,6 +39,12 @@ const storeSchema = new mongoose.Schema({
     default: 0,
   },
 }).add(baseSchema);
+
+// Apply variable population plugin
+storeSchema.plugin(variablePopulationPlugin, {
+  variableValueModel: StoreVariableValue,
+  foreignKeyField: "storeId",
+});
 
 // Compound indexes for performance
 storeSchema.index({ classId: 1, userId: 1 }, { unique: true });
@@ -122,18 +129,8 @@ storeSchema.statics.getStoreByUser = async function (classId, userId) {
     return null;
   }
 
-  // Get variables for this store
-  const variables = await StoreVariableValue.find({ storeId: store._id });
-  const variablesObj = {};
-  variables.forEach((v) => {
-    variablesObj[v.variableKey] = v.value;
-  });
-
-  // Convert to plain object and add variables
-  const storeObj = store.toObject();
-  storeObj.variables = variablesObj;
-
-  return storeObj;
+  // Variables are automatically included via plugin's post-init hook
+  return store.toObject();
 };
 
 /**
@@ -177,36 +174,24 @@ storeSchema.statics.getStoreForSimulation = async function (classId, userId) {
  */
 storeSchema.statics.getStoresByClass = async function (classId) {
   const stores = await this.find({ classId });
-  const storesWithVariables = await Promise.all(
-    stores.map(async (store) => {
-      const variables = await StoreVariableValue.find({ storeId: store._id });
-      const variablesObj = {};
-      variables.forEach((v) => {
-        variablesObj[v.variableKey] = v.value;
-      });
 
-      const storeObj = store.toObject();
-      storeObj.variables = variablesObj;
-      return storeObj;
-    })
-  );
+  // Use plugin's efficient batch population
+  await this.populateVariablesForMany(stores);
 
-  return storesWithVariables;
+  // Variables are automatically included via plugin
+  return stores.map((store) => store.toObject());
 };
 
 // Instance methods
 
 /**
  * Get variables for this store instance
+ * Uses cached variables if available, otherwise loads them
  * @returns {Promise<Object>} Variables object
  */
 storeSchema.methods.getVariables = async function () {
-  const variables = await StoreVariableValue.find({ storeId: this._id });
-  const variablesObj = {};
-  variables.forEach((v) => {
-    variablesObj[v.variableKey] = v.value;
-  });
-  return variablesObj;
+  // Use plugin's cached variables or load them
+  return await this._loadVariables();
 };
 
 /**
