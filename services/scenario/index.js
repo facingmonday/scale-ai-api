@@ -31,13 +31,6 @@ router.post(
 );
 
 router.post(
-  "/admin/scenario/:scenarioId/outcome",
-  requireAuth(),
-  checkRole("org:admin"),
-  controller.setScenarioOutcome
-);
-
-router.post(
   "/admin/scenario/:scenarioId/preview",
   requireAuth(),
   checkRole("org:admin"),

@@ -1,11 +1,14 @@
 const Scenario = require("./scenario.model");
-const ScenarioOutcome = require("./scenarioOutcome.model");
+const ScenarioOutcome = require("../scenarioOutcome/scenarioOutcome.model");
 const Classroom = require("../classroom/classroom.model");
 const Enrollment = require("../enrollment/enrollment.model");
 const Member = require("../members/member.model");
 const classroomService = require("../classroom/lib/classroomService");
 const enrollmentService = require("../enrollment/lib/enrollmentService");
 const { enqueueEmailSending } = require("../../lib/queues/email-worker");
+const JobService = require("../job/lib/jobService");
+const LedgerService = require("../ledger/lib/ledgerService");
+const SimulationWorker = require("../job/lib/simulationWorker");
 
 /**
  * Create scenario
@@ -98,7 +101,8 @@ exports.updateScenario = async function (req, res) {
     // Check if can be edited
     if (!scenario.canEdit()) {
       return res.status(400).json({
-        error: "Scenario cannot be edited after it has been published and closed",
+        error:
+          "Scenario cannot be edited after it has been published and closed",
       });
     }
 
@@ -175,7 +179,8 @@ exports.publishScenario = async function (req, res) {
     const canPublish = await scenario.canPublish();
     if (!canPublish) {
       return res.status(400).json({
-        error: "Scenario cannot be published. Another scenario may already be active, or this scenario is already published/closed.",
+        error:
+          "Scenario cannot be published. Another scenario may already be active, or this scenario is already published/closed.",
       });
     }
 
@@ -199,60 +204,6 @@ exports.publishScenario = async function (req, res) {
     }
     if (error.message.includes("Insufficient permissions")) {
       return res.status(403).json({ error: error.message });
-    }
-    res.status(500).json({ error: error.message });
-  }
-};
-
-/**
- * Set scenario outcome
- * POST /api/admin/scenario/:scenarioId/outcome
- */
-exports.setScenarioOutcome = async function (req, res) {
-  try {
-    const { scenarioId } = req.params;
-    const { actualWeather, demandShift, notes, randomEventsEnabled } =
-      req.body;
-    const organizationId = req.organization._id;
-    const clerkUserId = req.clerkUser.id;
-
-    // Find scenario
-    const scenario = await Scenario.getScenarioById(scenarioId, organizationId);
-
-    if (!scenario) {
-      return res.status(404).json({ error: "Scenario not found" });
-    }
-
-    // Verify admin access
-    await classroomService.validateAdminAccess(
-      scenario.classId,
-      clerkUserId,
-      organizationId
-    );
-
-    // Create or update outcome using static method
-    const outcome = await ScenarioOutcome.createOrUpdateOutcome(
-      scenarioId,
-      { actualWeather, demandShift, notes, randomEventsEnabled },
-      organizationId,
-      clerkUserId
-    );
-
-    res.json({
-      success: true,
-      message: "Scenario outcome set successfully",
-      data: outcome,
-    });
-  } catch (error) {
-    console.error("Error setting scenario outcome:", error);
-    if (error.message === "Class not found") {
-      return res.status(404).json({ error: error.message });
-    }
-    if (error.message.includes("Insufficient permissions")) {
-      return res.status(403).json({ error: error.message });
-    }
-    if (error.name === "ValidationError") {
-      return res.status(400).json({ error: error.message });
     }
     res.status(500).json({ error: error.message });
   }
@@ -291,15 +242,44 @@ exports.previewScenario = async function (req, res) {
       });
     }
 
-    // TODO: Implement AI simulation preview
-    // This will be implemented when AI Service is created
+    // Create preview jobs (dryRun = true)
+    const jobs = await JobService.createJobsForScenario(
+      scenarioId,
+      scenario.classId,
+      true, // dryRun
+      organizationId,
+      clerkUserId
+    );
+
+    // Process preview jobs synchronously (limited to first 5 for preview)
+    const previewJobs = jobs.slice(0, 5);
+    const previewResults = [];
+
+    for (const job of previewJobs) {
+      try {
+        const result = await SimulationWorker.processJob(job._id);
+        previewResults.push({
+          userId: job.userId,
+          result: result.result,
+        });
+      } catch (error) {
+        console.error(`Error processing preview job ${job._id}:`, error);
+        previewResults.push({
+          userId: job.userId,
+          error: error.message,
+        });
+      }
+    }
+
     res.json({
       success: true,
-      message: "Preview functionality will be implemented with AI Service",
+      message: "Preview completed",
       data: {
         scenario: scenario.toObject(),
         outcome: outcome.toObject(),
-        previewResults: [], // Placeholder
+        previewResults,
+        totalJobs: jobs.length,
+        previewedJobs: previewResults.length,
       },
     });
   } catch (error) {
@@ -347,18 +327,35 @@ exports.approveScenario = async function (req, res) {
       });
     }
 
-    // TODO: Implement AI simulation and ledger entry creation
-    // This will be implemented when AI Service and Ledger Service are created
-    // For now, just approve the outcome and close the scenario
+    // Approve outcome
     await outcome.approve(clerkUserId);
+
+    // Create jobs for all submissions (dryRun = false)
+    const jobs = await JobService.createJobsForScenario(
+      scenarioId,
+      scenario.classId,
+      false, // dryRun = false, will write to ledger
+      organizationId,
+      clerkUserId
+    );
+
+    // Close scenario
     await scenario.close(clerkUserId);
+
+    // Process jobs asynchronously (don't block response)
+    // Workers will process these jobs in the background
+    SimulationWorker.processPendingJobs(10).catch((error) => {
+      console.error("Error processing jobs after approval:", error);
+      // Don't throw - jobs will be processed by workers
+    });
 
     res.json({
       success: true,
-      message: "Scenario approved. AI simulation and ledger creation will be implemented.",
+      message: "Scenario approved. Jobs created and processing started.",
       data: {
         scenario: scenario.toObject(),
         outcome: outcome.toObject(),
+        jobsCreated: jobs.length,
       },
     });
   } catch (error) {
@@ -397,16 +394,41 @@ exports.rerunScenario = async function (req, res) {
       organizationId
     );
 
-    // TODO: Implement rerun logic
-    // 1. Delete existing ledger entries
-    // 2. Re-run AI simulation
-    // 3. Write new ledger entries
+    // Get outcome
+    const outcome = await ScenarioOutcome.getOutcomeByScenario(scenarioId);
+
+    if (!outcome) {
+      return res.status(400).json({
+        error: "Scenario outcome must be set before rerunning",
+      });
+    }
+
+    // 1. Delete existing ledger entries for this scenario
+    await LedgerService.deleteLedgerEntriesForScenario(scenarioId);
+
+    // 2. Reset all jobs for this scenario
+    await JobService.resetJobsForScenario(scenarioId);
+
+    // 3. Recreate jobs for all submissions
+    const jobs = await JobService.createJobsForScenario(
+      scenarioId,
+      scenario.classId,
+      false, // dryRun = false
+      organizationId,
+      clerkUserId
+    );
+
+    // Process jobs asynchronously
+    SimulationWorker.processPendingJobs(10).catch((error) => {
+      console.error("Error processing jobs after rerun:", error);
+    });
 
     res.json({
       success: true,
-      message: "Rerun functionality will be implemented with AI Service and Ledger Service",
+      message: "Scenario rerun initiated. Jobs created and processing started.",
       data: {
         scenario: scenario.toObject(),
+        jobsCreated: jobs.length,
       },
     });
   } catch (error) {
@@ -431,7 +453,9 @@ exports.getCurrentScenario = async function (req, res) {
     const member = req.user;
 
     if (!classId) {
-      return res.status(400).json({ error: "classId query parameter is required" });
+      return res
+        .status(400)
+        .json({ error: "classId query parameter is required" });
     }
 
     // Verify enrollment
@@ -500,7 +524,10 @@ async function queueScenarioCreatedEmails(scenario, classId, organizationId) {
     }
 
     // Get member details and queue emails
-    const host = process.env.SCALE_COM_HOST || process.env.SCALE_API_HOST || "https://scale.ai";
+    const host =
+      process.env.SCALE_COM_HOST ||
+      process.env.SCALE_API_HOST ||
+      "https://scale.ai";
     const scenarioLink = `${host}/class/${classId}/scenario/${scenario._id}`;
 
     const emailPromises = memberEnrollments.map(async (enrollment) => {
@@ -523,7 +550,9 @@ async function queueScenarioCreatedEmails(scenario, classId, organizationId) {
         await enqueueEmailSending({
           recipient: {
             email,
-            name: `${member.firstName || ""} ${member.lastName || ""}`.trim() || email,
+            name:
+              `${member.firstName || ""} ${member.lastName || ""}`.trim() ||
+              email,
             memberId: member._id,
           },
           title: `New Scenario: ${scenario.title}`,
@@ -581,4 +610,3 @@ async function queueScenarioCreatedEmails(scenario, classId, organizationId) {
     throw error;
   }
 }
-

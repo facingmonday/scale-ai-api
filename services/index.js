@@ -25,7 +25,16 @@ router.use("/", require("./variableDefinition"));
 // Scenario routes
 router.use("/", require("./scenario"));
 
+// ScenarioOutcome routes
+router.use("/", require("./scenarioOutcome"));
+
 // Submission routes
 router.use("/", require("./submission"));
+
+// Ledger routes
+router.use("/admin/ledger", require("./ledger"));
+
+// Job routes
+router.use("/admin/job", require("./job"));
 
 module.exports = router;
