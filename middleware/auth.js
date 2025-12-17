@@ -1,6 +1,8 @@
 const { clerkClient, getAuth } = require("@clerk/express");
 const Member = require("../services/members/member.model");
 const Organization = require("../services/organizations/organization.model");
+const Enrollment = require("../services/enrollment/enrollment.model");
+const Classroom = require("../services/classroom/classroom.model");
 
 // Combined middleware to authenticate and load user data
 const requireAuth = (options = {}) => {
@@ -38,7 +40,7 @@ const requireAuth = (options = {}) => {
 
       next();
     } catch (error) {
-      console.error("Authentication error:", error);
+      console.error("Authentication error requireAuth:", error);
       return res.status(500).json({ message: "Authentication error" });
     }
   };
@@ -69,7 +71,7 @@ const requireMemberAuth = (options = {}) => {
 
       next();
     } catch (error) {
-      console.error("Authentication error:", error);
+      console.error("Authentication error requireMemberAuth:", error);
       return res.status(500).json({ message: "Authentication error" });
     }
   };
@@ -129,7 +131,7 @@ const checkRole = (requiredRoles) => {
         return res.status(500).json({ error: "Error checking role" });
       }
     } catch (error) {
-      console.error("Authentication error:", error);
+      console.error("Authentication error checkRole:", error);
       return res.status(500).json({ error: "Authentication error" });
     }
   };
@@ -188,8 +190,74 @@ const checkPermissions = (requiredPermissions) => {
         return res.status(500).json({ error: "Error checking permissions" });
       }
     } catch (error) {
-      console.error("Authentication error:", error);
+      console.error("Authentication error checkPermissions:", error);
       return res.status(500).json({ error: "Authentication error" });
+    }
+  };
+};
+
+const requireActiveClassroom = (options = {}) => {
+  return async (req, res, next) => {
+    try {
+      // Ensure user is authenticated
+      if (!req.user || !req.user._id) {
+        return res.status(401).json({
+          error: "User must be authenticated to access classroom",
+        });
+      }
+
+      const classroomId = req.headers["x-classroom"];
+
+      if (!classroomId) {
+        return res.status(400).json({
+          error: "No active classroom selected",
+        });
+      }
+
+      // Find enrollment for this user and classroom
+      const enrollment = await Enrollment.findOne({
+        classId: classroomId,
+        userId: req.user._id,
+        isRemoved: false,
+      });
+
+      if (!enrollment) {
+        return res.status(403).json({
+          error: "User not enrolled in classroom",
+        });
+      }
+
+      // Fetch the classroom document
+      const classroom = await Classroom.findById(classroomId);
+
+      if (!classroom) {
+        return res.status(404).json({
+          error: "Classroom not found",
+        });
+      }
+
+      // If organization context exists, validate classroom belongs to organization
+      if (req.organization) {
+        if (
+          classroom.organization.toString() !== req.organization._id.toString()
+        ) {
+          return res.status(403).json({
+            error: "Classroom does not belong to your organization",
+          });
+        }
+      }
+
+      // Attach classroom and enrollment info to request
+      req.activeClassroom = classroom;
+      req.classroomRole = enrollment.role;
+      req.enrollment = enrollment;
+
+      next();
+    } catch (error) {
+      console.error("Error in requireActiveClassroom:", error);
+      return res.status(500).json({
+        error: "Error validating classroom access",
+      });
     }
   };
 };
@@ -201,4 +269,5 @@ module.exports = {
   checkPermissions,
   clerkClient,
   getAuth,
+  requireActiveClassroom,
 };

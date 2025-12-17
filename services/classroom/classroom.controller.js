@@ -88,6 +88,25 @@ exports.getClassDashboard = async function (req, res) {
 };
 
 /**
+ * Get all classrooms
+ * GET /api/admin/class
+ */
+exports.getAllClassrooms = async function (req, res) {
+  try {
+    const classrooms = await Classroom.find({
+      organization: req.organization._id,
+    });
+    res.json({
+      success: true,
+      data: classrooms,
+    });
+  } catch (error) {
+    console.error("Error getting all classrooms:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
  * Invite student to class
  * POST /api/admin/class/:classId/invite
  */
