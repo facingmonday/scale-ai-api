@@ -200,6 +200,23 @@ const memberSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    // Active classroom - stores user's currently selected classroom with their role
+    activeClassroom: {
+      classroomId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Classroom",
+        default: null,
+      },
+      role: {
+        type: String,
+        enum: ["admin", "member"],
+        default: null,
+      },
+      setAt: {
+        type: Date,
+        default: null,
+      },
+    },
   },
   {
     timestamps: true, // Keep MongoDB timestamps for internal tracking

@@ -26,4 +26,6 @@ router.post(
   controller.inviteStudent
 );
 
+router.get("/", requireAuth(), controller.getAllClassrooms);
+
 module.exports = router;

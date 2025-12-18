@@ -10,11 +10,6 @@ const scenarioSchema = new mongoose.Schema({
     ref: "Classroom",
     required: true,
   },
-  week: {
-    type: Number,
-    required: true,
-    min: 1,
-  },
   title: {
     type: String,
     required: true,

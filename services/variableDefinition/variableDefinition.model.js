@@ -27,6 +27,12 @@ const variableDefinitionSchema = new mongoose.Schema({
     required: true,
     index: true,
   },
+  classroomId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Classroom",
+    default: null,
+    index: true,
+  },
   dataType: {
     type: String,
     enum: ["number", "string", "boolean", "select"],
@@ -69,10 +75,7 @@ const variableDefinitionSchema = new mongoose.Schema({
 }).add(baseSchema);
 
 // Compound indexes for performance
-variableDefinitionSchema.index(
-  { classId: 1, key: 1 },
-  { unique: true }
-);
+variableDefinitionSchema.index({ classId: 1, key: 1 }, { unique: true });
 variableDefinitionSchema.index({ classId: 1, appliesTo: 1 });
 variableDefinitionSchema.index({ classId: 1, isActive: 1 });
 variableDefinitionSchema.index({ organization: 1, classId: 1 });
@@ -153,7 +156,8 @@ variableDefinitionSchema.statics.createDefinition = async function (
     dataType: payload.dataType,
     inputType: payload.inputType,
     options: payload.options || [],
-    defaultValue: payload.defaultValue !== undefined ? payload.defaultValue : null,
+    defaultValue:
+      payload.defaultValue !== undefined ? payload.defaultValue : null,
     min: payload.min !== undefined ? payload.min : null,
     max: payload.max !== undefined ? payload.max : null,
     required: payload.required !== undefined ? payload.required : false,
@@ -230,7 +234,10 @@ variableDefinitionSchema.statics.validateValues = async function (
     const value = valuesObject[definition.key];
 
     // Check required fields
-    if (definition.required && (value === undefined || value === null || value === "")) {
+    if (
+      definition.required &&
+      (value === undefined || value === null || value === "")
+    ) {
       errors.push({
         key: definition.key,
         message: `${definition.label} is required`,
@@ -325,7 +332,10 @@ variableDefinitionSchema.statics.applyDefaults = async function (
       result[definition.key] === null ||
       result[definition.key] === ""
     ) {
-      if (definition.defaultValue !== null && definition.defaultValue !== undefined) {
+      if (
+        definition.defaultValue !== null &&
+        definition.defaultValue !== undefined
+      ) {
         result[definition.key] = definition.defaultValue;
       }
     }
@@ -389,4 +399,3 @@ const VariableDefinition = mongoose.model(
 );
 
 module.exports = VariableDefinition;
-
