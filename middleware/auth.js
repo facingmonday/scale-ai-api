@@ -1,13 +1,14 @@
 const { clerkClient, getAuth } = require("@clerk/express");
 const Member = require("../services/members/member.model");
 const Organization = require("../services/organizations/organization.model");
+const Enrollment = require("../services/enrollment/enrollment.model");
+const Classroom = require("../services/classroom/classroom.model");
 
 // Combined middleware to authenticate and load user data
 const requireAuth = (options = {}) => {
   return async (req, res, next) => {
     try {
       const auth = getAuth(req);
-
       if (!auth || !auth.userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
@@ -26,9 +27,25 @@ const requireAuth = (options = {}) => {
       req.user = member;
       req.clerkUser = clerkUser;
 
-      const organization = await Organization.findOne({
-        clerkOrganizationId: auth.orgId,
-      });
+      let organization;
+
+      // If orgId is provided in auth, use it
+      if (auth.orgId) {
+        organization = await Organization.findOne({
+          clerkOrganizationId: auth.orgId,
+        });
+      } else {
+        // If no orgId, try to use the first organization from member's memberships
+        if (
+          member.organizationMemberships &&
+          member.organizationMemberships.length > 0
+        ) {
+          const firstOrgMembership = member.organizationMemberships[0];
+          organization = await Organization.findById(
+            firstOrgMembership.organizationId
+          );
+        }
+      }
 
       if (!organization) {
         throw new Error("Organization not found");
@@ -36,9 +53,52 @@ const requireAuth = (options = {}) => {
 
       req.organization = organization;
 
+      // Load active classroom from user's stored preference in publicMetadata
+      // Prioritize publicMetadata (synced from Clerk) for frontend consistency
+      const activeClassroomData =
+        member.publicMetadata?.activeClassroom ||
+        member.activeClassroom?.classroomId
+          ? member.activeClassroom
+          : null;
+
+      if (activeClassroomData) {
+        try {
+          // Extract classroomId (handle both formats)
+          const classroomId =
+            typeof activeClassroomData.classroomId === "string"
+              ? activeClassroomData.classroomId
+              : activeClassroomData.classroomId;
+
+          if (classroomId) {
+            const classroom = await Classroom.findById(classroomId);
+
+            if (classroom) {
+              // Validate classroom still belongs to organization
+              if (
+                classroom.organization.toString() ===
+                organization._id.toString()
+              ) {
+                req.activeClassroom = classroom;
+                req.classroomRole = activeClassroomData.role; // Use stored role
+
+                // Optionally still load the full enrollment if needed elsewhere
+                const enrollment = await Enrollment.findOne({
+                  classId: classroom._id,
+                  userId: member._id,
+                  isRemoved: false,
+                });
+                req.enrollment = enrollment;
+              }
+            }
+          }
+        } catch (classroomError) {
+          // Log but don't fail the request if classroom loading fails
+          console.warn("Error loading active classroom:", classroomError);
+        }
+      }
       next();
     } catch (error) {
-      console.error("Authentication error:", error);
+      console.error("Authentication error requireAuth:", error);
       return res.status(500).json({ message: "Authentication error" });
     }
   };
@@ -69,7 +129,7 @@ const requireMemberAuth = (options = {}) => {
 
       next();
     } catch (error) {
-      console.error("Authentication error:", error);
+      console.error("Authentication error requireMemberAuth:", error);
       return res.status(500).json({ message: "Authentication error" });
     }
   };
@@ -129,7 +189,7 @@ const checkRole = (requiredRoles) => {
         return res.status(500).json({ error: "Error checking role" });
       }
     } catch (error) {
-      console.error("Authentication error:", error);
+      console.error("Authentication error checkRole:", error);
       return res.status(500).json({ error: "Authentication error" });
     }
   };
@@ -188,8 +248,74 @@ const checkPermissions = (requiredPermissions) => {
         return res.status(500).json({ error: "Error checking permissions" });
       }
     } catch (error) {
-      console.error("Authentication error:", error);
+      console.error("Authentication error checkPermissions:", error);
       return res.status(500).json({ error: "Authentication error" });
+    }
+  };
+};
+
+const requireActiveClassroom = (options = {}) => {
+  return async (req, res, next) => {
+    try {
+      // Ensure user is authenticated
+      if (!req.user || !req.user._id) {
+        return res.status(401).json({
+          error: "User must be authenticated to access classroom",
+        });
+      }
+
+      const classroomId = req.headers["x-classroom"];
+
+      if (!classroomId) {
+        return res.status(400).json({
+          error: "No active classroom selected",
+        });
+      }
+
+      // Find enrollment for this user and classroom
+      const enrollment = await Enrollment.findOne({
+        classId: classroomId,
+        userId: req.user._id,
+        isRemoved: false,
+      });
+
+      if (!enrollment) {
+        return res.status(403).json({
+          error: "User not enrolled in classroom",
+        });
+      }
+
+      // Fetch the classroom document
+      const classroom = await Classroom.findById(classroomId);
+
+      if (!classroom) {
+        return res.status(404).json({
+          error: "Classroom not found",
+        });
+      }
+
+      // If organization context exists, validate classroom belongs to organization
+      if (req.organization) {
+        if (
+          classroom.organization.toString() !== req.organization._id.toString()
+        ) {
+          return res.status(403).json({
+            error: "Classroom does not belong to your organization",
+          });
+        }
+      }
+
+      // Attach classroom and enrollment info to request
+      req.activeClassroom = classroom;
+      req.classroomRole = enrollment.role;
+      req.enrollment = enrollment;
+
+      next();
+    } catch (error) {
+      console.error("Error in requireActiveClassroom:", error);
+      return res.status(500).json({
+        error: "Error validating classroom access",
+      });
     }
   };
 };
@@ -201,4 +327,5 @@ module.exports = {
   checkPermissions,
   clerkClient,
   getAuth,
+  requireActiveClassroom,
 };

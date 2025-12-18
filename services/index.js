@@ -14,7 +14,7 @@ router.use("/utils", require("./utils"));
 router.use("/admin/class", require("./classroom"));
 
 // Enrollment routes
-router.use("/", require("./enrollment"));
+router.use("/enrollment", require("./enrollment"));
 
 // Store routes
 router.use("/", require("./store"));
