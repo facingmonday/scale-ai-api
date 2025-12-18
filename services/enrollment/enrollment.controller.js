@@ -138,7 +138,7 @@ exports.removeStudent = async function (req, res) {
  */
 exports.getMyClasses = async function (req, res) {
   const clerkUserId = req.clerkUser.id;
-  const organizationId = req.organization._id;
+  const organizationId = req.organization.id;
 
   const member = await Member.findOne({ clerkUserId });
   if (!member) {
@@ -160,6 +160,9 @@ exports.getMyClasses = async function (req, res) {
       { _id: { $in: enrolledClassIds } }, // Enrolled
       { adminIds: clerkUserId }, // Admin (might not be enrolled yet)
     ],
+  }).populate({
+    path: "ownership",
+    select: "firstName lastName",
   });
 
   // Enrich with user's relationship to each class

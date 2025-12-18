@@ -9,7 +9,7 @@ const {
 } = require("../../middleware/auth");
 
 // enrollment/index.js
-router.get("/my-classes", requireMemberAuth(), controller.getMyClasses);
+router.get("/my-classes", requireAuth(), controller.getMyClasses);
 
 // Admin routes - require org:admin role
 router.get(

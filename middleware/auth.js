@@ -28,9 +28,25 @@ const requireAuth = (options = {}) => {
       req.user = member;
       req.clerkUser = clerkUser;
 
-      const organization = await Organization.findOne({
-        clerkOrganizationId: auth.orgId,
-      });
+      let organization;
+
+      // If orgId is provided in auth, use it
+      if (auth.orgId) {
+        organization = await Organization.findOne({
+          clerkOrganizationId: auth.orgId,
+        });
+      } else {
+        // If no orgId, try to use the first organization from member's memberships
+        if (
+          member.organizationMemberships &&
+          member.organizationMemberships.length > 0
+        ) {
+          const firstOrgMembership = member.organizationMemberships[0];
+          organization = await Organization.findById(
+            firstOrgMembership.organizationId
+          );
+        }
+      }
 
       if (!organization) {
         throw new Error("Organization not found");

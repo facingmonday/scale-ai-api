@@ -10,8 +10,13 @@ const { sendEmail } = require("../../lib/sendGrid/sendEmail");
 exports.createClass = async function (req, res) {
   try {
     const { name, description } = req.body;
+    const memberId = req.user;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
+
+    if (!memberId || !organizationId) {
+      return res.status(404).json({ error: "Member not found" });
+    }
 
     if (!name) {
       return res.status(400).json({ error: "Class name is required" });
@@ -23,6 +28,7 @@ exports.createClass = async function (req, res) {
       description: description || "",
       isActive: true,
       adminIds: [clerkUserId], // Auto-enroll creator as admin
+      ownership: member._id, // Set ownership to the creator
       organization: organizationId,
       createdBy: clerkUserId,
       updatedBy: clerkUserId,
@@ -31,16 +37,13 @@ exports.createClass = async function (req, res) {
     await newClassroom.save();
 
     // Auto-enroll creator as admin enrollment using Enrollment model
-    const member = await Member.findOne({ clerkUserId });
-    if (member) {
-      await Enrollment.enrollUser(
-        newClassroom._id,
-        member._id,
-        "admin",
-        organizationId,
-        clerkUserId
-      );
-    }
+    await Enrollment.enrollUser(
+      newClassroom._id,
+      memberId,
+      "admin",
+      organizationId,
+      clerkUserId
+    );
 
     res.status(201).json({
       success: true,
@@ -95,7 +98,11 @@ exports.getAllClassrooms = async function (req, res) {
   try {
     const classrooms = await Classroom.find({
       organization: req.organization._id,
+    }).populate({
+      path: "ownership",
+      select: "firstName lastName",
     });
+
     res.json({
       success: true,
       data: classrooms,

@@ -19,6 +19,12 @@ const classroomSchema = new mongoose.Schema({
     type: [String], // Clerk user IDs
     default: [],
   },
+  ownership: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Member",
+    required: true,
+    index: true,
+  },
 }).add(baseSchema);
 
 // Indexes for performance
