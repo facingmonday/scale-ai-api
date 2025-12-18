@@ -10,7 +10,7 @@ const { sendEmail } = require("../../lib/sendGrid/sendEmail");
 exports.createClass = async function (req, res) {
   try {
     const { name, description } = req.body;
-    const memberId = req.user;
+    const memberId = req.user._id;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
@@ -28,7 +28,7 @@ exports.createClass = async function (req, res) {
       description: description || "",
       isActive: true,
       adminIds: [clerkUserId], // Auto-enroll creator as admin
-      ownership: member._id, // Set ownership to the creator
+      ownership: memberId, // Set ownership to the creator
       organization: organizationId,
       createdBy: clerkUserId,
       updatedBy: clerkUserId,

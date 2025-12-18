@@ -9,7 +9,6 @@ const requireAuth = (options = {}) => {
   return async (req, res, next) => {
     try {
       const auth = getAuth(req);
-
       if (!auth || !auth.userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
@@ -54,39 +53,49 @@ const requireAuth = (options = {}) => {
 
       req.organization = organization;
 
-      // Optionally load active classroom if X-Classroom header is present
-      const classroomId = req.headers["x-classroom"];
-      if (classroomId) {
-        try {
-          // Find enrollment for this user and classroom
-          const enrollment = await Enrollment.findOne({
-            classId: classroomId,
-            userId: member._id,
-            isRemoved: false,
-          });
+      // Load active classroom from user's stored preference in publicMetadata
+      // Prioritize publicMetadata (synced from Clerk) for frontend consistency
+      const activeClassroomData =
+        member.publicMetadata?.activeClassroom ||
+        member.activeClassroom?.classroomId
+          ? member.activeClassroom
+          : null;
 
-          if (enrollment) {
-            // Fetch the classroom document
+      if (activeClassroomData) {
+        try {
+          // Extract classroomId (handle both formats)
+          const classroomId =
+            typeof activeClassroomData.classroomId === "string"
+              ? activeClassroomData.classroomId
+              : activeClassroomData.classroomId;
+
+          if (classroomId) {
             const classroom = await Classroom.findById(classroomId);
 
             if (classroom) {
-              // Validate classroom belongs to organization
+              // Validate classroom still belongs to organization
               if (
                 classroom.organization.toString() ===
                 organization._id.toString()
               ) {
                 req.activeClassroom = classroom;
-                req.classroomRole = enrollment.role;
+                req.classroomRole = activeClassroomData.role; // Use stored role
+
+                // Optionally still load the full enrollment if needed elsewhere
+                const enrollment = await Enrollment.findOne({
+                  classId: classroom._id,
+                  userId: member._id,
+                  isRemoved: false,
+                });
                 req.enrollment = enrollment;
               }
             }
           }
         } catch (classroomError) {
           // Log but don't fail the request if classroom loading fails
-          console.warn("Error loading optional classroom:", classroomError);
+          console.warn("Error loading active classroom:", classroomError);
         }
       }
-
       next();
     } catch (error) {
       console.error("Authentication error requireAuth:", error);
