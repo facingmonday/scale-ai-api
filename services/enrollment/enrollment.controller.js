@@ -131,3 +131,52 @@ exports.removeStudent = async function (req, res) {
     res.status(500).json({ error: error.message });
   }
 };
+
+/**
+ * Get my classrooms (classes I'm enrolled in or admin of)
+ * GET /v1/enrollment/my-classes
+ */
+exports.getMyClasses = async function (req, res) {
+  const clerkUserId = req.clerkUser.id;
+  const organizationId = req.organization._id;
+
+  const member = await Member.findOne({ clerkUserId });
+  if (!member) {
+    return res.json({ success: true, data: [] });
+  }
+
+  // Get enrollments
+  const enrollments = await Enrollment.find({
+    userId: member._id,
+    isRemoved: false,
+  }).populate("classId");
+
+  const enrolledClassIds = enrollments.map((e) => e.classId);
+
+  // Get classrooms where enrolled OR admin
+  const classrooms = await Classroom.find({
+    organization: organizationId,
+    $or: [
+      { _id: { $in: enrolledClassIds } }, // Enrolled
+      { adminIds: clerkUserId }, // Admin (might not be enrolled yet)
+    ],
+  });
+
+  // Enrich with user's relationship to each class
+  const enrichedClassrooms = classrooms.map((classroom) => {
+    const enrollment = enrollments.find(
+      (e) => e.classId.toString() === classroom._id.toString()
+    );
+
+    return {
+      ...classroom.toObject(),
+      myRole: {
+        isAdmin: classroom.isAdmin(clerkUserId),
+        isEnrolled: !!enrollment,
+        enrollmentRole: enrollment?.role || null,
+      },
+    };
+  });
+
+  res.json({ success: true, data: enrichedClassrooms });
+};

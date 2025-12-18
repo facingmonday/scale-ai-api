@@ -38,6 +38,39 @@ const requireAuth = (options = {}) => {
 
       req.organization = organization;
 
+      // Optionally load active classroom if X-Classroom header is present
+      const classroomId = req.headers["x-classroom"];
+      if (classroomId) {
+        try {
+          // Find enrollment for this user and classroom
+          const enrollment = await Enrollment.findOne({
+            classId: classroomId,
+            userId: member._id,
+            isRemoved: false,
+          });
+
+          if (enrollment) {
+            // Fetch the classroom document
+            const classroom = await Classroom.findById(classroomId);
+
+            if (classroom) {
+              // Validate classroom belongs to organization
+              if (
+                classroom.organization.toString() ===
+                organization._id.toString()
+              ) {
+                req.activeClassroom = classroom;
+                req.classroomRole = enrollment.role;
+                req.enrollment = enrollment;
+              }
+            }
+          }
+        } catch (classroomError) {
+          // Log but don't fail the request if classroom loading fails
+          console.warn("Error loading optional classroom:", classroomError);
+        }
+      }
+
       next();
     } catch (error) {
       console.error("Authentication error requireAuth:", error);

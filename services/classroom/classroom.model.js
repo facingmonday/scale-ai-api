@@ -162,9 +162,8 @@ classroomSchema.statics.validateAdminAccess = async function (
  * @returns {string} Join link URL
  */
 classroomSchema.statics.generateJoinLink = function (classId) {
-  const baseUrl = process.env.SCALE_API_HOST || "http://localhost:1337";
-  const apiVersion = process.env.SCALE_API_VERSION || "v1";
-  return `${baseUrl}/${apiVersion}/class/${classId}/join`;
+  const baseUrl = process.env.SCALE_APP_HOST || "http://localhost:5173";
+  return `${baseUrl}/class/${classId}/join`;
 };
 
 const Classroom = mongoose.model("Classroom", classroomSchema);

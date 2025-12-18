@@ -8,6 +8,9 @@ const {
   requireMemberAuth,
 } = require("../../middleware/auth");
 
+// enrollment/index.js
+router.get("/my-classes", requireMemberAuth(), controller.getMyClasses);
+
 // Admin routes - require org:admin role
 router.get(
   "/admin/class/:classId/roster",
@@ -24,11 +27,6 @@ router.delete(
 );
 
 // Student routes - require authenticated member
-router.post(
-  "/class/:classId/join",
-  requireMemberAuth(),
-  controller.joinClass
-);
+router.post("/class/:classId/join", requireMemberAuth(), controller.joinClass);
 
 module.exports = router;
-

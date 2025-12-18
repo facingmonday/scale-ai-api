@@ -26,11 +26,6 @@ router.post(
   controller.inviteStudent
 );
 
-router.get(
-  "/",
-  requireAuth(),
-  checkRole("org:admin"),
-  controller.getAllClassrooms
-);
+router.get("/", requireAuth(), controller.getAllClassrooms);
 
 module.exports = router;
