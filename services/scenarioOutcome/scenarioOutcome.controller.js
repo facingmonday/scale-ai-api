@@ -4,7 +4,7 @@ const Classroom = require("../classroom/classroom.model");
 
 /**
  * Set scenario outcome
- * POST /api/admin/scenario/:scenarioId/outcome
+ * POST /api/admin/scenarios/:scenarioId/outcome
  */
 exports.setScenarioOutcome = async function (req, res) {
   try {
@@ -57,11 +57,12 @@ exports.setScenarioOutcome = async function (req, res) {
 
 /**
  * Get scenario outcome by scenario ID
- * GET /api/admin/scenario/:scenarioId/outcome
+ * GET /api/admin/scenarios/:scenarioId/outcome
  */
 exports.getScenarioOutcome = async function (req, res) {
   try {
     const { scenarioId } = req.params;
+    console.log("scenarioId", scenarioId);
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
@@ -69,7 +70,7 @@ exports.getScenarioOutcome = async function (req, res) {
     const scenario = await Scenario.getScenarioById(scenarioId, organizationId);
 
     if (!scenario) {
-      return res.status(404).json({ error: "Scenario not found" });
+      return res.status(400).json({ error: "Scenario not found" });
     }
 
     // Verify admin access
@@ -93,7 +94,7 @@ exports.getScenarioOutcome = async function (req, res) {
   } catch (error) {
     console.error("Error getting scenario outcome:", error);
     if (error.message === "Class not found") {
-      return res.status(404).json({ error: error.message });
+      return res.status(400).json({ error: error.message });
     }
     if (error.message.includes("Insufficient permissions")) {
       return res.status(403).json({ error: error.message });
@@ -104,7 +105,7 @@ exports.getScenarioOutcome = async function (req, res) {
 
 /**
  * Approve scenario outcome
- * POST /api/admin/scenario/:scenarioId/outcome/approve
+ * POST /api/admin/scenarios/:scenarioId/outcome/approve
  */
 exports.approveScenarioOutcome = async function (req, res) {
   try {

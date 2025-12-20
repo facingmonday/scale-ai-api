@@ -379,35 +379,35 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 - **Body**: `{ classId, title, description?, variables? }`
 - **Note**: Automatically queues email notifications to all enrolled students
 
-##### `PUT /v1/admin/scenario/:scenarioId`
+##### `PUT /v1/admin/scenarios/:scenarioId`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Update scenario (before publish/close)
 
-##### `POST /v1/admin/scenario/:scenarioId/publish`
+##### `POST /v1/admin/scenarios/:scenarioId/publish`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Publish scenario to students
 
-##### `POST /v1/admin/scenario/:scenarioId/outcome`
+##### `POST /v1/admin/scenarios/:scenarioId/outcome`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Set global scenario outcome
 - **Body**: `{ actualWeather?, demandShift?, notes?, randomEventsEnabled? }`
 
-##### `POST /v1/admin/scenario/:scenarioId/preview`
+##### `POST /v1/admin/scenarios/:scenarioId/preview`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Preview AI outcomes (does not write ledger entries)
 - **Status**: Placeholder - requires AI Service
 
-##### `POST /v1/admin/scenario/:scenarioId/approve`
+##### `POST /v1/admin/scenarios/:scenarioId/approve`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Approve scenario and run AI simulation
 - **Status**: Placeholder - requires AI Service and Ledger Service
 
-##### `POST /v1/admin/scenario/:scenarioId/rerun`
+##### `POST /v1/admin/scenarios/:scenarioId/rerun`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Rerun scenario (delete ledger entries and recalculate)
@@ -438,7 +438,7 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 
 #### Admin Routes
 
-##### `GET /v1/admin/scenario/:scenarioId/submissions`
+##### `GET /v1/admin/scenarios/:scenarioId/submissions`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Get all submissions for a scenario (with missing submissions list)

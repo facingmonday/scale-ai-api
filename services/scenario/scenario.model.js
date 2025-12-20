@@ -230,7 +230,10 @@ scenarioSchema.statics.getScenarioById = async function (
     return null;
   }
 
-  // Variables are automatically included via plugin's post-init hook
+  // Explicitly load variables to ensure they're cached (post-init hook is async and may not have completed)
+  await scenario._loadVariables();
+
+  // Variables are automatically included via plugin's toObject() override
   return scenario.toObject();
 };
 
@@ -319,6 +322,18 @@ scenarioSchema.methods.publish = async function (clerkUserId) {
   }
 
   this.isPublished = true;
+  this.updatedBy = clerkUserId;
+  await this.save();
+  return this;
+};
+
+/**
+ * Unpublish this scenario
+ * @param {string} clerkUserId - Clerk user ID for updatedBy
+ * @returns {Promise<Object>} Updated scenario
+ */
+scenarioSchema.methods.unpublish = async function (clerkUserId) {
+  this.isPublished = false;
   this.updatedBy = clerkUserId;
   await this.save();
   return this;

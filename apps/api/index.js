@@ -134,24 +134,61 @@ async function main() {
   const gracefulShutdown = async (signal) => {
     console.log(`\nReceived ${signal}. Starting graceful shutdown...`);
 
-    server.close(() => {
-      console.log("HTTP server closed");
-      mongoose.connection.close();
-    });
-
-    // Force close after 10 seconds
-    setTimeout(() => {
+    let shutdownTimeout;
+    const forceExit = () => {
       console.error(
         "Could not close connections in time, forcefully shutting down"
       );
       process.exit(1);
-    }, 10000);
+    };
+
+    try {
+      // Close HTTP server
+      await new Promise((resolve, reject) => {
+        shutdownTimeout = setTimeout(() => {
+          reject(new Error("Server close timeout"));
+        }, 8000);
+
+        server.close((err) => {
+          clearTimeout(shutdownTimeout);
+          if (err) {
+            reject(err);
+          } else {
+            console.log("HTTP server closed");
+            resolve();
+          }
+        });
+      });
+
+      // Close MongoDB connection
+      await mongoose.connection.close();
+      console.log("MongoDB connection closed");
+
+      console.log("Graceful shutdown completed");
+      process.exit(0);
+    } catch (error) {
+      console.error("Error during shutdown:", error.message);
+      clearTimeout(shutdownTimeout);
+      forceExit();
+    }
   };
 
   // Handle different shutdown signals
-  process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-  process.on("SIGINT", () => gracefulShutdown("SIGINT"));
-  process.on("SIGUSR2", () => gracefulShutdown("SIGUSR2")); // nodemon restart signal
+  let isShuttingDown = false;
+  const shutdownHandler = (signal) => {
+    if (isShuttingDown) {
+      console.log("Shutdown already in progress, forcing exit...");
+      process.exit(1);
+    }
+    isShuttingDown = true;
+    gracefulShutdown(signal).catch(() => {
+      process.exit(1);
+    });
+  };
+
+  process.on("SIGTERM", () => shutdownHandler("SIGTERM"));
+  process.on("SIGINT", () => shutdownHandler("SIGINT"));
+  process.on("SIGUSR2", () => shutdownHandler("SIGUSR2")); // nodemon restart signal
 }
 
 main();

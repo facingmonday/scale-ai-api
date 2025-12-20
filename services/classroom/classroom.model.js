@@ -1,6 +1,10 @@
 const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 const Enrollment = require("../enrollment/enrollment.model");
+const Scenario = require("../scenario/scenario.model");
+const Submission = require("../submission/submission.model");
+const LedgerEntry = require("../ledger/ledger.model");
+const ScenarioOutcome = require("../scenarioOutcome/scenarioOutcome.model");
 
 const classroomSchema = new mongoose.Schema({
   name: {
@@ -89,24 +93,80 @@ classroomSchema.statics.getDashboard = async function (
   // Count students (members with role 'member')
   const studentCount = await Enrollment.countByClass(classId);
 
-  // Get active scenario (placeholder - will be implemented when Scenario service exists)
-  const activeScenario = null; // TODO: Implement when Scenario model exists
+  // Get active scenario
+  const activeScenario = await Scenario.getActiveScenario(classId);
+  const activeScenarioData = activeScenario
+    ? {
+        ...activeScenario,
+        id: activeScenario._id,
+        week: activeScenario.week,
+        title: activeScenario.title,
+        description: activeScenario.description,
+      }
+    : null;
 
-  // Count completed submissions (placeholder - will be implemented when Submission service exists)
-  const submissionsCompleted = 0; // TODO: Implement when Submission model exists
+  // Count completed submissions for active scenario
+  let submissionsCompleted = 0;
+  if (activeScenario) {
+    const submissions = await Submission.getSubmissionsByScenario(
+      activeScenario._id
+    );
+    submissionsCompleted = submissions.length;
+  }
 
-  // Get leaderboard top 3 (placeholder - will be implemented when Ledger service exists)
-  const leaderboardTop3 = []; // TODO: Implement when Ledger model exists
+  // Get leaderboard top 3 (by total netProfit across all scenarios in class)
+  const leaderboardTop3 = await LedgerEntry.aggregate([
+    { $match: { classId: new mongoose.Types.ObjectId(classId) } },
+    {
+      $group: {
+        _id: "$userId",
+        totalProfit: { $sum: "$netProfit" },
+      },
+    },
+    { $sort: { totalProfit: -1 } },
+    { $limit: 3 },
+    {
+      $lookup: {
+        from: "members",
+        localField: "_id",
+        foreignField: "_id",
+        as: "member",
+      },
+    },
+    { $unwind: { path: "$member", preserveNullAndEmptyArrays: true } },
+    {
+      $project: {
+        userId: "$_id",
+        totalProfit: 1,
+        firstName: "$member.firstName",
+        lastName: "$member.lastName",
+      },
+    },
+  ]);
 
-  // Get pending approvals (placeholder - will be implemented when Scenario service exists)
-  const pendingApprovals = 0; // TODO: Implement when Scenario model exists
+  // Get pending approvals (published scenarios with outcomes that are not approved)
+  const publishedScenarios = await Scenario.find({
+    classId,
+    isPublished: true,
+    isClosed: false,
+  }).select("_id");
+
+  let pendingApprovals = 0;
+  if (publishedScenarios.length > 0) {
+    const scenarioIds = publishedScenarios.map((s) => s._id);
+    const pendingOutcomes = await ScenarioOutcome.countDocuments({
+      scenarioId: { $in: scenarioIds },
+      approved: false,
+    });
+    pendingApprovals = pendingOutcomes;
+  }
 
   return {
     className: classDoc.name,
     classDescription: classDoc.description,
     isActive: classDoc.isActive,
     students: studentCount,
-    activeScenario: activeScenario,
+    activeScenario: activeScenarioData,
     submissionsCompleted: submissionsCompleted,
     leaderboardTop3: leaderboardTop3,
     pendingApprovals: pendingApprovals,

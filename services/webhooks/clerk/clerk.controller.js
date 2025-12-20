@@ -100,9 +100,9 @@ const userCreated = async (userData) => {
       { new: true, upsert: true }
     );
 
-    // Populate masked contact info (idempotent)
+    // Populate masked contact info from webhook data (avoids API call)
     try {
-      await member.populateMaskedContactInfo();
+      await Member.populateMaskedContactInfoFromWebhook(member, userData);
       console.log(
         "Upserted member and populated masked contact info:",
         member.clerkUserId
@@ -134,9 +134,9 @@ const userUpdated = async (userData) => {
       { new: true, upsert: true }
     );
 
-    // Update masked contact info
+    // Update masked contact info from webhook data (avoids API call)
     try {
-      await member.populateMaskedContactInfo();
+      await Member.populateMaskedContactInfoFromWebhook(member, userData);
       console.log(
         "Updated masked contact info for member:",
         member.clerkUserId

@@ -21,13 +21,18 @@ router.get(
   controller.getSubmissionStatus
 );
 
+router.get(
+  "/student/submissions",
+  requireMemberAuth(),
+  controller.getStudentSubmissions
+);
+
 // Admin routes - require org:admin role
 router.get(
-  "/admin/scenario/:scenarioId/submissions",
+  "/admin/scenarios/:scenarioId/submissions",
   requireAuth(),
   checkRole("org:admin"),
   controller.getSubmissionsForScenario
 );
 
 module.exports = router;
-

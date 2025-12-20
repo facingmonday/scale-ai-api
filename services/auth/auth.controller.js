@@ -3,6 +3,22 @@ const { clerkClient } = require("@clerk/express");
 
 exports.me = async function (req, res, next) {
   try {
+    // If user doesn't have an organization yet, return basic user info
+    if (!req.organization) {
+      return res.status(200).json({
+        user: {
+          _id: req.user._id,
+          firstName: req.user.firstName,
+          lastName: req.user.lastName,
+          email: req.user.email,
+          imageUrl: req.user.imageUrl,
+        },
+        organization: null,
+        activeClassroom: null,
+        routes: [],
+      });
+    }
+
     // Get user's role in the active organization using existing helper method
     const membership = req.user.getOrganizationMembership(req.organization);
 

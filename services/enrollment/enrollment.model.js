@@ -163,7 +163,7 @@ enrollmentSchema.statics.requireAdmin = async function (classId, userId) {
 enrollmentSchema.statics.getClassRoster = async function (classId) {
   const enrollments = await this.findByClass(classId).populate({
     path: "userId",
-    select: "firstName lastName clerkUserId",
+    select: "firstName lastName clerkUserId maskedEmail email",
   });
 
   return enrollments.map((enrollment) => {
@@ -176,6 +176,7 @@ enrollmentSchema.statics.getClassRoster = async function (classId) {
       enrollmentId: enrollment._id,
       userId: member?._id,
       clerkUserId: member?.clerkUserId,
+      email: member?.maskedEmail || member?.email || "",
       displayName,
       firstName: member?.firstName || "",
       lastName: member?.lastName || "",

@@ -3,10 +3,49 @@ const ScenarioOutcome = require("../scenarioOutcome/scenarioOutcome.model");
 const Classroom = require("../classroom/classroom.model");
 const Enrollment = require("../enrollment/enrollment.model");
 const Member = require("../members/member.model");
+const Submission = require("../submission/submission.model");
 const { enqueueEmailSending } = require("../../lib/queues/email-worker");
 const JobService = require("../job/lib/jobService");
 const LedgerService = require("../ledger/lib/ledgerService");
 const SimulationWorker = require("../job/lib/simulationWorker");
+
+/**
+ * Get all scenarios
+ * GET /api/admin/scenarios
+ */
+exports.getScenarios = async function (req, res) {
+  try {
+    const classroomId = req.query.classroomId;
+    const scenarios = await Scenario.find({ classroomId });
+    res.status(200).json({
+      success: true,
+      data: scenarios,
+    });
+  } catch (error) {
+    console.error("Error getting scenarios:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/** Get scenario by id */
+exports.getScenarioById = async function (req, res) {
+  try {
+    const { id } = req.params;
+    const organizationId = req.organization?._id;
+
+    // Use static method which handles variable loading
+    const scenario = await Scenario.getScenarioById(id, organizationId);
+
+    if (!scenario) {
+      return res.status(404).json({ error: "Scenario not found" });
+    }
+
+    res.status(200).json({ success: true, data: scenario });
+  } catch (error) {
+    console.error("Error getting scenario by id:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
 
 /**
  * Create scenario
@@ -70,7 +109,7 @@ exports.createScenario = async function (req, res) {
 
 /**
  * Update scenario
- * PUT /api/admin/scenario/:scenarioId
+ * PUT /api/admin/scenarios/:scenarioId
  */
 exports.updateScenario = async function (req, res) {
   try {
@@ -124,11 +163,11 @@ exports.updateScenario = async function (req, res) {
     scenario.updatedBy = clerkUserId;
     await scenario.save();
 
-    // Get updated scenario with variables populated
-    const updatedScenario = await Scenario.getScenarioById(
-      scenarioId,
-      organizationId
-    );
+    // Reload variables to ensure they're in the cache
+    await scenario._loadVariables();
+
+    // Convert to object with variables included
+    const updatedScenario = scenario.toObject();
 
     res.json({
       success: true,
@@ -152,7 +191,7 @@ exports.updateScenario = async function (req, res) {
 
 /**
  * Publish scenario
- * POST /api/admin/scenario/:scenarioId/publish
+ * POST /api/admin/scenarios/:scenarioId/publish
  */
 exports.publishScenario = async function (req, res) {
   try {
@@ -160,8 +199,11 @@ exports.publishScenario = async function (req, res) {
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
-    // Find scenario
-    const scenario = await Scenario.getScenarioById(scenarioId, organizationId);
+    // Find scenario as Mongoose document (needed for instance methods)
+    const scenario = await Scenario.findOne({
+      _id: scenarioId,
+      organization: organizationId,
+    });
 
     if (!scenario) {
       return res.status(404).json({ error: "Scenario not found" });
@@ -174,12 +216,30 @@ exports.publishScenario = async function (req, res) {
       organizationId
     );
 
-    // Check if can be published
-    const canPublish = await scenario.canPublish();
-    if (!canPublish) {
+    // Pre-publish validation: Check if scenario can be published
+    if (scenario.isPublished) {
       return res.status(400).json({
-        error:
-          "Scenario cannot be published. Another scenario may already be active, or this scenario is already published/closed.",
+        error: "Scenario is already published",
+      });
+    }
+
+    if (scenario.isClosed) {
+      return res.status(400).json({
+        error: "Cannot publish a closed scenario",
+      });
+    }
+
+    // Pre-publish validation: Check if another scenario is already active
+    const activeScenario = await Scenario.getActiveScenario(scenario.classId);
+    if (
+      activeScenario &&
+      activeScenario._id.toString() !== scenario._id.toString()
+    ) {
+      return res.status(400).json({
+        error: `Another scenario is already active (Week ${activeScenario.week}: "${activeScenario.title}"). Please unpublish or close the active scenario before publishing a new one.`,
+        activeScenarioId: activeScenario._id,
+        activeScenarioWeek: activeScenario.week,
+        activeScenarioTitle: activeScenario.title,
       });
     }
 
@@ -209,8 +269,69 @@ exports.publishScenario = async function (req, res) {
 };
 
 /**
+ * Unpublish scenario
+ * POST /api/admin/scenarios/:scenarioId/unpublish
+ */
+exports.unpublishScenario = async function (req, res) {
+  try {
+    const { scenarioId } = req.params;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    // Find scenario as Mongoose document (needed for instance methods)
+    const scenario = await Scenario.findOne({
+      _id: scenarioId,
+      organization: organizationId,
+    });
+
+    if (!scenario) {
+      return res.status(404).json({ error: "Scenario not found" });
+    }
+
+    // Verify admin access
+    await Classroom.validateAdminAccess(
+      scenario.classId,
+      clerkUserId,
+      organizationId
+    );
+
+    // Check if scenario is published
+    if (!scenario.isPublished) {
+      return res.status(400).json({
+        error: "Scenario is not published",
+      });
+    }
+
+    // Check if scenario is closed
+    if (scenario.isClosed) {
+      return res.status(400).json({
+        error: "Cannot unpublish a closed scenario",
+      });
+    }
+
+    // Unpublish scenario
+    await scenario.unpublish(clerkUserId);
+
+    res.json({
+      success: true,
+      message: "Scenario unpublished successfully",
+      data: scenario,
+    });
+  } catch (error) {
+    console.error("Error unpublishing scenario:", error);
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
  * Preview AI outcomes (placeholder)
- * POST /api/admin/scenario/:scenarioId/preview
+ * POST /api/admin/scenarios/:scenarioId/preview
  */
 exports.previewScenario = async function (req, res) {
   try {
@@ -295,7 +416,7 @@ exports.previewScenario = async function (req, res) {
 
 /**
  * Approve scenario and run AI (placeholder)
- * POST /api/admin/scenario/:scenarioId/approve
+ * POST /api/admin/scenarios/:scenarioId/approve
  */
 exports.approveScenario = async function (req, res) {
   try {
@@ -371,7 +492,7 @@ exports.approveScenario = async function (req, res) {
 
 /**
  * Rerun scenario (placeholder)
- * POST /api/admin/scenario/:scenarioId/rerun
+ * POST /api/admin/scenarios/:scenarioId/rerun
  */
 exports.rerunScenario = async function (req, res) {
   try {
@@ -473,8 +594,22 @@ exports.getCurrentScenario = async function (req, res) {
       return res.status(404).json({ error: "No active scenario found" });
     }
 
-    // TODO: Get submission status for this student
-    // This will be implemented when Submission Service is created
+    // Get submission status for this student
+    const submission = await Submission.getSubmission(
+      classId,
+      scenario._id,
+      member._id
+    );
+
+    const submissionStatus = submission
+      ? {
+          submitted: true,
+          submittedAt: submission.submittedAt,
+        }
+      : {
+          submitted: false,
+          submittedAt: null,
+        };
 
     res.json({
       success: true,
@@ -486,11 +621,63 @@ exports.getCurrentScenario = async function (req, res) {
           description: scenario.description,
           variables: scenario.variables,
         },
-        submissionStatus: null, // Placeholder
+        submissionStatus,
       },
     });
   } catch (error) {
     console.error("Error getting current scenario:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Get current scenario (admin-facing)
+ * GET /api/admin/scenarios/current
+ */
+exports.getCurrentScenarioForAdmin = async function (req, res) {
+  try {
+    const { classId } = req.query;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    if (!classId) {
+      return res
+        .status(400)
+        .json({ error: "classId query parameter is required" });
+    }
+
+    // Verify admin access
+    await Classroom.validateAdminAccess(classId, clerkUserId, organizationId);
+
+    // Get active scenario
+    const scenario = await Scenario.getActiveScenario(classId);
+
+    if (!scenario) {
+      return res.status(404).json({ error: "No active scenario found" });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        scenario: {
+          id: scenario._id,
+          week: scenario.week,
+          title: scenario.title,
+          description: scenario.description,
+          variables: scenario.variables,
+          isPublished: scenario.isPublished,
+          isClosed: scenario.isClosed,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error getting current scenario for admin:", error);
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
     res.status(500).json({ error: error.message });
   }
 };

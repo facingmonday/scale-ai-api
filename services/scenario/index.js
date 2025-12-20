@@ -8,55 +8,83 @@ const {
   requireMemberAuth,
 } = require("../../middleware/auth");
 
+/** Get scenario by id */
+router.get(
+  "/admin/scenarios/:id",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.getScenarioById
+);
+
 // Admin routes - require org:admin role
 router.post(
-  "/admin/scenario",
+  "/admin/scenarios",
   requireAuth(),
   checkRole("org:admin"),
   controller.createScenario
 );
 
 router.put(
-  "/admin/scenario/:scenarioId",
+  "/admin/scenarios/:scenarioId",
   requireAuth(),
   checkRole("org:admin"),
   controller.updateScenario
 );
 
 router.post(
-  "/admin/scenario/:scenarioId/publish",
+  "/admin/scenarios/:scenarioId/publish",
   requireAuth(),
   checkRole("org:admin"),
   controller.publishScenario
 );
 
 router.post(
-  "/admin/scenario/:scenarioId/preview",
+  "/admin/scenarios/:scenarioId/unpublish",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.unpublishScenario
+);
+
+router.post(
+  "/admin/scenarios/:scenarioId/preview",
   requireAuth(),
   checkRole("org:admin"),
   controller.previewScenario
 );
 
 router.post(
-  "/admin/scenario/:scenarioId/approve",
+  "/admin/scenarios/:scenarioId/approve",
   requireAuth(),
   checkRole("org:admin"),
   controller.approveScenario
 );
 
 router.post(
-  "/admin/scenario/:scenarioId/rerun",
+  "/admin/scenarios/:scenarioId/rerun",
   requireAuth(),
   checkRole("org:admin"),
   controller.rerunScenario
 );
 
+router.get(
+  "/admin/scenarios",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.getScenarios
+);
+
+router.get(
+  "/admin/scenarios/current",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.getCurrentScenarioForAdmin
+);
+
 // Student routes - require authenticated member
 router.get(
-  "/student/scenario/current",
+  "/student/scenarios/current",
   requireMemberAuth(),
   controller.getCurrentScenario
 );
 
 module.exports = router;
-
