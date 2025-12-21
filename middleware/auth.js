@@ -303,7 +303,7 @@ const requireAuth = (options = {}) => {
 
                   // Optionally still load the full enrollment if needed elsewhere
                   const enrollment = await Enrollment.findOne({
-                    classId: classroom._id,
+                    classroomId: classroom._id,
                     userId: member._id,
                     isRemoved: false,
                   });
@@ -594,7 +594,7 @@ const requireActiveClassroom = (options = {}) => {
 
       // Find enrollment for this user and classroom
       const enrollment = await Enrollment.findOne({
-        classId: classroomId,
+        classroomId: classroomId,
         userId: req.user._id,
         isRemoved: false,
       });

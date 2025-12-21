@@ -293,11 +293,11 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 - **Description**: Create a new classroom
 - **Body**: `{ name, description }`
 
-#### `GET /v1/admin/class/:classId/dashboard`
+#### `GET /v1/admin/class/:classroomId/dashboard`
 
 - **Description**: Get class dashboard with stats
 
-#### `POST /v1/admin/class/:classId/invite`
+#### `POST /v1/admin/class/:classroomId/invite`
 
 - **Description**: Invite student to class via email
 - **Body**: `{ email }`
@@ -306,19 +306,19 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 
 #### Student Routes
 
-##### `POST /v1/class/:classId/join`
+##### `POST /v1/class/:classroomId/join`
 
 - **Auth**: `requireMemberAuth()`
 - **Description**: Student joins a class
 
 #### Admin Routes
 
-##### `GET /v1/admin/class/:classId/roster`
+##### `GET /v1/admin/class/:classroomId/roster`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Get class roster (all enrolled students)
 
-##### `DELETE /v1/admin/class/:classId/student/:userId`
+##### `DELETE /v1/admin/class/:classroomId/student/:userId`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Remove student from class (soft delete)
@@ -331,16 +331,16 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 
 - **Auth**: `requireMemberAuth()`
 - **Description**: Create store for authenticated student
-- **Body**: `{ classId, shopName, storeType, dailyCapacity, deliveryRatio, startingBalance?, variables? }`
+- **Body**: `{ classroomId, shopName, storeType, dailyCapacity, deliveryRatio, startingBalance?, variables? }`
 
-##### `GET /v1/student/store?classId=...`
+##### `GET /v1/student/store?classroomId=...`
 
 - **Auth**: `requireMemberAuth()`
 - **Description**: Get student's store for a class
 
 #### Admin Routes
 
-##### `GET /v1/admin/class/:classId/store/:userId`
+##### `GET /v1/admin/class/:classroomId/store/:userId`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Get student's store (admin view)
@@ -351,19 +351,19 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Create variable definition
-- **Body**: `{ classId, key, label, description?, appliesTo, dataType, inputType?, options?, defaultValue?, min?, max?, required?, affectsCalculation? }`
+- **Body**: `{ classroomId, key, label, description?, appliesTo, dataType, inputType?, options?, defaultValue?, min?, max?, required?, affectsCalculation? }`
 
-#### `PUT /v1/admin/variables/:key?classId=...`
+#### `PUT /v1/admin/variables/:key?classroomId=...`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Update variable definition
 
-#### `GET /v1/admin/variables?classId=...&appliesTo=...`
+#### `GET /v1/admin/variables?classroomId=...&appliesTo=...`
 
 - **Auth**: `requireAuth()` (admin or enrolled user)
 - **Description**: Get variable definitions (filtered by appliesTo if provided)
 
-#### `DELETE /v1/admin/variables/:key?classId=...`
+#### `DELETE /v1/admin/variables/:key?classroomId=...`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Delete variable definition (soft delete)
@@ -376,7 +376,7 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Create a new scenario
-- **Body**: `{ classId, title, description?, variables? }`
+- **Body**: `{ classroomId, title, description?, variables? }`
 - **Note**: Automatically queues email notifications to all enrolled students
 
 ##### `PUT /v1/admin/scenarios/:scenarioId`
@@ -415,7 +415,7 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 
 #### Student Routes
 
-##### `GET /v1/student/scenario/current?classId=...`
+##### `GET /v1/student/scenario/current?classroomId=...`
 
 - **Auth**: `requireMemberAuth()`
 - **Description**: Get current active scenario for student

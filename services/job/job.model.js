@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 
 const simulationJobSchema = new mongoose.Schema({
-  classId: {
+  classroomId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Classroom",
     required: true,
@@ -50,7 +50,7 @@ const simulationJobSchema = new mongoose.Schema({
 simulationJobSchema.index({ scenarioId: 1, userId: 1 }, { unique: true });
 simulationJobSchema.index({ status: 1 });
 simulationJobSchema.index({ scenarioId: 1, status: 1 });
-simulationJobSchema.index({ classId: 1, userId: 1 });
+simulationJobSchema.index({ classroomId: 1, userId: 1 });
 simulationJobSchema.index({ organization: 1, scenarioId: 1 });
 
 // Static methods
@@ -87,7 +87,7 @@ simulationJobSchema.statics.createJob = async function (
   }
 
   const job = new this({
-    classId: input.classId,
+    classroomId: input.classroomId,
     scenarioId: input.scenarioId,
     userId: input.userId,
     status: "pending",
@@ -191,4 +191,3 @@ simulationJobSchema.methods.reset = async function () {
 const SimulationJob = mongoose.model("SimulationJob", simulationJobSchema);
 
 module.exports = SimulationJob;
-

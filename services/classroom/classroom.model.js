@@ -41,7 +41,7 @@ classroomSchema.index({ adminIds: 1 });
 classroomSchema.virtual("enrollmentCount", {
   ref: "Enrollment",
   localField: "_id",
-  foreignField: "classId",
+  foreignField: "classroomId",
   count: true,
 });
 
@@ -73,16 +73,16 @@ classroomSchema.methods.removeAdmin = function (clerkUserId) {
 
 /**
  * Get dashboard data for a class
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} organizationId - Organization ID for scoping
  * @returns {Promise<Object>} Dashboard data
  */
 classroomSchema.statics.getDashboard = async function (
-  classId,
+  classroomId,
   organizationId
 ) {
   const classDoc = await this.findOne({
-    _id: classId,
+    _id: classroomId,
     organization: organizationId,
   });
 
@@ -91,10 +91,10 @@ classroomSchema.statics.getDashboard = async function (
   }
 
   // Count students (members with role 'member')
-  const studentCount = await Enrollment.countByClass(classId);
+  const studentCount = await Enrollment.countByClass(classroomId);
 
   // Get active scenario
-  const activeScenario = await Scenario.getActiveScenario(classId);
+  const activeScenario = await Scenario.getActiveScenario(classroomId);
   const activeScenarioData = activeScenario
     ? {
         ...activeScenario,
@@ -116,7 +116,7 @@ classroomSchema.statics.getDashboard = async function (
 
   // Get leaderboard top 3 (by total netProfit across all scenarios in class)
   const leaderboardTop3 = await LedgerEntry.aggregate([
-    { $match: { classId: new mongoose.Types.ObjectId(classId) } },
+    { $match: { classroomId: new mongoose.Types.ObjectId(classroomId) } },
     {
       $group: {
         _id: "$userId",
@@ -146,7 +146,7 @@ classroomSchema.statics.getDashboard = async function (
 
   // Get pending approvals (published scenarios with outcomes that are not approved)
   const publishedScenarios = await Scenario.find({
-    classId,
+    classroomId,
     isPublished: true,
     isClosed: false,
   }).select("_id");
@@ -173,16 +173,66 @@ classroomSchema.statics.getDashboard = async function (
   };
 };
 
+classroomSchema.statics.getStudentDashboard = async function (
+  classroomId,
+  organizationId
+) {
+  const classDoc = await this.findOne({
+    _id: classroomId,
+    organization: organizationId,
+  });
+  if (!classDoc) {
+    throw new Error("Class not found");
+  }
+
+  const activeScenario = await Scenario.getActiveScenario(classroomId);
+  const activeScenarioData = activeScenario
+    ? {
+        ...activeScenario,
+        id: activeScenario._id,
+        week: activeScenario.week,
+        title: activeScenario.title,
+        description: activeScenario.description,
+      }
+    : null;
+
+  // Get the subission for the student for the active scenario
+  const submission = await Submission.getSubmission(
+    classroomId,
+    activeScenario._id,
+    member._id
+  );
+
+  const submissionData = submission
+    ? {
+        ...submission,
+        id: submission._id,
+        variables: submission.variables,
+      }
+    : null;
+
+  return {
+    className: classDoc.name,
+    classDescription: classDoc.description,
+    isActive: classDoc.isActive,
+    activeScenario: activeScenarioData,
+    submission: submissionData,
+  };
+};
+
 /**
  * Get roster for a class
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} organizationId - Organization ID for scoping
  * @returns {Promise<Array>} Roster data with student info
  * @deprecated Use Enrollment.getClassRoster() instead
  */
-classroomSchema.statics.getRoster = async function (classId, organizationId) {
+classroomSchema.statics.getRoster = async function (
+  classroomId,
+  organizationId
+) {
   const classDoc = await this.findOne({
-    _id: classId,
+    _id: classroomId,
     organization: organizationId,
   });
 
@@ -191,23 +241,23 @@ classroomSchema.statics.getRoster = async function (classId, organizationId) {
   }
 
   // Delegate to Enrollment model
-  return await Enrollment.getClassRoster(classId);
+  return await Enrollment.getClassRoster(classroomId);
 };
 
 /**
  * Validate admin access to a class
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} clerkUserId - Clerk user ID
  * @param {string} organizationId - Organization ID
  * @returns {Promise<Object>} Class document if admin, throws error otherwise
  */
 classroomSchema.statics.validateAdminAccess = async function (
-  classId,
+  classroomId,
   clerkUserId,
   organizationId
 ) {
   const classDoc = await this.findOne({
-    _id: classId,
+    _id: classroomId,
     organization: organizationId,
   });
 
@@ -224,12 +274,12 @@ classroomSchema.statics.validateAdminAccess = async function (
 
 /**
  * Generate join link for a class
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @returns {string} Join link URL
  */
-classroomSchema.statics.generateJoinLink = function (classId) {
+classroomSchema.statics.generateJoinLink = function (classroomId) {
   const baseUrl = process.env.SCALE_APP_HOST || "http://localhost:5173";
-  return `${baseUrl}/class/${classId}/join`;
+  return `${baseUrl}/class/${classroomId}/join`;
 };
 
 const Classroom = mongoose.model("Classroom", classroomSchema);

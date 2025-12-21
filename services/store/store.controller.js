@@ -9,50 +9,32 @@ const Classroom = require("../classroom/classroom.model");
 exports.createStore = async function (req, res) {
   try {
     const {
-      classId,
+      classroomId,
       shopName,
-      storeType,
-      dailyCapacity,
-      deliveryRatio,
+      storeDescription,
+      storeLocation,
       startingBalance,
       variables,
     } = req.body;
     const clerkUserId = req.clerkUser.id;
 
     // Validate required fields
-    if (!classId) {
-      return res.status(400).json({ error: "classId is required" });
+    if (!classroomId) {
+      return res.status(400).json({ error: "classroomId is required" });
     }
     if (!shopName) {
       return res.status(400).json({ error: "shopName is required" });
     }
-    if (!storeType) {
-      return res.status(400).json({ error: "storeType is required" });
+    if (!storeDescription) {
+      return res.status(400).json({ error: "storeDescription is required" });
     }
-    if (dailyCapacity === undefined || dailyCapacity === null) {
-      return res.status(400).json({ error: "dailyCapacity is required" });
-    }
-    if (deliveryRatio === undefined || deliveryRatio === null) {
-      return res.status(400).json({ error: "deliveryRatio is required" });
-    }
-
-    // Validate storeType enum
-    if (!["indoor", "outdoor", "food_truck"].includes(storeType)) {
-      return res.status(400).json({
-        error: "storeType must be one of: indoor, outdoor, food_truck",
-      });
-    }
-
-    // Validate deliveryRatio range
-    if (deliveryRatio < 0 || deliveryRatio > 1) {
-      return res.status(400).json({
-        error: "deliveryRatio must be between 0 and 1",
-      });
+    if (!storeLocation) {
+      return res.status(400).json({ error: "storeLocation is required" });
     }
 
     // Verify user is enrolled in class
     const member = req.user;
-    const isEnrolled = await Enrollment.isUserEnrolled(classId, member._id);
+    const isEnrolled = await Enrollment.isUserEnrolled(classroomId, member._id);
 
     if (!isEnrolled) {
       return res.status(403).json({
@@ -62,7 +44,7 @@ exports.createStore = async function (req, res) {
 
     // Get organization from class
     const Classroom = require("../classroom/classroom.model");
-    const classDoc = await Classroom.findById(classId);
+    const classDoc = await Classroom.findById(classroomId);
     if (!classDoc) {
       return res.status(404).json({ error: "Class not found" });
     }
@@ -71,13 +53,12 @@ exports.createStore = async function (req, res) {
 
     // Create store using static method
     const store = await Store.createStore(
-      classId,
+      classroomId,
       member._id,
       {
         shopName,
-        storeType,
-        dailyCapacity,
-        deliveryRatio,
+        storeDescription,
+        storeLocation,
         startingBalance,
         variables,
       },
@@ -103,25 +84,110 @@ exports.createStore = async function (req, res) {
 };
 
 /**
+ * Update or create store (upsert)
+ * PUT /api/student/store
+ */
+exports.updateStore = async function (req, res) {
+  try {
+    const {
+      classroomId,
+      shopName,
+      storeDescription,
+      storeLocation,
+      startingBalance,
+      variables,
+    } = req.body;
+    const member = req.user;
+    const clerkUserId = req.clerkUser.id;
+
+    if (!classroomId) {
+      return res.status(400).json({ error: "classroomId is required" });
+    }
+
+    // Validate required fields if creating new store
+    const existingStore = await Store.getStoreByUser(classroomId, member._id);
+    const isCreating = !existingStore;
+
+    if (isCreating) {
+      if (!shopName) {
+        return res.status(400).json({ error: "shopName is required" });
+      }
+      if (!storeDescription) {
+        return res.status(400).json({ error: "storeDescription is required" });
+      }
+      if (!storeLocation) {
+        return res.status(400).json({ error: "storeLocation is required" });
+      }
+    }
+
+    // Verify user is enrolled in class
+    const isEnrolled = await Enrollment.isUserEnrolled(classroomId, member._id);
+
+    if (!isEnrolled) {
+      return res.status(403).json({
+        error: "User is not enrolled in this class",
+      });
+    }
+
+    // Get organization from class
+    const classDoc = await Classroom.findById(classroomId);
+    if (!classDoc) {
+      return res.status(404).json({ error: "Class not found" });
+    }
+
+    const organizationId = classDoc.organization;
+
+    // Update or create store using static method (upsert)
+    const store = await Store.updateStore(
+      classroomId,
+      member._id,
+      {
+        shopName,
+        storeDescription,
+        storeLocation,
+        startingBalance,
+        variables,
+      },
+      organizationId,
+      clerkUserId
+    );
+
+    res.json({
+      success: true,
+      message: isCreating
+        ? "Store created successfully"
+        : "Store updated successfully",
+      data: store,
+    });
+  } catch (error) {
+    console.error("Error updating store:", error);
+    if (error.name === "ValidationError") {
+      return res.status(400).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
  * Get store for authenticated student
  * GET /api/student/store
  */
 exports.getStore = async function (req, res) {
   try {
-    const { classId } = req.query;
+    const { classroomId } = req.query;
     const member = req.user;
 
-    if (!classId) {
+    if (!classroomId) {
       return res
         .status(400)
-        .json({ error: "classId query parameter is required" });
+        .json({ error: "classroomId query parameter is required" });
     }
 
     // Get store using static method
-    const store = await Store.getStoreByUser(classId, member._id);
+    const store = await Store.getStoreByUser(classroomId, member._id);
 
     if (!store) {
-      return res.status(404).json({ error: "Store not found" });
+      return res.status(200).json({ data: null });
     }
 
     res.json({
@@ -136,19 +202,23 @@ exports.getStore = async function (req, res) {
 
 /**
  * Get student store (admin only)
- * GET /api/admin/class/:classId/store/:userId
+ * GET /api/admin/class/:classroomId/store/:userId
  */
 exports.getStudentStore = async function (req, res) {
   try {
-    const { classId, userId } = req.params;
+    const { classroomId, userId } = req.params;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
     // Validate admin access
-    await Classroom.validateAdminAccess(classId, clerkUserId, organizationId);
+    await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId
+    );
 
     // Get store using static method
-    const store = await Store.getStoreByUser(classId, userId);
+    const store = await Store.getStoreByUser(classroomId, userId);
 
     if (!store) {
       return res.status(404).json({ error: "Store not found" });

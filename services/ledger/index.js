@@ -2,16 +2,13 @@ const express = require("express");
 const controller = require("./ledger.controller");
 const router = express.Router();
 
-const {
-  requireAuth,
-  checkRole,
-} = require("../../middleware/auth");
+const { requireAuth, checkRole } = require("../../middleware/auth");
 
 // All routes require org:admin role
 router.use(requireAuth(), checkRole("org:admin"));
 
 // Get ledger history for a user
-router.get("/:classId/user/:userId", controller.getLedgerHistory);
+router.get("/:classroomId/user/:userId", controller.getLedgerHistory);
 
 // Get ledger entries for a scenario
 router.get("/scenario/:scenarioId", controller.getLedgerEntriesByScenario);
@@ -23,4 +20,3 @@ router.get("/scenario/:scenarioId/user/:userId", controller.getLedgerEntry);
 router.patch("/:ledgerId/override", controller.overrideLedgerEntry);
 
 module.exports = router;
-

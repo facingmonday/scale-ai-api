@@ -4,7 +4,7 @@
     "week": 3,
     "title": "Back to School Rush",
     "description": "Students return to campus, bringing increased demand and new challenges. Plan your inventory and staffing carefully to handle the surge in orders.",
-    "classId": "class_supply_chain_101_fall"
+    "classroomId": "class_supply_chain_101_fall"
   },
   "classroom": {
     "_id": "class_supply_chain_101_fall",
@@ -29,4 +29,3 @@
     "SCALE_API_HOST": "https://api.scale.ai"
   }
 }
-

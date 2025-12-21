@@ -7,7 +7,7 @@ const SimulationJob = require("../job.model");
 class JobService {
   /**
    * Create a simulation job
-   * @param {Object} input - Job data (classId, scenarioId, userId, dryRun)
+   * @param {Object} input - Job data (classroomId, scenarioId, userId, dryRun)
    * @param {string} organizationId - Organization ID
    * @param {string} clerkUserId - Clerk user ID
    * @returns {Promise<Object>} Created job
@@ -19,7 +19,7 @@ class JobService {
   /**
    * Create jobs for all submissions in a scenario
    * @param {string} scenarioId - Scenario ID
-   * @param {string} classId - Class ID
+   * @param {string} classroomId - Class ID
    * @param {boolean} dryRun - Whether this is a dry run (preview)
    * @param {string} organizationId - Organization ID
    * @param {string} clerkUserId - Clerk user ID
@@ -27,7 +27,7 @@ class JobService {
    */
   static async createJobsForScenario(
     scenarioId,
-    classId,
+    classroomId,
     dryRun = false,
     organizationId,
     clerkUserId
@@ -45,9 +45,9 @@ class JobService {
     const jobPromises = submissions.map((submission) =>
       this.createJob(
         {
-          classId,
+          classroomId,
           scenarioId,
-          userId: submission.userId,
+          userId: submission.member?._id,
           dryRun,
         },
         organizationId,
@@ -108,4 +108,3 @@ class JobService {
 }
 
 module.exports = JobService;
-

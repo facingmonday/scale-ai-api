@@ -91,7 +91,7 @@ exports.setActiveClassroom = async function (req, res, next) {
     // Verify user is enrolled in this classroom
     const Enrollment = require("../enrollment/enrollment.model");
     const enrollment = await Enrollment.findOne({
-      classId: classroomId,
+      classroomId: classroomId,
       userId: req.user._id,
       isRemoved: false,
     });

@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 
 const ledgerEntrySchema = new mongoose.Schema({
-  classId: {
+  classroomId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Classroom",
     required: true,
@@ -102,12 +102,12 @@ const ledgerEntrySchema = new mongoose.Schema({
 }).add(baseSchema);
 
 // Compound indexes for performance
-ledgerEntrySchema.index({ classId: 1, userId: 1, week: 1 });
+ledgerEntrySchema.index({ classroomId: 1, userId: 1, week: 1 });
 ledgerEntrySchema.index({ scenarioId: 1, userId: 1 }, { unique: true });
-ledgerEntrySchema.index({ classId: 1, userId: 1 });
+ledgerEntrySchema.index({ classroomId: 1, userId: 1 });
 ledgerEntrySchema.index({ scenarioId: 1 });
 ledgerEntrySchema.index({ organization: 1, scenarioId: 1 });
-ledgerEntrySchema.index({ organization: 1, classId: 1, userId: 1 });
+ledgerEntrySchema.index({ organization: 1, classroomId: 1, userId: 1 });
 
 // Validation: cashAfter must equal cashBefore + netProfit
 ledgerEntrySchema.pre("save", function (next) {
@@ -157,7 +157,7 @@ ledgerEntrySchema.statics.createLedgerEntry = async function (
   }
 
   const entry = new this({
-    classId: input.classId,
+    classroomId: input.classroomId,
     scenarioId: input.scenarioId,
     userId: input.userId,
     week: input.week,
@@ -189,17 +189,17 @@ ledgerEntrySchema.statics.createLedgerEntry = async function (
 
 /**
  * Get ledger history for a user in a class
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} userId - Member ID
  * @param {string} excludeScenarioId - Optional scenario ID to exclude (for reruns)
  * @returns {Promise<Array>} Ordered list of ledger entries
  */
 ledgerEntrySchema.statics.getLedgerHistory = async function (
-  classId,
+  classroomId,
   userId,
   excludeScenarioId = null
 ) {
-  const query = { classId, userId };
+  const query = { classroomId, userId };
   if (excludeScenarioId) {
     query.scenarioId = { $ne: excludeScenarioId };
   }
@@ -215,10 +215,7 @@ ledgerEntrySchema.statics.getLedgerHistory = async function (
  * @param {string} userId - Member ID
  * @returns {Promise<Object|null>} Ledger entry or null
  */
-ledgerEntrySchema.statics.getLedgerEntry = async function (
-  scenarioId,
-  userId
-) {
+ledgerEntrySchema.statics.getLedgerEntry = async function (scenarioId, userId) {
   return await this.findOne({ scenarioId, userId });
 };
 
@@ -308,4 +305,3 @@ ledgerEntrySchema.statics.getLedgerEntriesByScenario = async function (
 const LedgerEntry = mongoose.model("LedgerEntry", ledgerEntrySchema);
 
 module.exports = LedgerEntry;
-

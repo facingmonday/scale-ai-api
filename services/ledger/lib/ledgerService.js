@@ -22,13 +22,17 @@ class LedgerService {
 
   /**
    * Get ledger history for a user in a class
-   * @param {string} classId - Class ID
+   * @param {string} classroomId - Class ID
    * @param {string} userId - Member ID
    * @param {string} excludeScenarioId - Optional scenario ID to exclude (for reruns)
    * @returns {Promise<Array>} Ordered list of ledger entries
    */
-  static async getLedgerHistory(classId, userId, excludeScenarioId = null) {
-    return await LedgerEntry.getLedgerHistory(classId, userId, excludeScenarioId);
+  static async getLedgerHistory(classroomId, userId, excludeScenarioId = null) {
+    return await LedgerEntry.getLedgerHistory(
+      classroomId,
+      userId,
+      excludeScenarioId
+    );
   }
 
   /**
@@ -78,4 +82,3 @@ class LedgerService {
 }
 
 module.exports = LedgerService;
-

@@ -22,7 +22,7 @@ exports.setScenarioOutcome = async function (req, res) {
 
     // Verify admin access
     await Classroom.validateAdminAccess(
-      scenario.classId,
+      scenario.classroomId,
       clerkUserId,
       organizationId
     );
@@ -75,7 +75,7 @@ exports.getScenarioOutcome = async function (req, res) {
 
     // Verify admin access
     await Classroom.validateAdminAccess(
-      scenario.classId,
+      scenario.classroomId,
       clerkUserId,
       organizationId
     );
@@ -122,7 +122,7 @@ exports.approveScenarioOutcome = async function (req, res) {
 
     // Verify admin access
     await Classroom.validateAdminAccess(
-      scenario.classId,
+      scenario.classroomId,
       clerkUserId,
       organizationId
     );

@@ -13,14 +13,21 @@ const {
 router.post("/", requireAuth(), checkRole("org:admin"), controller.createClass);
 
 router.get(
-  "/:classId/dashboard",
+  "/:classroomId/dashboard",
   requireAuth(),
   checkRole("org:admin"),
   controller.getClassDashboard
 );
 
+router.get(
+  "student/:classroomId/dashboard",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.getStudentDashboard
+);
+
 router.post(
-  "/:classId/invite",
+  "/:classroomId/invite",
   requireAuth(),
   checkRole("org:admin"),
   controller.inviteStudent

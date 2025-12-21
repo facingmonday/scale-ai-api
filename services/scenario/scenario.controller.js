@@ -53,31 +53,35 @@ exports.getScenarioById = async function (req, res) {
  */
 exports.createScenario = async function (req, res) {
   try {
-    const { classId, title, description, variables } = req.body;
+    const { classroomId, title, description, variables } = req.body;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
     // Validate required fields
-    if (!classId) {
-      return res.status(400).json({ error: "classId is required" });
+    if (!classroomId) {
+      return res.status(400).json({ error: "classroomId is required" });
     }
     if (!title) {
       return res.status(400).json({ error: "title is required" });
     }
 
     // Verify admin access
-    await Classroom.validateAdminAccess(classId, clerkUserId, organizationId);
+    await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId
+    );
 
     // Create scenario using static method
     const scenario = await Scenario.createScenario(
-      classId,
+      classroomId,
       { title, description, variables },
       organizationId,
       clerkUserId
     );
 
     // Queue email notifications to all enrolled students (async, don't block response)
-    queueScenarioCreatedEmails(scenario, classId, organizationId).catch(
+    queueScenarioCreatedEmails(scenario, classroomId, organizationId).catch(
       (error) => {
         console.error("Error queueing scenario created emails:", error);
         // Don't throw - we don't want to fail scenario creation if emails fail
@@ -130,7 +134,7 @@ exports.updateScenario = async function (req, res) {
 
     // Verify admin access
     await Classroom.validateAdminAccess(
-      scenario.classId,
+      scenario.classroomId,
       clerkUserId,
       organizationId
     );
@@ -211,7 +215,7 @@ exports.publishScenario = async function (req, res) {
 
     // Verify admin access
     await Classroom.validateAdminAccess(
-      scenario.classId,
+      scenario.classroomId,
       clerkUserId,
       organizationId
     );
@@ -230,7 +234,9 @@ exports.publishScenario = async function (req, res) {
     }
 
     // Pre-publish validation: Check if another scenario is already active
-    const activeScenario = await Scenario.getActiveScenario(scenario.classId);
+    const activeScenario = await Scenario.getActiveScenario(
+      scenario.classroomId
+    );
     if (
       activeScenario &&
       activeScenario._id.toString() !== scenario._id.toString()
@@ -290,7 +296,7 @@ exports.unpublishScenario = async function (req, res) {
 
     // Verify admin access
     await Classroom.validateAdminAccess(
-      scenario.classId,
+      scenario.classroomId,
       clerkUserId,
       organizationId
     );
@@ -348,7 +354,7 @@ exports.previewScenario = async function (req, res) {
 
     // Verify admin access
     await Classroom.validateAdminAccess(
-      scenario.classId,
+      scenario.classroomId,
       clerkUserId,
       organizationId
     );
@@ -365,7 +371,7 @@ exports.previewScenario = async function (req, res) {
     // Create preview jobs (dryRun = true)
     const jobs = await JobService.createJobsForScenario(
       scenarioId,
-      scenario.classId,
+      scenario.classroomId,
       true, // dryRun
       organizationId,
       clerkUserId
@@ -433,7 +439,7 @@ exports.approveScenario = async function (req, res) {
 
     // Verify admin access
     await Classroom.validateAdminAccess(
-      scenario.classId,
+      scenario.classroomId,
       clerkUserId,
       organizationId
     );
@@ -453,7 +459,7 @@ exports.approveScenario = async function (req, res) {
     // Create jobs for all submissions (dryRun = false)
     const jobs = await JobService.createJobsForScenario(
       scenarioId,
-      scenario.classId,
+      scenario.classroomId,
       false, // dryRun = false, will write to ledger
       organizationId,
       clerkUserId
@@ -509,7 +515,7 @@ exports.rerunScenario = async function (req, res) {
 
     // Verify admin access
     await Classroom.validateAdminAccess(
-      scenario.classId,
+      scenario.classroomId,
       clerkUserId,
       organizationId
     );
@@ -532,7 +538,7 @@ exports.rerunScenario = async function (req, res) {
     // 3. Recreate jobs for all submissions
     const jobs = await JobService.createJobsForScenario(
       scenarioId,
-      scenario.classId,
+      scenario.classroomId,
       false, // dryRun = false
       organizationId,
       clerkUserId
@@ -569,17 +575,17 @@ exports.rerunScenario = async function (req, res) {
  */
 exports.getCurrentScenario = async function (req, res) {
   try {
-    const { classId } = req.query;
+    const { classroomId } = req.query;
     const member = req.user;
 
-    if (!classId) {
+    if (!classroomId) {
       return res
         .status(400)
-        .json({ error: "classId query parameter is required" });
+        .json({ error: "classroomId query parameter is required" });
     }
 
     // Verify enrollment
-    const isEnrolled = await Enrollment.isUserEnrolled(classId, member._id);
+    const isEnrolled = await Enrollment.isUserEnrolled(classroomId, member._id);
 
     if (!isEnrolled) {
       return res.status(403).json({
@@ -588,7 +594,7 @@ exports.getCurrentScenario = async function (req, res) {
     }
 
     // Get active scenario
-    const scenario = await Scenario.getActiveScenario(classId);
+    const scenario = await Scenario.getActiveScenario(classroomId);
 
     if (!scenario) {
       return res.status(404).json({ error: "No active scenario found" });
@@ -596,7 +602,7 @@ exports.getCurrentScenario = async function (req, res) {
 
     // Get submission status for this student
     const submission = await Submission.getSubmission(
-      classId,
+      classroomId,
       scenario._id,
       member._id
     );
@@ -636,21 +642,25 @@ exports.getCurrentScenario = async function (req, res) {
  */
 exports.getCurrentScenarioForAdmin = async function (req, res) {
   try {
-    const { classId } = req.query;
+    const { classroomId } = req.query;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
-    if (!classId) {
+    if (!classroomId) {
       return res
         .status(400)
-        .json({ error: "classId query parameter is required" });
+        .json({ error: "classroomId query parameter is required" });
     }
 
     // Verify admin access
-    await Classroom.validateAdminAccess(classId, clerkUserId, organizationId);
+    await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId
+    );
 
     // Get active scenario
-    const scenario = await Scenario.getActiveScenario(classId);
+    const scenario = await Scenario.getActiveScenario(classroomId);
 
     if (!scenario) {
       return res.status(404).json({ error: "No active scenario found" });
@@ -685,20 +695,24 @@ exports.getCurrentScenarioForAdmin = async function (req, res) {
 /**
  * Queue email notifications for scenario creation
  * @param {Object} scenario - Scenario document
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} organizationId - Organization ID
  */
-async function queueScenarioCreatedEmails(scenario, classId, organizationId) {
+async function queueScenarioCreatedEmails(
+  scenario,
+  classroomId,
+  organizationId
+) {
   try {
     // Get classroom details
-    const classroom = await Classroom.findById(classId);
+    const classroom = await Classroom.findById(classroomId);
     if (!classroom) {
       console.error("Classroom not found for scenario email notification");
       return;
     }
 
     // Get all enrolled students (members only, not admins)
-    const enrollments = await Enrollment.findByClass(classId);
+    const enrollments = await Enrollment.findByClass(classroomId);
     const memberEnrollments = enrollments.filter((e) => e.role === "member");
 
     if (memberEnrollments.length === 0) {
@@ -711,7 +725,7 @@ async function queueScenarioCreatedEmails(scenario, classId, organizationId) {
       process.env.SCALE_COM_HOST ||
       process.env.SCALE_API_HOST ||
       "https://scale.ai";
-    const scenarioLink = `${host}/class/${classId}/scenario/${scenario._id}`;
+    const scenarioLink = `${host}/class/${classroomId}/scenario/${scenario._id}`;
 
     const emailPromises = memberEnrollments.map(async (enrollment) => {
       try {
@@ -793,3 +807,129 @@ async function queueScenarioCreatedEmails(scenario, classId, organizationId) {
     throw error;
   }
 }
+
+/**
+ * Get student scenarios by classroom
+ * GET /api/student/scenarios
+ */
+exports.getStudentScenariosByClassroom = async function (req, res) {
+  try {
+    const { classroomId: classroomId } = req.query;
+    const member = req.user;
+
+    if (!classroomId) {
+      return res.status(400).json({ error: "classroomId is required" });
+    }
+
+    // Verify enrollment
+    const isEnrolled = await Enrollment.isUserEnrolled(classroomId, member._id);
+    if (!isEnrolled) {
+      return res.status(403).json({ error: "Not enrolled in this class" });
+    }
+
+    // Get all scenarios for the classroom
+    const scenarios = await Scenario.getScenariosByClass(classroomId, {
+      includeClosed: false,
+    });
+
+    // For each scenario, fetch submission, outcome, and ledger entry
+    const scenariosWithData = await Promise.all(
+      scenarios.map(async (scenario) => {
+        // Get member submission with variables for this scenario
+        const submission = await Submission.getSubmission(
+          classroomId,
+          scenario._id,
+          member._id
+        );
+
+        // Get scenario outcome
+        const outcome = await ScenarioOutcome.getOutcomeByScenario(
+          scenario._id
+        );
+
+        // Get ledger entry for this scenario and member
+        const ledgerEntry = await LedgerService.getLedgerEntry(
+          scenario._id,
+          member._id
+        );
+
+        return {
+          ...scenario,
+          submission: submission || null,
+          outcome: outcome || null,
+          ledgerEntry: ledgerEntry || null,
+        };
+      })
+    );
+
+    res.json({
+      success: true,
+      data: scenariosWithData,
+    });
+  } catch (error) {
+    console.error("Error getting student scenarios by classroom:", error);
+    if (error.name === "CastError") {
+      return res.status(400).json({ error: "Invalid id provided" });
+    }
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Get scenario by id for student
+ * GET /api/student/scenarios/:id
+ */
+exports.getScenarioByIdForStudent = async function (req, res) {
+  try {
+    const { id } = req.params;
+    const member = req.user;
+
+    // Get scenario by id (without organizationId for students)
+    const scenario = await Scenario.getScenarioById(id);
+
+    if (!scenario) {
+      return res.status(404).json({ error: "Scenario not found" });
+    }
+
+    // Verify enrollment
+    const isEnrolled = await Enrollment.isUserEnrolled(
+      scenario.classroomId,
+      member._id
+    );
+    if (!isEnrolled) {
+      return res.status(403).json({ error: "Not enrolled in this class" });
+    }
+
+    // Get member submission with variables for this scenario
+    const submission = await Submission.getSubmission(
+      scenario.classroomId,
+      scenario._id,
+      member._id
+    );
+
+    // Get scenario outcome
+    const outcome = await ScenarioOutcome.getOutcomeByScenario(scenario._id);
+
+    // Get ledger entry for this scenario and member
+    const ledgerEntry = await LedgerService.getLedgerEntry(
+      scenario._id,
+      member._id
+    );
+
+    res.json({
+      success: true,
+      data: {
+        ...scenario,
+        submission: submission || null,
+        outcome: outcome || null,
+        ledgerEntry: ledgerEntry || null,
+      },
+    });
+  } catch (error) {
+    console.error("Error getting scenario by id for student:", error);
+    if (error.name === "CastError") {
+      return res.status(400).json({ error: "Invalid id provided" });
+    }
+    res.status(500).json({ error: error.message });
+  }
+};

@@ -9,7 +9,7 @@ const Enrollment = require("../enrollment/enrollment.model");
 exports.createVariableDefinition = async function (req, res) {
   try {
     const {
-      classId,
+      classroomId,
       key,
       label,
       description,
@@ -27,8 +27,8 @@ exports.createVariableDefinition = async function (req, res) {
     const clerkUserId = req.clerkUser.id;
 
     // Validate required fields
-    if (!classId) {
-      return res.status(400).json({ error: "classId is required" });
+    if (!classroomId) {
+      return res.status(400).json({ error: "classroomId is required" });
     }
     if (!key) {
       return res.status(400).json({ error: "key is required" });
@@ -58,11 +58,15 @@ exports.createVariableDefinition = async function (req, res) {
     }
 
     // Verify admin access to class
-    await Classroom.validateAdminAccess(classId, clerkUserId, organizationId);
+    await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId
+    );
 
     // Create definition using static method
     const definition = await VariableDefinition.createDefinition(
-      classId,
+      classroomId,
       {
         key,
         label,
@@ -114,22 +118,26 @@ exports.createVariableDefinition = async function (req, res) {
 exports.updateVariableDefinition = async function (req, res) {
   try {
     const { key } = req.params;
-    const { classId } = req.query;
+    const { classroomId } = req.query;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
-    if (!classId) {
+    if (!classroomId) {
       return res
         .status(400)
-        .json({ error: "classId query parameter is required" });
+        .json({ error: "classroomId query parameter is required" });
     }
 
     // Verify admin access
-    await Classroom.validateAdminAccess(classId, clerkUserId, organizationId);
+    await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId
+    );
 
     // Find definition
     const definition = await VariableDefinition.getDefinitionByKey(
-      classId,
+      classroomId,
       key
     );
 
@@ -200,23 +208,27 @@ exports.updateVariableDefinition = async function (req, res) {
 
 /**
  * Get variable definitions
- * GET /api/admin/variables?classId=...&appliesTo=...
+ * GET /api/admin/variables?classroomId=...&appliesTo=...
  */
 exports.getVariableDefinitions = async function (req, res) {
   try {
-    const { classId, appliesTo } = req.query;
+    const { classroomId, appliesTo } = req.query;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
-    if (!classId) {
+    if (!classroomId) {
       return res
         .status(400)
-        .json({ error: "classId query parameter is required" });
+        .json({ error: "classroomId query parameter is required" });
     }
 
     // Verify admin access or enrollment
     try {
-      await Classroom.validateAdminAccess(classId, clerkUserId, organizationId);
+      await Classroom.validateAdminAccess(
+        classroomId,
+        clerkUserId,
+        organizationId
+      );
     } catch (adminError) {
       // If not admin, check if enrolled
       const member = req.user;
@@ -224,7 +236,10 @@ exports.getVariableDefinitions = async function (req, res) {
         return res.status(401).json({ error: "Authentication required" });
       }
 
-      const isEnrolled = await Enrollment.isUserEnrolled(classId, member._id);
+      const isEnrolled = await Enrollment.isUserEnrolled(
+        classroomId,
+        member._id
+      );
       if (!isEnrolled) {
         return res.status(403).json({
           error: "Not enrolled in this class",
@@ -237,12 +252,12 @@ exports.getVariableDefinitions = async function (req, res) {
     if (appliesTo) {
       // Get definitions for specific scope
       definitions = await VariableDefinition.getDefinitionsForScope(
-        classId,
+        classroomId,
         appliesTo
       );
     } else {
       // Get all definitions for class
-      definitions = await VariableDefinition.getDefinitionsByClass(classId);
+      definitions = await VariableDefinition.getDefinitionsByClass(classroomId);
     }
 
     res.json({
@@ -265,22 +280,26 @@ exports.getVariableDefinitions = async function (req, res) {
 exports.deleteVariableDefinition = async function (req, res) {
   try {
     const { key } = req.params;
-    const { classId } = req.query;
+    const { classroomId } = req.query;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
-    if (!classId) {
+    if (!classroomId) {
       return res
         .status(400)
-        .json({ error: "classId query parameter is required" });
+        .json({ error: "classroomId query parameter is required" });
     }
 
     // Verify admin access
-    await Classroom.validateAdminAccess(classId, clerkUserId, organizationId);
+    await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId
+    );
 
     // Find definition
     const definition = await VariableDefinition.getDefinitionByKey(
-      classId,
+      classroomId,
       key
     );
 

@@ -81,10 +81,10 @@ class SimulationWorker {
    */
   static async fetchJobContext(job) {
     // Fetch store
-    const store = await Store.getStoreByUser(job.classId, job.userId);
+    const store = await Store.getStoreByUser(job.classroomId, job.userId);
     if (!store) {
       throw new Error(
-        `Store not found for user ${job.userId} in class ${job.classId}`
+        `Store not found for user ${job.userId} in class ${job.classroomId}`
       );
     }
 
@@ -106,7 +106,7 @@ class SimulationWorker {
 
     // Fetch submission
     const submission = await Submission.getSubmission(
-      job.classId,
+      job.classroomId,
       job.scenarioId,
       job.userId
     );
@@ -118,7 +118,7 @@ class SimulationWorker {
 
     // Fetch ledger history (prior weeks, excluding current scenario for reruns)
     const ledgerHistory = await LedgerService.getLedgerHistory(
-      job.classId,
+      job.classroomId,
       job.userId,
       job.scenarioId // Exclude current scenario to avoid including old entries during reruns
     );
@@ -154,7 +154,7 @@ class SimulationWorker {
 
     // Prepare ledger entry input
     const ledgerInput = {
-      classId: job.classId,
+      classroomId: job.classroomId,
       scenarioId: job.scenarioId,
       userId: job.userId,
       week: week,

@@ -6,7 +6,7 @@ const SubmissionVariableValue = require("./submissionVariableValue.model");
 const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
 
 const submissionSchema = new mongoose.Schema({
-  classId: {
+  classroomId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Classroom",
     required: true,
@@ -35,11 +35,11 @@ submissionSchema.plugin(variablePopulationPlugin, {
 
 // Compound indexes for performance
 submissionSchema.index(
-  { classId: 1, scenarioId: 1, userId: 1 },
+  { classroomId: 1, scenarioId: 1, userId: 1 },
   { unique: true }
 );
 submissionSchema.index({ scenarioId: 1, userId: 1 });
-submissionSchema.index({ classId: 1, userId: 1 });
+submissionSchema.index({ classroomId: 1, userId: 1 });
 submissionSchema.index({ scenarioId: 1 });
 submissionSchema.index({ organization: 1, scenarioId: 1 });
 
@@ -47,16 +47,16 @@ submissionSchema.index({ organization: 1, scenarioId: 1 });
 
 /**
  * Validate submission variables against VariableDefinition
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {Object} variables - Variables object to validate
  * @returns {Promise<Object>} Validation result
  */
 submissionSchema.statics.validateSubmissionVariables = async function (
-  classId,
+  classroomId,
   variables
 ) {
   return await VariableDefinition.validateValues(
-    classId,
+    classroomId,
     "submission",
     variables
   );
@@ -64,17 +64,17 @@ submissionSchema.statics.validateSubmissionVariables = async function (
 
 /**
  * Check if submission exists
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} scenarioId - Scenario ID
  * @param {string} userId - Member ID
  * @returns {Promise<boolean>} True if submission exists
  */
 submissionSchema.statics.submissionExists = async function (
-  classId,
+  classroomId,
   scenarioId,
   userId
 ) {
-  const count = await this.countDocuments({ classId, scenarioId, userId });
+  const count = await this.countDocuments({ classroomId, scenarioId, userId });
   return count > 0;
 };
 
@@ -82,13 +82,13 @@ submissionSchema.statics.submissionExists = async function (
  * Check if student has submitted for previous scenarios
  * Enforces ordering - must submit in order
  * Late joiners can submit for the active scenario even if they missed previous weeks
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} scenarioId - Scenario ID
  * @param {string} userId - Member ID
  * @returns {Promise<Object>} { canSubmit: boolean, reason?: string }
  */
 submissionSchema.statics.checkSubmissionOrder = async function (
-  classId,
+  classroomId,
   scenarioId,
   userId
 ) {
@@ -106,7 +106,7 @@ submissionSchema.statics.checkSubmissionOrder = async function (
   // If scenario is the active (published and not closed) scenario, allow submission
   // This allows late joiners to start at the current scenario
   if (scenario.isPublished && !scenario.isClosed) {
-    const activeScenario = await Scenario.getActiveScenario(classId);
+    const activeScenario = await Scenario.getActiveScenario(classroomId);
     if (
       activeScenario &&
       activeScenario._id.toString() === scenarioId.toString()
@@ -118,7 +118,7 @@ submissionSchema.statics.checkSubmissionOrder = async function (
   // Check if previous week was submitted
   const previousWeek = scenario.week - 1;
   const previousScenarios = await Scenario.find({
-    classId,
+    classroomId,
     week: previousWeek,
   }).sort({ createdDate: -1 });
 
@@ -130,7 +130,7 @@ submissionSchema.statics.checkSubmissionOrder = async function (
   // Check if student submitted for the most recent previous scenario
   const previousScenario = previousScenarios[0];
   const previousSubmission = await this.findOne({
-    classId,
+    classroomId,
     scenarioId: previousScenario._id,
     userId,
   });
@@ -147,7 +147,7 @@ submissionSchema.statics.checkSubmissionOrder = async function (
 
 /**
  * Create a submission
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} scenarioId - Scenario ID
  * @param {string} userId - Member ID
  * @param {Object} variables - Variables object
@@ -156,7 +156,7 @@ submissionSchema.statics.checkSubmissionOrder = async function (
  * @returns {Promise<Object>} Created submission with variables populated
  */
 submissionSchema.statics.createSubmission = async function (
-  classId,
+  classroomId,
   scenarioId,
   userId,
   variables,
@@ -164,13 +164,16 @@ submissionSchema.statics.createSubmission = async function (
   clerkUserId
 ) {
   // Check if submission already exists
-  const exists = await this.submissionExists(classId, scenarioId, userId);
+  const exists = await this.submissionExists(classroomId, scenarioId, userId);
   if (exists) {
     throw new Error("Submission already exists for this scenario");
   }
 
   // Validate variables
-  const validation = await this.validateSubmissionVariables(classId, variables);
+  const validation = await this.validateSubmissionVariables(
+    classroomId,
+    variables
+  );
   if (!validation.isValid) {
     throw new Error(
       `Invalid submission variables: ${validation.errors.map((e) => e.message).join(", ")}`
@@ -179,14 +182,14 @@ submissionSchema.statics.createSubmission = async function (
 
   // Apply defaults
   const variablesWithDefaults = await VariableDefinition.applyDefaults(
-    classId,
+    classroomId,
     "submission",
     variables
   );
 
   // Check submission order
   const orderCheck = await this.checkSubmissionOrder(
-    classId,
+    classroomId,
     scenarioId,
     userId
   );
@@ -208,7 +211,7 @@ submissionSchema.statics.createSubmission = async function (
 
   // Create submission document
   const submission = new this({
-    classId,
+    classroomId,
     scenarioId,
     userId,
     submittedAt: new Date(),
@@ -237,8 +240,102 @@ submissionSchema.statics.createSubmission = async function (
   }
 
   // Return submission with variables populated (auto-loaded via plugin)
-  const createdSubmission = await this.findOne({ classId, scenarioId, userId });
+  const createdSubmission = await this.findOne({
+    classroomId,
+    scenarioId,
+    userId,
+  });
   return createdSubmission ? createdSubmission.toObject() : null;
+};
+
+/**
+ * Update a submission
+ * @param {string} classroomId - Class ID
+ * @param {string} scenarioId - Scenario ID
+ * @param {string} userId - Member ID
+ * @param {Object} variables - Variables object
+ * @param {string} organizationId - Organization ID
+ * @param {string} clerkUserId - Clerk user ID for updatedBy
+ * @returns {Promise<Object>} Updated submission with variables populated
+ */
+submissionSchema.statics.updateSubmission = async function (
+  classroomId,
+  scenarioId,
+  userId,
+  variables,
+  organizationId,
+  clerkUserId
+) {
+  // Find existing submission
+  const submission = await this.findOne({ classroomId, scenarioId, userId });
+  if (!submission) {
+    throw new Error("Submission not found");
+  }
+
+  // Verify scenario is published and not closed
+  const scenario = await Scenario.findById(scenarioId);
+  if (!scenario) {
+    throw new Error("Scenario not found");
+  }
+  if (!scenario.isPublished) {
+    throw new Error("Scenario is not published");
+  }
+  if (scenario.isClosed) {
+    throw new Error("Scenario is closed");
+  }
+
+  // Validate variables
+  const validation = await this.validateSubmissionVariables(
+    classroomId,
+    variables
+  );
+  if (!validation.isValid) {
+    throw new Error(
+      `Invalid submission variables: ${validation.errors.map((e) => e.message).join(", ")}`
+    );
+  }
+
+  // Apply defaults
+  const variablesWithDefaults = await VariableDefinition.applyDefaults(
+    classroomId,
+    "submission",
+    variables
+  );
+
+  // Update submission document
+  submission.updatedBy = clerkUserId;
+  submission.updatedDate = new Date();
+  await submission.save();
+
+  // Delete existing variable values
+  await SubmissionVariableValue.deleteMany({
+    submissionId: submission._id,
+  });
+
+  // Create new variable values if provided
+  if (variablesWithDefaults && Object.keys(variablesWithDefaults).length > 0) {
+    const variableEntries = Object.entries(variablesWithDefaults);
+    const variableDocs = variableEntries.map(([key, value]) => ({
+      submissionId: submission._id,
+      variableKey: key,
+      value: value,
+      organization: organizationId,
+      createdBy: clerkUserId,
+      updatedBy: clerkUserId,
+    }));
+
+    if (variableDocs.length > 0) {
+      await SubmissionVariableValue.insertMany(variableDocs);
+    }
+  }
+
+  // Return submission with variables populated (auto-loaded via plugin)
+  const updatedSubmission = await this.findOne({
+    classroomId,
+    scenarioId,
+    userId,
+  });
+  return updatedSubmission ? updatedSubmission.toObject() : null;
 };
 
 /**
@@ -251,7 +348,7 @@ submissionSchema.statics.getSubmissionsByScenario = async function (
 ) {
   const submissions = await this.find({ scenarioId }).populate({
     path: "userId",
-    select: "_id clerkUserId firstName lastName",
+    select: "_id clerkUserId firstName lastName maskedEmail",
   });
 
   // Use plugin's efficient batch population
@@ -260,10 +357,26 @@ submissionSchema.statics.getSubmissionsByScenario = async function (
   // Variables are automatically included via plugin
   return submissions.map((submission) => {
     const submissionObj = submission.toObject();
+    // Convert variables object to array format for frontend
+    const variablesArray = submissionObj.variables
+      ? Object.entries(submissionObj.variables).map(([key, value]) => ({
+          key,
+          value,
+        }))
+      : [];
+
     return {
-      userId: submission.userId._id,
-      clerkUserId: submission.userId.clerkUserId,
-      variables: submissionObj.variables,
+      ...submissionObj,
+      member: submission.userId
+        ? {
+            _id: submission.userId._id,
+            clerkUserId: submission.userId.clerkUserId,
+            email: submission.userId.maskedEmail,
+            firstName: submission.userId.firstName,
+            lastName: submission.userId.lastName,
+          }
+        : null,
+      variables: variablesArray,
       submittedAt: submissionObj.submittedAt,
     };
   });
@@ -271,19 +384,49 @@ submissionSchema.statics.getSubmissionsByScenario = async function (
 
 /**
  * Get missing submissions for a scenario
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} scenarioId - Scenario ID
- * @returns {Promise<Array>} Array of user IDs who haven't submitted
+ * @returns {Promise<Array>} Array of user IDs who haven't submitted (only org:member role)
  */
 submissionSchema.statics.getMissingSubmissions = async function (
-  classId,
+  classroomId,
   scenarioId
 ) {
   const Enrollment = require("../enrollment/enrollment.model");
+  const Classroom = require("../classroom/classroom.model");
 
-  // Get all enrolled students (members)
-  const enrollments = await Enrollment.findByClass(classId);
-  const enrolledUserIds = enrollments.map((e) => e.userId);
+  // Get classroom to access organization
+  const classroom = await Classroom.findById(classroomId);
+  if (!classroom) {
+    throw new Error("Class not found");
+  }
+
+  const organizationId = classroom.organization;
+
+  // Get all enrolled students (members) and populate with organizationMemberships
+  const enrollments = await Enrollment.findByClass(classroomId).populate({
+    path: "userId",
+    select: "organizationMemberships",
+  });
+
+  // Filter to only include members with org:member role in this organization
+  const filteredEnrollments = enrollments.filter((enrollment) => {
+    const member = enrollment.userId;
+    if (!member || !member.organizationMemberships) {
+      return false;
+    }
+
+    // Check if member has org:member role in this organization
+    const orgMembership = member.organizationMemberships.find(
+      (membership) =>
+        membership.organizationId.toString() === organizationId.toString() &&
+        membership.role === "org:member"
+    );
+
+    return !!orgMembership;
+  });
+
+  const enrolledUserIds = filteredEnrollments.map((e) => e.userId);
 
   // Get all submissions for this scenario
   const submissions = await this.find({ scenarioId });
@@ -299,36 +442,40 @@ submissionSchema.statics.getMissingSubmissions = async function (
 
 /**
  * Get submission for a user and scenario
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} scenarioId - Scenario ID
  * @param {string} userId - Member ID
  * @returns {Promise<Object|null>} Submission with variables or null
  */
 submissionSchema.statics.getSubmission = async function (
-  classId,
+  classroomId,
   scenarioId,
   userId
 ) {
-  const submission = await this.findOne({ classId, scenarioId, userId });
+  const submission = await this.findOne({ classroomId, scenarioId, userId });
   if (!submission) {
     return null;
   }
 
-  // Variables are automatically included via plugin's post-init hook
-  return submission.toObject();
+  // Explicitly populate variables before returning (post-init hook may not complete in time)
+  await this.populateVariablesForMany([submission]);
+  const submissionObj = submission.toObject();
+  // Ensure _id is included (should be by default, but make it explicit)
+  submissionObj._id = submission._id;
+  return submissionObj;
 };
 
 /**
  * Get all submissions for a user
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} userId - Member ID
  * @returns {Promise<Array>} Array of submissions with variables
  */
 submissionSchema.statics.getSubmissionsByUser = async function (
-  classId,
+  classroomId,
   userId
 ) {
-  const submissions = await this.find({ classId, userId }).sort({
+  const submissions = await this.find({ classroomId, userId }).sort({
     submittedAt: 1,
   });
 
@@ -340,6 +487,17 @@ submissionSchema.statics.getSubmissionsByUser = async function (
 };
 
 // Instance methods
+
+/**
+ * Populate variables for this submission instance
+ * Loads and caches variables so they're available in toObject()/toJSON()
+ * @returns {Promise<this>} This submission instance with variables populated
+ */
+submissionSchema.methods.populateVariables = async function () {
+  // Load variables (will be cached by the plugin)
+  await this._loadVariables();
+  return this;
+};
 
 /**
  * Get variables for this submission instance

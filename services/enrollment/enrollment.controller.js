@@ -4,15 +4,15 @@ const Enrollment = require("./enrollment.model");
 
 /**
  * Student joins class
- * POST /api/class/:classId/join
+ * POST /api/class/:classroomId/join
  */
 exports.joinClass = async function (req, res) {
   try {
-    const { classId } = req.params;
+    const { classroomId } = req.params;
     const clerkUserId = req.clerkUser.id;
 
     // Verify classroom exists and is active
-    const classDoc = await Classroom.findById(classId);
+    const classDoc = await Classroom.findById(classroomId);
 
     if (!classDoc) {
       return res.status(404).json({ error: "Class not found" });
@@ -35,7 +35,7 @@ exports.joinClass = async function (req, res) {
 
     // Enroll user using Enrollment model
     const enrollment = await Enrollment.enrollUser(
-      classId,
+      classroomId,
       member._id,
       role,
       organizationId,
@@ -67,23 +67,41 @@ exports.joinClass = async function (req, res) {
 
 /**
  * Get class roster
- * GET /api/admin/class/:classId/roster
+ * GET /api/admin/class/:classroomId/roster?page=0&pageSize=50
  */
 exports.getClassRoster = async function (req, res) {
   try {
-    const { classId } = req.params;
+    const { classroomId } = req.params;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
+    // Parse pagination parameters
+    const page = parseInt(req.query.page) || 0;
+    const pageSize = parseInt(req.query.pageSize) || 50;
+
     // Validate admin access
-    await Classroom.validateAdminAccess(classId, clerkUserId, organizationId);
+    await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId
+    );
 
     // Get roster using Enrollment model
-    const roster = await Enrollment.getClassRoster(classId);
+    const roster = await Enrollment.getClassRoster(classroomId);
+
+    // Apply pagination in controller
+    const totalCount = roster.length;
+    const skip = page * pageSize;
+    const paginatedRoster = roster.slice(skip, skip + pageSize);
+    const hasMore = skip + pageSize < totalCount;
 
     res.json({
       success: true,
-      data: roster,
+      page,
+      pageSize,
+      total: totalCount,
+      hasMore,
+      data: paginatedRoster,
     });
   } catch (error) {
     console.error("Error getting class roster:", error);
@@ -99,19 +117,23 @@ exports.getClassRoster = async function (req, res) {
 
 /**
  * Remove student from class
- * DELETE /api/admin/class/:classId/student/:userId
+ * DELETE /api/admin/class/:classroomId/student/:userId
  */
 exports.removeStudent = async function (req, res) {
   try {
-    const { classId, userId } = req.params;
+    const { classroomId, userId } = req.params;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
     // Validate admin access
-    await Classroom.validateAdminAccess(classId, clerkUserId, organizationId);
+    await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId
+    );
 
     // Remove enrollment using Enrollment model
-    await Enrollment.removeEnrollment(classId, userId, clerkUserId);
+    await Enrollment.removeEnrollment(classroomId, userId, clerkUserId);
 
     res.json({
       success: true,
@@ -149,9 +171,9 @@ exports.getMyClasses = async function (req, res) {
   const enrollments = await Enrollment.find({
     userId: member._id,
     isRemoved: false,
-  }).populate("classId");
+  }).populate("classroomId");
 
-  const enrolledClassIds = enrollments.map((e) => e.classId);
+  const enrolledClassIds = enrollments.map((e) => e.classroomId);
 
   // Get classrooms where enrolled OR admin
   const classrooms = await Classroom.find({
@@ -168,7 +190,7 @@ exports.getMyClasses = async function (req, res) {
   // Enrich with user's relationship to each class
   const enrichedClassrooms = classrooms.map((classroom) => {
     const enrollment = enrollments.find(
-      (e) => e.classId.toString() === classroom._id.toString()
+      (e) => e.classroomId.toString() === classroom._id.toString()
     );
 
     return {

@@ -9,25 +9,16 @@ const {
 } = require("../../middleware/auth");
 
 // Student routes - require authenticated member
-router.post(
-  "/student/store",
-  requireMemberAuth(),
-  controller.createStore
-);
-
-router.get(
-  "/student/store",
-  requireMemberAuth(),
-  controller.getStore
-);
+router.post("/student/store", requireMemberAuth(), controller.createStore);
+router.put("/student/store", requireMemberAuth(), controller.updateStore);
+router.get("/student/store", requireMemberAuth(), controller.getStore);
 
 // Admin routes - require org:admin role
 router.get(
-  "/admin/class/:classId/store/:userId",
+  "/admin/class/:classroomId/store/:userId",
   requireAuth(),
   checkRole("org:admin"),
   controller.getStudentStore
 );
 
 module.exports = router;
-

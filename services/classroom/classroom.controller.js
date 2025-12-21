@@ -60,19 +60,23 @@ exports.createClass = async function (req, res) {
 
 /**
  * Get class dashboard
- * GET /api/admin/class/:classId/dashboard
+ * GET /api/admin/class/:classroomId/dashboard
  */
 exports.getClassDashboard = async function (req, res) {
   try {
-    const { classId } = req.params;
+    const { classroomId } = req.params;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
     // Validate admin access
-    await Classroom.validateAdminAccess(classId, clerkUserId, organizationId);
+    await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId
+    );
 
     // Get dashboard data
-    const dashboard = await Classroom.getDashboard(classId, organizationId);
+    const dashboard = await Classroom.getDashboard(classroomId, organizationId);
 
     res.json({
       success: true,
@@ -87,6 +91,34 @@ exports.getClassDashboard = async function (req, res) {
       return res.status(403).json({ error: error.message });
     }
     res.status(500).json({ error: error.message });
+  }
+};
+
+exports.getStudentDashboard = async function (req, res) {
+  try {
+    const { classroomId } = req.params;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    // Validate student access
+    await Classroom.validateStudentAccess(
+      classroomId,
+      clerkUserId,
+      organizationId
+    );
+
+    // Get dashboard data
+    const dashboard = await Classroom.getStudentDashboard(
+      classroomId,
+      organizationId
+    );
+
+    res.json({
+      success: true,
+      data: dashboard,
+    });
+  } catch (error) {
+    console.error("Error getting student dashboard:", error);
   }
 };
 
@@ -115,11 +147,11 @@ exports.getAllClassrooms = async function (req, res) {
 
 /**
  * Invite student to class
- * POST /api/admin/class/:classId/invite
+ * POST /api/admin/class/:classroomId/invite
  */
 exports.inviteStudent = async function (req, res) {
   try {
-    const { classId } = req.params;
+    const { classroomId } = req.params;
     const { email } = req.body;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
@@ -130,13 +162,13 @@ exports.inviteStudent = async function (req, res) {
 
     // Validate admin access
     const classDoc = await Classroom.validateAdminAccess(
-      classId,
+      classroomId,
       clerkUserId,
       organizationId
     );
 
     // Generate join link
-    const joinLink = Classroom.generateJoinLink(classId);
+    const joinLink = Classroom.generateJoinLink(classroomId);
 
     // Get sender info
     const senderMember = await Member.findOne({ clerkUserId });
@@ -145,7 +177,9 @@ exports.inviteStudent = async function (req, res) {
     // Send invitation email via SendGrid
     try {
       await sendEmail({
-        to: email,
+        to: {
+          email: email,
+        },
         from: {
           email: process.env.SENDGRID_FROM_EMAIL || "noreply@scale.ai",
           name: process.env.SENDGRID_FROM_NAME || "SCALE.ai",
@@ -170,6 +204,14 @@ exports.inviteStudent = async function (req, res) {
       });
     } catch (emailError) {
       console.error("Error sending invitation email:", emailError);
+
+      // Provide more helpful error information
+      if (emailError.code === 401) {
+        console.error(
+          "SendGrid authentication failed. Please check SENDGRID_API_KEY environment variable."
+        );
+      }
+
       // Still return success with join link if email fails
       res.json({
         success: true,

@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 
 const enrollmentSchema = new mongoose.Schema({
-  classId: {
+  classroomId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Classroom",
     required: true,
@@ -38,17 +38,17 @@ const enrollmentSchema = new mongoose.Schema({
 // Compound indexes for common queries
 // Partial unique index - only enforce uniqueness for non-removed enrollments
 enrollmentSchema.index(
-  { classId: 1, userId: 1 },
+  { classroomId: 1, userId: 1 },
   { unique: true, partialFilterExpression: { isRemoved: false } }
 );
-enrollmentSchema.index({ classId: 1, role: 1 });
-enrollmentSchema.index({ classId: 1, isRemoved: 1 });
+enrollmentSchema.index({ classroomId: 1, role: 1 });
+enrollmentSchema.index({ classroomId: 1, isRemoved: 1 });
 enrollmentSchema.index({ userId: 1, isRemoved: 1 });
-enrollmentSchema.index({ organization: 1, classId: 1 });
+enrollmentSchema.index({ organization: 1, classroomId: 1 });
 
 // Static methods
-enrollmentSchema.statics.findByClass = function (classId, options = {}) {
-  const query = { classId, isRemoved: false };
+enrollmentSchema.statics.findByClass = function (classroomId, options = {}) {
+  const query = { classroomId, isRemoved: false };
   if (options.includeRemoved) {
     delete query.isRemoved;
   }
@@ -63,21 +63,54 @@ enrollmentSchema.statics.findByUser = function (userId, options = {}) {
   return this.find(query);
 };
 
-enrollmentSchema.statics.findByClassAndUser = function (classId, userId) {
-  return this.findOne({ classId, userId, isRemoved: false });
+enrollmentSchema.statics.findByClassAndUser = function (classroomId, userId) {
+  return this.findOne({ classroomId, userId, isRemoved: false });
 };
 
-enrollmentSchema.statics.findByClassAndRole = function (classId, role) {
-  return this.find({ classId, role, isRemoved: false });
+enrollmentSchema.statics.findByClassAndRole = function (classroomId, role) {
+  return this.find({ classroomId, role, isRemoved: false });
 };
 
-enrollmentSchema.statics.countByClass = function (classId) {
-  return this.countDocuments({ classId, isRemoved: false });
+enrollmentSchema.statics.countByClass = async function (classroomId) {
+  const Classroom = require("../classroom/classroom.model");
+
+  // Get classroom to access organization
+  const classroom = await Classroom.findById(classroomId);
+  if (!classroom) {
+    throw new Error("Class not found");
+  }
+
+  const organizationId = classroom.organization;
+
+  // Get all enrollments and populate member with organizationMemberships
+  const enrollments = await this.findByClass(classroomId).populate({
+    path: "userId",
+    select: "organizationMemberships",
+  });
+
+  // Filter to only include members with org:member role in this organization
+  const filteredEnrollments = enrollments.filter((enrollment) => {
+    const member = enrollment.userId;
+    if (!member || !member.organizationMemberships) {
+      return false;
+    }
+
+    // Check if member has org:member role in this organization
+    const orgMembership = member.organizationMemberships.find(
+      (membership) =>
+        membership.organizationId.toString() === organizationId.toString() &&
+        membership.role === "org:member"
+    );
+
+    return !!orgMembership;
+  });
+
+  return filteredEnrollments.length;
 };
 
 /**
  * Enroll a user into a class
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} userId - Member ID (ObjectId)
  * @param {string} role - Role ("admin" or "member")
  * @param {string} organizationId - Organization ID
@@ -85,14 +118,14 @@ enrollmentSchema.statics.countByClass = function (classId) {
  * @returns {Promise<Object>} Enrollment document
  */
 enrollmentSchema.statics.enrollUser = async function (
-  classId,
+  classroomId,
   userId,
   role = "member",
   organizationId,
   clerkUserId
 ) {
   // Check if already enrolled
-  const existing = await this.findByClassAndUser(classId, userId);
+  const existing = await this.findByClassAndUser(classroomId, userId);
   if (existing) {
     if (existing.isRemoved) {
       // Restore enrollment
@@ -107,7 +140,7 @@ enrollmentSchema.statics.enrollUser = async function (
 
   // Create new enrollment
   const enrollment = new this({
-    classId,
+    classroomId,
     userId,
     role,
     joinedAt: new Date(),
@@ -122,34 +155,34 @@ enrollmentSchema.statics.enrollUser = async function (
 
 /**
  * Check if user is enrolled in a class
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} userId - Member ID
  * @returns {Promise<boolean>} True if enrolled
  */
-enrollmentSchema.statics.isUserEnrolled = async function (classId, userId) {
-  const enrollment = await this.findByClassAndUser(classId, userId);
+enrollmentSchema.statics.isUserEnrolled = async function (classroomId, userId) {
+  const enrollment = await this.findByClassAndUser(classroomId, userId);
   return !!enrollment;
 };
 
 /**
  * Get user's role in a class
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} userId - Member ID
  * @returns {Promise<string|null>} Role ("admin" or "member") or null if not enrolled
  */
-enrollmentSchema.statics.getUserRole = async function (classId, userId) {
-  const enrollment = await this.findByClassAndUser(classId, userId);
+enrollmentSchema.statics.getUserRole = async function (classroomId, userId) {
+  const enrollment = await this.findByClassAndUser(classroomId, userId);
   return enrollment ? enrollment.role : null;
 };
 
 /**
  * Require admin role - throws error if user is not admin
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} userId - Member ID
  * @returns {Promise<void>} Throws error if not admin
  */
-enrollmentSchema.statics.requireAdmin = async function (classId, userId) {
-  const role = await this.getUserRole(classId, userId);
+enrollmentSchema.statics.requireAdmin = async function (classroomId, userId) {
+  const role = await this.getUserRole(classroomId, userId);
   if (role !== "admin") {
     throw new Error("Insufficient permissions: Admin access required");
   }
@@ -157,16 +190,45 @@ enrollmentSchema.statics.requireAdmin = async function (classId, userId) {
 
 /**
  * Get class roster
- * @param {string} classId - Class ID
- * @returns {Promise<Array>} Roster array with user info
+ * @param {string} classroomId - Class ID
+ * @returns {Promise<Array>} Roster array with user info (only org:member role)
  */
-enrollmentSchema.statics.getClassRoster = async function (classId) {
-  const enrollments = await this.findByClass(classId).populate({
+enrollmentSchema.statics.getClassRoster = async function (classroomId) {
+  const Classroom = require("../classroom/classroom.model");
+
+  // Get classroom to access organization
+  const classroom = await Classroom.findById(classroomId);
+  if (!classroom) {
+    throw new Error("Class not found");
+  }
+
+  const organizationId = classroom.organization;
+
+  // Get all enrollments and populate member with organizationMemberships
+  const enrollments = await this.findByClass(classroomId).populate({
     path: "userId",
-    select: "firstName lastName clerkUserId maskedEmail email",
+    select:
+      "firstName lastName clerkUserId maskedEmail email organizationMemberships",
   });
 
-  return enrollments.map((enrollment) => {
+  // Filter to only include members with org:member role in this organization
+  const filteredEnrollments = enrollments.filter((enrollment) => {
+    const member = enrollment.userId;
+    if (!member || !member.organizationMemberships) {
+      return false;
+    }
+
+    // Check if member has org:member role in this organization
+    const orgMembership = member.organizationMemberships.find(
+      (membership) =>
+        membership.organizationId.toString() === organizationId.toString() &&
+        membership.role === "org:member"
+    );
+
+    return !!orgMembership;
+  });
+
+  return filteredEnrollments.map((enrollment) => {
     const member = enrollment.userId;
     const displayName = member
       ? `${member.firstName || ""} ${member.lastName || ""}`.trim() || "Unknown"
@@ -188,18 +250,18 @@ enrollmentSchema.statics.getClassRoster = async function (classId) {
 
 /**
  * Remove enrollment (soft delete)
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} userId - Member ID
  * @param {string} clerkUserId - Clerk user ID for updatedBy
  * @returns {Promise<Object>} Updated enrollment
  */
 enrollmentSchema.statics.removeEnrollment = async function (
-  classId,
+  classroomId,
   userId,
   clerkUserId
 ) {
   const enrollment = await this.findOne({
-    classId,
+    classroomId,
     userId,
     isRemoved: false,
   });
@@ -217,12 +279,12 @@ enrollmentSchema.statics.removeEnrollment = async function (
 
 /**
  * Get enrollment by class and user
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} userId - Member ID
  * @returns {Promise<Object|null>} Enrollment or null
  */
-enrollmentSchema.statics.getEnrollment = function (classId, userId) {
-  return this.findByClassAndUser(classId, userId);
+enrollmentSchema.statics.getEnrollment = function (classroomId, userId) {
+  return this.findByClassAndUser(classroomId, userId);
 };
 
 /**
@@ -240,15 +302,15 @@ enrollmentSchema.statics.getEnrollmentsByUser = function (
 
 /**
  * Get enrollments by class and role
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} role - Role ("admin" or "member")
  * @returns {Promise<Array>} Array of enrollments
  */
 enrollmentSchema.statics.getEnrollmentsByClassAndRole = function (
-  classId,
+  classroomId,
   role
 ) {
-  return this.findByClassAndRole(classId, role);
+  return this.findByClassAndRole(classroomId, role);
 };
 
 // Instance methods

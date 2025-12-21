@@ -13,7 +13,7 @@ exports.getJobsByScenario = async function (req, res) {
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
-    // Find scenario to get classId
+    // Find scenario to get classroomId
     const scenario = await Scenario.getScenarioById(scenarioId, organizationId);
 
     if (!scenario) {
@@ -22,7 +22,7 @@ exports.getJobsByScenario = async function (req, res) {
 
     // Verify admin access
     await Classroom.validateAdminAccess(
-      scenario.classId,
+      scenario.classroomId,
       clerkUserId,
       organizationId
     );
@@ -73,7 +73,7 @@ exports.getJobById = async function (req, res) {
 
     // Verify admin access
     await Classroom.validateAdminAccess(
-      scenario.classId,
+      scenario.classroomId,
       clerkUserId,
       organizationId
     );
@@ -122,7 +122,7 @@ exports.retryJob = async function (req, res) {
 
     // Verify admin access
     await Classroom.validateAdminAccess(
-      scenario.classId,
+      scenario.classroomId,
       clerkUserId,
       organizationId
     );
