@@ -32,6 +32,7 @@ const scenarioSchema = new mongoose.Schema({
 scenarioSchema.plugin(variablePopulationPlugin, {
   variableValueModel: ScenarioVariableValue,
   foreignKeyField: "scenarioId",
+  appliesTo: "scenario",
 });
 
 // Compound indexes for performance

@@ -15,19 +15,20 @@ const CronJobSchema = new mongoose.Schema(
     workerType: {
       type: String,
       required: true,
-      enum: ["ticket-reminder", "email-digest", "cart-cleanup"], // Add more as needed
+      enum: ["ticket-reminder", "email-digest", "cart-cleanup", "simulation-jobs"], // Add more as needed
     },
     schedule: {
       type: String,
       required: true,
       validate: {
         validator: function (v) {
-          // Basic cron validation - should be 5 parts (minute hour day month dow)
+          // Basic cron validation - supports both 5 parts (minute hour day month dow) 
+          // and 6 parts (second minute hour day month dow) for node-cron
           const parts = v.trim().split(/\s+/);
-          return parts.length === 5;
+          return parts.length === 5 || parts.length === 6;
         },
         message:
-          "Schedule must be a valid cron expression (5 parts: minute hour day month dow)",
+          "Schedule must be a valid cron expression (5 parts: minute hour day month dow, or 6 parts: second minute hour day month dow)",
       },
     },
     timezone: {

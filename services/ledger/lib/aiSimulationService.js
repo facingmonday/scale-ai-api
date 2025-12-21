@@ -90,6 +90,8 @@ class AISimulationService {
       model: "gpt-4o",
       runId: uuidv4(),
       generatedAt: new Date(),
+      prompt: messages,
+      aiResult: aiResult,
     };
 
     return aiResult;
@@ -104,7 +106,13 @@ class AISimulationService {
    * @param {Array} ledgerHistory - Prior ledger entries
    * @returns {Array} Array of message objects
    */
-  static buildPrompt(store, scenario, scenarioOutcome, submission, ledgerHistory) {
+  static buildPrompt(
+    store,
+    scenario,
+    scenarioOutcome,
+    submission,
+    ledgerHistory
+  ) {
     const messages = [
       {
         role: "system",
@@ -143,8 +151,6 @@ class AISimulationService {
         role: "user",
         content: `GLOBAL SCENARIO OUTCOME:\n${JSON.stringify(
           {
-            actualWeather: scenarioOutcome.actualWeather || "",
-            demandShift: scenarioOutcome.demandShift || 1.0,
             randomEventsEnabled: scenarioOutcome.randomEventsEnabled || false,
             notes: scenarioOutcome.notes || "",
           },
@@ -241,7 +247,10 @@ class AISimulationService {
     if (typeof response.netProfit !== "number") {
       throw new Error("netProfit must be a number");
     }
-    if (response.randomEvent !== null && typeof response.randomEvent !== "string") {
+    if (
+      response.randomEvent !== null &&
+      typeof response.randomEvent !== "string"
+    ) {
       throw new Error("randomEvent must be a string or null");
     }
     if (typeof response.summary !== "string") {
@@ -259,4 +268,3 @@ class AISimulationService {
 }
 
 module.exports = AISimulationService;
-

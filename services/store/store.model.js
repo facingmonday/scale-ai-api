@@ -36,6 +36,7 @@ const storeSchema = new mongoose.Schema({
 storeSchema.plugin(variablePopulationPlugin, {
   variableValueModel: StoreVariableValue,
   foreignKeyField: "storeId",
+  appliesTo: "store",
 });
 
 // Compound indexes for performance

@@ -574,14 +574,6 @@ exports.getSubmissions = async function (req, res) {
     const formattedSubmissions = submissions.map((submission) => {
       const submissionObj = submission.toObject();
 
-      // Convert variables object to array format
-      const variablesArray = submissionObj.variables
-        ? Object.entries(submissionObj.variables).map(([key, value]) => ({
-            key,
-            value,
-          }))
-        : [];
-
       return {
         ...submissionObj,
         member: submission.userId
@@ -608,7 +600,6 @@ exports.getSubmissions = async function (req, res) {
               name: submission.classroomId.name,
             }
           : null,
-        variables: variablesArray,
       };
     });
 

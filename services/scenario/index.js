@@ -53,13 +53,6 @@ router.post(
 );
 
 router.post(
-  "/admin/scenarios/:scenarioId/approve",
-  requireAuth(),
-  checkRole("org:admin"),
-  controller.approveScenario
-);
-
-router.post(
   "/admin/scenarios/:scenarioId/rerun",
   requireAuth(),
   checkRole("org:admin"),

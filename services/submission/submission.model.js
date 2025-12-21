@@ -31,6 +31,7 @@ const submissionSchema = new mongoose.Schema({
 submissionSchema.plugin(variablePopulationPlugin, {
   variableValueModel: SubmissionVariableValue,
   foreignKeyField: "submissionId",
+  appliesTo: "submission",
 });
 
 // Compound indexes for performance
@@ -354,16 +355,9 @@ submissionSchema.statics.getSubmissionsByScenario = async function (
   // Use plugin's efficient batch population
   await this.populateVariablesForMany(submissions);
 
-  // Variables are automatically included via plugin
+  // Variables are automatically included via plugin (already in array format with full definitions)
   return submissions.map((submission) => {
     const submissionObj = submission.toObject();
-    // Convert variables object to array format for frontend
-    const variablesArray = submissionObj.variables
-      ? Object.entries(submissionObj.variables).map(([key, value]) => ({
-          key,
-          value,
-        }))
-      : [];
 
     return {
       ...submissionObj,
@@ -376,7 +370,7 @@ submissionSchema.statics.getSubmissionsByScenario = async function (
             lastName: submission.userId.lastName,
           }
         : null,
-      variables: variablesArray,
+      variables: submissionObj.variables || [],
       submittedAt: submissionObj.submittedAt,
     };
   });

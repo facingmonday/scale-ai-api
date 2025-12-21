@@ -1,4 +1,5 @@
 const SimulationJob = require("../job.model");
+const { queues, ensureQueueReady } = require("../../../lib/queues");
 
 /**
  * Job Service
@@ -13,7 +14,27 @@ class JobService {
    * @returns {Promise<Object>} Created job
    */
   static async createJob(input, organizationId, clerkUserId) {
-    return await SimulationJob.createJob(input, organizationId, clerkUserId);
+    const job = await SimulationJob.createJob(input, organizationId, clerkUserId);
+
+    // Enqueue for Bull processing (one-at-a-time processor handles ordering)
+    try {
+      await ensureQueueReady(queues.simulation, "simulation");
+      await queues.simulation.add(
+        { jobId: job._id },
+        {
+          attempts: 3,
+          backoff: { type: "exponential", delay: 1000 },
+          removeOnComplete: true,
+          removeOnFail: false,
+        }
+      );
+    } catch (err) {
+      console.error("Failed to enqueue simulation job:", err);
+      // Surface the error so the caller knows the job was not enqueued
+      throw err;
+    }
+
+    return job;
   }
 
   /**

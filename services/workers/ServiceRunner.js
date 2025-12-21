@@ -118,23 +118,7 @@ class ServiceRunner {
     await this.ensureDatabaseConnection();
 
     // Execute worker based on type
-    switch (workerType) {
-      case "ticket-reminder":
-        return await this.runTicketReminderWorker();
-
-      case "daily-stats":
-        return await this.runDailyStatsWorker(organizationId);
-
-      // Add new worker types here as needed
-
-      case "cart-cleanup":
-        return await this.runCartCleanupWorker();
-
-      default:
-        throw new Error(
-          `Unknown worker type: ${workerType}. Available types: ticket-reminder, daily-stats`
-        );
-    }
+    throw new Error(`Unknown worker type: ${workerType}`);
   }
 
   /**
@@ -144,86 +128,6 @@ class ServiceRunner {
     const mongoose = require("mongoose");
     if (mongoose.connection.readyState !== 1) {
       await mongoose.connect(mongoUrl);
-    }
-  }
-
-  /**
-   * Execute ticket reminder worker
-   */
-  async runTicketReminderWorker() {
-    try {
-      const TicketReminderWorker = require("./lib/ticket-reminder-worker");
-      const worker = new TicketReminderWorker();
-
-      const result = await worker.runAsService();
-
-      if (!result.success) {
-        throw new Error(result.error);
-      }
-
-      return {
-        ordersProcessed: result.stats.ordersProcessed,
-        remindersSent: result.stats.remindersSent,
-        errors: result.stats.errors,
-        duration: result.stats
-          ? Date.now() - result.stats.startTime.getTime()
-          : 0,
-      };
-    } catch (error) {
-      throw new Error(`Ticket reminder worker failed: ${error.message}`);
-    }
-  }
-
-  /**
-   * Execute daily stats worker
-   */
-  async runDailyStatsWorker(organizationId = null) {
-    try {
-      const DailyStatsWorker = require("./lib/daily-stats-worker");
-      const worker = new DailyStatsWorker();
-
-      const result = await worker.runAsService(organizationId);
-
-      if (!result.success) {
-        throw new Error(result.error);
-      }
-
-      return {
-        organizationsProcessed: result.stats.organizationsProcessed,
-        emailsSent: result.stats.emailsSent,
-        errors: result.stats.errors,
-        duration: result.stats
-          ? Date.now() - result.stats.startTime.getTime()
-          : 0,
-      };
-    } catch (error) {
-      throw new Error(`Daily stats worker failed: ${error.message}`);
-    }
-  }
-
-  /**
-   * Execute cart cleanup worker
-   */
-  async runCartCleanupWorker() {
-    try {
-      const CartCleanupWorker = require("./lib/cart-cleanup-worker");
-      const worker = new CartCleanupWorker();
-
-      const result = await worker.runAsService();
-
-      if (!result.success) {
-        throw new Error(result.error || "Cart cleanup failed");
-      }
-
-      return {
-        expired: result.stats.expired,
-        errors: result.stats.errors,
-        duration: result.stats
-          ? Date.now() - result.stats.startTime.getTime()
-          : 0,
-      };
-    } catch (error) {
-      throw new Error(`Cart cleanup worker failed: ${error.message}`);
     }
   }
 

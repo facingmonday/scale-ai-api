@@ -8,6 +8,14 @@
       "skipFiles": ["<node_internals>/**"],
       "console": "integratedTerminal",
       "program": "${workspaceFolder}/apps/api/index.js"
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Launch Workers",
+      "skipFiles": ["<node_internals>/**"],
+      "console": "integratedTerminal",
+      "program": "${workspaceFolder}/apps/workers/index.js"
     }
   ]
 }

@@ -205,6 +205,36 @@ class SimulationWorker {
 
     return results;
   }
+
+  /**
+   * Process all pending jobs for a specific scenario
+   * @param {string} scenarioId - Scenario ID
+   * @returns {Promise<Array>} Array of results
+   */
+  static async processPendingJobsForScenario(scenarioId) {
+    const jobs = await SimulationJob.find({
+      scenarioId,
+      status: "pending",
+    }).sort({ createdDate: 1 });
+
+    const results = [];
+
+    for (const job of jobs) {
+      try {
+        const result = await this.processJob(job._id);
+        results.push(result);
+      } catch (error) {
+        console.error(`Failed to process job ${job._id}:`, error);
+        results.push({
+          success: false,
+          jobId: job._id,
+          error: error.message,
+        });
+      }
+    }
+
+    return results;
+  }
 }
 
 module.exports = SimulationWorker;

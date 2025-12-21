@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
+const LedgerService = require("../ledger/lib/ledgerService");
 
 const scenarioOutcomeSchema = new mongoose.Schema({
   scenarioId: {
@@ -7,14 +8,6 @@ const scenarioOutcomeSchema = new mongoose.Schema({
     ref: "Scenario",
     required: true,
     unique: true,
-  },
-  actualWeather: {
-    type: String,
-    default: "",
-  },
-  demandShift: {
-    type: Number,
-    default: 1.0,
   },
   notes: {
     type: String,
@@ -24,15 +17,10 @@ const scenarioOutcomeSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
-  approved: {
-    type: Boolean,
-    default: false,
-  },
 }).add(baseSchema);
 
 // Indexes for performance
 // scenarioId already has a unique index from unique: true
-scenarioOutcomeSchema.index({ approved: 1 });
 scenarioOutcomeSchema.index({ organization: 1, scenarioId: 1 });
 
 // Static methods - Shared utilities for scenario outcome operations
@@ -55,31 +43,22 @@ scenarioOutcomeSchema.statics.createOrUpdateOutcome = async function (
 
   if (outcome) {
     // Update existing outcome
-    outcome.actualWeather = outcomeData.actualWeather || outcome.actualWeather;
-    outcome.demandShift =
-      outcomeData.demandShift !== undefined
-        ? outcomeData.demandShift
-        : outcome.demandShift;
     outcome.notes = outcomeData.notes || outcome.notes;
     outcome.randomEventsEnabled =
       outcomeData.randomEventsEnabled !== undefined
         ? outcomeData.randomEventsEnabled
         : outcome.randomEventsEnabled;
-    outcome.approved = false; // Reset approval when updating
     outcome.updatedBy = clerkUserId;
     await outcome.save();
   } else {
     // Create new outcome
     outcome = new this({
       scenarioId,
-      actualWeather: outcomeData.actualWeather || "",
-      demandShift: outcomeData.demandShift !== undefined ? outcomeData.demandShift : 1.0,
       notes: outcomeData.notes || "",
       randomEventsEnabled:
         outcomeData.randomEventsEnabled !== undefined
           ? outcomeData.randomEventsEnabled
           : false,
-      approved: false,
       organization: organizationId,
       createdBy: clerkUserId,
       updatedBy: clerkUserId,
@@ -101,27 +80,18 @@ scenarioOutcomeSchema.statics.getOutcomeByScenario = async function (
   return await this.findOne({ scenarioId });
 };
 
-// Instance methods
-
 /**
- * Approve this outcome
- * @param {string} clerkUserId - Clerk user ID for updatedBy
- * @returns {Promise<Object>} Updated outcome
+ * Delete outcome by scenario ID
+ * Also deletes all related ledger entries for this scenario
+ * @param {string} scenarioId - Scenario ID
+ * @returns {Promise<Object|null>} Deleted outcome or null
  */
-scenarioOutcomeSchema.methods.approve = async function (clerkUserId) {
-  this.approved = true;
-  this.updatedBy = clerkUserId;
-  await this.save();
-  return this;
-};
+scenarioOutcomeSchema.statics.deleteOutcome = async function (scenarioId) {
+  // Delete all ledger entries for this scenario first
+  await LedgerService.deleteLedgerEntriesForScenario(scenarioId);
 
-/**
- * Check if outcome can be edited
- * @returns {boolean} True if can be edited
- */
-scenarioOutcomeSchema.methods.canEdit = function () {
-  // Can edit if not approved
-  return !this.approved;
+  // Then delete the outcome
+  return await this.findOneAndDelete({ scenarioId });
 };
 
 const ScenarioOutcome = mongoose.model(
@@ -130,4 +100,3 @@ const ScenarioOutcome = mongoose.model(
 );
 
 module.exports = ScenarioOutcome;
-
