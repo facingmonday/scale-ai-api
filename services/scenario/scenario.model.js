@@ -28,6 +28,10 @@ const scenarioSchema = new mongoose.Schema({
   },
 }).add(baseSchema);
 
+// Configure schema to include virtuals in toObject() and toJSON()
+scenarioSchema.set("toObject", { virtuals: true });
+scenarioSchema.set("toJSON", { virtuals: true });
+
 // Apply variable population plugin
 scenarioSchema.plugin(variablePopulationPlugin, {
   variableValueModel: ScenarioVariableValue,
@@ -40,6 +44,14 @@ scenarioSchema.index({ classroomId: 1, week: 1 }, { unique: true });
 scenarioSchema.index({ classroomId: 1, isPublished: 1, isClosed: 1 });
 scenarioSchema.index({ classroomId: 1, createdDate: -1 });
 scenarioSchema.index({ organization: 1, classroomId: 1 });
+
+// Cache for submission variables (WeakMap keyed by document instance)
+const submissionVariablesCache = new WeakMap();
+
+// Virtual for submission variables
+scenarioSchema.virtual("submissionVariables").get(function () {
+  return submissionVariablesCache.get(this) || [];
+});
 
 // Static methods - Shared utilities for scenario operations
 
@@ -166,6 +178,8 @@ scenarioSchema.statics.createScenario = async function (
   });
 
   await scenario.save();
+  // Explicitly load variables to ensure all definitions are included
+  await scenario._loadVariables();
   // Variables are automatically included via plugin
   return scenario.toObject();
 };
@@ -186,7 +200,9 @@ scenarioSchema.statics.getActiveScenario = async function (classroomId) {
     return null;
   }
 
-  // Variables are automatically included via plugin's post-init hook
+  // Explicitly load variables to ensure they're loaded (post-init hook is async and may not complete)
+  await scenario._loadVariables();
+  // Variables are automatically included via plugin's toObject() override
   return scenario.toObject();
 };
 
@@ -237,7 +253,11 @@ scenarioSchema.statics.getScenarioById = async function (
   // Explicitly load variables to ensure they're cached (post-init hook is async and may not have completed)
   await scenario._loadVariables();
 
+  // Load submission variables (virtual will access cached value)
+  await scenario._loadSubmissionVariables();
+
   // Variables are automatically included via plugin's toObject() override
+  // submissionVariables virtual is automatically included via toObject()
   return scenario.toObject();
 };
 
@@ -251,6 +271,38 @@ scenarioSchema.statics.getScenarioById = async function (
 scenarioSchema.methods.getVariables = async function () {
   // Use plugin's cached variables or load them
   return await this._loadVariables();
+};
+
+/**
+ * Load submission variables for this scenario instance
+ * Caches the result for the document instance
+ * @returns {Promise<Array>} Array of submission variable definitions
+ */
+scenarioSchema.methods._loadSubmissionVariables = async function () {
+  // Check cache first
+  if (submissionVariablesCache.has(this)) {
+    return submissionVariablesCache.get(this);
+  }
+
+  // Get classroomId from document
+  const classroomId = this.classroomId;
+  if (!classroomId) {
+    const emptyArray = [];
+    submissionVariablesCache.set(this, emptyArray);
+    return emptyArray;
+  }
+
+  // Load submission variable definitions
+  const submissionVariables = await VariableDefinition.find({
+    classroomId,
+    appliesTo: "submission",
+    isActive: true,
+  }).lean();
+
+  // Cache the result
+  submissionVariablesCache.set(this, submissionVariables);
+
+  return submissionVariables;
 };
 
 /**
