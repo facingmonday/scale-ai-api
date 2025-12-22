@@ -1,4 +1,5 @@
 const JobService = require("./lib/jobService");
+const JobModel = require("./job.model");
 const SimulationWorker = require("./lib/simulationWorker");
 const Classroom = require("../classroom/classroom.model");
 const Scenario = require("../scenario/scenario.model");
@@ -55,7 +56,11 @@ exports.getJobById = async function (req, res) {
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
-    const job = await JobService.getJobById(jobId);
+    const job = await JobModel.findById(jobId)
+      .populate("userId")
+      .populate("submissionId")
+      .populate("classroomId")
+      .populate("scenarioId");
 
     if (!job) {
       return res.status(404).json({ error: "Job not found" });
@@ -63,7 +68,7 @@ exports.getJobById = async function (req, res) {
 
     // Find scenario to verify access
     const scenario = await Scenario.getScenarioById(
-      job.scenarioId,
+      job.scenarioId._id,
       organizationId
     );
 
