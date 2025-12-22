@@ -128,11 +128,8 @@ class AISimulationService {
           {
             shopName: store.shopName || "Student Shop",
             storeType: store.storeType,
-            dailyCapacity: store.dailyCapacity,
-            deliveryRatio: store.deliveryRatio,
-            upgrades: store.variables?.upgrades || [],
-            startingBalance: store.startingBalance,
-            variables: store.variables || {},
+            // Variables are flattened by getStoreForSimulation, so all variable keys are at top level
+            ...store,
           },
           null,
           2

@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 const StoreVariableValue = require("./storeVariableValue.model");
 const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
+const { getPreset, isValidStoreType } = require("./storeTypePresets");
 
 const storeSchema = new mongoose.Schema({
   classroomId: {
@@ -26,9 +27,21 @@ const storeSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  startingBalance: {
-    type: Number,
-    default: 0,
+  storeType: {
+    type: String,
+    enum: [
+      "street_cart",
+      "food_truck",
+      "campus_kiosk",
+      "cafe",
+      "ghost_kitchen",
+      "bar_and_grill",
+      "franchise_location",
+      "upscale_bistro",
+      "fine_dining",
+      "late_night_window",
+    ],
+    required: true,
   },
 }).add(baseSchema);
 
@@ -44,6 +57,97 @@ storeSchema.index({ classroomId: 1, userId: 1 }, { unique: true });
 storeSchema.index({ classroomId: 1 });
 storeSchema.index({ userId: 1 });
 storeSchema.index({ organization: 1, classroomId: 1 });
+storeSchema.index({ storeType: 1 });
+
+/**
+ * Create initial ledger entry for a newly created store
+ * @private
+ * @param {Object} store - Store document
+ * @param {string} classroomId - Class ID
+ * @param {string} organizationId - Organization ID
+ * @param {string} clerkUserId - Clerk user ID
+ */
+storeSchema.statics._createInitialLedgerEntry = async function (
+  store,
+  classroomId,
+  organizationId,
+  clerkUserId
+) {
+  const LedgerEntry = require("../ledger/ledger.model");
+  const Scenario = require("../scenario/scenario.model");
+
+  try {
+    // Find or create an initial scenario for this classroom (week 0)
+    // Note: We create this directly with week 0, bypassing createScenario which auto-increments
+    let initialScenario = await Scenario.findOne({
+      classroomId,
+      week: 0,
+    });
+
+    if (!initialScenario) {
+      // Create initial scenario directly with week 0
+      initialScenario = new Scenario({
+        classroomId,
+        week: 0,
+        title: "Initial Store Setup",
+        description: "Initial ledger entry for store creation",
+        isPublished: false,
+        isClosed: true, // Mark as closed so it doesn't interfere with regular scenarios
+        organization: organizationId,
+        createdBy: clerkUserId,
+        updatedBy: clerkUserId,
+      });
+      await initialScenario.save();
+    }
+
+    // Check if ledger entry already exists
+    const existingEntry = await LedgerEntry.findOne({
+      scenarioId: initialScenario._id,
+      userId: store.userId,
+    });
+
+    if (existingEntry) {
+      // Entry already exists, skip creation
+      return;
+    }
+
+    // Get starting balance from storeType preset
+    // This is more reliable than loading variables, and ensures consistency
+    const preset = getPreset(store.storeType);
+    const startingBalance = preset.startingBalance || 0;
+
+    // Create initial ledger entry
+    await LedgerEntry.createLedgerEntry(
+      {
+        classroomId,
+        scenarioId: initialScenario._id,
+        userId: store.userId,
+        sales: 0,
+        revenue: 0,
+        costs: 0,
+        waste: 0,
+        cashBefore: 0,
+        cashAfter: startingBalance,
+        inventoryBefore: 0,
+        inventoryAfter: 0,
+        netProfit: startingBalance,
+        summary: "Initial store setup",
+        aiMetadata: {
+          model: "system",
+          runId: `initial-${store._id}`,
+          generatedAt: new Date(),
+        },
+      },
+      organizationId,
+      clerkUserId
+    );
+  } catch (error) {
+    // Log error but don't fail store creation if ledger entry fails
+    console.error("Error creating initial ledger entry:", error);
+    // Note: We continue even if ledger entry creation fails
+    // This ensures store creation succeeds even if ledger setup has issues
+  }
+};
 
 // Static methods - Shared utilities for store operations
 
@@ -51,10 +155,10 @@ storeSchema.index({ organization: 1, classroomId: 1 });
  * Create a store with variables
  * @param {string} classroomId - Class ID
  * @param {string} userId - Member ID
- * @param {Object} storeData - Store data (shopName, storeDescription, storeLocation, startingBalance, variables)
+ * @param {Object} storeData - Store data (shopName, storeDescription, storeLocation, storeType, variables)
  * @param {string} organizationId - Organization ID
  * @param {string} clerkUserId - Clerk user ID for createdBy/updatedBy
- * @returns {Promise<Object>} Created store with populated variables
+ * @returns {Promise<Object>} Created store with variables
  */
 storeSchema.statics.createStore = async function (
   classroomId,
@@ -69,8 +173,29 @@ storeSchema.statics.createStore = async function (
     throw new Error("Store already exists for this user in this class");
   }
 
-  // Extract variables from storeData
-  const { variables, ...storeFields } = storeData;
+  // Validate storeType
+  const { storeType, variables: providedVariables, ...storeFields } = storeData;
+
+  if (!storeType) {
+    throw new Error("storeType is required");
+  }
+
+  if (!isValidStoreType(storeType)) {
+    throw new Error(
+      `Invalid storeType: ${storeType}. Must be one of: food_truck, indoor, outdoor`
+    );
+  }
+
+  // Load preset for store type
+  const presetVariables = getPreset(storeType);
+
+  // Merge preset with provided variables (provided variables override preset)
+  const finalVariables = {
+    ...presetVariables,
+    ...(providedVariables && typeof providedVariables === "object"
+      ? providedVariables
+      : {}),
+  };
 
   // Create store document
   const store = new this({
@@ -79,7 +204,7 @@ storeSchema.statics.createStore = async function (
     shopName: storeFields.shopName,
     storeDescription: storeFields.storeDescription,
     storeLocation: storeFields.storeLocation,
-    startingBalance: storeFields.startingBalance || 0,
+    storeType,
     organization: organizationId,
     createdBy: clerkUserId,
     updatedBy: clerkUserId,
@@ -87,9 +212,9 @@ storeSchema.statics.createStore = async function (
 
   await store.save();
 
-  // Create variable values if provided
-  if (variables && typeof variables === "object") {
-    const variableEntries = Object.entries(variables);
+  // Create variable values from preset and provided variables
+  if (finalVariables && typeof finalVariables === "object") {
+    const variableEntries = Object.entries(finalVariables);
     const variableDocs = variableEntries.map(([key, value]) => ({
       storeId: store._id,
       variableKey: key,
@@ -104,7 +229,15 @@ storeSchema.statics.createStore = async function (
     }
   }
 
-  // Return store with variables populated
+  // Create initial ledger entry (week 0, type INITIAL)
+  await this._createInitialLedgerEntry(
+    store,
+    classroomId,
+    organizationId,
+    clerkUserId
+  );
+
+  // Return store with variables populated via plugin
   return await this.getStoreByUser(classroomId, userId);
 };
 
@@ -152,12 +285,22 @@ storeSchema.statics.getStoreForSimulation = async function (
     return null;
   }
 
+  // Convert variables array (from plugin) to object for AI
+  const variablesObj = {};
+  if (store.variables && Array.isArray(store.variables)) {
+    store.variables.forEach((v) => {
+      variablesObj[v.key] = v.value;
+    });
+  }
+
   // Return normalized object for AI simulation
+  // Flatten store data: include storeType and variables directly
   return {
+    shopName: store.shopName,
+    storeType: store.storeType,
     storeDescription: store.storeDescription,
     storeLocation: store.storeLocation,
-    startingBalance: store.startingBalance,
-    variables: store.variables || {},
+    ...variablesObj,
   };
 };
 
@@ -180,10 +323,10 @@ storeSchema.statics.getStoresByClass = async function (classroomId) {
  * Update a store with variables
  * @param {string} classroomId - Class ID
  * @param {string} userId - Member ID
- * @param {Object} storeData - Store data (shopName, storeDescription, storeLocation, startingBalance, variables)
+ * @param {Object} storeData - Store data (shopName, storeDescription, storeLocation, storeType, variables)
  * @param {string} organizationId - Organization ID
  * @param {string} clerkUserId - Clerk user ID for updatedBy
- * @returns {Promise<Object>} Updated store with populated variables
+ * @returns {Promise<Object>} Updated store with variables
  */
 storeSchema.statics.updateStore = async function (
   classroomId,
@@ -192,25 +335,69 @@ storeSchema.statics.updateStore = async function (
   organizationId,
   clerkUserId
 ) {
-  // Extract variables from storeData
-  const { variables, ...storeFields } = storeData;
+  // Extract variables and storeType from storeData
+  const { variables, storeType, ...storeFields } = storeData;
 
   // Find existing store
   let store = await this.findOne({ classroomId, userId });
 
   if (!store) {
-    // Create new store if it doesn't exist
+    // If store doesn't exist and storeType is provided, create new store
+    if (!storeType) {
+      throw new Error("storeType is required when creating a new store");
+    }
+
+    if (!isValidStoreType(storeType)) {
+      throw new Error(
+        `Invalid storeType: ${storeType}. Must be one of: food_truck, indoor, outdoor`
+      );
+    }
+
+    // Load preset for store type
+    const presetVariables = getPreset(storeType);
+
+    // Merge preset with provided variables
+    const finalVariables = {
+      ...presetVariables,
+      ...(variables && typeof variables === "object" ? variables : {}),
+    };
+
+    // Create new store
     store = new this({
       classroomId,
       userId,
       shopName: storeFields.shopName,
       storeDescription: storeFields.storeDescription,
       storeLocation: storeFields.storeLocation,
-      startingBalance: storeFields.startingBalance || 0,
+      storeType,
       organization: organizationId,
       createdBy: clerkUserId,
       updatedBy: clerkUserId,
     });
+
+    await store.save();
+
+    // Create variable values from preset and provided variables
+    if (finalVariables && typeof finalVariables === "object") {
+      const variableEntries = Object.entries(finalVariables);
+      for (const [key, value] of variableEntries) {
+        await StoreVariableValue.setVariable(
+          store._id,
+          key,
+          value,
+          organizationId,
+          clerkUserId
+        );
+      }
+    }
+
+    // Create initial ledger entry for new store
+    await this._createInitialLedgerEntry(
+      store,
+      classroomId,
+      organizationId,
+      clerkUserId
+    );
   } else {
     // Update existing store fields
     if (storeFields.shopName !== undefined) {
@@ -222,40 +409,47 @@ storeSchema.statics.updateStore = async function (
     if (storeFields.storeLocation !== undefined) {
       store.storeLocation = storeFields.storeLocation;
     }
-    if (storeFields.startingBalance !== undefined) {
-      store.startingBalance = storeFields.startingBalance;
-    }
-    store.updatedBy = clerkUserId;
-  }
-
-  await store.save();
-
-  // Update or create variable values if provided
-  if (variables && typeof variables === "object") {
-    const variableEntries = Object.entries(variables);
-    for (const [key, value] of variableEntries) {
-      await StoreVariableValue.setVariable(
-        store._id,
-        key,
-        value,
-        organizationId,
-        clerkUserId
-      );
-    }
-
-    // Delete variables that are not in the new set
-    const existingVariables = await StoreVariableValue.find({
-      storeId: store._id,
-    });
-    const newKeys = new Set(Object.keys(variables));
-    for (const existingVar of existingVariables) {
-      if (!newKeys.has(existingVar.variableKey)) {
-        await StoreVariableValue.deleteOne({ _id: existingVar._id });
+    if (storeType !== undefined) {
+      // Validate storeType if provided
+      if (!isValidStoreType(storeType)) {
+        throw new Error(
+          `Invalid storeType: ${storeType}. Must be one of: food_truck, indoor, outdoor`
+        );
       }
+      store.storeType = storeType;
     }
+
+    // Update variables if provided
+    if (variables && typeof variables === "object") {
+      const variableEntries = Object.entries(variables);
+      for (const [key, value] of variableEntries) {
+        await StoreVariableValue.setVariable(
+          store._id,
+          key,
+          value,
+          organizationId,
+          clerkUserId
+        );
+      }
+
+      // Delete variables that are not in the new set (if we want to support removal)
+      // Note: This behavior can be adjusted based on requirements
+    }
+
+    store.updatedBy = clerkUserId;
+    await store.save();
+
+    // Check if initial ledger entry exists, create if it doesn't
+    // This handles cases where a store was created before initial ledger logic was added
+    await this._createInitialLedgerEntry(
+      store,
+      classroomId,
+      organizationId,
+      clerkUserId
+    );
   }
 
-  // Return store with variables populated
+  // Return store with variables populated via plugin
   return await this.getStoreByUser(classroomId, userId);
 };
 
@@ -268,7 +462,15 @@ storeSchema.statics.updateStore = async function (
  */
 storeSchema.methods.getVariables = async function () {
   // Use plugin's cached variables or load them
-  return await this._loadVariables();
+  const variablesArray = await this._loadVariables();
+
+  // Convert array format to object format for convenience
+  const variablesObj = {};
+  variablesArray.forEach((v) => {
+    variablesObj[v.key] = v.value;
+  });
+
+  return variablesObj;
 };
 
 /**

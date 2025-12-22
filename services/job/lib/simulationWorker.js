@@ -107,8 +107,11 @@ class SimulationWorker {
    * @returns {Promise<Object>} Context object
    */
   static async fetchJobContext(job) {
-    // Fetch store
-    const store = await Store.getStoreByUser(job.classroomId, job.userId);
+    // Fetch store (use getStoreForSimulation to get flattened structure for AI)
+    const store = await Store.getStoreForSimulation(
+      job.classroomId,
+      job.userId
+    );
     if (!store) {
       throw new Error(
         `Store not found for user ${job.userId} in class ${job.classroomId}`
@@ -151,7 +154,8 @@ class SimulationWorker {
     );
 
     // Determine cashBefore from ledger history
-    let cashBefore = store.startingBalance;
+    // startingBalance is now in variables, but getStoreForSimulation flattens it
+    let cashBefore = store.startingBalance || 0;
     if (ledgerHistory.length > 0) {
       // Get the most recent ledger entry
       const lastEntry = ledgerHistory[ledgerHistory.length - 1];
