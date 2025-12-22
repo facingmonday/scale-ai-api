@@ -1,3 +1,10 @@
+/**
+ * Store Service Routes
+ * 
+ * Provides endpoints for managing student stores (pizza shop businesses).
+ * Includes student routes (creating/updating their own store) and admin routes (viewing student stores).
+ * Mounted at: /v1/student/store and /v1/admin/class/:classroomId/store/:userId
+ */
 const express = require("express");
 const controller = require("./store.controller");
 const router = express.Router();

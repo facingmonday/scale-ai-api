@@ -1,3 +1,10 @@
+/**
+ * Members Service Routes
+ * 
+ * Provides endpoints for managing organization members (users).
+ * All routes require org:admin role.
+ * Mounted at: /v1/members
+ */
 const express = require("express");
 const membersController = require("./members.controller");
 const { requireAuth, checkRole } = require("../../middleware/auth");

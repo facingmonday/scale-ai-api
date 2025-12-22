@@ -1,3 +1,9 @@
+/**
+ * Organizations Service Routes
+ * 
+ * Provides endpoints for managing organizations.
+ * Mounted at: /v1/organizations
+ */
 const express = require("express");
 const { requireMemberAuth } = require("../../middleware/auth");
 const organizationsController = require("./organizations.controller");

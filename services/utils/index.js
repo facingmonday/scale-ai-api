@@ -1,3 +1,10 @@
+/**
+ * Utils Service Routes
+ * 
+ * Provides utility endpoints for various helper functions (video transcription, event object creation, etc.).
+ * All routes require org:admin role.
+ * Mounted at: /v1/utils
+ */
 const express = require('express');
 const controller = require('./utils.controller');
 const { upload } = require('../../lib/spaces');

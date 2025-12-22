@@ -1,3 +1,10 @@
+/**
+ * Enrollment Service Routes
+ * 
+ * Provides endpoints for managing student enrollments in classrooms.
+ * Includes both student routes (joining classes) and admin routes (managing rosters).
+ * Mounted at: /v1/enrollment
+ */
 const express = require("express");
 const controller = require("./enrollment.controller");
 const router = express.Router();

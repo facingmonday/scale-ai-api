@@ -1,3 +1,9 @@
+/**
+ * Authentication Service Routes
+ * 
+ * Provides endpoints for user authentication and session management.
+ * Mounted at: /v1/auth
+ */
 const express = require("express");
 const controller = require("./auth.controller");
 

@@ -1,3 +1,10 @@
+/**
+ * ScenarioOutcome Service Routes
+ * 
+ * Provides endpoints for managing scenario outcomes (global results that affect all students).
+ * Includes admin routes (setting outcomes) and student routes (viewing outcomes after results are published).
+ * Mounted at: /v1/admin/scenarioOutcomes and /v1/student/scenarioOutcomes
+ */
 const express = require("express");
 const controller = require("./scenarioOutcome.controller");
 const router = express.Router();

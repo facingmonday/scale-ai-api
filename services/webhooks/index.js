@@ -1,3 +1,9 @@
+/**
+ * Webhooks Service Routes
+ * 
+ * Provides endpoints for handling external webhook events (Clerk, Stripe, Telnyx, etc.).
+ * Mounted at: /v1/webhooks
+ */
 const express = require("express");
 
 const router = express.Router();

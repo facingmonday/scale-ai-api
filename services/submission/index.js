@@ -1,3 +1,10 @@
+/**
+ * Submission Service Routes
+ * 
+ * Provides endpoints for managing student submissions (weekly decisions).
+ * Includes student routes (creating/updating submissions) and admin routes (viewing all submissions).
+ * Mounted at: /v1/student/submission and /v1/admin/submissions
+ */
 const express = require("express");
 const controller = require("./submission.controller");
 const router = express.Router();

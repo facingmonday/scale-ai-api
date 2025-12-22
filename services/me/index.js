@@ -1,3 +1,9 @@
+/**
+ * User Profile Service Routes
+ * 
+ * Provides endpoints for managing the authenticated user's profile and organizations.
+ * Mounted at: /v1/me
+ */
 const express = require("express");
 const router = express.Router();
 

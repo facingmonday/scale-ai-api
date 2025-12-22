@@ -1,3 +1,10 @@
+/**
+ * Workers Service Routes
+ * 
+ * Provides endpoints for managing and monitoring background workers.
+ * These routes are typically used for debugging and monitoring worker health.
+ * Mounted at: /v1/workers (if enabled)
+ */
 const express = require("express");
 const workersController = require("./workers.controller");
 

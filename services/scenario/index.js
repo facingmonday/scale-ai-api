@@ -1,3 +1,10 @@
+/**
+ * Scenario Service Routes
+ * 
+ * Provides endpoints for managing scenarios (weekly simulation contexts).
+ * Includes admin routes (creating, publishing, managing scenarios) and student routes (viewing scenarios).
+ * Mounted at: /v1/admin/scenarios and /v1/student/scenarios
+ */
 const express = require("express");
 const controller = require("./scenario.controller");
 const router = express.Router();
