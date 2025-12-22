@@ -1,3 +1,10 @@
+/**
+ * Job Service Routes
+ * 
+ * Provides endpoints for managing background jobs (simulation processing, etc.).
+ * All routes require org:admin role.
+ * Mounted at: /v1/admin/job
+ */
 const express = require("express");
 const controller = require("./job.controller");
 const router = express.Router();

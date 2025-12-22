@@ -1,6 +1,10 @@
 const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 const Enrollment = require("../enrollment/enrollment.model");
+const Scenario = require("../scenario/scenario.model");
+const Submission = require("../submission/submission.model");
+const LedgerEntry = require("../ledger/ledger.model");
+const ScenarioOutcome = require("../scenarioOutcome/scenarioOutcome.model");
 
 const classroomSchema = new mongoose.Schema({
   name: {
@@ -37,7 +41,7 @@ classroomSchema.index({ adminIds: 1 });
 classroomSchema.virtual("enrollmentCount", {
   ref: "Enrollment",
   localField: "_id",
-  foreignField: "classId",
+  foreignField: "classroomId",
   count: true,
 });
 
@@ -69,16 +73,16 @@ classroomSchema.methods.removeAdmin = function (clerkUserId) {
 
 /**
  * Get dashboard data for a class
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} organizationId - Organization ID for scoping
  * @returns {Promise<Object>} Dashboard data
  */
 classroomSchema.statics.getDashboard = async function (
-  classId,
+  classroomId,
   organizationId
 ) {
   const classDoc = await this.findOne({
-    _id: classId,
+    _id: classroomId,
     organization: organizationId,
   });
 
@@ -87,42 +91,150 @@ classroomSchema.statics.getDashboard = async function (
   }
 
   // Count students (members with role 'member')
-  const studentCount = await Enrollment.countByClass(classId);
+  const studentCount = await Enrollment.countByClass(classroomId);
 
-  // Get active scenario (placeholder - will be implemented when Scenario service exists)
-  const activeScenario = null; // TODO: Implement when Scenario model exists
+  // Get active scenario
+  const activeScenario = await Scenario.getActiveScenario(classroomId);
+  const activeScenarioData = activeScenario
+    ? {
+        id: activeScenario._id,
+        title: activeScenario.title,
+        description: activeScenario.description,
+        variables: activeScenario.variables,
+        isPublished: activeScenario.isPublished,
+        isClosed: activeScenario.isClosed,
+      }
+    : null;
 
-  // Count completed submissions (placeholder - will be implemented when Submission service exists)
-  const submissionsCompleted = 0; // TODO: Implement when Submission model exists
+  // Count completed submissions for active scenario
+  let submissionsCompleted = 0;
+  if (activeScenario) {
+    const submissions = await Submission.getSubmissionsByScenario(
+      activeScenario._id
+    );
+    submissionsCompleted = submissions.length;
+  }
 
-  // Get leaderboard top 3 (placeholder - will be implemented when Ledger service exists)
-  const leaderboardTop3 = []; // TODO: Implement when Ledger model exists
+  // Get leaderboard top 3 (by total netProfit across all scenarios in class)
+  const leaderboardTop3 = await LedgerEntry.aggregate([
+    { $match: { classroomId: new mongoose.Types.ObjectId(classroomId) } },
+    {
+      $group: {
+        _id: "$userId",
+        totalProfit: { $sum: "$netProfit" },
+      },
+    },
+    { $sort: { totalProfit: -1 } },
+    { $limit: 3 },
+    {
+      $lookup: {
+        from: "members",
+        localField: "_id",
+        foreignField: "_id",
+        as: "member",
+      },
+    },
+    { $unwind: { path: "$member", preserveNullAndEmptyArrays: true } },
+    {
+      $project: {
+        userId: "$_id",
+        totalProfit: 1,
+        firstName: "$member.firstName",
+        lastName: "$member.lastName",
+      },
+    },
+  ]);
 
-  // Get pending approvals (placeholder - will be implemented when Scenario service exists)
-  const pendingApprovals = 0; // TODO: Implement when Scenario model exists
+  // Get pending approvals (published scenarios with outcomes that are not approved)
+  const publishedScenarios = await Scenario.find({
+    classroomId,
+    isPublished: true,
+    isClosed: false,
+  }).select("_id");
+
+  let pendingApprovals = 0;
+  if (publishedScenarios.length > 0) {
+    const scenarioIds = publishedScenarios.map((s) => s._id);
+    const pendingOutcomes = await ScenarioOutcome.countDocuments({
+      scenarioId: { $in: scenarioIds },
+      approved: false,
+    });
+    pendingApprovals = pendingOutcomes;
+  }
 
   return {
     className: classDoc.name,
     classDescription: classDoc.description,
     isActive: classDoc.isActive,
     students: studentCount,
-    activeScenario: activeScenario,
+    activeScenario: activeScenarioData,
     submissionsCompleted: submissionsCompleted,
     leaderboardTop3: leaderboardTop3,
     pendingApprovals: pendingApprovals,
   };
 };
 
+classroomSchema.statics.getStudentDashboard = async function (
+  classroomId,
+  organizationId
+) {
+  const classDoc = await this.findOne({
+    _id: classroomId,
+    organization: organizationId,
+  });
+  if (!classDoc) {
+    throw new Error("Class not found");
+  }
+
+  const activeScenario = await Scenario.getActiveScenario(classroomId);
+  const activeScenarioData = activeScenario
+    ? {
+        id: activeScenario._id,
+        title: activeScenario.title,
+        description: activeScenario.description,
+        variables: activeScenario.variables,
+        isPublished: activeScenario.isPublished,
+        isClosed: activeScenario.isClosed,
+      }
+    : null;
+
+  // Get the subission for the student for the active scenario
+  const submission = await Submission.getSubmission(
+    classroomId,
+    activeScenario._id,
+    member._id
+  );
+
+  const submissionData = submission
+    ? {
+        ...submission,
+        id: submission._id,
+        variables: submission.variables,
+      }
+    : null;
+
+  return {
+    className: classDoc.name,
+    classDescription: classDoc.description,
+    isActive: classDoc.isActive,
+    activeScenario: activeScenarioData,
+    submission: submissionData,
+  };
+};
+
 /**
  * Get roster for a class
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} organizationId - Organization ID for scoping
  * @returns {Promise<Array>} Roster data with student info
  * @deprecated Use Enrollment.getClassRoster() instead
  */
-classroomSchema.statics.getRoster = async function (classId, organizationId) {
+classroomSchema.statics.getRoster = async function (
+  classroomId,
+  organizationId
+) {
   const classDoc = await this.findOne({
-    _id: classId,
+    _id: classroomId,
     organization: organizationId,
   });
 
@@ -131,23 +243,23 @@ classroomSchema.statics.getRoster = async function (classId, organizationId) {
   }
 
   // Delegate to Enrollment model
-  return await Enrollment.getClassRoster(classId);
+  return await Enrollment.getClassRoster(classroomId);
 };
 
 /**
  * Validate admin access to a class
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} clerkUserId - Clerk user ID
  * @param {string} organizationId - Organization ID
  * @returns {Promise<Object>} Class document if admin, throws error otherwise
  */
 classroomSchema.statics.validateAdminAccess = async function (
-  classId,
+  classroomId,
   clerkUserId,
   organizationId
 ) {
   const classDoc = await this.findOne({
-    _id: classId,
+    _id: classroomId,
     organization: organizationId,
   });
 
@@ -164,12 +276,12 @@ classroomSchema.statics.validateAdminAccess = async function (
 
 /**
  * Generate join link for a class
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @returns {string} Join link URL
  */
-classroomSchema.statics.generateJoinLink = function (classId) {
+classroomSchema.statics.generateJoinLink = function (classroomId) {
   const baseUrl = process.env.SCALE_APP_HOST || "http://localhost:5173";
-  return `${baseUrl}/class/${classId}/join`;
+  return `${baseUrl}/class/${classroomId}/join`;
 };
 
 const Classroom = mongoose.model("Classroom", classroomSchema);

@@ -1,3 +1,10 @@
+/**
+ * Main Services Router
+ * 
+ * Mounts all service routers at their respective paths.
+ * This router is mounted at /v1 in the main API application.
+ * All routes defined here will be accessible at /v1/[service-path]
+ */
 const express = require("express");
 const router = express.Router();
 

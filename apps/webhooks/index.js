@@ -88,10 +88,74 @@ async function main() {
     }
   }, 1000);
 
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`Webhooks service on ${PORT}`);
     console.log("✅ Queues initialized and ready");
   });
+
+  // Graceful shutdown handling
+  const { closeQueues } = require("../../lib/queues");
+  const gracefulShutdown = async (signal) => {
+    console.log(`\nReceived ${signal}. Starting graceful shutdown...`);
+
+    let shutdownTimeout;
+    const forceExit = () => {
+      console.error(
+        "Could not close connections in time, forcefully shutting down"
+      );
+      process.exit(1);
+    };
+
+    try {
+      // Close HTTP server
+      await new Promise((resolve, reject) => {
+        shutdownTimeout = setTimeout(() => {
+          reject(new Error("Server close timeout"));
+        }, 8000);
+
+        server.close((err) => {
+          clearTimeout(shutdownTimeout);
+          if (err) {
+            reject(err);
+          } else {
+            console.log("HTTP server closed");
+            resolve();
+          }
+        });
+      });
+
+      // Close queues
+      await closeQueues(5000);
+
+      // Close MongoDB connection
+      await mongoose.connection.close();
+      console.log("MongoDB connection closed");
+
+      console.log("Graceful shutdown completed");
+      process.exit(0);
+    } catch (error) {
+      console.error("Error during shutdown:", error.message);
+      clearTimeout(shutdownTimeout);
+      forceExit();
+    }
+  };
+
+  // Handle different shutdown signals
+  let isShuttingDown = false;
+  const shutdownHandler = (signal) => {
+    if (isShuttingDown) {
+      console.log("Shutdown already in progress, forcing exit...");
+      process.exit(1);
+    }
+    isShuttingDown = true;
+    gracefulShutdown(signal).catch(() => {
+      process.exit(1);
+    });
+  };
+
+  process.on("SIGTERM", () => shutdownHandler("SIGTERM"));
+  process.on("SIGINT", () => shutdownHandler("SIGINT"));
+  process.on("SIGUSR2", () => shutdownHandler("SIGUSR2")); // nodemon restart signal
 }
 
 main();

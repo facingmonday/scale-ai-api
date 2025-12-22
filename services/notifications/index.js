@@ -1,3 +1,10 @@
+/**
+ * Notifications Service Routes
+ * 
+ * Provides endpoints for managing notifications.
+ * All routes require org:admin role.
+ * Mounted at: /v1/notifications
+ */
 const express = require("express");
 const controller = require("./notifications.controller");
 const { upload } = require("../../lib/spaces");

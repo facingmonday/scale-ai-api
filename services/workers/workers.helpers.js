@@ -270,6 +270,7 @@ function initializeQueueWorkers() {
     // PDF generation disabled for now
     // const { initPdfWorker } = require("../../lib/queues/pdf-worker");
     const { initEmailWorker } = require("../../lib/queues/email-worker");
+    const { initSimulationWorker } = require("../../lib/queues/simulation-worker");
     // SMS worker disabled - not sending SMS messages
     // const { initSmsWorker } = require("../../lib/queues/sms-worker");
     // Push notifications disabled - not using push notifications
@@ -277,6 +278,7 @@ function initializeQueueWorkers() {
 
     // initPdfWorker();
     initEmailWorker();
+    initSimulationWorker();
     // initSmsWorker();
     // initPushWorker();
 
@@ -294,38 +296,80 @@ function setupGracefulShutdown(server, scheduledJobs) {
   const gracefulShutdown = async (signal) => {
     console.log(`\n🛑 Received ${signal}. Starting graceful shutdown...`);
 
-    // Stop all active jobs
-    stopAllScheduledJobs(scheduledJobs);
-    const stoppedCount = ServiceRunner.stopAllJobs();
-    console.log(`🛑 Stopped ${stoppedCount} active jobs`);
+    let shutdownTimeout;
+    const forceExit = () => {
+      console.error(
+        "Could not close connections in time, forcefully shutting down"
+      );
+      process.exit(1);
+    };
 
-    // Close HTTP server
-    server.close(() => {
-      console.log("✅ HTTP server closed");
-    });
+    try {
+      // Stop all active jobs
+      stopAllScheduledJobs(scheduledJobs);
+      const stoppedCount = ServiceRunner.stopAllJobs();
+      console.log(`🛑 Stopped ${stoppedCount} active jobs`);
 
-    // Close MongoDB connection
-    await require("mongoose").connection.close();
-    console.log("✅ MongoDB connection closed");
+      // Close queues
+      const { closeQueues } = require("../../lib/queues");
+      await closeQueues(5000);
 
-    console.log("✅ Graceful shutdown completed");
-    process.exit(0);
+      // Close HTTP server
+      await new Promise((resolve, reject) => {
+        shutdownTimeout = setTimeout(() => {
+          reject(new Error("Server close timeout"));
+        }, 8000);
+
+        server.close((err) => {
+          clearTimeout(shutdownTimeout);
+          if (err) {
+            reject(err);
+          } else {
+            console.log("✅ HTTP server closed");
+            resolve();
+          }
+        });
+      });
+
+      // Close MongoDB connection
+      await require("mongoose").connection.close();
+      console.log("✅ MongoDB connection closed");
+
+      console.log("✅ Graceful shutdown completed");
+      process.exit(0);
+    } catch (error) {
+      console.error("Error during shutdown:", error.message);
+      clearTimeout(shutdownTimeout);
+      forceExit();
+    }
   };
 
   // Handle different shutdown signals
-  process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-  process.on("SIGINT", () => gracefulShutdown("SIGINT"));
-  process.on("SIGUSR2", () => gracefulShutdown("SIGUSR2")); // nodemon restart signal
+  let isShuttingDown = false;
+  const shutdownHandler = (signal) => {
+    if (isShuttingDown) {
+      console.log("Shutdown already in progress, forcing exit...");
+      process.exit(1);
+    }
+    isShuttingDown = true;
+    gracefulShutdown(signal).catch(() => {
+      process.exit(1);
+    });
+  };
+
+  process.on("SIGTERM", () => shutdownHandler("SIGTERM"));
+  process.on("SIGINT", () => shutdownHandler("SIGINT"));
+  process.on("SIGUSR2", () => shutdownHandler("SIGUSR2")); // nodemon restart signal
 
   // Handle uncaught exceptions
   process.on("uncaughtException", (error) => {
     console.error("💥 Uncaught Exception:", error);
-    gracefulShutdown("UNCAUGHT_EXCEPTION");
+    shutdownHandler("UNCAUGHT_EXCEPTION");
   });
 
   process.on("unhandledRejection", (reason, promise) => {
     console.error("💥 Unhandled Rejection at:", promise, "reason:", reason);
-    gracefulShutdown("UNHANDLED_REJECTION");
+    shutdownHandler("UNHANDLED_REJECTION");
   });
 }
 

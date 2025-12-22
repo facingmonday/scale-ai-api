@@ -4,7 +4,7 @@ const StoreVariableValue = require("./storeVariableValue.model");
 const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
 
 const storeSchema = new mongoose.Schema({
-  classId: {
+  classroomId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Classroom",
     required: true,
@@ -18,21 +18,13 @@ const storeSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  storeType: {
+  storeDescription: {
     type: String,
-    enum: ["indoor", "outdoor", "food_truck"],
     required: true,
   },
-  dailyCapacity: {
-    type: Number,
+  storeLocation: {
+    type: String,
     required: true,
-    min: 1,
-  },
-  deliveryRatio: {
-    type: Number,
-    required: true,
-    min: 0,
-    max: 1,
   },
   startingBalance: {
     type: Number,
@@ -44,34 +36,35 @@ const storeSchema = new mongoose.Schema({
 storeSchema.plugin(variablePopulationPlugin, {
   variableValueModel: StoreVariableValue,
   foreignKeyField: "storeId",
+  appliesTo: "store",
 });
 
 // Compound indexes for performance
-storeSchema.index({ classId: 1, userId: 1 }, { unique: true });
-storeSchema.index({ classId: 1 });
+storeSchema.index({ classroomId: 1, userId: 1 }, { unique: true });
+storeSchema.index({ classroomId: 1 });
 storeSchema.index({ userId: 1 });
-storeSchema.index({ organization: 1, classId: 1 });
+storeSchema.index({ organization: 1, classroomId: 1 });
 
 // Static methods - Shared utilities for store operations
 
 /**
  * Create a store with variables
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} userId - Member ID
- * @param {Object} storeData - Store data (shopName, storeType, dailyCapacity, deliveryRatio, startingBalance, variables)
+ * @param {Object} storeData - Store data (shopName, storeDescription, storeLocation, startingBalance, variables)
  * @param {string} organizationId - Organization ID
  * @param {string} clerkUserId - Clerk user ID for createdBy/updatedBy
  * @returns {Promise<Object>} Created store with populated variables
  */
 storeSchema.statics.createStore = async function (
-  classId,
+  classroomId,
   userId,
   storeData,
   organizationId,
   clerkUserId
 ) {
   // Check if store already exists
-  const existing = await this.findOne({ classId, userId });
+  const existing = await this.findOne({ classroomId, userId });
   if (existing) {
     throw new Error("Store already exists for this user in this class");
   }
@@ -81,12 +74,11 @@ storeSchema.statics.createStore = async function (
 
   // Create store document
   const store = new this({
-    classId,
+    classroomId,
     userId,
     shopName: storeFields.shopName,
-    storeType: storeFields.storeType,
-    dailyCapacity: storeFields.dailyCapacity,
-    deliveryRatio: storeFields.deliveryRatio,
+    storeDescription: storeFields.storeDescription,
+    storeLocation: storeFields.storeLocation,
     startingBalance: storeFields.startingBalance || 0,
     organization: organizationId,
     createdBy: clerkUserId,
@@ -113,17 +105,17 @@ storeSchema.statics.createStore = async function (
   }
 
   // Return store with variables populated
-  return await this.getStoreByUser(classId, userId);
+  return await this.getStoreByUser(classroomId, userId);
 };
 
 /**
  * Get store by user with variables
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} userId - Member ID
  * @returns {Promise<Object|null>} Store with variables or null
  */
-storeSchema.statics.getStoreByUser = async function (classId, userId) {
-  const store = await this.findOne({ classId, userId });
+storeSchema.statics.getStoreByUser = async function (classroomId, userId) {
+  const store = await this.findOne({ classroomId, userId });
 
   if (!store) {
     return null;
@@ -135,23 +127,26 @@ storeSchema.statics.getStoreByUser = async function (classId, userId) {
 
 /**
  * Check if store exists for user in class
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} userId - Member ID
  * @returns {Promise<boolean>} True if store exists
  */
-storeSchema.statics.storeExists = async function (classId, userId) {
-  const count = await this.countDocuments({ classId, userId });
+storeSchema.statics.storeExists = async function (classroomId, userId) {
+  const count = await this.countDocuments({ classroomId, userId });
   return count > 0;
 };
 
 /**
  * Get store data formatted for AI simulation
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} userId - Member ID
  * @returns {Promise<Object|null>} Normalized store data for AI or null
  */
-storeSchema.statics.getStoreForSimulation = async function (classId, userId) {
-  const store = await this.getStoreByUser(classId, userId);
+storeSchema.statics.getStoreForSimulation = async function (
+  classroomId,
+  userId
+) {
+  const store = await this.getStoreByUser(classroomId, userId);
 
   if (!store) {
     return null;
@@ -159,9 +154,8 @@ storeSchema.statics.getStoreForSimulation = async function (classId, userId) {
 
   // Return normalized object for AI simulation
   return {
-    storeType: store.storeType,
-    dailyCapacity: store.dailyCapacity,
-    deliveryRatio: store.deliveryRatio,
+    storeDescription: store.storeDescription,
+    storeLocation: store.storeLocation,
     startingBalance: store.startingBalance,
     variables: store.variables || {},
   };
@@ -169,17 +163,100 @@ storeSchema.statics.getStoreForSimulation = async function (classId, userId) {
 
 /**
  * Get all stores for a class
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @returns {Promise<Array>} Array of stores with variables
  */
-storeSchema.statics.getStoresByClass = async function (classId) {
-  const stores = await this.find({ classId });
+storeSchema.statics.getStoresByClass = async function (classroomId) {
+  const stores = await this.find({ classroomId });
 
   // Use plugin's efficient batch population
   await this.populateVariablesForMany(stores);
 
   // Variables are automatically included via plugin
   return stores.map((store) => store.toObject());
+};
+
+/**
+ * Update a store with variables
+ * @param {string} classroomId - Class ID
+ * @param {string} userId - Member ID
+ * @param {Object} storeData - Store data (shopName, storeDescription, storeLocation, startingBalance, variables)
+ * @param {string} organizationId - Organization ID
+ * @param {string} clerkUserId - Clerk user ID for updatedBy
+ * @returns {Promise<Object>} Updated store with populated variables
+ */
+storeSchema.statics.updateStore = async function (
+  classroomId,
+  userId,
+  storeData,
+  organizationId,
+  clerkUserId
+) {
+  // Extract variables from storeData
+  const { variables, ...storeFields } = storeData;
+
+  // Find existing store
+  let store = await this.findOne({ classroomId, userId });
+
+  if (!store) {
+    // Create new store if it doesn't exist
+    store = new this({
+      classroomId,
+      userId,
+      shopName: storeFields.shopName,
+      storeDescription: storeFields.storeDescription,
+      storeLocation: storeFields.storeLocation,
+      startingBalance: storeFields.startingBalance || 0,
+      organization: organizationId,
+      createdBy: clerkUserId,
+      updatedBy: clerkUserId,
+    });
+  } else {
+    // Update existing store fields
+    if (storeFields.shopName !== undefined) {
+      store.shopName = storeFields.shopName;
+    }
+    if (storeFields.storeDescription !== undefined) {
+      store.storeDescription = storeFields.storeDescription;
+    }
+    if (storeFields.storeLocation !== undefined) {
+      store.storeLocation = storeFields.storeLocation;
+    }
+    if (storeFields.startingBalance !== undefined) {
+      store.startingBalance = storeFields.startingBalance;
+    }
+    store.updatedBy = clerkUserId;
+  }
+
+  await store.save();
+
+  // Update or create variable values if provided
+  if (variables && typeof variables === "object") {
+    const variableEntries = Object.entries(variables);
+    for (const [key, value] of variableEntries) {
+      await StoreVariableValue.setVariable(
+        store._id,
+        key,
+        value,
+        organizationId,
+        clerkUserId
+      );
+    }
+
+    // Delete variables that are not in the new set
+    const existingVariables = await StoreVariableValue.find({
+      storeId: store._id,
+    });
+    const newKeys = new Set(Object.keys(variables));
+    for (const existingVar of existingVariables) {
+      if (!newKeys.has(existingVar.variableKey)) {
+        await StoreVariableValue.deleteOne({ _id: existingVar._id });
+      }
+    }
+  }
+
+  // Return store with variables populated
+  return await this.getStoreByUser(classroomId, userId);
 };
 
 // Instance methods
@@ -195,11 +272,11 @@ storeSchema.methods.getVariables = async function () {
 };
 
 /**
- * Check if store can be modified (immutable in MVP)
- * @returns {boolean} Always false in MVP
+ * Check if store can be modified
+ * @returns {boolean} Always true (stores can now be updated)
  */
 storeSchema.methods.canModify = function () {
-  return false; // Store is immutable after creation in MVP
+  return true;
 };
 
 const Store = mongoose.model("Store", storeSchema);

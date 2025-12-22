@@ -5,7 +5,7 @@ const ScenarioVariableValue = require("./scenarioVariableValue.model");
 const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
 
 const scenarioSchema = new mongoose.Schema({
-  classId: {
+  classroomId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Classroom",
     required: true,
@@ -32,23 +32,24 @@ const scenarioSchema = new mongoose.Schema({
 scenarioSchema.plugin(variablePopulationPlugin, {
   variableValueModel: ScenarioVariableValue,
   foreignKeyField: "scenarioId",
+  appliesTo: "scenario",
 });
 
 // Compound indexes for performance
-scenarioSchema.index({ classId: 1, week: 1 }, { unique: true });
-scenarioSchema.index({ classId: 1, isPublished: 1, isClosed: 1 });
-scenarioSchema.index({ classId: 1, createdDate: -1 });
-scenarioSchema.index({ organization: 1, classId: 1 });
+scenarioSchema.index({ classroomId: 1, week: 1 }, { unique: true });
+scenarioSchema.index({ classroomId: 1, isPublished: 1, isClosed: 1 });
+scenarioSchema.index({ classroomId: 1, createdDate: -1 });
+scenarioSchema.index({ organization: 1, classroomId: 1 });
 
 // Static methods - Shared utilities for scenario operations
 
 /**
  * Get next week number for a class
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @returns {Promise<number>} Next week number
  */
-scenarioSchema.statics.getNextWeekNumber = async function (classId) {
-  const lastScenario = await this.findOne({ classId })
+scenarioSchema.statics.getNextWeekNumber = async function (classroomId) {
+  const lastScenario = await this.findOne({ classroomId })
     .sort({ week: -1 })
     .limit(1);
 
@@ -61,16 +62,16 @@ scenarioSchema.statics.getNextWeekNumber = async function (classId) {
 
 /**
  * Validate scenario variables against VariableDefinition
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {Object} variables - Variables object to validate
  * @returns {Promise<Object>} Validation result
  */
 scenarioSchema.statics.validateScenarioVariables = async function (
-  classId,
+  classroomId,
   variables
 ) {
   return await VariableDefinition.validateValues(
-    classId,
+    classroomId,
     "scenario",
     variables
   );
@@ -78,27 +79,30 @@ scenarioSchema.statics.validateScenarioVariables = async function (
 
 /**
  * Create a scenario
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {Object} scenarioData - Scenario data (title, description, variables)
  * @param {string} organizationId - Organization ID
  * @param {string} clerkUserId - Clerk user ID for createdBy/updatedBy
  * @returns {Promise<Object>} Created scenario with variables populated
  */
 scenarioSchema.statics.createScenario = async function (
-  classId,
+  classroomId,
   scenarioData,
   organizationId,
   clerkUserId
 ) {
   // Get next week number
-  const week = await this.getNextWeekNumber(classId);
+  const week = await this.getNextWeekNumber(classroomId);
 
   // Extract variables from scenarioData
   const { variables, ...scenarioFields } = scenarioData;
 
   // Validate variables if provided
   if (variables && Object.keys(variables).length > 0) {
-    const validation = await this.validateScenarioVariables(classId, variables);
+    const validation = await this.validateScenarioVariables(
+      classroomId,
+      variables
+    );
 
     if (!validation.isValid) {
       throw new Error(
@@ -108,14 +112,14 @@ scenarioSchema.statics.createScenario = async function (
 
     // Apply defaults
     const variablesWithDefaults = await VariableDefinition.applyDefaults(
-      classId,
+      classroomId,
       "scenario",
       variables
     );
 
     // Create scenario document
     const scenario = new this({
-      classId,
+      classroomId,
       week,
       title: scenarioFields.title,
       description: scenarioFields.description || "",
@@ -150,7 +154,7 @@ scenarioSchema.statics.createScenario = async function (
 
   // No variables provided
   const scenario = new this({
-    classId,
+    classroomId,
     week,
     title: scenarioFields.title,
     description: scenarioFields.description || "",
@@ -168,12 +172,12 @@ scenarioSchema.statics.createScenario = async function (
 
 /**
  * Get active scenario (published and not closed)
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @returns {Promise<Object|null>} Active scenario with variables or null
  */
-scenarioSchema.statics.getActiveScenario = async function (classId) {
+scenarioSchema.statics.getActiveScenario = async function (classroomId) {
   const scenario = await this.findOne({
-    classId,
+    classroomId,
     isPublished: true,
     isClosed: false,
   }).sort({ week: -1 });
@@ -188,15 +192,15 @@ scenarioSchema.statics.getActiveScenario = async function (classId) {
 
 /**
  * Get all scenarios for a class
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {Object} options - Options (includeClosed)
  * @returns {Promise<Array>} Array of scenarios with variables
  */
 scenarioSchema.statics.getScenariosByClass = async function (
-  classId,
+  classroomId,
   options = {}
 ) {
-  const query = { classId };
+  const query = { classroomId };
   if (!options.includeClosed) {
     query.isClosed = false;
   }
@@ -230,7 +234,10 @@ scenarioSchema.statics.getScenarioById = async function (
     return null;
   }
 
-  // Variables are automatically included via plugin's post-init hook
+  // Explicitly load variables to ensure they're cached (post-init hook is async and may not have completed)
+  await scenario._loadVariables();
+
+  // Variables are automatically included via plugin's toObject() override
   return scenario.toObject();
 };
 
@@ -260,7 +267,7 @@ scenarioSchema.methods.updateVariables = async function (
 ) {
   // Validate variables
   const validation = await this.constructor.validateScenarioVariables(
-    this.classId,
+    this.classroomId,
     variables
   );
 
@@ -272,7 +279,7 @@ scenarioSchema.methods.updateVariables = async function (
 
   // Apply defaults
   const variablesWithDefaults = await VariableDefinition.applyDefaults(
-    this.classId,
+    this.classroomId,
     "scenario",
     variables
   );
@@ -313,12 +320,26 @@ scenarioSchema.methods.updateVariables = async function (
  */
 scenarioSchema.methods.publish = async function (clerkUserId) {
   // Check if there's already an active published scenario
-  const activeScenario = await this.constructor.getActiveScenario(this.classId);
+  const activeScenario = await this.constructor.getActiveScenario(
+    this.classroomId
+  );
   if (activeScenario && activeScenario._id.toString() !== this._id.toString()) {
     throw new Error("Another scenario is already published and active");
   }
 
   this.isPublished = true;
+  this.updatedBy = clerkUserId;
+  await this.save();
+  return this;
+};
+
+/**
+ * Unpublish this scenario
+ * @param {string} clerkUserId - Clerk user ID for updatedBy
+ * @returns {Promise<Object>} Updated scenario
+ */
+scenarioSchema.methods.unpublish = async function (clerkUserId) {
+  this.isPublished = false;
   this.updatedBy = clerkUserId;
   await this.save();
   return this;
@@ -331,6 +352,18 @@ scenarioSchema.methods.publish = async function (clerkUserId) {
  */
 scenarioSchema.methods.close = async function (clerkUserId) {
   this.isClosed = true;
+  this.updatedBy = clerkUserId;
+  await this.save();
+  return this;
+};
+
+/**
+ * Open (re-open) this scenario
+ * @param {string} clerkUserId - Clerk user ID for updatedBy
+ * @returns {Promise<Object>} Updated scenario
+ */
+scenarioSchema.methods.open = async function (clerkUserId) {
+  this.isClosed = false;
   this.updatedBy = clerkUserId;
   await this.save();
   return this;
@@ -356,7 +389,9 @@ scenarioSchema.methods.canPublish = async function () {
   }
 
   // Check if another scenario is active
-  const activeScenario = await this.constructor.getActiveScenario(this.classId);
+  const activeScenario = await this.constructor.getActiveScenario(
+    this.classroomId
+  );
   return (
     !activeScenario || activeScenario._id.toString() === this._id.toString()
   );

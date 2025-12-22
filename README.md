@@ -136,28 +136,32 @@ scale-ai-api/
 
 All routes are prefixed with `/v1` when accessed through the API service.
 
-### Authentication Routes
+### Authentication Routes (`/v1/auth`)
 
 #### `GET /v1/auth/me`
 
-- **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Get authenticated admin user info
+- **Auth**: `requireAuth({ organizationOptional: true })`
+- **Description**: Get authenticated user info (works with or without organization context)
+
+#### `POST /v1/auth/active-classroom`
+
+- **Auth**: `requireAuth()`
+- **Description**: Set active classroom for the current session
 
 ### User Profile Routes (`/v1/me`)
 
+All routes require `requireMemberAuth()`.
+
 #### `GET /v1/me`
 
-- **Auth**: `requireMemberAuth()`
 - **Description**: Get current user profile
 
 #### `PATCH /v1/me`
 
-- **Auth**: `requireMemberAuth()`
 - **Description**: Update current user profile
 
 #### `POST /v1/me/organizations`
 
-- **Auth**: `requireMemberAuth()`
 - **Description**: Create organization for current user
 
 #### `PUT /v1/me/organizations/:id`
@@ -175,15 +179,15 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 
 #### `GET /v1/members`
 
-- **Description**: Get all members
+- **Description**: Get all members in the organization
 
 #### `GET /v1/members/search`
 
-- **Description**: Search members
+- **Description**: Search members by name, email, or other criteria
 
 #### `GET /v1/members/stats`
 
-- **Description**: Get member statistics
+- **Description**: Get member statistics for the organization
 
 #### `GET /v1/members/:id`
 
@@ -191,15 +195,15 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 
 #### `PUT /v1/members/:id`
 
-- **Description**: Update member
+- **Description**: Update member information
 
 #### `DELETE /v1/members/:id`
 
-- **Description**: Remove member
+- **Description**: Remove member from organization
 
 #### `PUT /v1/members/:id/organization-membership`
 
-- **Description**: Update organization membership
+- **Description**: Update organization membership (role, status, etc.)
 
 #### `POST /v1/members/add-existing`
 
@@ -211,10 +215,20 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 
 ### Organizations Routes (`/v1/organizations`)
 
+#### `GET /v1/organizations`
+
+- **Auth**: `requireMemberAuth()`
+- **Description**: Get all organizations for the authenticated user
+
 #### `POST /v1/organizations`
 
 - **Auth**: `requireMemberAuth()`
 - **Description**: Create a new organization
+
+#### `POST /v1/organizations/:organizationId/join`
+
+- **Auth**: `requireMemberAuth()`
+- **Description**: Join an organization
 
 ### Notifications Routes (`/v1/notifications`)
 
@@ -222,27 +236,27 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 
 #### `GET /v1/notifications`
 
-- **Description**: Get all notifications
+- **Description**: Get all notifications for the organization
 
 #### `GET /v1/notifications/web`
 
-- **Description**: Get web notifications
+- **Description**: Get web notifications (filtered for web display)
 
 #### `GET /v1/notifications/unread-count`
 
-- **Description**: Get unread notification count
+- **Description**: Get count of unread notifications
 
 #### `POST /v1/notifications`
 
-- **Description**: Create notification
+- **Description**: Create a new notification
 
 #### `PUT /v1/notifications/status`
 
-- **Description**: Update all notifications status
+- **Description**: Update status for all notifications (bulk update)
 
 #### `PUT /v1/notifications/:id`
 
-- **Description**: Update notification status
+- **Description**: Update status of a single notification (read, deleted, etc.)
 
 ### OpenAI Routes (`/v1/openai`)
 
@@ -250,19 +264,21 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 
 #### `POST /v1/openai/completion`
 
-- **Description**: Get AI text completion
+- **Description**: Get AI text completion using OpenAI API
 
 #### `POST /v1/openai/generate`
 
-- **Description**: Generate image
+- **Description**: Generate image using OpenAI DALL-E
 
 #### `POST /v1/openai/analyze-image`
 
-- **Description**: Analyze image (file upload)
+- **Description**: Analyze image using OpenAI Vision API (file upload required)
+- **Body**: Multipart form data with `file` field
 
 #### `POST /v1/openai/transcribe-audio`
 
-- **Description**: Transcribe audio (file upload)
+- **Description**: Transcribe audio using OpenAI Whisper API (file upload required)
+- **Body**: Multipart form data with `file` field
 
 ### Utils Routes (`/v1/utils`)
 
@@ -270,58 +286,76 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 
 #### `GET /v1/utils/transcribe-video`
 
-- **Description**: Transcribe video
+- **Description**: Transcribe video (extracts audio and transcribes)
 
 #### `POST /v1/utils/event-objects-from-json`
 
-- **Description**: Create event objects from JSON
+- **Description**: Create event objects from JSON data
 
 #### `POST /v1/utils/event-objects-from-text`
 
-- **Description**: Create event objects from text
+- **Description**: Create event objects from text input
 
 #### `POST /v1/utils/event-objects-from-image`
 
-- **Description**: Create event objects from image (file upload)
+- **Description**: Create event objects from image analysis (file upload required)
+- **Body**: Multipart form data with `file` field
 
 ### Classroom Routes (`/v1/admin/class`)
 
-All routes require `requireAuth()` and `checkRole('org:admin')`.
-
 #### `POST /v1/admin/class`
 
+- **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Create a new classroom
 - **Body**: `{ name, description }`
 
-#### `GET /v1/admin/class/:classId/dashboard`
+#### `GET /v1/admin/class`
 
-- **Description**: Get class dashboard with stats
+- **Auth**: `requireAuth()`
+- **Description**: Get all classrooms for the organization
 
-#### `POST /v1/admin/class/:classId/invite`
+#### `GET /v1/admin/class/:classroomId/dashboard`
 
+- **Auth**: `requireAuth()`, `checkRole('org:admin')`
+- **Description**: Get class dashboard with statistics and overview
+
+#### `GET /v1/admin/class/student/:classroomId/dashboard`
+
+- **Auth**: `requireAuth()`, `checkRole('org:admin')`
+- **Description**: Get student dashboard view for a classroom
+
+#### `POST /v1/admin/class/:classroomId/invite`
+
+- **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Invite student to class via email
 - **Body**: `{ email }`
 
-### Enrollment Routes
+### Enrollment Routes (`/v1/enrollment`)
 
 #### Student Routes
 
-##### `POST /v1/class/:classId/join`
+##### `POST /v1/enrollment/class/:classroomId/join`
 
 - **Auth**: `requireMemberAuth()`
-- **Description**: Student joins a class
+- **Description**: Student joins a class (creates enrollment)
+
+##### `GET /v1/enrollment/my-classes`
+
+- **Auth**: `requireAuth()`
+- **Description**: Get all classes the authenticated user is enrolled in
 
 #### Admin Routes
 
-##### `GET /v1/admin/class/:classId/roster`
+##### `GET /v1/enrollment/admin/class/:classroomId/roster`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Get class roster (all enrolled students)
+- **Description**: Get class roster (all enrolled students) with pagination
+- **Query Params**: `page`, `pageSize`
 
-##### `DELETE /v1/admin/class/:classId/student/:userId`
+##### `DELETE /v1/enrollment/admin/class/:classroomId/student/:userId`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Remove student from class (soft delete)
+- **Description**: Remove student from class (soft delete enrollment)
 
 ### Store Routes
 
@@ -331,16 +365,23 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 
 - **Auth**: `requireMemberAuth()`
 - **Description**: Create store for authenticated student
-- **Body**: `{ classId, shopName, storeType, dailyCapacity, deliveryRatio, startingBalance?, variables? }`
+- **Body**: `{ classroomId, shopName, storeType, dailyCapacity, deliveryRatio, startingBalance?, variables? }`
 
-##### `GET /v1/student/store?classId=...`
+##### `PUT /v1/student/store`
+
+- **Auth**: `requireMemberAuth()`
+- **Description**: Update student's store
+- **Query Params**: `classroomId` (required)
+
+##### `GET /v1/student/store`
 
 - **Auth**: `requireMemberAuth()`
 - **Description**: Get student's store for a class
+- **Query Params**: `classroomId` (required)
 
 #### Admin Routes
 
-##### `GET /v1/admin/class/:classId/store/:userId`
+##### `GET /v1/admin/class/:classroomId/store/:userId`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Get student's store (admin view)
@@ -351,97 +392,208 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Create variable definition
-- **Body**: `{ classId, key, label, description?, appliesTo, dataType, inputType?, options?, defaultValue?, min?, max?, required?, affectsCalculation? }`
+- **Body**: `{ classroomId, key, label, description?, appliesTo, dataType, inputType?, options?, defaultValue?, min?, max?, required?, affectsCalculation? }`
 
-#### `PUT /v1/admin/variables/:key?classId=...`
+#### `PUT /v1/admin/variables/:key`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Update variable definition
+- **Query Params**: `classroomId` (required)
 
-#### `GET /v1/admin/variables?classId=...&appliesTo=...`
+#### `GET /v1/admin/variables`
 
 - **Auth**: `requireAuth()` (admin or enrolled user)
-- **Description**: Get variable definitions (filtered by appliesTo if provided)
+- **Description**: Get variable definitions
+- **Query Params**: `classroomId`, `appliesTo` (optional filters)
 
-#### `DELETE /v1/admin/variables/:key?classId=...`
+#### `DELETE /v1/admin/variables/:key`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Delete variable definition (soft delete)
+- **Query Params**: `classroomId` (required)
 
-### Scenario Routes
+### Scenario Routes (`/v1/admin/scenarios` and `/v1/student/scenarios`)
 
 #### Admin Routes
 
-##### `POST /v1/admin/scenario`
+##### `POST /v1/admin/scenarios`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Create a new scenario
-- **Body**: `{ classId, title, description?, variables? }`
+- **Body**: `{ classroomId, title, description?, variables? }`
 - **Note**: Automatically queues email notifications to all enrolled students
 
-##### `PUT /v1/admin/scenario/:scenarioId`
+##### `GET /v1/admin/scenarios`
+
+- **Auth**: `requireAuth()`, `checkRole('org:admin')`
+- **Description**: Get all scenarios for the organization
+
+##### `GET /v1/admin/scenarios/current`
+
+- **Auth**: `requireAuth()`, `checkRole('org:admin')`
+- **Description**: Get current active scenario for admin view
+- **Query Params**: `classroomId` (required)
+
+##### `GET /v1/admin/scenarios/:id`
+
+- **Auth**: `requireAuth()`, `checkRole('org:admin')`
+- **Description**: Get scenario by ID
+
+##### `PUT /v1/admin/scenarios/:scenarioId`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Update scenario (before publish/close)
 
-##### `POST /v1/admin/scenario/:scenarioId/publish`
+##### `POST /v1/admin/scenarios/:scenarioId/publish`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Publish scenario to students
+- **Description**: Publish scenario to students (makes it visible and active)
 
-##### `POST /v1/admin/scenario/:scenarioId/outcome`
-
-- **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Set global scenario outcome
-- **Body**: `{ actualWeather?, demandShift?, notes?, randomEventsEnabled? }`
-
-##### `POST /v1/admin/scenario/:scenarioId/preview`
+##### `POST /v1/admin/scenarios/:scenarioId/unpublish`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Preview AI outcomes (does not write ledger entries)
-- **Status**: Placeholder - requires AI Service
+- **Description**: Unpublish scenario (hide from students)
 
-##### `POST /v1/admin/scenario/:scenarioId/approve`
-
-- **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Approve scenario and run AI simulation
-- **Status**: Placeholder - requires AI Service and Ledger Service
-
-##### `POST /v1/admin/scenario/:scenarioId/rerun`
+##### `POST /v1/admin/scenarios/:scenarioId/preview`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Rerun scenario (delete ledger entries and recalculate)
-- **Status**: Placeholder - requires AI Service and Ledger Service
+- **Description**: Preview AI outcomes for a scenario (does not write ledger entries)
+
+##### `POST /v1/admin/scenarios/:scenarioId/rerun`
+
+- **Auth**: `requireAuth()`, `checkRole('org:admin')`
+- **Description**: Rerun scenario (delete existing ledger entries and recalculate)
 
 #### Student Routes
 
-##### `GET /v1/student/scenario/current?classId=...`
+##### `GET /v1/student/scenarios`
+
+- **Auth**: `requireMemberAuth()`
+- **Description**: Get all scenarios for a classroom
+- **Query Params**: `classroomId` (required)
+
+##### `GET /v1/student/scenarios/current`
 
 - **Auth**: `requireMemberAuth()`
 - **Description**: Get current active scenario for student
+- **Query Params**: `classroomId` (required)
 
-### Submission Routes
+##### `GET /v1/student/scenarios/:id`
+
+- **Auth**: `requireMemberAuth()`
+- **Description**: Get scenario by ID (student view)
+
+### ScenarioOutcome Routes (`/v1/admin/scenarioOutcomes` and `/v1/student/scenarioOutcomes`)
+
+#### Admin Routes
+
+##### `POST /v1/admin/scenarioOutcomes/:scenarioId/outcome`
+
+- **Auth**: `requireAuth()`, `checkRole('org:admin')`
+- **Description**: Set global scenario outcome (actual weather, demand shift, etc.)
+- **Body**: `{ variables? }` (dynamic based on variable definitions)
+
+##### `GET /v1/admin/scenarioOutcomes/:scenarioId/outcome`
+
+- **Auth**: `requireAuth()`, `checkRole('org:admin')`
+- **Description**: Get scenario outcome for a scenario
+
+##### `DELETE /v1/admin/scenarioOutcomes/:scenarioId/outcome`
+
+- **Auth**: `requireAuth()`, `checkRole('org:admin')`
+- **Description**: Delete scenario outcome
+
+#### Student Routes
+
+##### `GET /v1/student/scenarioOutcomes/:scenarioId/outcome`
+
+- **Auth**: `requireAuth()`, `checkRole('org:member')`
+- **Description**: Get scenario outcome (student view, after results are published)
+
+### Submission Routes (`/v1/admin/submissions` and `/v1/student/submission`)
 
 #### Student Routes
 
 ##### `POST /v1/student/submission`
 
 - **Auth**: `requireMemberAuth()`
-- **Description**: Submit weekly decisions
-- **Body**: `{ scenarioId, variables }`
+- **Description**: Submit weekly decisions for a scenario
+- **Body**: `{ scenarioId, variables }` (variables are dynamic based on variable definitions)
 - **Note**: Validates variables, enforces submission order
 
-##### `GET /v1/student/submission/status?scenarioId=...`
+##### `PUT /v1/student/submission/:submissionId`
+
+- **Auth**: `requireMemberAuth()`
+- **Description**: Update existing submission (only before results are published)
+
+##### `GET /v1/student/submission/status`
 
 - **Auth**: `requireMemberAuth()`
 - **Description**: Get submission status for a scenario
+- **Query Params**: `scenarioId` (required)
+
+##### `GET /v1/student/submissions`
+
+- **Auth**: `requireMemberAuth()`
+- **Description**: Get all submissions for the authenticated student
+- **Query Params**: `classroomId`, `scenarioId` (optional filters)
 
 #### Admin Routes
 
-##### `GET /v1/admin/scenario/:scenarioId/submissions`
+##### `GET /v1/admin/submissions`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Get all submissions for a scenario (with missing submissions list)
+- **Description**: Get all submissions (with filters)
+
+##### `GET /v1/admin/submissions/:submissionId`
+
+- **Auth**: `requireAuth()`, `checkRole('org:admin')`
+- **Description**: Get submission by ID
+
+##### `GET /v1/admin/scenarios/:scenarioId/submissions`
+
+- **Auth**: `requireAuth()`, `checkRole('org:admin')`
+- **Description**: Get all submissions for a scenario (includes list of students who haven't submitted)
+
+### Ledger Routes (`/v1/admin/ledger`)
+
+All routes require `requireAuth()` and `checkRole('org:admin')`.
+
+#### `GET /v1/admin/ledger/:classroomId/user/:userId`
+
+- **Description**: Get ledger history for a specific user in a classroom
+
+#### `GET /v1/admin/ledger/scenario/:scenarioId`
+
+- **Description**: Get all ledger entries for a scenario
+
+#### `GET /v1/admin/ledger/scenario/:scenarioId/user/:userId`
+
+- **Description**: Get ledger entry for a specific scenario and user
+
+#### `PATCH /v1/admin/ledger/:ledgerId/override`
+
+- **Description**: Override a ledger entry (manually adjust values)
+
+### Job Routes (`/v1/admin/job`)
+
+All routes require `requireAuth()` and `checkRole('org:admin')`.
+
+#### `GET /v1/admin/job/scenario/:scenarioId`
+
+- **Description**: Get all jobs for a scenario (simulation processing jobs)
+
+#### `GET /v1/admin/job/:jobId`
+
+- **Description**: Get job by ID with status and details
+
+#### `POST /v1/admin/job/:jobId/retry`
+
+- **Description**: Retry a failed job
+
+#### `POST /v1/admin/job/process-pending`
+
+- **Description**: Manually trigger processing of pending jobs
 
 ### Webhook Routes (`/v1/webhooks`)
 
@@ -451,25 +603,6 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 
 - **Auth**: Webhook signature verification
 - **Description**: Handles Clerk webhook events (user.created, user.updated, user.deleted)
-
-#### Stripe Webhooks
-
-##### `POST /v1/webhooks/stripe`
-
-- **Auth**: Webhook signature verification
-- **Description**: Handles Stripe webhook events
-
-#### Telnyx Webhooks
-
-##### `POST /v1/webhooks/telnyx`
-
-- **Auth**: Webhook signature verification
-- **Description**: Handles Telnyx SMS webhook events
-
-##### `GET /v1/webhooks/telnyx/stats/:eventId`
-
-- **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Get SMS delivery stats
 
 ### Health Check Routes
 
@@ -673,6 +806,7 @@ The application uses **Bull** (Redis-based queue) for background job processing.
 
 ### Queue Types
 
+- **Simulation** - AI-driven simulation job processing (concurrency: 1)
 - **Email Sending** - Email notifications
 - **PDF Generation** - PDF document generation
 - **SMS Sending** - SMS notifications
@@ -681,6 +815,184 @@ The application uses **Bull** (Redis-based queue) for background job processing.
 ### Queue Monitoring
 
 Bull Board is available at `/admin/queues` on the workers service (requires basic auth in production).
+
+## Submission Outcome & Simulation Processing
+
+This section explains how student submissions are processed and how AI-driven simulation jobs are triggered and executed.
+
+### Overview
+
+The simulation processing flow consists of three main stages:
+
+1. **Student Submissions** - Students submit their weekly decisions
+2. **Scenario Outcome** - Instructor sets global outcome and triggers processing
+3. **Job Processing** - Background jobs calculate results using AI
+
+### Stage 1: Student Submissions
+
+Students submit their weekly decisions for a published scenario via `POST /v1/student/submission`. Each submission includes:
+
+- **Scenario ID** - The scenario being responded to
+- **Variables** - Dynamic decision variables (e.g., `plannedProduction`, `staffingLevel`, `marketingSpend`)
+- **Metadata** - Submission timestamp, user ID, classroom ID
+
+**Submission States:**
+
+- `pending` - Submitted, awaiting processing
+- `processing` - Currently being processed by a job
+- `completed` - Successfully processed, ledger entry created
+- `failed` - Processing failed (can be retried)
+
+**Validation:**
+
+- Submissions are validated against variable definitions
+- Scenario must be published and not closed
+- Only one submission per student per scenario is allowed
+- Submissions cannot be edited after scenario is closed
+
+### Stage 2: Scenario Outcome & Job Creation
+
+When an instructor sets the scenario outcome via `POST /v1/admin/scenarioOutcomes/:scenarioId/outcome`, the following happens automatically:
+
+1. **Outcome Creation** - Global scenario outcome is created/updated with:
+   - Dynamic outcome variables (e.g., `actualWeather`, `demandMultiplier`)
+   - Notes and metadata
+   - Random events enabled flag
+
+2. **Job Creation** - For each student who submitted:
+   - A `SimulationJob` document is created in MongoDB with status `pending`
+   - Job is linked to the submission via `submissionId`
+   - Job is enqueued in the Bull queue (Redis) for processing
+   - Submission status is updated to `processing`
+
+3. **Scenario Closure** - The scenario is automatically closed:
+   - `isClosed` flag is set to `true`
+   - Prevents new submissions
+   - Prevents editing existing submissions
+
+**Important Notes:**
+
+- Jobs are **only created for students who have submitted**
+- Missing submissions (students who didn't submit) are tracked separately
+- Jobs are processed asynchronously in the background
+- The API response returns immediately after job creation (does not wait for processing)
+
+### Stage 3: Job Processing
+
+Jobs are processed by the **Workers Service** using Bull queue with the following characteristics:
+
+**Queue Configuration:**
+
+- **Concurrency**: 1 job at a time (ensures ordering and prevents rate limiting)
+- **Retries**: 3 attempts with exponential backoff (1s, 2s, 4s delays)
+- **Failure Handling**: Failed jobs remain in queue for inspection
+
+**Processing Flow:**
+
+For each job, the worker:
+
+1. **Fetches Context** - Gathers all required data:
+   - **Store** - Student's store configuration and variables
+   - **Scenario** - Scenario data with variables populated
+   - **ScenarioOutcome** - Global outcome variables
+   - **Submission** - Student's decision variables
+   - **Ledger History** - Previous ledger entries (for cash continuity)
+
+2. **Calls AI Service** - Sends context to OpenAI API:
+   - Model: `gpt-4o` with temperature `0` (deterministic)
+   - JSON schema enforced for structured output
+   - Prompt includes all context and business rules
+   - AI calculates: sales, revenue, costs, waste, profit, cash flow, inventory
+
+3. **Writes Ledger Entry** - Creates ledger entry with:
+   - Financial results (sales, revenue, costs, waste, net profit)
+   - Cash flow (cashBefore, cashAfter)
+   - Inventory changes (inventoryBefore, inventoryAfter)
+   - Random event (if enabled and triggered)
+   - Narrative summary
+   - AI metadata (model, runId, timestamp)
+
+4. **Updates Status** - Updates job and submission:
+   - Job status: `pending` → `processing` → `completed`
+   - Submission status: `processing` → `completed`
+   - Links ledger entry to submission
+
+**Error Handling:**
+
+- If processing fails, job status is set to `failed`
+- Error details are stored in job document
+- Jobs can be manually retried via `POST /v1/admin/job/:jobId/retry`
+- Failed jobs don't create ledger entries
+
+### Missing Submissions
+
+Students who don't submit are handled according to classroom policy:
+
+- **Zero Action** (default) - No ledger entry created, balance carries forward
+- **Auto Default** - Conservative default submission auto-generated (future feature)
+- **Skip Week** - No ledger entry, balance carries forward
+- **Instructor Review** - Instructor manually handles each missing submission
+
+Missing submissions are tracked via `GET /v1/admin/scenarios/:scenarioId/submissions` which returns:
+
+- List of submitted students
+- List of missing students (who haven't submitted)
+
+### Rerunning Scenarios
+
+Instructors can rerun a scenario via `POST /v1/admin/scenarios/:scenarioId/rerun`:
+
+1. **Deletes** existing ledger entries for the scenario
+2. **Resets** all jobs to `pending` status
+3. **Recreates** jobs for all submissions
+4. **Processes** jobs automatically
+
+This allows instructors to:
+
+- Adjust scenario outcomes and recalculate
+- Fix errors in calculations
+- Test different outcome scenarios
+
+### Job Monitoring
+
+Instructors can monitor job status via:
+
+- `GET /v1/admin/job/scenario/:scenarioId` - Get all jobs for a scenario
+- `GET /v1/admin/job/:jobId` - Get specific job details
+- `POST /v1/admin/job/:jobId/retry` - Retry a failed job
+- `POST /v1/admin/job/process-pending` - Manually trigger processing
+
+**Job States:**
+
+- `pending` - Waiting to be processed
+- `processing` - Currently being processed
+- `completed` - Successfully completed, ledger entry created
+- `failed` - Processing failed (can be retried)
+
+### Ledger Entries
+
+Each successful job creates a ledger entry that:
+
+- Links to scenario, submission, and user
+- Contains financial results and narrative
+- Maintains cash continuity (cashAfter = cashBefore + netProfit)
+- Can be overridden by instructors via `PATCH /v1/admin/ledger/:ledgerId/override`
+- Includes AI metadata for audit trail
+
+**Ledger Entry Fields:**
+
+- `sales` - Units sold
+- `revenue` - Total revenue
+- `costs` - Total costs (production, staffing, etc.)
+- `waste` - Units wasted
+- `netProfit` - Revenue - Costs
+- `cashBefore` - Starting cash balance
+- `cashAfter` - Ending cash balance
+- `inventoryBefore` - Starting inventory
+- `inventoryAfter` - Ending inventory
+- `randomEvent` - Random event description (if any)
+- `summary` - Narrative summary of the week
+- `overridden` - Whether instructor manually adjusted values
 
 ## Email Templates
 

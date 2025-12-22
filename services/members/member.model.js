@@ -1022,7 +1022,61 @@ memberSchema.statics.populateMaskedContactInfo = async function (clerkUserId) {
 
     return member;
   } catch (error) {
+    // Handle 404 errors gracefully - user might not exist in Clerk yet or was deleted
+    if (error.status === 404 || error.clerkError) {
+      console.warn(
+        `Could not fetch user ${clerkUserId} from Clerk API (user may not exist):`,
+        error.message
+      );
+      return null; // Return null instead of throwing
+    }
     console.error("Error populating masked contact info:", error);
+    throw error;
+  }
+};
+
+/**
+ * Populate masked contact info from webhook data (avoids API call)
+ * @param {Object} member - Member document
+ * @param {Object} webhookUserData - User data from Clerk webhook
+ * @returns {Promise<Object>} - Updated member with masked fields populated
+ */
+memberSchema.statics.populateMaskedContactInfoFromWebhook = async function (
+  member,
+  webhookUserData
+) {
+  try {
+    let maskedEmail = "";
+    let maskedPhone = "";
+
+    // Get and mask email from webhook data
+    if (webhookUserData.primary_email_address_id) {
+      const primaryEmail = webhookUserData.email_addresses?.find(
+        (email) => email.id === webhookUserData.primary_email_address_id
+      );
+      if (primaryEmail?.email_address) {
+        maskedEmail = this.maskEmail(primaryEmail.email_address);
+      }
+    }
+
+    // Get and mask phone from webhook data
+    if (webhookUserData.primary_phone_number_id) {
+      const primaryPhone = webhookUserData.phone_numbers?.find(
+        (phone) => phone.id === webhookUserData.primary_phone_number_id
+      );
+      if (primaryPhone?.phone_number) {
+        maskedPhone = this.maskPhone(primaryPhone.phone_number);
+      }
+    }
+
+    // Update member with masked fields
+    member.maskedEmail = maskedEmail;
+    member.maskedPhone = maskedPhone;
+    await member.save();
+
+    return member;
+  } catch (error) {
+    console.error("Error populating masked contact info from webhook:", error);
     throw error;
   }
 };

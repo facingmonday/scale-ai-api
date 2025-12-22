@@ -1,0 +1,273 @@
+---
+alwaysApply: true
+---
+
+```markdown
+# SCALE.ai — Application Overview & Design Summary
+
+## Purpose
+
+SCALE.ai is a learning-focused supply chain simulation platform designed for college-level Supply Chain 101 courses. It uses a pizza shop game to teach students core operational concepts such as demand forecasting, capacity planning, inventory management, environmental risk, and decision-making under uncertainty.
+
+The system is **not a grading tool**. Students do not fail or go bankrupt, but they can go negative. The goal is learning through outcomes, comparison, and reflection.
+
+---
+
+## Core Design Principles
+
+- Simple weekly workflow
+- Clear separation of roles
+- AI handles calculations, not students
+- Instructor remains in full control
+- Transparency and fairness
+- Configurable but not overwhelming
+- Scales to thousands of concurrent classes
+
+---
+
+## Roles
+
+### Student (Member)
+
+- Can belong to multiple classes
+- Can only have **one store per class**
+- Makes weekly decisions
+- Views outcomes, leaderboard, and history
+- Cannot edit submissions after results are shown
+
+### Teacher (Admin)
+
+- Creates and manages classes
+- Defines variables and scenarios
+- Controls scenario lifecycle
+- Reviews and approves outcomes
+- Can override ledger entries
+- Sees all student data at all times
+
+There is **no super admin** role.
+
+---
+
+## High-Level Workflow
+
+### 1. Store Setup (One-Time)
+
+Students create a pizza business at the start of the class by filling out a fixed set of **store variables** such as:
+
+- Store type (indoor, outdoor, food truck)
+- Maximum daily capacity
+- Starting cash
+- Number of ovens
+- Weather sensitivity
+- Delivery enabled
+
+These variables define structural constraints and rarely change.
+
+---
+
+### 2. Weekly Scenario (Instructor)
+
+Each week (or scenario), the instructor:
+
+- Creates a scenario with a title and description
+- Provides forecast-style inputs (expected demand, forecasted weather, special events)
+
+These are **expectations**, not guarantees.
+
+---
+
+### 3. Weekly Submission (Student)
+
+Students respond to the scenario by submitting decisions such as:
+
+- Planned production
+- Staffing level
+- Inventory strategy
+- Optional marketing spend
+
+Submissions are simple, short, and time-boxed.
+
+---
+
+### 4. Scenario Outcome (Instructor)
+
+After submissions close, the instructor enters a **global outcome**, such as:
+
+- Actual weather
+- Demand multiplier
+- Supply disruptions
+- Whether random events are enabled
+
+This outcome applies to all students, but its impact differs per store.
+
+---
+
+### 5. AI Processing & Ledger Generation
+
+For each student:
+
+- A background job is created
+- The system sends store config, scenario, outcome, submission, and ledger history to OpenAI
+- The AI calculates:
+  - Actual sales
+  - Waste
+  - Revenue
+  - Costs
+  - Net profit or loss
+  - Updated cash balance
+  - Narrative summary
+
+The result is written to a **ledger entry**.
+
+Ledger entries are **not immutable** and can be overridden by instructors.
+
+---
+
+## Handling Missing Submissions
+
+Missing submissions are handled via a **classroom-level policy**, set by the instructor:
+
+Available policies:
+
+1. **Zero Action** (recommended default)
+   - Missing submission treated as no action taken
+2. **Auto Default**
+   - Conservative default submission is auto-generated
+3. **Skip Week**
+   - No ledger entry created, balance carries forward
+4. **Instructor Review**
+   - Instructor must decide per student before closing
+
+Instructors can optionally override outcomes for individual students regardless of the policy.
+
+---
+
+## Variable System (Key Design)
+
+Variables are **dynamic and configurable** by instructors.
+
+### VariableDefinition
+
+A variable definition controls how a value appears in forms and how it is used by AI.
+
+Variables can apply to:
+
+- Store
+- Scenario
+- Submission
+- ScenarioOutcome
+
+Variables are key–value pairs sent to the LLM and used contextually, not as rigid formulas.
+
+### Example Relationships
+
+- Store variable: `maxDailyCapacity`
+- Scenario variable: `expectedDemand`
+- Submission variable: `plannedProduction`
+- Outcome variable: `actualWeather`
+
+Together, these inform AI reasoning and ledger outputs.
+
+---
+
+## Ledger
+
+Ledger entries represent the historical record of each student’s business.
+
+Each entry includes:
+
+- Week or scenario number
+- Sales
+- Waste
+- Profit or loss
+- Balance after
+- Random event (if any)
+- Narrative summary
+- Metadata indicating submission type and overrides
+
+Students see raw values and summaries.
+Students cannot export data.
+
+---
+
+## Gamification
+
+Supported features include:
+
+- Public leaderboards (student and teacher dashboards)
+- Achievements and badges
+- Unlockable upgrades
+- Random events (Oregon Trail–style)
+- Class averages and rankings
+- Performance charts over time
+
+Gamification is configurable per class.
+
+---
+
+## Dashboards
+
+### Student Dashboard
+
+Shows:
+
+- Store summary
+- Current scenario and required action
+- Submission status
+- Latest results
+- Performance over time
+- Leaderboard snapshot
+- Achievements and upgrades
+
+### Teacher Dashboard
+
+Shows:
+
+- Current scenario status
+- Submission progress
+- Missing submissions
+- Scenario outcome entry
+- AI processing status
+- Leaderboard and class insights
+- Student roster
+- Ledger review and override tools
+- Classroom settings
+
+---
+
+## Technical Architecture (Summary)
+
+- Frontend: React
+- Backend: Node.js, Express
+- Database: MongoDB with Mongoose
+- Auth: Clerk (with webhooks)
+- Email: SendGrid (transactional)
+- AI: OpenAI API (synchronous calls triggered by background jobs)
+
+AI prompts are not permanently stored. The system is conversational in structure but deterministic in output format via JSON schema.
+
+---
+
+## Scope & Constraints
+
+- Open timeline, not fixed weeks
+- Students can join late
+- Students can restart
+- Instructors manage multiple classes
+- No automated grading
+- Learning-focused only
+
+---
+
+## Overall Goal
+
+SCALE.ai provides a lightweight but powerful simulation that:
+
+- Encourages planning and reflection
+- Demonstrates real-world tradeoffs
+- Uses AI to remove calculation burden
+- Keeps instructors in control
+- Scales across institutions
+
+The system is intentionally lean for MVP, with room to grow into more advanced simulations over time.
+```

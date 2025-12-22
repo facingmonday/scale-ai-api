@@ -212,7 +212,7 @@ POST /api/admin/scenario
 
 Set global outcome
 
-POST /api/admin/scenario/:id/outcome
+POST /api/admin/scenarios/:id/outcome
 
 {
 "actualWeather": "Rainy",
@@ -223,13 +223,13 @@ POST /api/admin/scenario/:id/outcome
 
 Preview AI outcomes
 
-POST /api/admin/scenario/:id/preview
+POST /api/admin/scenarios/:id/preview
 
 Runs AI without writing ledger entries.
 
 Approve outcomes
 
-POST /api/admin/scenario/:id/approve
+POST /api/admin/scenarios/:id/approve
 
 Runs AI for all students
 
@@ -239,7 +239,7 @@ Triggers achievements and upgrades
 
 Rerun outcomes
 
-POST /api/admin/scenario/:id/rerun
+POST /api/admin/scenarios/:id/rerun
 
 Deletes existing ledger entries and recalculates.
 

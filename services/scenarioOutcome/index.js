@@ -1,33 +1,45 @@
+/**
+ * ScenarioOutcome Service Routes
+ * 
+ * Provides endpoints for managing scenario outcomes (global results that affect all students).
+ * Includes admin routes (setting outcomes) and student routes (viewing outcomes after results are published).
+ * Mounted at: /v1/admin/scenarioOutcomes and /v1/student/scenarioOutcomes
+ */
 const express = require("express");
 const controller = require("./scenarioOutcome.controller");
 const router = express.Router();
 
-const {
-  requireAuth,
-  checkRole,
-} = require("../../middleware/auth");
+const { requireAuth, checkRole } = require("../../middleware/auth");
 
 // Admin routes - require org:admin role
 router.post(
-  "/admin/scenario/:scenarioId/outcome",
+  "/admin/scenarioOutcomes/:scenarioId/outcome",
   requireAuth(),
   checkRole("org:admin"),
   controller.setScenarioOutcome
 );
 
 router.get(
-  "/admin/scenario/:scenarioId/outcome",
+  "/admin/scenarioOutcomes/:scenarioId/outcome",
   requireAuth(),
   checkRole("org:admin"),
   controller.getScenarioOutcome
 );
 
-router.post(
-  "/admin/scenario/:scenarioId/outcome/approve",
+// Delete scenario outcome
+router.delete(
+  "/admin/scenarioOutcomes/:scenarioId/outcome",
   requireAuth(),
   checkRole("org:admin"),
-  controller.approveScenarioOutcome
+  controller.deleteScenarioOutcome
+);
+
+// Student routes
+router.get(
+  "/student/scenarioOutcomes/:scenarioId/outcome",
+  requireAuth(),
+  checkRole("org:member"),
+  controller.getScenarioOutcome
 );
 
 module.exports = router;
-

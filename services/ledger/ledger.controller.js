@@ -5,18 +5,22 @@ const Member = require("../members/member.model");
 
 /**
  * Get ledger history for a user
- * GET /api/admin/ledger/:classId/user/:userId
+ * GET /api/admin/ledger/:classroomId/user/:userId
  */
 exports.getLedgerHistory = async function (req, res) {
   try {
-    const { classId, userId } = req.params;
+    const { classroomId, userId } = req.params;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
     // Verify admin access
-    await Classroom.validateAdminAccess(classId, clerkUserId, organizationId);
+    await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId
+    );
 
-    const history = await LedgerService.getLedgerHistory(classId, userId);
+    const history = await LedgerService.getLedgerHistory(classroomId, userId);
 
     res.json({
       success: true,
@@ -44,7 +48,7 @@ exports.getLedgerEntriesByScenario = async function (req, res) {
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
-    // Find scenario to get classId
+    // Find scenario to get classroomId
     const scenario = await Scenario.getScenarioById(scenarioId, organizationId);
 
     if (!scenario) {
@@ -53,7 +57,7 @@ exports.getLedgerEntriesByScenario = async function (req, res) {
 
     // Verify admin access
     await Classroom.validateAdminAccess(
-      scenario.classId,
+      scenario.classroomId,
       clerkUserId,
       organizationId
     );
@@ -127,7 +131,7 @@ exports.getLedgerEntry = async function (req, res) {
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
-    // Find scenario to get classId
+    // Find scenario to get classroomId
     const scenario = await Scenario.getScenarioById(scenarioId, organizationId);
 
     if (!scenario) {
@@ -136,7 +140,7 @@ exports.getLedgerEntry = async function (req, res) {
 
     // Verify admin access
     await Classroom.validateAdminAccess(
-      scenario.classId,
+      scenario.classroomId,
       clerkUserId,
       organizationId
     );

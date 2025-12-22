@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 
 const variableDefinitionSchema = new mongoose.Schema({
-  classId: {
+  classroomId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Classroom",
     required: true,
@@ -75,29 +75,29 @@ const variableDefinitionSchema = new mongoose.Schema({
 }).add(baseSchema);
 
 // Compound indexes for performance
-variableDefinitionSchema.index({ classId: 1, key: 1 }, { unique: true });
-variableDefinitionSchema.index({ classId: 1, appliesTo: 1 });
-variableDefinitionSchema.index({ classId: 1, isActive: 1 });
-variableDefinitionSchema.index({ organization: 1, classId: 1 });
+variableDefinitionSchema.index({ classroomId: 1, key: 1 }, { unique: true });
+variableDefinitionSchema.index({ classroomId: 1, appliesTo: 1 });
+variableDefinitionSchema.index({ classroomId: 1, isActive: 1 });
+variableDefinitionSchema.index({ organization: 1, classroomId: 1 });
 
 // Static methods - Shared utilities for variable definition operations
 
 /**
  * Create a variable definition
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {Object} payload - Variable definition data
  * @param {string} organizationId - Organization ID
  * @param {string} clerkUserId - Clerk user ID for createdBy/updatedBy
  * @returns {Promise<Object>} Created variable definition
  */
 variableDefinitionSchema.statics.createDefinition = async function (
-  classId,
+  classroomId,
   payload,
   organizationId,
   clerkUserId
 ) {
   // Check if key already exists for this class
-  const existing = await this.findOne({ classId, key: payload.key });
+  const existing = await this.findOne({ classroomId, key: payload.key });
   if (existing) {
     throw new Error(
       `Variable definition with key "${payload.key}" already exists for this class`
@@ -148,7 +148,7 @@ variableDefinitionSchema.statics.createDefinition = async function (
   }
 
   const definition = new this({
-    classId,
+    classroomId,
     key: payload.key,
     label: payload.label,
     description: payload.description || "",
@@ -177,17 +177,17 @@ variableDefinitionSchema.statics.createDefinition = async function (
 
 /**
  * Get variable definitions for a specific scope
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} appliesTo - Scope ("store", "scenario", "submission")
  * @param {Object} options - Options (includeInactive)
  * @returns {Promise<Array>} Array of variable definitions
  */
 variableDefinitionSchema.statics.getDefinitionsForScope = async function (
-  classId,
+  classroomId,
   appliesTo,
   options = {}
 ) {
-  const query = { classId, appliesTo, isActive: true };
+  const query = { classroomId, appliesTo, isActive: true };
   if (options.includeInactive) {
     delete query.isActive;
   }
@@ -198,15 +198,15 @@ variableDefinitionSchema.statics.getDefinitionsForScope = async function (
 
 /**
  * Get all variable definitions for a class
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {Object} options - Options (includeInactive)
  * @returns {Promise<Array>} Array of variable definitions
  */
 variableDefinitionSchema.statics.getDefinitionsByClass = async function (
-  classId,
+  classroomId,
   options = {}
 ) {
-  const query = { classId, isActive: true };
+  const query = { classroomId, isActive: true };
   if (options.includeInactive) {
     delete query.isActive;
   }
@@ -217,17 +217,17 @@ variableDefinitionSchema.statics.getDefinitionsByClass = async function (
 
 /**
  * Validate values against definitions
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} appliesTo - Scope ("store", "scenario", "submission")
  * @param {Object} valuesObject - Values to validate
  * @returns {Promise<Object>} Validation result with errors array
  */
 variableDefinitionSchema.statics.validateValues = async function (
-  classId,
+  classroomId,
   appliesTo,
   valuesObject
 ) {
-  const definitions = await this.getDefinitionsForScope(classId, appliesTo);
+  const definitions = await this.getDefinitionsForScope(classroomId, appliesTo);
   const errors = [];
 
   for (const definition of definitions) {
@@ -312,17 +312,17 @@ variableDefinitionSchema.statics.validateValues = async function (
 
 /**
  * Apply default values to an object based on definitions
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} appliesTo - Scope ("store", "scenario", "submission")
  * @param {Object} valuesObject - Values object to apply defaults to
  * @returns {Promise<Object>} Values object with defaults applied
  */
 variableDefinitionSchema.statics.applyDefaults = async function (
-  classId,
+  classroomId,
   appliesTo,
   valuesObject
 ) {
-  const definitions = await this.getDefinitionsForScope(classId, appliesTo);
+  const definitions = await this.getDefinitionsForScope(classroomId, appliesTo);
   const result = { ...valuesObject };
 
   for (const definition of definitions) {
@@ -346,15 +346,15 @@ variableDefinitionSchema.statics.applyDefaults = async function (
 
 /**
  * Get variable definition by key
- * @param {string} classId - Class ID
+ * @param {string} classroomId - Class ID
  * @param {string} key - Variable key
  * @returns {Promise<Object|null>} Variable definition or null
  */
 variableDefinitionSchema.statics.getDefinitionByKey = async function (
-  classId,
+  classroomId,
   key
 ) {
-  return await this.findOne({ classId, key, isActive: true });
+  return await this.findOne({ classroomId, key, isActive: true });
 };
 
 // Instance methods

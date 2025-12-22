@@ -14,7 +14,7 @@ class SimulationJobWorker {
   static async processPendingJobs(limit = 10) {
     try {
       const results = await SimulationWorker.processPendingJobs(limit);
-      
+
       const successCount = results.filter((r) => r.success).length;
       const failureCount = results.length - successCount;
 
@@ -37,7 +37,40 @@ class SimulationJobWorker {
       };
     }
   }
+
+  /**
+   * Process pending jobs for a specific scenario
+   * @param {string} scenarioId - Scenario ID
+   * @returns {Promise<Object>} Processing result
+   */
+  static async processPendingJobsForScenario(scenarioId) {
+    try {
+      const results = await SimulationWorker.processPendingJobsForScenario(
+        scenarioId
+      );
+
+      const successCount = results.filter((r) => r.success).length;
+      const failureCount = results.length - successCount;
+
+      return {
+        success: true,
+        processed: results.length,
+        successful: successCount,
+        failed: failureCount,
+        results,
+      };
+    } catch (error) {
+      console.error("Error processing jobs for scenario:", error);
+      return {
+        success: false,
+        error: error.message,
+        processed: 0,
+        successful: 0,
+        failed: 0,
+        results: [],
+      };
+    }
+  }
 }
 
 module.exports = SimulationJobWorker;
-
