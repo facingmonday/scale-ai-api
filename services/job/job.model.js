@@ -12,6 +12,12 @@ const simulationJobSchema = new mongoose.Schema({
     ref: "Scenario",
     required: true,
   },
+  submissionId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Submission",
+    required: false,
+    default: null,
+  },
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Member",
@@ -52,6 +58,7 @@ simulationJobSchema.index({ status: 1 });
 simulationJobSchema.index({ scenarioId: 1, status: 1 });
 simulationJobSchema.index({ classroomId: 1, userId: 1 });
 simulationJobSchema.index({ organization: 1, scenarioId: 1 });
+simulationJobSchema.index({ submissionId: 1 });
 
 // Static methods
 
@@ -81,6 +88,10 @@ simulationJobSchema.statics.createJob = async function (
     existing.startedAt = null;
     existing.completedAt = null;
     existing.dryRun = input.dryRun || false;
+    // Persist/refresh submission link if provided
+    if (input.submissionId) {
+      existing.submissionId = input.submissionId;
+    }
     existing.updatedBy = clerkUserId;
     await existing.save();
     return existing;
@@ -89,6 +100,7 @@ simulationJobSchema.statics.createJob = async function (
   const job = new this({
     classroomId: input.classroomId,
     scenarioId: input.scenarioId,
+    submissionId: input.submissionId || null,
     userId: input.userId,
     status: "pending",
     attempts: 0,

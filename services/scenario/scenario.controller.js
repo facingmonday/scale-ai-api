@@ -242,9 +242,8 @@ exports.publishScenario = async function (req, res) {
       activeScenario._id.toString() !== scenario._id.toString()
     ) {
       return res.status(400).json({
-        error: `Another scenario is already active (Week ${activeScenario.week}: "${activeScenario.title}"). Please unpublish or close the active scenario before publishing a new one.`,
+        error: `Another scenario is already active ("${activeScenario.title}"). Please unpublish or close the active scenario before publishing a new one.`,
         activeScenarioId: activeScenario._id,
-        activeScenarioWeek: activeScenario.week,
         activeScenarioTitle: activeScenario.title,
       });
     }
@@ -546,7 +545,6 @@ exports.getCurrentScenario = async function (req, res) {
       data: {
         scenario: {
           id: scenario._id,
-          week: scenario.week,
           title: scenario.title,
           description: scenario.description,
           variables: scenario.variables,
@@ -595,7 +593,6 @@ exports.getCurrentScenarioForAdmin = async function (req, res) {
       data: {
         scenario: {
           id: scenario._id,
-          week: scenario.week,
           title: scenario.title,
           description: scenario.description,
           variables: scenario.variables,
@@ -682,7 +679,6 @@ async function queueScenarioCreatedEmails(
           templateData: {
             scenario: {
               _id: scenario._id,
-              week: scenario.week,
               title: scenario.title,
               description: scenario.description,
               link: scenarioLink,
@@ -753,7 +749,7 @@ exports.getStudentScenariosByClassroom = async function (req, res) {
 
     // Get all scenarios for the classroom
     const scenarios = await Scenario.getScenariosByClass(classroomId, {
-      includeClosed: false,
+      includeClosed: true,
     });
 
     // For each scenario, fetch submission, outcome, and ledger entry

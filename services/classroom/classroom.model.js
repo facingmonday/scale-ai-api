@@ -97,11 +97,12 @@ classroomSchema.statics.getDashboard = async function (
   const activeScenario = await Scenario.getActiveScenario(classroomId);
   const activeScenarioData = activeScenario
     ? {
-        ...activeScenario,
         id: activeScenario._id,
-        week: activeScenario.week,
         title: activeScenario.title,
         description: activeScenario.description,
+        variables: activeScenario.variables,
+        isPublished: activeScenario.isPublished,
+        isClosed: activeScenario.isClosed,
       }
     : null;
 
@@ -188,11 +189,12 @@ classroomSchema.statics.getStudentDashboard = async function (
   const activeScenario = await Scenario.getActiveScenario(classroomId);
   const activeScenarioData = activeScenario
     ? {
-        ...activeScenario,
         id: activeScenario._id,
-        week: activeScenario.week,
         title: activeScenario.title,
         description: activeScenario.description,
+        variables: activeScenario.variables,
+        isPublished: activeScenario.isPublished,
+        isClosed: activeScenario.isClosed,
       }
     : null;
 

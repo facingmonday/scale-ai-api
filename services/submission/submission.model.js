@@ -25,6 +25,26 @@ const submissionSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  // Convenience pointer to the most recent ledger entry generated for this submission
+  ledgerEntryId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "LedgerEntry",
+    default: null,
+  },
+  jobs: {
+    type: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "SimulationJob",
+      },
+    ],
+    default: [],
+  },
+  processingStatus: {
+    type: String,
+    enum: ["pending", "processing", "completed", "failed"],
+    default: "pending",
+  },
 }).add(baseSchema);
 
 // Apply variable population plugin
@@ -43,6 +63,7 @@ submissionSchema.index({ scenarioId: 1, userId: 1 });
 submissionSchema.index({ classroomId: 1, userId: 1 });
 submissionSchema.index({ scenarioId: 1 });
 submissionSchema.index({ organization: 1, scenarioId: 1 });
+submissionSchema.index({ ledgerEntryId: 1 });
 
 // Static methods - Shared utilities for submission operations
 
@@ -77,73 +98,6 @@ submissionSchema.statics.submissionExists = async function (
 ) {
   const count = await this.countDocuments({ classroomId, scenarioId, userId });
   return count > 0;
-};
-
-/**
- * Check if student has submitted for previous scenarios
- * Enforces ordering - must submit in order
- * Late joiners can submit for the active scenario even if they missed previous weeks
- * @param {string} classroomId - Class ID
- * @param {string} scenarioId - Scenario ID
- * @param {string} userId - Member ID
- * @returns {Promise<Object>} { canSubmit: boolean, reason?: string }
- */
-submissionSchema.statics.checkSubmissionOrder = async function (
-  classroomId,
-  scenarioId,
-  userId
-) {
-  // Get the scenario to check its week number and status
-  const scenario = await Scenario.findById(scenarioId);
-  if (!scenario) {
-    return { canSubmit: false, reason: "Scenario not found" };
-  }
-
-  // If it's week 1, always allow
-  if (scenario.week === 1) {
-    return { canSubmit: true };
-  }
-
-  // If scenario is the active (published and not closed) scenario, allow submission
-  // This allows late joiners to start at the current scenario
-  if (scenario.isPublished && !scenario.isClosed) {
-    const activeScenario = await Scenario.getActiveScenario(classroomId);
-    if (
-      activeScenario &&
-      activeScenario._id.toString() === scenarioId.toString()
-    ) {
-      return { canSubmit: true };
-    }
-  }
-
-  // Check if previous week was submitted
-  const previousWeek = scenario.week - 1;
-  const previousScenarios = await Scenario.find({
-    classroomId,
-    week: previousWeek,
-  }).sort({ createdDate: -1 });
-
-  if (previousScenarios.length === 0) {
-    // No previous scenario exists, allow submission
-    return { canSubmit: true };
-  }
-
-  // Check if student submitted for the most recent previous scenario
-  const previousScenario = previousScenarios[0];
-  const previousSubmission = await this.findOne({
-    classroomId,
-    scenarioId: previousScenario._id,
-    userId,
-  });
-
-  if (!previousSubmission) {
-    return {
-      canSubmit: false,
-      reason: `Must submit for week ${previousWeek} before submitting for week ${scenario.week}`,
-    };
-  }
-
-  return { canSubmit: true };
 };
 
 /**
@@ -187,16 +141,6 @@ submissionSchema.statics.createSubmission = async function (
     "submission",
     variables
   );
-
-  // Check submission order
-  const orderCheck = await this.checkSubmissionOrder(
-    classroomId,
-    scenarioId,
-    userId
-  );
-  if (!orderCheck.canSubmit) {
-    throw new Error(orderCheck.reason || "Cannot submit out of order");
-  }
 
   // Verify scenario is published and not closed
   const scenario = await Scenario.findById(scenarioId);
@@ -347,10 +291,15 @@ submissionSchema.statics.updateSubmission = async function (
 submissionSchema.statics.getSubmissionsByScenario = async function (
   scenarioId
 ) {
-  const submissions = await this.find({ scenarioId }).populate({
-    path: "userId",
-    select: "_id clerkUserId firstName lastName maskedEmail",
-  });
+  const submissions = await this.find({ scenarioId })
+    .populate({
+      path: "userId",
+      select: "_id clerkUserId firstName lastName maskedEmail",
+    })
+    .populate({
+      path: "jobs",
+      select: "_id status error attempts startedAt completedAt dryRun",
+    });
 
   // Use plugin's efficient batch population
   await this.populateVariablesForMany(submissions);
@@ -372,6 +321,8 @@ submissionSchema.statics.getSubmissionsByScenario = async function (
         : null,
       variables: submissionObj.variables || [],
       submittedAt: submissionObj.submittedAt,
+      jobs: submissionObj.jobs || [],
+      processingStatus: submissionObj.processingStatus || "pending",
     };
   });
 };
@@ -446,7 +397,14 @@ submissionSchema.statics.getSubmission = async function (
   scenarioId,
   userId
 ) {
-  const submission = await this.findOne({ classroomId, scenarioId, userId });
+  const submission = await this.findOne({
+    classroomId,
+    scenarioId,
+    userId,
+  }).populate({
+    path: "jobs",
+    select: "_id status error attempts startedAt completedAt dryRun",
+  });
   if (!submission) {
     return null;
   }
@@ -456,6 +414,8 @@ submissionSchema.statics.getSubmission = async function (
   const submissionObj = submission.toObject();
   // Ensure _id is included (should be by default, but make it explicit)
   submissionObj._id = submission._id;
+  submissionObj.jobs = submissionObj.jobs || [];
+  submissionObj.processingStatus = submissionObj.processingStatus || "pending";
   return submissionObj;
 };
 
@@ -469,15 +429,26 @@ submissionSchema.statics.getSubmissionsByUser = async function (
   classroomId,
   userId
 ) {
-  const submissions = await this.find({ classroomId, userId }).sort({
-    submittedAt: 1,
-  });
+  const submissions = await this.find({ classroomId, userId })
+    .populate({
+      path: "jobs",
+      select: "_id status error attempts startedAt completedAt dryRun",
+    })
+    .sort({
+      submittedAt: 1,
+    });
 
   // Use plugin's efficient batch population
   await this.populateVariablesForMany(submissions);
 
   // Variables are automatically included via plugin
-  return submissions.map((submission) => submission.toObject());
+  return submissions.map((submission) => {
+    const submissionObj = submission.toObject();
+    submissionObj.jobs = submissionObj.jobs || [];
+    submissionObj.processingStatus =
+      submissionObj.processingStatus || "pending";
+    return submissionObj;
+  });
 };
 
 // Instance methods
@@ -509,6 +480,41 @@ submissionSchema.methods.getVariables = async function () {
  */
 submissionSchema.methods.canEdit = function () {
   return false; // Submissions are immutable after creation
+};
+
+/**
+ * Add a job to this submission
+ * @param {string} jobId - Job ID to add
+ * @returns {Promise<this>} Updated submission
+ */
+submissionSchema.methods.addJob = async function (jobId) {
+  if (!this.jobs.includes(jobId)) {
+    this.jobs.push(jobId);
+    // Set status to processing if not already completed
+    if (this.processingStatus === "pending") {
+      this.processingStatus = "processing";
+    }
+    await this.save();
+  }
+  return this;
+};
+
+/**
+ * Update processing status based on job status
+ * @param {string} jobStatus - Job status ("completed" or "failed")
+ * @returns {Promise<this>} Updated submission
+ */
+submissionSchema.methods.updateProcessingStatus = async function (jobStatus) {
+  if (jobStatus === "completed") {
+    this.processingStatus = "completed";
+  } else if (jobStatus === "failed") {
+    // Only set to failed if not already completed (in case of retries)
+    if (this.processingStatus !== "completed") {
+      this.processingStatus = "failed";
+    }
+  }
+  await this.save();
+  return this;
 };
 
 const Submission = mongoose.model("Submission", submissionSchema);

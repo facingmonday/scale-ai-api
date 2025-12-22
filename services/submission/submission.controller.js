@@ -5,7 +5,7 @@ const Classroom = require("../classroom/classroom.model");
 const Enrollment = require("../enrollment/enrollment.model");
 
 /**
- * Submit weekly decisions
+ * Submit scenario decisions
  * POST /api/student/submission
  */
 exports.submitWeeklyDecisions = async function (req, res) {
@@ -88,7 +88,7 @@ exports.submitWeeklyDecisions = async function (req, res) {
 };
 
 /**
- * Update weekly decisions
+ * Update scenario decisions
  * PUT /api/student/submission
  */
 exports.updateWeeklyDecisions = async function (req, res) {
@@ -146,7 +146,7 @@ exports.updateWeeklyDecisions = async function (req, res) {
       data: submission,
     });
   } catch (error) {
-    console.error("Error updating weekly decisions:", error);
+    console.error("Error updating scenario decisions:", error);
     if (error.message === "Scenario not found") {
       return res.status(404).json({ error: error.message });
     }
@@ -298,7 +298,7 @@ exports.getStudentSubmissions = async function (req, res) {
         : [],
       uniqueScenarioIds.length > 0
         ? Scenario.find({ _id: { $in: uniqueScenarioIds } }).select(
-            "_id title week isPublished isClosed"
+            "_id title isPublished isClosed"
           )
         : [],
     ]);
@@ -331,7 +331,6 @@ exports.getStudentSubmissions = async function (req, res) {
             ? {
                 _id: scenario._id,
                 name: scenario.title,
-                weekNumber: scenario.week,
                 status: toScenarioStatus(scenario),
               }
             : null,
@@ -387,6 +386,7 @@ exports.getSubmissionsForScenario = async function (req, res) {
     const Member = require("../members/member.model");
     const missingUsers = await Member.find({
       _id: { $in: missingUserIds },
+      role: "org:member",
     }).select("_id firstName lastName maskedEmail clerkUserId");
 
     res.json({
@@ -432,10 +432,18 @@ exports.getSubmission = async function (req, res) {
     }
 
     // Get submission
-    const submission = await Submission.findById(submissionId).populate({
-      path: "userId",
-      select: "_id clerkUserId firstName lastName maskedEmail",
-    });
+    const submission = await Submission.findById(submissionId)
+      .populate({
+        path: "userId",
+        select: "_id clerkUserId firstName lastName maskedEmail",
+      })
+      .populate({
+        path: "jobs",
+        select: "_id status error attempts startedAt completedAt dryRun",
+      })
+      .populate({
+        path: "ledgerEntryId",
+      });
 
     if (!submission) {
       return res.status(404).json({ error: "Submission not found" });
@@ -457,6 +465,7 @@ exports.getSubmission = async function (req, res) {
       success: true,
       data: {
         ...submissionObj,
+        ledgerEntry: submission.ledgerEntryId,
         member: submission.userId
           ? {
               _id: submission.userId._id,
@@ -466,6 +475,8 @@ exports.getSubmission = async function (req, res) {
               lastName: submission.userId.lastName,
             }
           : null,
+        jobs: submissionObj.jobs || [],
+        processingStatus: submissionObj.processingStatus || "pending",
       },
     });
   } catch (error) {
@@ -557,11 +568,15 @@ exports.getSubmissions = async function (req, res) {
       })
       .populate({
         path: "scenarioId",
-        select: "_id title week isPublished isClosed",
+        select: "_id title isPublished isClosed",
       })
       .populate({
         path: "classroomId",
         select: "_id name",
+      })
+      .populate({
+        path: "jobs",
+        select: "_id status error attempts startedAt completedAt dryRun",
       })
       .sort({ submittedAt: -1 })
       .limit(pageSize)
@@ -589,7 +604,6 @@ exports.getSubmissions = async function (req, res) {
           ? {
               _id: submission.scenarioId._id,
               title: submission.scenarioId.title,
-              week: submission.scenarioId.week,
               isPublished: submission.scenarioId.isPublished,
               isClosed: submission.scenarioId.isClosed,
             }
@@ -600,6 +614,8 @@ exports.getSubmissions = async function (req, res) {
               name: submission.classroomId.name,
             }
           : null,
+        jobs: submissionObj.jobs || [],
+        processingStatus: submissionObj.processingStatus || "pending",
       };
     });
 

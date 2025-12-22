@@ -358,6 +358,18 @@ scenarioSchema.methods.close = async function (clerkUserId) {
 };
 
 /**
+ * Open (re-open) this scenario
+ * @param {string} clerkUserId - Clerk user ID for updatedBy
+ * @returns {Promise<Object>} Updated scenario
+ */
+scenarioSchema.methods.open = async function (clerkUserId) {
+  this.isClosed = false;
+  this.updatedBy = clerkUserId;
+  await this.save();
+  return this;
+};
+
+/**
  * Check if scenario can be edited
  * @returns {boolean} True if can be edited
  */

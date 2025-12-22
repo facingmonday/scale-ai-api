@@ -37,11 +37,10 @@ class AISimulationService {
       response_format: {
         type: "json_schema",
         json_schema: {
-          name: "weekly_ledger_entry",
+          name: "scenario_ledger_entry",
           schema: {
             type: "object",
             required: [
-              "week",
               "sales",
               "revenue",
               "costs",
@@ -55,7 +54,6 @@ class AISimulationService {
               "summary",
             ],
             properties: {
-              week: { type: "number" },
               sales: { type: "number" },
               revenue: { type: "number" },
               costs: { type: "number" },
@@ -117,7 +115,7 @@ class AISimulationService {
       {
         role: "system",
         content:
-          "You are the SCALE.ai simulation engine for a supply chain class using a pizza shop game. Calculate outcomes for one student based on store configuration, scenario context, global weekly outcome, and the student's weekly decisions. Apply realistic business logic, environmental effects, and optional random events. Return ONLY valid JSON matching the provided schema. You may invent reasonable intermediate numbers when needed.",
+          "You are the SCALE.ai simulation engine for a supply chain class using a pizza shop game. Calculate outcomes for one student based on store configuration, scenario context, global outcome, and the student's decisions. Apply realistic business logic, environmental effects, and optional random events. Return ONLY valid JSON matching the provided schema. You may invent reasonable intermediate numbers when needed.",
       },
       {
         role: "user",
@@ -137,7 +135,7 @@ class AISimulationService {
       },
       {
         role: "user",
-        content: `SCENARIO (WEEK ${scenario.week}):\n${JSON.stringify(
+        content: `SCENARIO:\n${JSON.stringify(
           {
             title: scenario.title,
             description: scenario.description,
@@ -160,7 +158,7 @@ class AISimulationService {
       },
       {
         role: "user",
-        content: `STUDENT WEEKLY DECISIONS:\n${JSON.stringify(
+        content: `STUDENT DECISIONS:\n${JSON.stringify(
           submission.variables || {},
           null,
           2
@@ -171,15 +169,16 @@ class AISimulationService {
     // Add ledger history if available
     if (ledgerHistory && ledgerHistory.length > 0) {
       const historyData = ledgerHistory.map((entry) => ({
-        week: entry.week,
+        scenarioId: entry.scenarioId?._id || entry.scenarioId,
+        scenarioTitle: entry.scenarioId?.title,
         netProfit: entry.netProfit,
         cashAfter: entry.cashAfter,
       }));
 
       messages.push({
         role: "user",
-        content: `LEDGER HISTORY (PRIOR WEEKS):\n${JSON.stringify(
-          { weeks: historyData },
+        content: `LEDGER HISTORY:\n${JSON.stringify(
+          { entries: historyData },
           null,
           2
         )}`,
@@ -196,7 +195,6 @@ class AISimulationService {
    */
   static validateAIResponse(response) {
     const requiredFields = [
-      "week",
       "sales",
       "revenue",
       "costs",
@@ -217,9 +215,6 @@ class AISimulationService {
     }
 
     // Validate types
-    if (typeof response.week !== "number") {
-      throw new Error("week must be a number");
-    }
     if (typeof response.sales !== "number") {
       throw new Error("sales must be a number");
     }

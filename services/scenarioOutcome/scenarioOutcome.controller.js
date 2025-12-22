@@ -130,8 +130,12 @@ exports.deleteScenarioOutcome = async function (req, res) {
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
-    // Find scenario
-    const scenario = await Scenario.getScenarioById(scenarioId, organizationId);
+    // Find scenario (need Mongoose document for instance methods)
+    const query = { _id: scenarioId };
+    if (organizationId) {
+      query.organization = organizationId;
+    }
+    const scenario = await Scenario.findOne(query);
 
     if (!scenario) {
       return res.status(404).json({ error: "Scenario not found" });

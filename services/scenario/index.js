@@ -76,6 +76,11 @@ router.get(
 // Student routes - require authenticated member
 
 router.get(
+  "/student/scenarios/current",
+  requireMemberAuth(),
+  controller.getCurrentScenario
+);
+router.get(
   "/student/scenarios/:id",
   requireMemberAuth(),
   controller.getScenarioByIdForStudent
@@ -85,12 +90,6 @@ router.get(
   "/student/scenarios",
   requireMemberAuth(),
   controller.getStudentScenariosByClassroom
-);
-
-router.get(
-  "/student/scenarios/current",
-  requireMemberAuth(),
-  controller.getCurrentScenario
 );
 
 module.exports = router;

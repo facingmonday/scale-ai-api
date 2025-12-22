@@ -14,9 +14,12 @@ class SimulationWorker {
   /**
    * Process a single simulation job
    * @param {string} jobId - Job ID
+   * @param {Object} [options]
+   * @param {boolean} [options.isFinalAttempt=true] - If false, job will be reset to pending to allow Bull retry
    * @returns {Promise<Object>} Job result
    */
-  static async processJob(jobId) {
+  static async processJob(jobId, options = {}) {
+    const { isFinalAttempt = true } = options;
     const job = await SimulationJob.findById(jobId);
     if (!job) {
       throw new Error(`Job not found: ${jobId}`);
@@ -53,11 +56,14 @@ class SimulationWorker {
 
       // If not a dry run, write to ledger
       if (!job.dryRun) {
-        await this.writeLedgerEntry(job, aiResult, context.scenario.week);
+        await this.writeLedgerEntry(job, aiResult);
       }
 
       // Mark job as completed
       await job.markCompleted();
+
+      // Update submission status
+      await this.updateSubmissionStatus(job, "completed");
 
       return {
         success: true,
@@ -67,8 +73,24 @@ class SimulationWorker {
     } catch (error) {
       console.error(`Error processing job ${jobId}:`, error);
 
-      // Mark job as failed
-      await job.markFailed(error.message);
+      if (isFinalAttempt) {
+        // Mark job as failed (only when retries are exhausted)
+        await job.markFailed(error.message);
+
+        // Update submission status
+        await this.updateSubmissionStatus(job, "failed").catch((err) => {
+          console.error(`Error updating submission status:`, err);
+        });
+      } else {
+        // Reset job back to pending so Bull can retry it.
+        // Keep the latest error for visibility.
+        job.status = "pending";
+        job.error = error.message;
+        job.startedAt = null;
+        job.completedAt = null;
+        await job.save();
+        // Do NOT mark submission failed; it should remain "processing" while retries are in-flight.
+      }
 
       throw error;
     }
@@ -116,7 +138,7 @@ class SimulationWorker {
       );
     }
 
-    // Fetch ledger history (prior weeks, excluding current scenario for reruns)
+    // Fetch ledger history (prior entries, excluding current scenario for reruns)
     const ledgerHistory = await LedgerService.getLedgerHistory(
       job.classroomId,
       job.userId,
@@ -145,10 +167,9 @@ class SimulationWorker {
    * Write ledger entry from AI result
    * @param {Object} job - Job document
    * @param {Object} aiResult - AI simulation result
-   * @param {number} week - Week number
    * @returns {Promise<Object>} Created ledger entry
    */
-  static async writeLedgerEntry(job, aiResult, week) {
+  static async writeLedgerEntry(job, aiResult) {
     // Get organization from job
     const organizationId = job.organization;
 
@@ -156,8 +177,8 @@ class SimulationWorker {
     const ledgerInput = {
       classroomId: job.classroomId,
       scenarioId: job.scenarioId,
+      submissionId: job.submissionId || null,
       userId: job.userId,
-      week: week,
       sales: aiResult.sales,
       revenue: aiResult.revenue,
       costs: aiResult.costs,
@@ -173,11 +194,60 @@ class SimulationWorker {
     };
 
     // Create ledger entry
-    return await LedgerService.createLedgerEntry(
+    const entry = await LedgerService.createLedgerEntry(
       ledgerInput,
       organizationId,
       job.createdBy
     );
+
+    // Attach ledger entry to submission (if available)
+    try {
+      if (job.submissionId) {
+        await Submission.updateOne(
+          { _id: job.submissionId },
+          {
+            $set: { ledgerEntryId: entry._id },
+          }
+        );
+      } else {
+        // Fallback for older jobs without submissionId
+        await Submission.updateOne(
+          {
+            classroomId: job.classroomId,
+            scenarioId: job.scenarioId,
+            userId: job.userId,
+          },
+          {
+            $set: { ledgerEntryId: entry._id },
+          }
+        );
+      }
+    } catch (err) {
+      console.error("Failed to attach ledger entry to submission:", err);
+      // Don't throw - ledger entry creation succeeded
+    }
+
+    return entry;
+  }
+
+  /**
+   * Update submission status based on job status
+   * @param {Object} job - Job document
+   * @param {string} jobStatus - Job status ("completed" or "failed")
+   * @returns {Promise<void>}
+   */
+  static async updateSubmissionStatus(job, jobStatus) {
+    const Submission = require("../../submission/submission.model");
+
+    const submission = await Submission.findOne({
+      classroomId: job.classroomId,
+      scenarioId: job.scenarioId,
+      userId: job.userId,
+    });
+
+    if (submission) {
+      await submission.updateProcessingStatus(jobStatus);
+    }
   }
 
   /**
