@@ -121,7 +121,11 @@ storeSchema.statics.getStoreByUser = async function (classroomId, userId) {
     return null;
   }
 
-  // Variables are automatically included via plugin's post-init hook
+  // Explicitly load variables before calling toObject()
+  // The post-init hook is async and may not complete before toObject() is called
+  await store._loadVariables();
+
+  // Variables are automatically included via plugin's toObject() override
   return store.toObject();
 };
 

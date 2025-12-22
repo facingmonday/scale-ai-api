@@ -1,5 +1,6 @@
 const { getUsersRoutes } = require("../../lib/routes");
 const { clerkClient } = require("@clerk/express");
+const Classroom = require("../classroom/classroom.model");
 
 exports.me = async function (req, res, next) {
   try {
@@ -34,10 +35,27 @@ exports.me = async function (req, res, next) {
       classroomRole: req.classroomRole,
     });
 
+    // Prepare activeClassroom response with variableDefinitions if classroom exists
+    let activeClassroomResponse = req.activeClassroom;
+    if (req.activeClassroom) {
+      // Get all variableDefinitions grouped by type
+      const variableDefinitions =
+        await Classroom.getAllVariableDefinitionsForClassroom(
+          req.activeClassroom._id
+        );
+
+      // Convert activeClassroom to plain object and add variableDefinitions and role
+      activeClassroomResponse = {
+        ...req.activeClassroom.toObject(),
+        variableDefinitions,
+        role: req.classroomRole,
+      };
+    }
+
     res.status(200).json({
       routes,
       organization: req.organization,
-      activeClassroom: req.activeClassroom,
+      activeClassroom: activeClassroomResponse,
     });
   } catch (error) {
     next(error);
@@ -73,7 +91,6 @@ exports.setActiveClassroom = async function (req, res, next) {
     }
 
     // Verify the classroom exists and belongs to the organization
-    const Classroom = require("../classroom/classroom.model");
     const classroom = await Classroom.findById(classroomId);
 
     if (!classroom) {
@@ -101,6 +118,10 @@ exports.setActiveClassroom = async function (req, res, next) {
         error: "You are not enrolled in this classroom",
       });
     }
+
+    // Get all variableDefinitions grouped by type
+    const variableDefinitions =
+      await Classroom.getAllVariableDefinitionsForClassroom(classroomId);
 
     // Prepare activeClassroom data
     const activeClassroomData = {
@@ -134,6 +155,7 @@ exports.setActiveClassroom = async function (req, res, next) {
         _id: classroom._id,
         name: classroom.name,
         role: enrollment.role,
+        variableDefinitions,
       },
     });
   } catch (error) {
