@@ -26,6 +26,10 @@ const scenarioSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  week: {
+    type: Number,
+    default: 0,
+  },
 }).add(baseSchema);
 
 // Apply variable population plugin
@@ -36,7 +40,7 @@ scenarioSchema.plugin(variablePopulationPlugin, {
 });
 
 // Compound indexes for performance
-scenarioSchema.index({ classroomId: 1, week: 1 }, { unique: true });
+scenarioSchema.index({ classroomId: 1, week: 1 });
 scenarioSchema.index({ classroomId: 1, isPublished: 1, isClosed: 1 });
 scenarioSchema.index({ classroomId: 1, createdDate: -1 });
 scenarioSchema.index({ organization: 1, classroomId: 1 });
@@ -49,15 +53,19 @@ scenarioSchema.index({ organization: 1, classroomId: 1 });
  * @returns {Promise<number>} Next week number
  */
 scenarioSchema.statics.getNextWeekNumber = async function (classroomId) {
+  let week = 0;
   const lastScenario = await this.findOne({ classroomId })
     .sort({ week: -1 })
-    .limit(1);
+    .limit(1)
+    .lean();
 
-  if (!lastScenario) {
-    return 1;
+  if (!lastScenario || !lastScenario.week) {
+    week = 1;
+  } else {
+    week = parseInt(lastScenario.week) + 1;
   }
 
-  return lastScenario.week + 1;
+  return week;
 };
 
 /**
@@ -93,7 +101,6 @@ scenarioSchema.statics.createScenario = async function (
 ) {
   // Get next week number
   const week = await this.getNextWeekNumber(classroomId);
-
   // Extract variables from scenarioData
   const { variables, ...scenarioFields } = scenarioData;
 
@@ -185,6 +192,8 @@ scenarioSchema.statics.getActiveScenario = async function (classroomId) {
   if (!scenario) {
     return null;
   }
+
+  await scenario._loadVariables();
 
   // Variables are automatically included via plugin's post-init hook
   return scenario.toObject();

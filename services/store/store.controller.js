@@ -13,7 +13,7 @@ exports.createStore = async function (req, res) {
       shopName,
       storeDescription,
       storeLocation,
-      startingBalance,
+      storeType,
       variables,
     } = req.body;
     const clerkUserId = req.clerkUser.id;
@@ -30,6 +30,9 @@ exports.createStore = async function (req, res) {
     }
     if (!storeLocation) {
       return res.status(400).json({ error: "storeLocation is required" });
+    }
+    if (!storeType) {
+      return res.status(400).json({ error: "storeType is required" });
     }
 
     // Verify user is enrolled in class
@@ -59,7 +62,7 @@ exports.createStore = async function (req, res) {
         shopName,
         storeDescription,
         storeLocation,
-        startingBalance,
+        storeType,
         variables,
       },
       organizationId,
@@ -94,7 +97,7 @@ exports.updateStore = async function (req, res) {
       shopName,
       storeDescription,
       storeLocation,
-      startingBalance,
+      storeType,
       variables,
     } = req.body;
     const member = req.user;
@@ -117,6 +120,9 @@ exports.updateStore = async function (req, res) {
       }
       if (!storeLocation) {
         return res.status(400).json({ error: "storeLocation is required" });
+      }
+      if (!storeType) {
+        return res.status(400).json({ error: "storeType is required when creating a new store" });
       }
     }
 
@@ -145,7 +151,7 @@ exports.updateStore = async function (req, res) {
         shopName,
         storeDescription,
         storeLocation,
-        startingBalance,
+        storeType,
         variables,
       },
       organizationId,

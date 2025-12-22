@@ -1,6 +1,6 @@
 /**
  * Classroom Service Routes
- * 
+ *
  * Provides endpoints for managing classrooms (courses).
  * Admin routes require org:admin role.
  * Mounted at: /v1/admin/class
@@ -9,11 +9,7 @@ const express = require("express");
 const controller = require("./classroom.controller");
 const router = express.Router();
 
-const {
-  requireAuth,
-  checkRole,
-  requireMemberAuth,
-} = require("../../middleware/auth");
+const { requireAuth, checkRole } = require("../../middleware/auth");
 
 // Admin routes - require org:admin role
 // These will be mounted at /v1/admin/class when registered
