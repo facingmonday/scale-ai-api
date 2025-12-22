@@ -56,7 +56,12 @@ class SimulationWorker {
 
       // If not a dry run, write to ledger
       if (!job.dryRun) {
+        console.log(
+          `Writing ledger entry: ${JSON.stringify(aiResult, null, 2)}`
+        );
         await this.writeLedgerEntry(job, aiResult);
+      } else {
+        console.log(`Dry run: ${JSON.stringify(aiResult, null, 2)}`);
       }
 
       // Mark job as completed

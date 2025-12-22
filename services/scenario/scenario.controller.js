@@ -459,6 +459,8 @@ exports.rerunScenario = async function (req, res) {
     await JobService.resetJobsForScenario(scenarioId);
 
     // 3. Recreate jobs for all submissions
+    // Jobs are automatically enqueued to Bull queue by createJobsForScenario -> createJob
+    // The Bull queue worker will process them asynchronously
     const jobs = await JobService.createJobsForScenario(
       scenarioId,
       scenario.classroomId,
@@ -467,16 +469,12 @@ exports.rerunScenario = async function (req, res) {
       clerkUserId
     );
 
-    // Process jobs asynchronously
-    SimulationWorker.processPendingJobs(10).catch((error) => {
-      console.error("Error processing jobs after rerun:", error);
-    });
-
     res.json({
       success: true,
-      message: "Scenario rerun initiated. Jobs created and processing started.",
+      message:
+        "Scenario rerun initiated. Jobs created and queued for processing.",
       data: {
-        scenario: scenario.toObject(),
+        scenario: scenario, // getScenarioById already returns a plain object
         jobsCreated: jobs.length,
       },
     });

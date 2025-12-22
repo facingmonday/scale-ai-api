@@ -1,6 +1,6 @@
 const openai = require("../../../lib/openai");
 const { v4: uuidv4 } = require("uuid");
-
+const AI_MODEL = process.env.AI_MODEL || "gpt-4o";
 /**
  * AI Simulation Service
  * Handles OpenAI API calls for scenario simulations
@@ -17,6 +17,9 @@ class AISimulationService {
    * @returns {Promise<Object>} AI response matching ledger entry schema
    */
   static async runSimulation(context) {
+    console.log(
+      `Running AI simulation for scenario ${context.scenario._id} for submission ${context.submission._id}`
+    );
     const { store, scenario, scenarioOutcome, submission, ledgerHistory } =
       context;
 
@@ -31,7 +34,7 @@ class AISimulationService {
 
     // Call OpenAI with JSON schema
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: AI_MODEL,
       temperature: 0,
       messages,
       response_format: {
@@ -80,12 +83,14 @@ class AISimulationService {
       throw new Error(`Failed to parse AI response as JSON: ${error.message}`);
     }
 
+    console.log(`AI response: ${JSON.stringify(aiResult, null, 2)}`);
+
     // Validate response structure
     this.validateAIResponse(aiResult);
 
     // Add metadata
     aiResult.aiMetadata = {
-      model: "gpt-4o",
+      model: AI_MODEL,
       runId: uuidv4(),
       generatedAt: new Date(),
       prompt: messages,
