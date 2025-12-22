@@ -5,6 +5,7 @@ const Scenario = require("../scenario/scenario.model");
 const Submission = require("../submission/submission.model");
 const LedgerEntry = require("../ledger/ledger.model");
 const ScenarioOutcome = require("../scenarioOutcome/scenarioOutcome.model");
+const VariableDefinition = require("../variableDefinition/variableDefinition.model");
 
 const classroomSchema = new mongoose.Schema({
   name: {
@@ -282,6 +283,38 @@ classroomSchema.statics.validateAdminAccess = async function (
 classroomSchema.statics.generateJoinLink = function (classroomId) {
   const baseUrl = process.env.SCALE_APP_HOST || "http://localhost:5173";
   return `${baseUrl}/class/${classroomId}/join`;
+};
+
+/**
+ * Get all variable definitions for a classroom, grouped by appliesTo type
+ * @param {string} classroomId - Class ID
+ * @param {Object} options - Options (includeInactive)
+ * @returns {Promise<Object>} Object with variableDefinitions grouped by type: { store: [], scenario: [], submission: [] }
+ */
+classroomSchema.statics.getAllVariableDefinitionsForClassroom = async function (
+  classroomId,
+  options = {}
+) {
+  // Fetch all variableDefinitions for this classroom
+  const variableDefinitions = await VariableDefinition.getDefinitionsByClass(
+    classroomId,
+    options
+  );
+
+  // Group variableDefinitions by appliesTo type
+  const variableDefinitionsByType = {
+    store: [],
+    scenario: [],
+    submission: [],
+  };
+
+  variableDefinitions.forEach((def) => {
+    if (variableDefinitionsByType[def.appliesTo]) {
+      variableDefinitionsByType[def.appliesTo].push(def);
+    }
+  });
+
+  return variableDefinitionsByType;
 };
 
 const Classroom = mongoose.model("Classroom", classroomSchema);

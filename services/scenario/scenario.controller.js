@@ -827,6 +827,8 @@ exports.getScenarioByIdForStudent = async function (req, res) {
       member._id
     );
 
+    console.log("submission", submission);
+
     // Get scenario outcome
     const outcome = await ScenarioOutcome.getOutcomeByScenario(scenario._id);
 
