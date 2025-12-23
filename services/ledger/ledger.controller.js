@@ -1,4 +1,4 @@
-const LedgerService = require("./lib/ledgerService");
+const LedgerEntry = require("./ledger.model");
 const Classroom = require("../classroom/classroom.model");
 const Scenario = require("../scenario/scenario.model");
 const Member = require("../members/member.model");
@@ -20,7 +20,7 @@ exports.getLedgerHistory = async function (req, res) {
       organizationId
     );
 
-    const history = await LedgerService.getLedgerHistory(classroomId, userId);
+    const history = await LedgerEntry.getLedgerHistory(classroomId, userId);
 
     res.json({
       success: true,
@@ -62,7 +62,7 @@ exports.getLedgerEntriesByScenario = async function (req, res) {
       organizationId
     );
 
-    const entries = await LedgerService.getLedgerEntriesByScenario(scenarioId);
+    const entries = await LedgerEntry.getLedgerEntriesByScenario(scenarioId);
 
     res.json({
       success: true,
@@ -97,7 +97,7 @@ exports.overrideLedgerEntry = async function (req, res) {
       return res.status(404).json({ error: "Admin member not found" });
     }
 
-    const entry = await LedgerService.overrideLedgerEntry(
+    const entry = await LedgerEntry.overrideLedgerEntry(
       ledgerId,
       patch,
       clerkUserId,
@@ -145,7 +145,7 @@ exports.getLedgerEntry = async function (req, res) {
       organizationId
     );
 
-    const entry = await LedgerService.getLedgerEntry(scenarioId, userId);
+    const entry = await LedgerEntry.getLedgerEntry(scenarioId, userId);
 
     if (!entry) {
       return res.status(404).json({ error: "Ledger entry not found" });
