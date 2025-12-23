@@ -56,12 +56,30 @@ class SimulationWorker {
 
       // If not a dry run, write to ledger
       if (!job.dryRun) {
+        // Create a safe copy for logging (without circular references)
+        const logSafeResult = { ...aiResult };
+        if (logSafeResult.aiMetadata) {
+          logSafeResult.aiMetadata = {
+            ...aiResult.aiMetadata,
+            aiResult: "[Circular Reference Removed]",
+            prompt: "[Prompt Removed for Logging]",
+          };
+        }
         console.log(
-          `Writing ledger entry: ${JSON.stringify(aiResult, null, 2)}`
+          `Writing ledger entry: ${JSON.stringify(logSafeResult, null, 2)}`
         );
         await this.writeLedgerEntry(job, aiResult);
       } else {
-        console.log(`Dry run: ${JSON.stringify(aiResult, null, 2)}`);
+        // Create a safe copy for logging (without circular references)
+        const logSafeResult = { ...aiResult };
+        if (logSafeResult.aiMetadata) {
+          logSafeResult.aiMetadata = {
+            ...aiResult.aiMetadata,
+            aiResult: "[Circular Reference Removed]",
+            prompt: "[Prompt Removed for Logging]",
+          };
+        }
+        console.log(`Dry run: ${JSON.stringify(logSafeResult, null, 2)}`);
       }
 
       // Mark job as completed
