@@ -10,7 +10,8 @@ const ledgerEntrySchema = new mongoose.Schema({
   scenarioId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Scenario",
-    required: true,
+    required: false,
+    default: null,
   },
   submissionId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -102,7 +103,23 @@ const ledgerEntrySchema = new mongoose.Schema({
 }).add(baseSchema);
 
 // Compound indexes for performance
-ledgerEntrySchema.index({ scenarioId: 1, userId: 1 }, { unique: true });
+// Sparse unique index for scenario-based entries (only applies when scenarioId exists)
+ledgerEntrySchema.index(
+  { scenarioId: 1, userId: 1 },
+  {
+    unique: true,
+    sparse: true,
+    partialFilterExpression: { scenarioId: { $ne: null } },
+  }
+);
+// Unique index for initial entries (where scenarioId is null)
+ledgerEntrySchema.index(
+  { classroomId: 1, userId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { scenarioId: null },
+  }
+);
 ledgerEntrySchema.index({ classroomId: 1, userId: 1, createdDate: 1 });
 ledgerEntrySchema.index({ scenarioId: 1 });
 ledgerEntrySchema.index({ organization: 1, scenarioId: 1 });
@@ -144,21 +161,34 @@ ledgerEntrySchema.statics.createLedgerEntry = async function (
     );
   }
 
-  // Check if entry already exists for this scenario/user
-  const existing = await this.findOne({
-    scenarioId: input.scenarioId,
-    userId: input.userId,
-  });
+  // Check if entry already exists
+  // For scenario-based entries, check scenarioId + userId
+  // For initial entries, check classroomId + userId + scenarioId is null
+  let existing;
+  if (input.scenarioId) {
+    existing = await this.findOne({
+      scenarioId: input.scenarioId,
+      userId: input.userId,
+    });
+  } else {
+    // Initial entry (no scenarioId)
+    existing = await this.findOne({
+      classroomId: input.classroomId,
+      userId: input.userId,
+      scenarioId: null,
+    });
+  }
 
   if (existing) {
+    const entryType = input.scenarioId ? "scenario" : "initial";
     throw new Error(
-      "Ledger entry already exists for this scenario and user. Delete existing entry before creating a new one."
+      `Ledger entry already exists for this ${entryType} and user. Delete existing entry before creating a new one.`
     );
   }
 
   const entry = new this({
     classroomId: input.classroomId,
-    scenarioId: input.scenarioId,
+    scenarioId: input.scenarioId || null, // Explicitly set to null if not provided
     submissionId: input.submissionId || null,
     userId: input.userId,
     sales: input.sales,
@@ -205,7 +235,11 @@ ledgerEntrySchema.statics.getLedgerHistory = async function (
   }
   return await this.find(query)
     .sort({ createdDate: 1 })
-    .populate("scenarioId", "title")
+    .populate({
+      path: "scenarioId",
+      select: "title",
+      options: { strictPopulate: false }, // Allow null values
+    })
     .lean();
 };
 

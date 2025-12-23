@@ -171,8 +171,8 @@ class AISimulationService {
     // Add ledger history if available
     if (ledgerHistory && ledgerHistory.length > 0) {
       const historyData = ledgerHistory.map((entry) => ({
-        scenarioId: entry.scenarioId?._id || entry.scenarioId,
-        scenarioTitle: entry.scenarioId?.title,
+        scenarioId: entry.scenarioId?._id || entry.scenarioId || null,
+        scenarioTitle: entry.scenarioId?.title || "Initial Setup",
         netProfit: entry.netProfit,
         cashAfter: entry.cashAfter,
       }));

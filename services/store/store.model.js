@@ -74,36 +74,13 @@ storeSchema.statics._createInitialLedgerEntry = async function (
   clerkUserId
 ) {
   const LedgerEntry = require("../ledger/ledger.model");
-  const Scenario = require("../scenario/scenario.model");
 
   try {
-    // Find or create an initial scenario for this classroom (week 0)
-    // Note: We create this directly with week 0, bypassing createScenario which auto-increments
-    let initialScenario = await Scenario.findOne({
-      classroomId,
-      week: 0,
-    });
-
-    if (!initialScenario) {
-      // Create initial scenario directly with week 0
-      initialScenario = new Scenario({
-        classroomId,
-        week: 0,
-        title: "Initial Store Setup",
-        description: "Initial ledger entry for store creation",
-        isPublished: false,
-        isClosed: true, // Mark as closed so it doesn't interfere with regular scenarios
-        organization: organizationId,
-        createdBy: clerkUserId,
-        updatedBy: clerkUserId,
-      });
-      await initialScenario.save();
-    }
-
-    // Check if ledger entry already exists
+    // Check if initial ledger entry already exists
     const existingEntry = await LedgerEntry.findOne({
-      scenarioId: initialScenario._id,
+      classroomId,
       userId: store.userId,
+      scenarioId: null, // Initial entries have null scenarioId
     });
 
     if (existingEntry) {
@@ -116,11 +93,11 @@ storeSchema.statics._createInitialLedgerEntry = async function (
     const preset = getPreset(store.storeType);
     const startingBalance = preset.startingBalance || 0;
 
-    // Create initial ledger entry
+    // Create initial ledger entry with null scenarioId
     await LedgerEntry.createLedgerEntry(
       {
         classroomId,
-        scenarioId: initialScenario._id,
+        scenarioId: null, // No scenario for initial entry
         userId: store.userId,
         sales: 0,
         revenue: 0,
