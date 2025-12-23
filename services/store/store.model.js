@@ -74,36 +74,13 @@ storeSchema.statics._createInitialLedgerEntry = async function (
   clerkUserId
 ) {
   const LedgerEntry = require("../ledger/ledger.model");
-  const Scenario = require("../scenario/scenario.model");
 
   try {
-    // Find or create an initial scenario for this classroom (week 0)
-    // Note: We create this directly with week 0, bypassing createScenario which auto-increments
-    let initialScenario = await Scenario.findOne({
-      classroomId,
-      week: 0,
-    });
-
-    if (!initialScenario) {
-      // Create initial scenario directly with week 0
-      initialScenario = new Scenario({
-        classroomId,
-        week: 0,
-        title: "Initial Store Setup",
-        description: "Initial ledger entry for store creation",
-        isPublished: false,
-        isClosed: true, // Mark as closed so it doesn't interfere with regular scenarios
-        organization: organizationId,
-        createdBy: clerkUserId,
-        updatedBy: clerkUserId,
-      });
-      await initialScenario.save();
-    }
-
-    // Check if ledger entry already exists
+    // Check if initial ledger entry already exists
     const existingEntry = await LedgerEntry.findOne({
-      scenarioId: initialScenario._id,
+      classroomId,
       userId: store.userId,
+      scenarioId: null, // Initial entries have null scenarioId
     });
 
     if (existingEntry) {
@@ -111,16 +88,17 @@ storeSchema.statics._createInitialLedgerEntry = async function (
       return;
     }
 
-    // Get starting balance from storeType preset
+    // Get starting balance and inventory from storeType preset
     // This is more reliable than loading variables, and ensures consistency
     const preset = getPreset(store.storeType);
     const startingBalance = preset.startingBalance || 0;
+    const startingInventory = preset.startingInventory || 0;
 
-    // Create initial ledger entry
+    // Create initial ledger entry with null scenarioId
     await LedgerEntry.createLedgerEntry(
       {
         classroomId,
-        scenarioId: initialScenario._id,
+        scenarioId: null, // No scenario for initial entry
         userId: store.userId,
         sales: 0,
         revenue: 0,
@@ -129,7 +107,7 @@ storeSchema.statics._createInitialLedgerEntry = async function (
         cashBefore: 0,
         cashAfter: startingBalance,
         inventoryBefore: 0,
-        inventoryAfter: 0,
+        inventoryAfter: startingInventory,
         netProfit: startingBalance,
         summary: "Initial store setup",
         aiMetadata: {
@@ -213,19 +191,17 @@ storeSchema.statics.createStore = async function (
   await store.save();
 
   // Create variable values from preset and provided variables
+  // Use setVariable to ensure all preset variables are saved
   if (finalVariables && typeof finalVariables === "object") {
     const variableEntries = Object.entries(finalVariables);
-    const variableDocs = variableEntries.map(([key, value]) => ({
-      storeId: store._id,
-      variableKey: key,
-      value: value,
-      organization: organizationId,
-      createdBy: clerkUserId,
-      updatedBy: clerkUserId,
-    }));
-
-    if (variableDocs.length > 0) {
-      await StoreVariableValue.insertMany(variableDocs);
+    for (const [key, value] of variableEntries) {
+      await StoreVariableValue.setVariable(
+        store._id,
+        key,
+        value,
+        organizationId,
+        clerkUserId
+      );
     }
   }
 
@@ -413,6 +389,9 @@ storeSchema.statics.updateStore = async function (
     if (storeFields.storeLocation !== undefined) {
       store.storeLocation = storeFields.storeLocation;
     }
+    const storeTypeChanged =
+      storeType !== undefined && store.storeType !== storeType;
+
     if (storeType !== undefined) {
       // Validate storeType if provided
       if (!isValidStoreType(storeType)) {
@@ -423,8 +402,29 @@ storeSchema.statics.updateStore = async function (
       store.storeType = storeType;
     }
 
-    // Update variables if provided
-    if (variables && typeof variables === "object") {
+    // If storeType changed, update all preset variables for the new type
+    if (storeTypeChanged) {
+      // Use the new storeType (already updated above)
+      const presetVariables = getPreset(store.storeType);
+      // Merge with provided variables (provided variables override preset)
+      const finalVariables = {
+        ...presetVariables,
+        ...(variables && typeof variables === "object" ? variables : {}),
+      };
+
+      // Update all preset variables
+      const variableEntries = Object.entries(finalVariables);
+      for (const [key, value] of variableEntries) {
+        await StoreVariableValue.setVariable(
+          store._id,
+          key,
+          value,
+          organizationId,
+          clerkUserId
+        );
+      }
+    } else if (variables && typeof variables === "object") {
+      // Update only provided variables if storeType didn't change
       const variableEntries = Object.entries(variables);
       for (const [key, value] of variableEntries) {
         await StoreVariableValue.setVariable(
@@ -435,9 +435,30 @@ storeSchema.statics.updateStore = async function (
           clerkUserId
         );
       }
+    }
 
-      // Delete variables that are not in the new set (if we want to support removal)
-      // Note: This behavior can be adjusted based on requirements
+    // Ensure all preset variables exist (in case some were missing)
+    // This handles cases where stores were created before preset logic was added
+    const presetVariables = getPreset(store.storeType);
+    const presetEntries = Object.entries(presetVariables);
+    for (const [key, value] of presetEntries) {
+      // Only set if not already set by variables above
+      if (!variables || !(key in variables)) {
+        const existing = await StoreVariableValue.findByStoreAndKey(
+          store._id,
+          key
+        );
+        if (!existing) {
+          // Variable doesn't exist, create it with preset value
+          await StoreVariableValue.setVariable(
+            store._id,
+            key,
+            value,
+            organizationId,
+            clerkUserId
+          );
+        }
+      }
     }
 
     store.updatedBy = clerkUserId;

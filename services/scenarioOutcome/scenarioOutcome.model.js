@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
-const LedgerService = require("../ledger/lib/ledgerService");
+const LedgerEntry = require("../ledger/ledger.model");
 
 const scenarioOutcomeSchema = new mongoose.Schema({
   scenarioId: {
@@ -88,7 +88,7 @@ scenarioOutcomeSchema.statics.getOutcomeByScenario = async function (
  */
 scenarioOutcomeSchema.statics.deleteOutcome = async function (scenarioId) {
   // Delete all ledger entries for this scenario first
-  await LedgerService.deleteLedgerEntriesForScenario(scenarioId);
+  await LedgerEntry.deleteLedgerEntriesForScenario(scenarioId);
 
   // Then delete the outcome
   return await this.findOneAndDelete({ scenarioId });

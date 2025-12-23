@@ -13,6 +13,7 @@ const STORE_TYPE_PRESETS = {
     description:
       "A scrappy, mobile kitchen that lives or dies by location, weather, and word of mouth.",
     startingBalance: 5000,
+    startingInventory: 1000,
     weeklyRent: 200,
     maxDailyCapacity: 80,
     staffRequired: 2,
@@ -33,6 +34,7 @@ const STORE_TYPE_PRESETS = {
     description:
       "A cozy, repeat-customer driven business built on routine and regulars.",
     startingBalance: 8000,
+    startingInventory: 1000,
     weeklyRent: 700,
     maxDailyCapacity: 120,
     staffRequired: 3,
@@ -52,6 +54,7 @@ const STORE_TYPE_PRESETS = {
     description:
       "High margins, unpredictable nights, and staffing chaos when things get busy.",
     startingBalance: 14000,
+    startingInventory: 1000,
     weeklyRent: 1600,
     maxDailyCapacity: 180,
     staffRequired: 5,
@@ -72,6 +75,7 @@ const STORE_TYPE_PRESETS = {
     description:
       "Low volume, high expectations. Reputation is everything and mistakes are expensive.",
     startingBalance: 25000,
+    startingInventory: 10000,
     weeklyRent: 2800,
     maxDailyCapacity: 70,
     staffRequired: 10,
@@ -92,6 +96,7 @@ const STORE_TYPE_PRESETS = {
     description:
       "Ultra-lean operation with massive foot traffic swings and razor-thin margins.",
     startingBalance: 2500,
+    startingInventory: 1000,
     weeklyRent: 50,
     maxDailyCapacity: 60,
     staffRequired: 1,
@@ -112,6 +117,7 @@ const STORE_TYPE_PRESETS = {
     description:
       "Few hours, huge spikes, and customers who want food immediately.",
     startingBalance: 7000,
+    startingInventory: 1000,
     weeklyRent: 500,
     maxDailyCapacity: 120,
     staffRequired: 2,
@@ -132,6 +138,7 @@ const STORE_TYPE_PRESETS = {
     description:
       "No storefront, no seating, pure delivery math and platform dependency.",
     startingBalance: 9000,
+    startingInventory: 1000,
     weeklyRent: 600,
     maxDailyCapacity: 150,
     staffRequired: 4,
@@ -152,6 +159,7 @@ const STORE_TYPE_PRESETS = {
     description:
       "High volume, low choice, predictable chaos during class transitions.",
     startingBalance: 6000,
+    startingInventory: 1000,
     weeklyRent: 500,
     maxDailyCapacity: 180,
     staffRequired: 2,
@@ -171,6 +179,7 @@ const STORE_TYPE_PRESETS = {
     label: "Upscale Bistro",
     description: "Stylish but approachable. Balance quality with consistency.",
     startingBalance: 18000,
+    startingInventory: 1000,
     weeklyRent: 2200,
     maxDailyCapacity: 90,
     staffRequired: 8,
@@ -191,6 +200,7 @@ const STORE_TYPE_PRESETS = {
     description:
       "Short bursts of extreme volume followed by long quiet stretches.",
     startingBalance: 6500,
+    startingInventory: 1000,
     weeklyRent: 0,
     maxDailyCapacity: 300,
     staffRequired: 5,
@@ -210,6 +220,7 @@ const STORE_TYPE_PRESETS = {
     label: "Franchise Location",
     description: "Rules, systems, and brand power at the cost of flexibility.",
     startingBalance: 20000,
+    startingInventory: 5000,
     weeklyRent: 1800,
     royaltyRate: 0.08,
     maxDailyCapacity: 220,
