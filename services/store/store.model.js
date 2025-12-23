@@ -106,7 +106,7 @@ storeSchema.statics._createInitialLedgerEntry = async function (
         cashBefore: 0,
         cashAfter: startingBalance,
         inventoryBefore: 0,
-        inventoryAfter: 0,
+        inventoryAfter: startingInventory,
         netProfit: startingBalance,
         summary: "Initial store setup",
         aiMetadata: {

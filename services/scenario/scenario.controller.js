@@ -6,7 +6,7 @@ const Member = require("../members/member.model");
 const Submission = require("../submission/submission.model");
 const { enqueueEmailSending } = require("../../lib/queues/email-worker");
 const JobService = require("../job/lib/jobService");
-const LedgerService = require("../ledger/lib/ledgerService");
+const LedgerEntry = require("../ledger/ledger.model");
 const SimulationWorker = require("../job/lib/simulationWorker");
 
 /**
@@ -16,7 +16,7 @@ const SimulationWorker = require("../job/lib/simulationWorker");
 exports.getScenarios = async function (req, res) {
   try {
     const classroomId = req.query.classroomId;
-    const scenarios = await Scenario.find({ classroomId });
+    const scenarios = await Scenario.find({ classroomId, week: { $ne: 0 } });
     res.status(200).json({
       success: true,
       data: scenarios,
@@ -453,7 +453,7 @@ exports.rerunScenario = async function (req, res) {
     }
 
     // 1. Delete existing ledger entries for this scenario
-    await LedgerService.deleteLedgerEntriesForScenario(scenarioId);
+    await LedgerEntry.deleteLedgerEntriesForScenario(scenarioId);
 
     // 2. Reset all jobs for this scenario
     await JobService.resetJobsForScenario(scenarioId);
@@ -766,7 +766,7 @@ exports.getStudentScenariosByClassroom = async function (req, res) {
         );
 
         // Get ledger entry for this scenario and member
-        const ledgerEntry = await LedgerService.getLedgerEntry(
+        const ledgerEntry = await LedgerEntry.getLedgerEntry(
           scenario._id,
           member._id
         );
@@ -831,7 +831,7 @@ exports.getScenarioByIdForStudent = async function (req, res) {
     const outcome = await ScenarioOutcome.getOutcomeByScenario(scenario._id);
 
     // Get ledger entry for this scenario and member
-    const ledgerEntry = await LedgerService.getLedgerEntry(
+    const ledgerEntry = await LedgerEntry.getLedgerEntry(
       scenario._id,
       member._id
     );

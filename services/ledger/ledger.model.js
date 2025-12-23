@@ -239,8 +239,7 @@ ledgerEntrySchema.statics.getLedgerHistory = async function (
       path: "scenarioId",
       select: "title",
       options: { strictPopulate: false }, // Allow null values
-    })
-    .lean();
+    });
 };
 
 /**
