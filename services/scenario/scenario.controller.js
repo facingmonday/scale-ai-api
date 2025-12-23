@@ -853,3 +853,21 @@ exports.getScenarioByIdForStudent = async function (req, res) {
     res.status(500).json({ error: error.message });
   }
 };
+
+/**
+ * Delete scenario
+ * DELETE /api/admin/scenarios/:scenarioId
+ */
+exports.deleteScenario = async function (req, res) {
+  try {
+    const { scenarioId } = req.params;
+    await Scenario.findByIdAndDelete(scenarioId);
+    res.json({
+      success: true,
+      message: "Scenario deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error deleting scenario:", error);
+    res.status(500).json({ error: error.message });
+  }
+};

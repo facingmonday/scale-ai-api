@@ -1,6 +1,6 @@
 /**
  * Scenario Service Routes
- * 
+ *
  * Provides endpoints for managing scenarios (weekly simulation contexts).
  * Includes admin routes (creating, publishing, managing scenarios) and student routes (viewing scenarios).
  * Mounted at: /v1/admin/scenarios and /v1/student/scenarios
@@ -78,6 +78,13 @@ router.get(
   requireAuth(),
   checkRole("org:admin"),
   controller.getCurrentScenarioForAdmin
+);
+
+router.delete(
+  "/admin/scenarios/:scenarioId",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.deleteScenario
 );
 
 // Student routes - require authenticated member

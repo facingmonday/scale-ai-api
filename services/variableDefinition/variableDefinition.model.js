@@ -40,7 +40,16 @@ const variableDefinitionSchema = new mongoose.Schema({
   },
   inputType: {
     type: String,
-    enum: ["text", "number", "slider", "dropdown", "checkbox"],
+    enum: [
+      "text",
+      "number",
+      "slider",
+      "dropdown",
+      "checkbox",
+      "knob",
+      "selectbutton",
+      "switch",
+    ],
     default: "text",
   },
   options: {
