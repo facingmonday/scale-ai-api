@@ -122,7 +122,9 @@ exports.updateStore = async function (req, res) {
         return res.status(400).json({ error: "storeLocation is required" });
       }
       if (!storeType) {
-        return res.status(400).json({ error: "storeType is required when creating a new store" });
+        return res
+          .status(400)
+          .json({ error: "storeType is required when creating a new store" });
       }
     }
 
@@ -189,8 +191,11 @@ exports.getStore = async function (req, res) {
         .json({ error: "classroomId query parameter is required" });
     }
 
-    // Get store using static method
-    const store = await Store.getStoreByUser(classroomId, member._id);
+    // Get store with current details using static method
+    const store = await Store.getStoreByUserWithCurrentDetails(
+      classroomId,
+      member._id
+    );
 
     if (!store) {
       return res.status(200).json({ data: null });
@@ -223,8 +228,11 @@ exports.getStudentStore = async function (req, res) {
       organizationId
     );
 
-    // Get store using static method
-    const store = await Store.getStoreByUser(classroomId, userId);
+    // Get store with current details using static method
+    const store = await Store.getStoreByUserWithCurrentDetails(
+      classroomId,
+      userId
+    );
 
     if (!store) {
       return res.status(404).json({ error: "Store not found" });

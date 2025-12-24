@@ -239,6 +239,65 @@ storeSchema.statics.getStoreByUser = async function (classroomId, userId) {
 };
 
 /**
+ * Get store by user with variables and current financial details from ledger
+ * @param {string} classroomId - Class ID
+ * @param {string} userId - Member ID
+ * @returns {Promise<Object|null>} Store with variables and currentDetails or null
+ */
+storeSchema.statics.getStoreByUserWithCurrentDetails = async function (
+  classroomId,
+  userId
+) {
+  const store = await this.getStoreByUser(classroomId, userId);
+
+  if (!store) {
+    return null;
+  }
+
+  // Get the most recent ledger entry for current financial state
+  const LedgerEntry = require("../ledger/ledger.model");
+  const ledgerHistory = await LedgerEntry.getLedgerHistory(classroomId, userId);
+
+  // Extract current details from the most recent ledger entry
+  const currentDetails = {};
+
+  if (ledgerHistory.length > 0) {
+    const lastEntry = ledgerHistory[ledgerHistory.length - 1];
+    currentDetails.cashBalance = lastEntry.cashAfter;
+    currentDetails.inventory = lastEntry.inventoryAfter;
+    currentDetails.lastSales = lastEntry.sales;
+    currentDetails.lastRevenue = lastEntry.revenue;
+    currentDetails.lastCosts = lastEntry.costs;
+    currentDetails.lastWaste = lastEntry.waste;
+    currentDetails.lastNetProfit = lastEntry.netProfit;
+    currentDetails.lastScenarioId = lastEntry.scenarioId;
+    currentDetails.lastLedgerEntryDate = lastEntry.createdDate;
+  } else {
+    // No ledger entries yet - use initial values from store variables
+    const variablesObj = {};
+    if (store.variables && Array.isArray(store.variables)) {
+      store.variables.forEach((v) => {
+        variablesObj[v.key] = v.value;
+      });
+    }
+    currentDetails.cashBalance = variablesObj.startingBalance || 0;
+    currentDetails.inventory = variablesObj.startingInventory || 0;
+    currentDetails.lastSales = 0;
+    currentDetails.lastRevenue = 0;
+    currentDetails.lastCosts = 0;
+    currentDetails.lastWaste = 0;
+    currentDetails.lastNetProfit = 0;
+    currentDetails.lastScenarioId = null;
+    currentDetails.lastLedgerEntryDate = null;
+  }
+
+  return {
+    ...store,
+    currentDetails,
+  };
+};
+
+/**
  * Check if store exists for user in class
  * @param {string} classroomId - Class ID
  * @param {string} userId - Member ID
