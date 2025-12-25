@@ -14,7 +14,6 @@ router.use("/members", require("./members"));
 router.use("/organizations", require("./organizations"));
 router.use("/notifications", require("./notifications"));
 router.use("/openai", require("./openai")); // Remove direct access to openai
-router.use("/utils", require("./utils"));
 //router.use("/workers", require("./workers"));
 
 // Classroom routes

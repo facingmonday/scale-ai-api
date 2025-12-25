@@ -104,7 +104,7 @@ scale-ai-api/
 
 #### Store Service
 
-- **Models**: `Store`, `StoreVariableValue`
+- **Models**: `Store`, `VariableValue`
 - **Purpose**: Manages student business setup (one store per student per class)
 
 #### VariableDefinition Service
@@ -278,27 +278,6 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 #### `POST /v1/openai/transcribe-audio`
 
 - **Description**: Transcribe audio using OpenAI Whisper API (file upload required)
-- **Body**: Multipart form data with `file` field
-
-### Utils Routes (`/v1/utils`)
-
-All routes require `requireAuth()` and `checkRole('org:admin')`.
-
-#### `GET /v1/utils/transcribe-video`
-
-- **Description**: Transcribe video (extracts audio and transcribes)
-
-#### `POST /v1/utils/event-objects-from-json`
-
-- **Description**: Create event objects from JSON data
-
-#### `POST /v1/utils/event-objects-from-text`
-
-- **Description**: Create event objects from text input
-
-#### `POST /v1/utils/event-objects-from-image`
-
-- **Description**: Create event objects from image analysis (file upload required)
 - **Body**: Multipart form data with `file` field
 
 ### Classroom Routes (`/v1/admin/class`)
@@ -780,7 +759,7 @@ SEND_EMAIL=true             # Set to 'true' to actually send emails
 - **Classroom** - Course instances
 - **Enrollment** - User-class relationships with roles
 - **Store** - Student business setup
-- **StoreVariableValue** - Dynamic store variables
+- **VariableValue** - Dynamic variable values (store/scenario/submission/etc.)
 - **VariableDefinition** - Dynamic variable definitions
 - **Scenario** - Weekly simulation contexts
 - **ScenarioOutcome** - Global scenario outcomes

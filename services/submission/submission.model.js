@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
 const Scenario = require("../scenario/scenario.model");
-const SubmissionVariableValue = require("./submissionVariableValue.model");
+const VariableValue = require("../variableDefinition/variableValue.model");
 const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
 
 const submissionSchema = new mongoose.Schema({
@@ -49,8 +49,7 @@ const submissionSchema = new mongoose.Schema({
 
 // Apply variable population plugin
 submissionSchema.plugin(variablePopulationPlugin, {
-  variableValueModel: SubmissionVariableValue,
-  foreignKeyField: "submissionId",
+  variableValueModel: VariableValue,
   appliesTo: "submission",
 });
 
@@ -171,7 +170,8 @@ submissionSchema.statics.createSubmission = async function (
   if (variablesWithDefaults && Object.keys(variablesWithDefaults).length > 0) {
     const variableEntries = Object.entries(variablesWithDefaults);
     const variableDocs = variableEntries.map(([key, value]) => ({
-      submissionId: submission._id,
+      appliesTo: "submission",
+      ownerId: submission._id,
       variableKey: key,
       value: value,
       organization: organizationId,
@@ -180,7 +180,7 @@ submissionSchema.statics.createSubmission = async function (
     }));
 
     if (variableDocs.length > 0) {
-      await SubmissionVariableValue.insertMany(variableDocs);
+      await VariableValue.insertMany(variableDocs);
     }
   }
 
@@ -253,15 +253,14 @@ submissionSchema.statics.updateSubmission = async function (
   await submission.save();
 
   // Delete existing variable values
-  await SubmissionVariableValue.deleteMany({
-    submissionId: submission._id,
-  });
+  await VariableValue.deleteMany({ appliesTo: "submission", ownerId: submission._id });
 
   // Create new variable values if provided
   if (variablesWithDefaults && Object.keys(variablesWithDefaults).length > 0) {
     const variableEntries = Object.entries(variablesWithDefaults);
     const variableDocs = variableEntries.map(([key, value]) => ({
-      submissionId: submission._id,
+      appliesTo: "submission",
+      ownerId: submission._id,
       variableKey: key,
       value: value,
       organization: organizationId,
@@ -270,7 +269,7 @@ submissionSchema.statics.updateSubmission = async function (
     }));
 
     if (variableDocs.length > 0) {
-      await SubmissionVariableValue.insertMany(variableDocs);
+      await VariableValue.insertMany(variableDocs);
     }
   }
 

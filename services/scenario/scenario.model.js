@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
-const ScenarioVariableValue = require("./scenarioVariableValue.model");
+const VariableValue = require("../variableDefinition/variableValue.model");
 const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
 // Note: Classroom, Enrollment, and Member are required inside functions to avoid circular dependencies
 const { enqueueEmailSending } = require("../../lib/queues/email-worker");
@@ -36,8 +36,7 @@ const scenarioSchema = new mongoose.Schema({
 
 // Apply variable population plugin
 scenarioSchema.plugin(variablePopulationPlugin, {
-  variableValueModel: ScenarioVariableValue,
-  foreignKeyField: "scenarioId",
+  variableValueModel: VariableValue,
   appliesTo: "scenario",
 });
 
@@ -144,7 +143,8 @@ scenarioSchema.statics.createScenario = async function (
     // Create variable values if provided
     const variableEntries = Object.entries(variablesWithDefaults);
     const variableDocs = variableEntries.map(([key, value]) => ({
-      scenarioId: scenario._id,
+      appliesTo: "scenario",
+      ownerId: scenario._id,
       variableKey: key,
       value: value,
       organization: organizationId,
@@ -153,7 +153,7 @@ scenarioSchema.statics.createScenario = async function (
     }));
 
     if (variableDocs.length > 0) {
-      await ScenarioVariableValue.insertMany(variableDocs);
+      await VariableValue.insertMany(variableDocs);
     }
 
     // Return scenario with variables populated (auto-loaded via plugin)
@@ -298,7 +298,8 @@ scenarioSchema.methods.updateVariables = async function (
   // Update or create variable values
   const variableEntries = Object.entries(variablesWithDefaults);
   for (const [key, value] of variableEntries) {
-    await ScenarioVariableValue.setVariable(
+    await VariableValue.setVariable(
+      "scenario",
       this._id,
       key,
       value,
@@ -308,13 +309,14 @@ scenarioSchema.methods.updateVariables = async function (
   }
 
   // Delete variables that are not in the new set
-  const existingVariables = await ScenarioVariableValue.find({
-    scenarioId: this._id,
+  const existingVariables = await VariableValue.find({
+    appliesTo: "scenario",
+    ownerId: this._id,
   });
   const newKeys = new Set(Object.keys(variablesWithDefaults));
   for (const existingVar of existingVariables) {
     if (!newKeys.has(existingVar.variableKey)) {
-      await ScenarioVariableValue.deleteOne({ _id: existingVar._id });
+      await VariableValue.deleteOne({ _id: existingVar._id });
     }
   }
 
