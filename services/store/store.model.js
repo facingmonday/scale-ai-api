@@ -190,20 +190,6 @@ storeSchema.statics.createStore = async function (
 
   await store.save();
 
-<<<<<<< Updated upstream
-  // Create variable values from preset and provided variables
-  // Use setVariable to ensure all preset variables are saved
-  if (finalVariables && typeof finalVariables === "object") {
-    const variableEntries = Object.entries(finalVariables);
-    for (const [key, value] of variableEntries) {
-      await StoreVariableValue.setVariable(
-        store._id,
-        key,
-        value,
-        organizationId,
-        clerkUserId
-      );
-=======
   // Create variable values if provided
   if (variables && typeof variables === "object") {
     const variableEntries = Object.entries(variables);
@@ -219,7 +205,6 @@ storeSchema.statics.createStore = async function (
 
     if (variableDocs.length > 0) {
       await VariableValue.insertMany(variableDocs);
->>>>>>> Stashed changes
     }
   }
 
@@ -420,50 +405,6 @@ storeSchema.statics.updateStore = async function (
     const storeTypeChanged =
       storeType !== undefined && store.storeType !== storeType;
 
-<<<<<<< Updated upstream
-    if (storeType !== undefined) {
-      // Validate storeType if provided
-      if (!isValidStoreType(storeType)) {
-        throw new Error(
-          `Invalid storeType: ${storeType}. Must be one of: food_truck, indoor, outdoor`
-        );
-      }
-      store.storeType = storeType;
-    }
-
-    // If storeType changed, update all preset variables for the new type
-    if (storeTypeChanged) {
-      // Use the new storeType (already updated above)
-      const presetVariables = getPreset(store.storeType);
-      // Merge with provided variables (provided variables override preset)
-      const finalVariables = {
-        ...presetVariables,
-        ...(variables && typeof variables === "object" ? variables : {}),
-      };
-
-      // Update all preset variables
-      const variableEntries = Object.entries(finalVariables);
-      for (const [key, value] of variableEntries) {
-        await StoreVariableValue.setVariable(
-          store._id,
-          key,
-          value,
-          organizationId,
-          clerkUserId
-        );
-      }
-    } else if (variables && typeof variables === "object") {
-      // Update only provided variables if storeType didn't change
-      const variableEntries = Object.entries(variables);
-      for (const [key, value] of variableEntries) {
-        await StoreVariableValue.setVariable(
-          store._id,
-          key,
-          value,
-          organizationId,
-          clerkUserId
-        );
-=======
   await store.save();
 
   // Update or create variable values if provided
@@ -489,7 +430,6 @@ storeSchema.statics.updateStore = async function (
     for (const existingVar of existingVariables) {
       if (!newKeys.has(existingVar.variableKey)) {
         await VariableValue.deleteOne({ _id: existingVar._id });
->>>>>>> Stashed changes
       }
     }
 
