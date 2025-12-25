@@ -427,19 +427,12 @@ exports.getAllSubmissionsForUser = async function (req, res) {
   try {
     const { studentId } = req.params;
 
-    const authenticatedMember = req.user;
-    console.log("member", studentId);
     // Convert Clerk user ID to Member ID
     const member = await Member.findById(studentId);
 
     if (!member) {
       return res.status(403).json({ error: "Member not found" });
     }
-
-    // // Verify the studentId matches the authenticated user (security check)
-    // if (member._id.toString() !== authenticatedMember._id.toString()) {
-    //   return res.status(403).json({ error: "Access denied" });
-    // }
 
     // Get all enrollments for this user
     const enrollments = await Enrollment.getEnrollmentsByUser(member._id);
