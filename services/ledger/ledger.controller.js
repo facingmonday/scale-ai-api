@@ -6,21 +6,22 @@ const Member = require("../members/member.model");
 /**
  * Get ledger history for a user
  * GET /api/admin/ledger/:classroomId/user/:userId
+ * Note: userId in the URL is a Clerk user ID, we need to convert it to Member ID
  */
 exports.getLedgerHistory = async function (req, res) {
   try {
-    const { classroomId, userId } = req.params;
+    const { classroomId, userId: clerkUserId } = req.params;
+    console.log("clerkUserId", clerkUserId);
+    const adminClerkUserId = req.clerkUser.id;
     const organizationId = req.organization._id;
-    const clerkUserId = req.clerkUser.id;
 
-    // Verify admin access
-    await Classroom.validateAdminAccess(
-      classroomId,
-      clerkUserId,
-      organizationId
-    );
+    // Convert Clerk user ID to Member ID
+    const member = await Member.findByClerkUserId(clerkUserId);
+    if (!member) {
+      return res.status(404).json({ error: "Member not found" });
+    }
 
-    const history = await LedgerEntry.getLedgerHistory(classroomId, userId);
+    const history = await LedgerEntry.getLedgerHistory(classroomId, member._id);
 
     res.json({
       success: true,
@@ -124,12 +125,13 @@ exports.overrideLedgerEntry = async function (req, res) {
 /**
  * Get ledger entry for a specific scenario and user
  * GET /api/admin/ledger/scenario/:scenarioId/user/:userId
+ * Note: userId in the URL is a Clerk user ID, we need to convert it to Member ID
  */
 exports.getLedgerEntry = async function (req, res) {
   try {
-    const { scenarioId, userId } = req.params;
+    const { scenarioId, userId: clerkUserId } = req.params;
     const organizationId = req.organization._id;
-    const clerkUserId = req.clerkUser.id;
+    const adminClerkUserId = req.clerkUser.id;
 
     // Find scenario to get classroomId
     const scenario = await Scenario.getScenarioById(scenarioId, organizationId);
@@ -141,11 +143,17 @@ exports.getLedgerEntry = async function (req, res) {
     // Verify admin access
     await Classroom.validateAdminAccess(
       scenario.classroomId,
-      clerkUserId,
+      adminClerkUserId,
       organizationId
     );
 
-    const entry = await LedgerEntry.getLedgerEntry(scenarioId, userId);
+    // Convert Clerk user ID to Member ID
+    const member = await Member.findByClerkUserId(clerkUserId);
+    if (!member) {
+      return res.status(404).json({ error: "Member not found" });
+    }
+
+    const entry = await LedgerEntry.getLedgerEntry(scenarioId, member._id);
 
     if (!entry) {
       return res.status(404).json({ error: "Ledger entry not found" });
