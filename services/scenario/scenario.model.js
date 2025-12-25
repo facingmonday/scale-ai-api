@@ -3,6 +3,10 @@ const baseSchema = require("../../lib/baseSchema");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
 const ScenarioVariableValue = require("./scenarioVariableValue.model");
 const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
+const Classroom = require("../classroom/classroom.model");
+const Enrollment = require("../enrollment/enrollment.model");
+const Member = require("../members/member.model");
+const { enqueueEmailSending } = require("../../lib/queues/email-worker");
 
 const scenarioSchema = new mongoose.Schema({
   classroomId: {
@@ -405,6 +409,123 @@ scenarioSchema.methods.canPublish = async function () {
     !activeScenario || activeScenario._id.toString() === this._id.toString()
   );
 };
+
+// Track creation state for post-save hooks
+scenarioSchema.pre("save", function (next) {
+  this._wasNew = this.isNew;
+  next();
+});
+
+// Post-save hook to queue scenario creation emails for students
+scenarioSchema.post("save", async function (doc, next) {
+  try {
+    if (!doc._wasNew) {
+      return next();
+    }
+
+    await queueScenarioCreatedEmails(doc);
+    return next();
+  } catch (error) {
+    console.error("Error queueing scenario created emails:", error);
+    return next();
+  }
+});
+
+async function queueScenarioCreatedEmails(scenario) {
+  const classroomId = scenario.classroomId;
+  const organizationId = scenario.organization;
+
+  if (!classroomId) {
+    console.warn("No classroomId on scenario, skipping notification emails");
+    return;
+  }
+
+  const classroom = await Classroom.findById(classroomId);
+  if (!classroom) {
+    console.error("Classroom not found for scenario email notification");
+    return;
+  }
+
+  // Get all enrolled students (members only)
+  const enrollments = await Enrollment.findByClass(classroomId);
+  const memberEnrollments = enrollments.filter((e) => e.role === "member");
+
+  if (memberEnrollments.length === 0) {
+    return;
+  }
+
+  const host =
+    process.env.SCALE_COM_HOST ||
+    process.env.SCALE_API_HOST ||
+    "https://scale.ai";
+  const scenarioLink = `${host}/class/${classroomId}/scenario/${scenario._id}`;
+
+  await Promise.allSettled(
+    memberEnrollments.map(async (enrollment) => {
+      try {
+        const member = await Member.findById(enrollment.userId);
+        if (!member) {
+          console.warn(`Member not found for enrollment ${enrollment._id}`);
+          return;
+        }
+
+        const email = await member.getEmailFromClerk();
+        if (!email) {
+          console.warn(`No email found for member ${member._id}`);
+          return;
+        }
+
+        await enqueueEmailSending({
+          recipient: {
+            email,
+            name:
+              `${member.firstName || ""} ${member.lastName || ""}`.trim() ||
+              email,
+            memberId: member._id,
+          },
+          title: `New Scenario: ${scenario.title}`,
+          message: `A new scenario "${scenario.title}" has been added to ${classroom.name}.`,
+          templateSlug: "scenario-created",
+          templateData: {
+            scenario: {
+              _id: scenario._id,
+              title: scenario.title,
+              description: scenario.description,
+              link: scenarioLink,
+            },
+            classroom: {
+              _id: classroom._id,
+              name: classroom.name,
+              description: classroom.description,
+            },
+            member: {
+              _id: member._id,
+              firstName: member.firstName,
+              lastName: member.lastName,
+              name: `${member.firstName || ""} ${member.lastName || ""}`.trim(),
+              email,
+              clerkUserId: member.clerkUserId,
+            },
+            organization: {
+              _id: organizationId,
+            },
+            link: scenarioLink,
+            env: {
+              SCALE_COM_HOST: host,
+              SCALE_API_HOST: process.env.SCALE_API_HOST || host,
+            },
+          },
+          organizationId,
+        });
+      } catch (error) {
+        console.error(
+          `Error queueing email for enrollment ${enrollment._id}:`,
+          error.message
+        );
+      }
+    })
+  );
+}
 
 const Scenario = mongoose.model("Scenario", scenarioSchema);
 

@@ -3,8 +3,8 @@ const Store = require("../../store/store.model");
 const Scenario = require("../../scenario/scenario.model");
 const ScenarioOutcome = require("../../scenarioOutcome/scenarioOutcome.model");
 const Submission = require("../../submission/submission.model");
-const LedgerService = require("../../ledger/lib/ledgerService");
-const AISimulationService = require("../../ledger/lib/aiSimulationService");
+const LedgerEntry = require("../../ledger/ledger.model");
+const AISimulationService = require("../../../lib/aiSimulationService");
 
 /**
  * Simulation Worker
@@ -56,12 +56,30 @@ class SimulationWorker {
 
       // If not a dry run, write to ledger
       if (!job.dryRun) {
+        // Create a safe copy for logging (without circular references)
+        const logSafeResult = { ...aiResult };
+        if (logSafeResult.aiMetadata) {
+          logSafeResult.aiMetadata = {
+            ...aiResult.aiMetadata,
+            aiResult: "[Circular Reference Removed]",
+            prompt: "[Prompt Removed for Logging]",
+          };
+        }
         console.log(
-          `Writing ledger entry: ${JSON.stringify(aiResult, null, 2)}`
+          `Writing ledger entry: ${JSON.stringify(logSafeResult, null, 2)}`
         );
         await this.writeLedgerEntry(job, aiResult);
       } else {
-        console.log(`Dry run: ${JSON.stringify(aiResult, null, 2)}`);
+        // Create a safe copy for logging (without circular references)
+        const logSafeResult = { ...aiResult };
+        if (logSafeResult.aiMetadata) {
+          logSafeResult.aiMetadata = {
+            ...aiResult.aiMetadata,
+            aiResult: "[Circular Reference Removed]",
+            prompt: "[Prompt Removed for Logging]",
+          };
+        }
+        console.log(`Dry run: ${JSON.stringify(logSafeResult, null, 2)}`);
       }
 
       // Mark job as completed
@@ -147,7 +165,7 @@ class SimulationWorker {
     }
 
     // Fetch ledger history (prior entries, excluding current scenario for reruns)
-    const ledgerHistory = await LedgerService.getLedgerHistory(
+    const ledgerHistory = await LedgerEntry.getLedgerHistory(
       job.classroomId,
       job.userId,
       job.scenarioId // Exclude current scenario to avoid including old entries during reruns
@@ -203,7 +221,7 @@ class SimulationWorker {
     };
 
     // Create ledger entry
-    const entry = await LedgerService.createLedgerEntry(
+    const entry = await LedgerEntry.createLedgerEntry(
       ledgerInput,
       organizationId,
       job.createdBy
