@@ -2,9 +2,7 @@ const Scenario = require("./scenario.model");
 const ScenarioOutcome = require("../scenarioOutcome/scenarioOutcome.model");
 const Classroom = require("../classroom/classroom.model");
 const Enrollment = require("../enrollment/enrollment.model");
-const Member = require("../members/member.model");
 const Submission = require("../submission/submission.model");
-const { enqueueEmailSending } = require("../../lib/queues/email-worker");
 const JobService = require("../job/lib/jobService");
 const LedgerEntry = require("../ledger/ledger.model");
 const SimulationWorker = require("../job/lib/simulationWorker");
@@ -78,14 +76,6 @@ exports.createScenario = async function (req, res) {
       { title, description, variables },
       organizationId,
       clerkUserId
-    );
-
-    // Queue email notifications to all enrolled students (async, don't block response)
-    queueScenarioCreatedEmails(scenario, classroomId, organizationId).catch(
-      (error) => {
-        console.error("Error queueing scenario created emails:", error);
-        // Don't throw - we don't want to fail scenario creation if emails fail
-      }
     );
 
     res.status(201).json({
@@ -610,121 +600,6 @@ exports.getCurrentScenarioForAdmin = async function (req, res) {
     res.status(500).json({ error: error.message });
   }
 };
-
-/**
- * Queue email notifications for scenario creation
- * @param {Object} scenario - Scenario document
- * @param {string} classroomId - Class ID
- * @param {string} organizationId - Organization ID
- */
-async function queueScenarioCreatedEmails(
-  scenario,
-  classroomId,
-  organizationId
-) {
-  try {
-    // Get classroom details
-    const classroom = await Classroom.findById(classroomId);
-    if (!classroom) {
-      console.error("Classroom not found for scenario email notification");
-      return;
-    }
-
-    // Get all enrolled students (members only, not admins)
-    const enrollments = await Enrollment.findByClass(classroomId);
-    const memberEnrollments = enrollments.filter((e) => e.role === "member");
-
-    if (memberEnrollments.length === 0) {
-      console.log("No enrolled students to notify about scenario creation");
-      return;
-    }
-
-    // Get member details and queue emails
-    const host =
-      process.env.SCALE_COM_HOST ||
-      process.env.SCALE_API_HOST ||
-      "https://scale.ai";
-    const scenarioLink = `${host}/class/${classroomId}/scenario/${scenario._id}`;
-
-    const emailPromises = memberEnrollments.map(async (enrollment) => {
-      try {
-        // Get member details
-        const member = await Member.findById(enrollment.userId);
-        if (!member) {
-          console.warn(`Member not found for enrollment ${enrollment._id}`);
-          return;
-        }
-
-        // Get email from Clerk
-        const email = await member.getEmailFromClerk();
-        if (!email) {
-          console.warn(`No email found for member ${member._id}`);
-          return;
-        }
-
-        // Queue email job
-        await enqueueEmailSending({
-          recipient: {
-            email,
-            name:
-              `${member.firstName || ""} ${member.lastName || ""}`.trim() ||
-              email,
-            memberId: member._id,
-          },
-          title: `New Scenario: ${scenario.title}`,
-          message: `A new scenario "${scenario.title}" has been added to ${classroom.name}.`,
-          templateSlug: "ScenarioCreatedEmail",
-          templateData: {
-            scenario: {
-              _id: scenario._id,
-              title: scenario.title,
-              description: scenario.description,
-              link: scenarioLink,
-            },
-            classroom: {
-              _id: classroom._id,
-              name: classroom.name,
-              description: classroom.description,
-            },
-            member: {
-              _id: member._id,
-              firstName: member.firstName,
-              lastName: member.lastName,
-              name: `${member.firstName || ""} ${member.lastName || ""}`.trim(),
-              email,
-              clerkUserId: member.clerkUserId,
-            },
-            organization: {
-              _id: organizationId,
-            },
-            link: scenarioLink,
-            env: {
-              SCALE_COM_HOST: host,
-              SCALE_API_HOST: process.env.SCALE_API_HOST || host,
-            },
-          },
-          organizationId,
-        });
-
-        console.log(`📧 Queued scenario created email for ${email}`);
-      } catch (error) {
-        console.error(
-          `Error queueing email for enrollment ${enrollment._id}:`,
-          error.message
-        );
-        // Continue with other emails even if one fails
-      }
-    });
-
-    await Promise.allSettled(emailPromises);
-    console.log(
-      `✅ Queued ${memberEnrollments.length} scenario created email(s)`
-    );
-  } catch (error) {
-    console.error("Error in queueScenarioCreatedEmails:", error);
-    throw error;
-  }
-}
 
 /**
  * Get student scenarios by classroom
