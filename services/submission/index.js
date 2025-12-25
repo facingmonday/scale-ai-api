@@ -1,6 +1,6 @@
 /**
  * Submission Service Routes
- * 
+ *
  * Provides endpoints for managing student submissions (weekly decisions).
  * Includes student routes (creating/updating submissions) and admin routes (viewing all submissions).
  * Mounted at: /v1/student/submission and /v1/admin/submissions
@@ -29,6 +29,12 @@ router.get(
   controller.getSubmissions
 );
 
+router.get(
+  "/admin/submissions/student/:studentId",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.getAllSubmissionsForUser
+);
 // Student routes - require authenticated member
 router.post(
   "/student/submission",

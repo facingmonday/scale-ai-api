@@ -192,10 +192,7 @@ exports.getStore = async function (req, res) {
     }
 
     // Get store with current details using static method
-    const store = await Store.getStoreByUserWithCurrentDetails(
-      classroomId,
-      member._id
-    );
+    const store = await Store.getStoreByUser(classroomId, member._id);
 
     if (!store) {
       return res.status(200).json({ data: null });
@@ -229,10 +226,7 @@ exports.getStudentStore = async function (req, res) {
     );
 
     // Get store with current details using static method
-    const store = await Store.getStoreByUserWithCurrentDetails(
-      classroomId,
-      userId
-    );
+    const store = await Store.getStoreByUser(classroomId, userId);
 
     if (!store) {
       return res.status(404).json({ error: "Store not found" });
