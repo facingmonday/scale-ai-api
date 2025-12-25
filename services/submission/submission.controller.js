@@ -3,6 +3,8 @@ const Submission = require("./submission.model");
 const Scenario = require("../scenario/scenario.model");
 const Classroom = require("../classroom/classroom.model");
 const Enrollment = require("../enrollment/enrollment.model");
+const Member = require("../members/member.model");
+const LedgerEntry = require("../ledger/ledger.model");
 
 /**
  * Submit scenario decisions
@@ -215,7 +217,7 @@ exports.getSubmissionStatus = async function (req, res) {
 
 /**
  * Get all submissions for the authenticated student
- * GET /api/student/submissions?classroomId=...&scenarioId=...
+ * GET /api/student/submissions?classroomId=...&studentId=...
  */
 exports.getStudentSubmissions = async function (req, res) {
   try {
@@ -383,7 +385,6 @@ exports.getSubmissionsForScenario = async function (req, res) {
     );
 
     // Get user details for missing submissions
-    const Member = require("../members/member.model");
     const missingUsers = await Member.find({
       _id: { $in: missingUserIds },
       role: "org:member",
@@ -412,6 +413,181 @@ exports.getSubmissionsForScenario = async function (req, res) {
     }
     if (error.message.includes("Insufficient permissions")) {
       return res.status(403).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Get all submissions and associated ledger entries for a student
+ * GET /api/student/submissions/:studentId
+ * Note: studentId in the URL is a Clerk user ID
+ */
+exports.getAllSubmissionsForUser = async function (req, res) {
+  try {
+    const { studentId } = req.params;
+
+    // Convert Clerk user ID to Member ID
+    const member = await Member.findById(studentId);
+
+    if (!member) {
+      return res.status(403).json({ error: "Member not found" });
+    }
+
+    // Get all enrollments for this user
+    const enrollments = await Enrollment.getEnrollmentsByUser(member._id);
+
+    // Get unique classroom IDs from enrollments
+    const classroomIdMap = new Map();
+    for (const enrollment of enrollments) {
+      if (enrollment?.classroomId) {
+        classroomIdMap.set(
+          enrollment.classroomId.toString(),
+          enrollment.classroomId
+        );
+      }
+    }
+    const classroomIds = [...classroomIdMap.values()];
+
+    if (classroomIds.length === 0) {
+      return res.json({
+        success: true,
+        data: { submissions: [], ledgerEntries: [] },
+      });
+    }
+
+    // Get submissions from all classrooms
+    const submissionsByClass = await Promise.all(
+      classroomIds.map((classroomId) =>
+        Submission.getSubmissionsByUser(classroomId, member._id)
+      )
+    );
+
+    let submissions = submissionsByClass.flat();
+
+    // Get all scenario IDs from submissions
+    const scenarioIds = [
+      ...new Set(
+        submissions.map((s) => s?.scenarioId?.toString()).filter(Boolean)
+      ),
+    ];
+
+    // Get ledger entries for all scenarios
+    const ledgerEntriesByScenario = await Promise.all(
+      scenarioIds.map((scenarioId) =>
+        LedgerEntry.getLedgerEntry(scenarioId, member._id)
+      )
+    );
+
+    // Create a map of ledger entries by scenarioId for easy lookup
+    const ledgerByScenarioId = new Map();
+    ledgerEntriesByScenario.forEach((entry) => {
+      if (entry && entry.scenarioId) {
+        ledgerByScenarioId.set(entry.scenarioId.toString(), entry);
+      }
+    });
+
+    // Also get ledger entries by submissionId (in case they're linked directly)
+    const submissionIds = submissions
+      .map((s) => s?._id?.toString())
+      .filter(Boolean);
+
+    const ledgerEntriesBySubmission = await Promise.all(
+      submissionIds.map((submissionId) =>
+        LedgerEntry.findOne({ submissionId }).lean()
+      )
+    );
+
+    // Create a map of ledger entries by submissionId
+    const ledgerBySubmissionId = new Map();
+    ledgerEntriesBySubmission.forEach((entry) => {
+      if (entry && entry.submissionId) {
+        ledgerBySubmissionId.set(entry.submissionId.toString(), entry);
+      }
+    });
+
+    // Batch-load classroom + scenario metadata for response hydration
+    const uniqueClassIds = [
+      ...new Set(
+        submissions.map((s) => s?.classroomId?.toString()).filter(Boolean)
+      ),
+    ];
+    const uniqueScenarioIds = [
+      ...new Set(
+        submissions.map((s) => s?.scenarioId?.toString()).filter(Boolean)
+      ),
+    ];
+
+    const [classrooms, scenarios] = await Promise.all([
+      uniqueClassIds.length > 0
+        ? Classroom.find({ _id: { $in: uniqueClassIds } }).select("_id name")
+        : [],
+      uniqueScenarioIds.length > 0
+        ? Scenario.find({ _id: { $in: uniqueScenarioIds } }).select(
+            "_id title isPublished isClosed"
+          )
+        : [],
+    ]);
+
+    const classroomById = new Map(classrooms.map((c) => [c._id.toString(), c]));
+    const scenarioById = new Map(scenarios.map((s) => [s._id.toString(), s]));
+
+    // Format submissions with their associated ledger entries
+    const formattedSubmissions = submissions.map((submission) => {
+      const classroom = submission?.classroomId
+        ? classroomById.get(submission.classroomId.toString())
+        : null;
+      const scenario = submission?.scenarioId
+        ? scenarioById.get(submission.scenarioId.toString())
+        : null;
+
+      // Get ledger entry - prefer by submissionId, fallback to scenarioId
+      let ledgerEntry =
+        ledgerBySubmissionId.get(submission._id.toString()) ||
+        (submission.scenarioId
+          ? ledgerByScenarioId.get(submission.scenarioId.toString())
+          : null);
+
+      return {
+        ...submission,
+        classroom: classroom
+          ? { _id: classroom._id, name: classroom.name }
+          : null,
+        scenario: scenario
+          ? {
+              _id: scenario._id,
+              title: scenario.title,
+              isPublished: scenario.isPublished,
+              isClosed: scenario.isClosed,
+            }
+          : null,
+        ledgerEntry: ledgerEntry || null,
+      };
+    });
+
+    // Get all unique ledger entries (combine both maps)
+    const allLedgerEntries = [
+      ...new Map(
+        [
+          ...Array.from(ledgerBySubmissionId.values()),
+          ...Array.from(ledgerByScenarioId.values()),
+        ].map((entry) => [entry._id.toString(), entry])
+      ).values(),
+    ];
+
+    res.json({
+      success: true,
+      data: formattedSubmissions.sort(
+        (a, b) => new Date(b.submittedAt || 0) - new Date(a.submittedAt || 0)
+      ),
+    });
+  } catch (error) {
+    console.error("Error getting all submissions for student:", error);
+    if (error.message === "Member not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.name === "CastError") {
+      return res.status(400).json({ error: "Invalid id provided" });
     }
     res.status(500).json({ error: error.message });
   }

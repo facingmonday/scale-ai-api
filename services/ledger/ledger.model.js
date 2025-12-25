@@ -229,7 +229,7 @@ ledgerEntrySchema.statics.getLedgerHistory = async function (
   userId,
   excludeScenarioId = null
 ) {
-  const query = { classroomId, userId };
+  const query = { classroomId };
   if (excludeScenarioId) {
     query.scenarioId = { $ne: excludeScenarioId };
   }
@@ -333,6 +333,126 @@ ledgerEntrySchema.statics.getLedgerEntriesByScenario = async function (
   return await this.find({ scenarioId })
     .populate("userId", "_id firstName lastName")
     .sort({ userId: 1 });
+};
+
+/**
+ * Get first ledger entry for a student in a classroom
+ * @param {string} classroomId - Classroom ID
+ * @param {string} userId - User ID
+ * @returns {Promise<Object|null>} First ledger entry or null
+ */
+ledgerEntrySchema.statics.getFirstLedgerEntryByStudent = async function (
+  classroomId,
+  userId
+) {
+  return this.findOne({
+    classroomId,
+    userId,
+  })
+    .sort({ createdDate: 1, _id: 1 })
+    .lean()
+    .exec();
+};
+
+/**
+ * Get first ledger entry for a student in a classroom
+ * @param {string} classroomId - Classroom ID
+ * @param {string} userId - User ID
+ * @returns {Promise<Object|null>} First ledger entry or null
+ */
+ledgerEntrySchema.statics.getLastLedgerEntryByStudent = async function (
+  classroomId,
+  userId
+) {
+  return await this.findOne({
+    classroomId,
+    userId,
+  })
+    .sort({ createdDate: -1, _id: -1 })
+    .lean()
+    .exec();
+};
+
+/**
+ * Get ledger summary/aggregates for a student
+ * Returns totals and current state from all ledger entries
+ * @param {string} classroomId - Classroom ID
+ * @param {string} userId - Member ID
+ * @param {string} excludeScenarioId - Optional scenario ID to exclude (for reruns)
+ * @returns {Promise<Object>} Aggregated ledger summary
+ */
+
+ledgerEntrySchema.statics.getLedgerSummary = async function (
+  classroomId,
+  userId,
+  excludeScenarioId = null
+) {
+  const matchQuery = {
+    classroomId: new mongoose.Types.ObjectId(classroomId),
+    userId: new mongoose.Types.ObjectId(userId),
+  };
+
+  if (excludeScenarioId) {
+    matchQuery.scenarioId = {
+      $ne: new mongoose.Types.ObjectId(excludeScenarioId),
+    };
+  }
+
+  const results = await this.aggregate([
+    { $match: matchQuery },
+    { $sort: { createdDate: 1, _id: 1 } },
+    {
+      $group: {
+        _id: null,
+        totalSales: { $sum: "$sales" },
+        totalRevenue: { $sum: "$revenue" },
+        totalCosts: { $sum: "$costs" },
+        totalWaste: { $sum: "$waste" },
+        totalNetProfit: { $sum: "$netProfit" },
+        scenarioCount: {
+          $sum: { $cond: [{ $ne: ["$scenarioId", null] }, 1, 0] },
+        },
+        totalEntries: { $sum: 1 },
+        firstEntryDate: { $min: "$createdDate" },
+        lastEntryDate: { $max: "$createdDate" },
+        lastCashAfter: { $last: "$cashAfter" },
+        lastInventoryAfter: { $last: "$inventoryAfter" },
+      },
+    },
+  ]);
+
+  const summary = results[0];
+
+  if (!summary) {
+    return {
+      totalSales: 0,
+      totalRevenue: 0,
+      totalCosts: 0,
+      totalWaste: 0,
+      totalNetProfit: 0,
+      scenarioCount: 0,
+      totalEntries: 0,
+      cashBalance: 0,
+      inventory: 0,
+      firstEntryDate: null,
+      lastEntryDate: null,
+      lastScenarioId: null,
+    };
+  }
+
+  return {
+    totalSales: summary.totalSales,
+    totalRevenue: summary.totalRevenue,
+    totalCosts: summary.totalCosts,
+    totalWaste: summary.totalWaste,
+    totalNetProfit: summary.totalNetProfit,
+    scenarioCount: summary.scenarioCount,
+    totalEntries: summary.totalEntries,
+    cashBalance: summary.lastCashAfter,
+    inventory: summary.lastInventoryAfter,
+    firstEntryDate: summary.firstEntryDate,
+    lastEntryDate: summary.lastEntryDate,
+  };
 };
 
 const LedgerEntry = mongoose.model("LedgerEntry", ledgerEntrySchema);

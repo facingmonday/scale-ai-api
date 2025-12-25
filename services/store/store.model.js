@@ -3,6 +3,7 @@ const baseSchema = require("../../lib/baseSchema");
 const StoreVariableValue = require("./storeVariableValue.model");
 const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
 const { getPreset, isValidStoreType } = require("./storeTypePresets");
+const LedgerEntry = require("../ledger/ledger.model");
 
 const storeSchema = new mongoose.Schema({
   classroomId: {
@@ -229,13 +230,23 @@ storeSchema.statics.getStoreByUser = async function (classroomId, userId) {
   if (!store) {
     return null;
   }
-
   // Explicitly load variables before calling toObject()
   // The post-init hook is async and may not complete before toObject() is called
   await store._loadVariables();
 
+  // Get current ledger summary details
+  const currentDetails = await LedgerEntry.getLedgerSummary(
+    classroomId,
+    userId
+  );
+
   // Variables are automatically included via plugin's toObject() override
-  return store.toObject();
+  const storeObj = store.toObject();
+
+  // Add currentDetails to the returned object (must be added after toObject() since it's not a schema field)
+  storeObj.currentDetails = currentDetails;
+
+  return storeObj;
 };
 
 /**

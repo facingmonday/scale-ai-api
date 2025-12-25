@@ -536,6 +536,9 @@ exports.getCurrentScenario = async function (req, res) {
           title: scenario.title,
           description: scenario.description,
           variables: scenario.variables,
+          isPublished: scenario.isPublished,
+          isClosed: scenario.isClosed,
+          week: scenario.week,
         },
         submissionStatus,
       },
@@ -725,6 +728,24 @@ exports.getScenarioByIdForStudent = async function (req, res) {
     if (error.name === "CastError") {
       return res.status(400).json({ error: "Invalid id provided" });
     }
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Delete scenario
+ * DELETE /api/admin/scenarios/:scenarioId
+ */
+exports.deleteScenario = async function (req, res) {
+  try {
+    const { scenarioId } = req.params;
+    await Scenario.findByIdAndDelete(scenarioId);
+    res.json({
+      success: true,
+      message: "Scenario deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error deleting scenario:", error);
     res.status(500).json({ error: error.message });
   }
 };
