@@ -3,9 +3,7 @@ const baseSchema = require("../../lib/baseSchema");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
 const ScenarioVariableValue = require("./scenarioVariableValue.model");
 const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
-const Classroom = require("../classroom/classroom.model");
-const Enrollment = require("../enrollment/enrollment.model");
-const Member = require("../members/member.model");
+// Note: Classroom, Enrollment, and Member are required inside functions to avoid circular dependencies
 const { enqueueEmailSending } = require("../../lib/queues/email-worker");
 
 const scenarioSchema = new mongoose.Schema({
@@ -432,6 +430,11 @@ scenarioSchema.post("save", async function (doc, next) {
 });
 
 async function queueScenarioCreatedEmails(scenario) {
+  // Lazy load to avoid circular dependency
+  const Classroom = require("../classroom/classroom.model");
+  const Enrollment = require("../enrollment/enrollment.model");
+  const Member = require("../members/member.model");
+
   const classroomId = scenario.classroomId;
   const organizationId = scenario.organization;
 

@@ -994,26 +994,167 @@ Each successful job creates a ledger entry that:
 - `summary` - Narrative summary of the week
 - `overridden` - Whether instructor manually adjusted values
 
-## Email Templates
+## Email Sending & Notifications
+
+The system supports email notifications through two approaches: **direct email queuing** and **notification-based sending**. Both use React Email templates and SendGrid for delivery.
+
+### Email Architecture
+
+#### Components
+
+1. **React Email Templates** (`lib/emails/templates/`) - Server-side rendered email templates
+2. **Email Queue** (`lib/queues/email-worker.js`) - Bull/Redis queue for async email processing
+3. **SendGrid Integration** (`lib/sendGrid/sendEmail.js`) - Email delivery service
+4. **Notification Model** (`services/notifications/notifications.model.js`) - Structured notification system
+
+#### Email Flow
+
+```
+1. Email Request → 2. Queue Job → 3. Worker Processes → 4. Render Template → 5. Send via SendGrid
+```
+
+### Direct Email Queuing
+
+For simple, event-driven emails (e.g., scenario creation), emails are queued directly without creating notification records.
+
+**Example: Scenario Creation Emails**
+
+When a new scenario is created, the `Scenario` model's post-save hook automatically:
+1. Finds all enrolled students in the classroom
+2. Queues an email job for each student
+3. Uses the `scenario-created` template with scenario, classroom, and member data
+
+```javascript
+// In scenario.model.js post-save hook
+await enqueueEmailSending({
+  recipient: { email, name, memberId },
+  title: `New Scenario: ${scenario.title}`,
+  templateSlug: "scenario-created",
+  templateData: { scenario, classroom, member, organization, link },
+  organizationId,
+});
+```
+
+### Notification-Based Sending
+
+For more structured notifications that need tracking, status, and multiple channels (email, SMS, push), use the Notification model.
+
+**Notification Types:**
+- `email` - Email notifications
+- `sms` - SMS notifications (future)
+- `push` - Push notifications (future)
+- `web` - In-app notifications
+
+**Notification Lifecycle:**
+
+1. **Create Notification** - Create a Notification document with recipient, type, and template data
+2. **Post-Save Hook** - Automatically queues the appropriate channel (email/SMS/push)
+3. **Queue Processing** - Worker processes the job and sends the notification
+4. **Status Tracking** - Notification status updated to "Sent" or "Failed"
+
+**Example: Creating a Notification**
+
+```javascript
+const notification = new Notification({
+  type: "email",
+  recipient: {
+    id: memberId,
+    type: "Member",
+    ref: "Member",
+  },
+  title: "Welcome to SCALE.ai",
+  message: "You've been enrolled in a new class",
+  templateSlug: "scenario-created",
+  templateData: { scenario, classroom, member },
+  organization: organizationId,
+});
+
+await notification.save(); // Automatically queues email via post-save hook
+```
+
+### Email Templates
 
 Email templates are built with **React Email** and located in `lib/emails/templates/`.
 
-### Available Templates
+#### Available Templates
 
-- `ScenarioCreatedEmail` - Notifies students when a new scenario is created
-- `DailyStatsEmail` - Daily statistics report
-- `EventInvitationEmail` - Event invitations
-- `OrderCreatedEmail` - Order confirmation
-- `OrderCancelledEmail` - Order cancellation
-- `TicketClaimedEmail` - Ticket claim notification
-- `TicketReminderEmail` - Ticket reminder
-- `TicketsGeneratedEmail` - Tickets generated notification
-- `TicketTemplateEmail` - Ticket template
-- `ShareTemplateEmail` - Template sharing
+- `scenario-created` - Notifies students when a new scenario is created
 
-### Previewing Templates
+#### Template Structure
 
-Fixtures for email preview are in `apps/email-preview/fixtures/`. Run `npm run email:preview` to preview templates.
+Templates are React components that receive `templateData` as props:
+
+```jsx
+function ScenarioCreatedEmail(props) {
+  const { scenario, classroom, member, link } = props;
+  // ... render email
+}
+```
+
+#### Template Rendering
+
+Templates are rendered server-side using `@react-email/render`:
+- HTML version for email clients
+- Plain text version for accessibility
+- Both versions sent via SendGrid
+
+#### Previewing Templates
+
+Fixtures for email preview are in `apps/email-preview/fixtures/`. Run `npm run email:preview` to preview templates locally.
+
+### Email Queue Configuration
+
+**Queue Settings:**
+- **Concurrency**: 2 jobs processed simultaneously
+- **Priority**: Medium (priority: 3)
+- **Delay**: 100ms between jobs (prevents bursts)
+- **Retries**: Handled by Bull queue system
+
+**Queue Monitoring:**
+- Jobs tracked in Redis
+- Failed jobs can be inspected and retried
+- Status updates logged to console
+
+### Email Sending Configuration
+
+**Environment Variables:**
+- `SEND_EMAIL` - Set to `"true"` to actually send emails (default: disabled for safety)
+- `SENDGRID_API_KEY` - SendGrid API key
+- `SENDGRID_FROM_EMAIL` - Default sender email
+- `SENDGRID_FROM_NAME` - Default sender name
+- `SCALE_COM_HOST` - Base URL for email links
+- `SCALE_API_HOST` - API host for unsubscribe links
+
+**Safety Features:**
+- If `SEND_EMAIL !== "true"`, emails are logged but not sent
+- Unsubscribe links automatically included in emails
+- Batch sending supported (up to 1000 recipients per batch)
+
+### Recipient Resolution
+
+The system resolves recipients based on type:
+
+- **Member** - Looks up member in database, fetches email from Clerk
+- **Guest** - Uses email from `templateData` (for users not yet in system)
+- **Organization** - Uses organization contact info from Clerk
+
+Recipient preferences are checked before sending (email/SMS/push preferences).
+
+### Error Handling
+
+- Failed email jobs are logged with error details
+- Notification status updated to "Failed" with error message
+- Jobs can be retried manually
+- Errors don't block other email sends (Promise.allSettled used for batch sends)
+
+### Best Practices
+
+1. **Use Direct Queuing** for simple, event-driven emails (scenario creation, etc.)
+2. **Use Notifications** for emails that need tracking, status, or multiple channels
+3. **Always include unsubscribe links** (handled automatically)
+4. **Test with `SEND_EMAIL=false`** in development
+5. **Use React Email templates** for consistent, responsive email design
+6. **Handle errors gracefully** - email failures shouldn't break core functionality
 
 ## Service Patterns
 
