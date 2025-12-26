@@ -49,11 +49,12 @@ const variableDefinitionSchema = new mongoose.Schema({
       "knob",
       "selectbutton",
       "switch",
+      "multiple-choice",
     ],
     default: "text",
   },
   options: {
-    type: [String],
+    type: [mongoose.Schema.Types.Mixed],
     default: [],
   },
   defaultValue: {
