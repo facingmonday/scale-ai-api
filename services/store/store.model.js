@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
-const StoreVariableValue = require("./storeVariableValue.model");
+const VariableValue = require("../variableDefinition/variableValue.model");
 const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
 const { getPreset, isValidStoreType } = require("./storeTypePresets");
 const LedgerEntry = require("../ledger/ledger.model");
@@ -48,8 +48,7 @@ const storeSchema = new mongoose.Schema({
 
 // Apply variable population plugin
 storeSchema.plugin(variablePopulationPlugin, {
-  variableValueModel: StoreVariableValue,
-  foreignKeyField: "storeId",
+  variableValueModel: VariableValue,
   appliesTo: "store",
 });
 
@@ -191,18 +190,21 @@ storeSchema.statics.createStore = async function (
 
   await store.save();
 
-  // Create variable values from preset and provided variables
-  // Use setVariable to ensure all preset variables are saved
-  if (finalVariables && typeof finalVariables === "object") {
-    const variableEntries = Object.entries(finalVariables);
-    for (const [key, value] of variableEntries) {
-      await StoreVariableValue.setVariable(
-        store._id,
-        key,
-        value,
-        organizationId,
-        clerkUserId
-      );
+  // Create variable values if provided
+  if (variables && typeof variables === "object") {
+    const variableEntries = Object.entries(variables);
+    const variableDocs = variableEntries.map(([key, value]) => ({
+      appliesTo: "store",
+      ownerId: store._id,
+      variableKey: key,
+      value: value,
+      organization: organizationId,
+      createdBy: clerkUserId,
+      updatedBy: clerkUserId,
+    }));
+
+    if (variableDocs.length > 0) {
+      await VariableValue.insertMany(variableDocs);
     }
   }
 
@@ -403,48 +405,31 @@ storeSchema.statics.updateStore = async function (
     const storeTypeChanged =
       storeType !== undefined && store.storeType !== storeType;
 
-    if (storeType !== undefined) {
-      // Validate storeType if provided
-      if (!isValidStoreType(storeType)) {
-        throw new Error(
-          `Invalid storeType: ${storeType}. Must be one of: food_truck, indoor, outdoor`
-        );
-      }
-      store.storeType = storeType;
+  await store.save();
+
+  // Update or create variable values if provided
+  if (variables && typeof variables === "object") {
+    const variableEntries = Object.entries(variables);
+    for (const [key, value] of variableEntries) {
+      await VariableValue.setVariable(
+        "store",
+        store._id,
+        key,
+        value,
+        organizationId,
+        clerkUserId
+      );
     }
 
-    // If storeType changed, update all preset variables for the new type
-    if (storeTypeChanged) {
-      // Use the new storeType (already updated above)
-      const presetVariables = getPreset(store.storeType);
-      // Merge with provided variables (provided variables override preset)
-      const finalVariables = {
-        ...presetVariables,
-        ...(variables && typeof variables === "object" ? variables : {}),
-      };
-
-      // Update all preset variables
-      const variableEntries = Object.entries(finalVariables);
-      for (const [key, value] of variableEntries) {
-        await StoreVariableValue.setVariable(
-          store._id,
-          key,
-          value,
-          organizationId,
-          clerkUserId
-        );
-      }
-    } else if (variables && typeof variables === "object") {
-      // Update only provided variables if storeType didn't change
-      const variableEntries = Object.entries(variables);
-      for (const [key, value] of variableEntries) {
-        await StoreVariableValue.setVariable(
-          store._id,
-          key,
-          value,
-          organizationId,
-          clerkUserId
-        );
+    // Delete variables that are not in the new set
+    const existingVariables = await VariableValue.find({
+      appliesTo: "store",
+      ownerId: store._id,
+    });
+    const newKeys = new Set(Object.keys(variables));
+    for (const existingVar of existingVariables) {
+      if (!newKeys.has(existingVar.variableKey)) {
+        await VariableValue.deleteOne({ _id: existingVar._id });
       }
     }
 

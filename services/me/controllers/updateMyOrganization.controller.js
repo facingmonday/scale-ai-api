@@ -1,6 +1,6 @@
 const { clerkClient } = require("@clerk/express");
 const axios = require("axios");
-const { slugify } = require("../../utils/utils.controller");
+const slugify = require("slugify");
 const Organization = require("../../organizations/organization.model");
 
 module.exports = async function updateOrg(req, res) {
@@ -62,7 +62,11 @@ module.exports = async function updateOrg(req, res) {
 
     // Update organization name if provided
     if (organizationName) {
-      const organizationSlug = slugify(organizationName);
+      const organizationSlug = slugify(organizationName, {
+        lower: true,
+        strict: true,
+        trim: true,
+      });
       await clerkClient.organizations.updateOrganization(organizationId, {
         name: organizationName,
         slug: organizationSlug,
