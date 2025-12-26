@@ -1,8 +1,13 @@
 const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 const VariableValue = require("../variableDefinition/variableValue.model");
+const VariableDefinition = require("../variableDefinition/variableDefinition.model");
 const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
-const { getPreset, isValidStoreType } = require("./storeTypePresets");
+const {
+  getPreset,
+  isValidStoreType,
+  getAvailableStoreTypes,
+} = require("./storeTypePresets");
 const LedgerEntry = require("../ledger/ledger.model");
 
 const storeSchema = new mongoose.Schema({
@@ -41,6 +46,7 @@ const storeSchema = new mongoose.Schema({
       "upscale_bistro",
       "fine_dining",
       "late_night_window",
+      "festival_vendor",
     ],
     required: true,
   },
@@ -50,6 +56,7 @@ const storeSchema = new mongoose.Schema({
 storeSchema.plugin(variablePopulationPlugin, {
   variableValueModel: VariableValue,
   appliesTo: "store",
+  outputFormat: "valueMap",
 });
 
 // Compound indexes for performance
@@ -160,20 +167,17 @@ storeSchema.statics.createStore = async function (
 
   if (!isValidStoreType(storeType)) {
     throw new Error(
-      `Invalid storeType: ${storeType}. Must be one of: food_truck, indoor, outdoor`
+      `Invalid storeType: ${storeType}. Must be one of: ${getAvailableStoreTypes().join(", ")}`
     );
   }
 
   // Load preset for store type
   const presetVariables = getPreset(storeType);
 
-  // Merge preset with provided variables (provided variables override preset)
-  const finalVariables = {
-    ...presetVariables,
-    ...(providedVariables && typeof providedVariables === "object"
+  const providedVars =
+    providedVariables && typeof providedVariables === "object"
       ? providedVariables
-      : {}),
-  };
+      : {};
 
   // Create store document
   const store = new this({
@@ -190,22 +194,39 @@ storeSchema.statics.createStore = async function (
 
   await store.save();
 
-  // Create variable values if provided
-  if (variables && typeof variables === "object") {
-    const variableEntries = Object.entries(variables);
-    const variableDocs = variableEntries.map(([key, value]) => ({
-      appliesTo: "store",
-      ownerId: store._id,
-      variableKey: key,
-      value: value,
-      organization: organizationId,
-      createdBy: clerkUserId,
-      updatedBy: clerkUserId,
-    }));
+  // Create variable values from active definitions, using provided values first,
+  // then preset values, then definition defaultValue.
+  const definitions = await VariableDefinition.getDefinitionsForScope(
+    classroomId,
+    "store"
+  );
+  const variableDocs = definitions
+    .map((def) => {
+      const key = def.key;
+      const value =
+        providedVars[key] !== undefined
+          ? providedVars[key]
+          : presetVariables[key] !== undefined
+            ? presetVariables[key]
+            : def.defaultValue !== undefined
+              ? def.defaultValue
+              : null;
 
-    if (variableDocs.length > 0) {
-      await VariableValue.insertMany(variableDocs);
-    }
+      return {
+        appliesTo: "store",
+        ownerId: store._id,
+        variableKey: key,
+        value,
+        organization: organizationId,
+        createdBy: clerkUserId,
+        updatedBy: clerkUserId,
+      };
+    })
+    // Don't store nulls to keep the collection lean; plugin will return null anyway
+    .filter((doc) => doc.value !== null);
+
+  if (variableDocs.length > 0) {
+    await VariableValue.insertMany(variableDocs);
   }
 
   // Create initial ledger entry (week 0, type INITIAL)
@@ -278,13 +299,13 @@ storeSchema.statics.getStoreForSimulation = async function (
     return null;
   }
 
-  // Convert variables array (from plugin) to object for AI
-  const variablesObj = {};
-  if (store.variables && Array.isArray(store.variables)) {
-    store.variables.forEach((v) => {
-      variablesObj[v.key] = v.value;
-    });
-  }
+  // Variables are returned as a map (valueMap plugin output format)
+  const variablesObj =
+    store.variables &&
+    typeof store.variables === "object" &&
+    !Array.isArray(store.variables)
+      ? store.variables
+      : {};
 
   // Return normalized object for AI simulation
   // Flatten store data: include storeType and variables directly
@@ -329,7 +350,7 @@ storeSchema.statics.updateStore = async function (
   clerkUserId
 ) {
   // Extract variables and storeType from storeData
-  const { variables, storeType, ...storeFields } = storeData;
+  const { variables: providedVariables, storeType, ...storeFields } = storeData;
 
   // Find existing store
   let store = await this.findOne({ classroomId, userId });
@@ -342,18 +363,17 @@ storeSchema.statics.updateStore = async function (
 
     if (!isValidStoreType(storeType)) {
       throw new Error(
-        `Invalid storeType: ${storeType}. Must be one of: food_truck, indoor, outdoor`
+        `Invalid storeType: ${storeType}. Must be one of: ${getAvailableStoreTypes().join(", ")}`
       );
     }
 
     // Load preset for store type
     const presetVariables = getPreset(storeType);
 
-    // Merge preset with provided variables
-    const finalVariables = {
-      ...presetVariables,
-      ...(variables && typeof variables === "object" ? variables : {}),
-    };
+    const providedVars =
+      providedVariables && typeof providedVariables === "object"
+        ? providedVariables
+        : {};
 
     // Create new store
     store = new this({
@@ -370,18 +390,38 @@ storeSchema.statics.updateStore = async function (
 
     await store.save();
 
-    // Create variable values from preset and provided variables
-    if (finalVariables && typeof finalVariables === "object") {
-      const variableEntries = Object.entries(finalVariables);
-      for (const [key, value] of variableEntries) {
-        await StoreVariableValue.setVariable(
-          store._id,
-          key,
+    // Create variable values from active definitions, using provided values first,
+    // then preset values, then definition defaultValue.
+    const definitions = await VariableDefinition.getDefinitionsForScope(
+      classroomId,
+      "store"
+    );
+    const variableDocs = definitions
+      .map((def) => {
+        const key = def.key;
+        const value =
+          providedVars[key] !== undefined
+            ? providedVars[key]
+            : presetVariables[key] !== undefined
+              ? presetVariables[key]
+              : def.defaultValue !== undefined
+                ? def.defaultValue
+                : null;
+
+        return {
+          appliesTo: "store",
+          ownerId: store._id,
+          variableKey: key,
           value,
-          organizationId,
-          clerkUserId
-        );
-      }
+          organization: organizationId,
+          createdBy: clerkUserId,
+          updatedBy: clerkUserId,
+        };
+      })
+      .filter((doc) => doc.value !== null);
+
+    if (variableDocs.length > 0) {
+      await VariableValue.insertMany(variableDocs);
     }
 
     // Create initial ledger entry for new store
@@ -402,14 +442,22 @@ storeSchema.statics.updateStore = async function (
     if (storeFields.storeLocation !== undefined) {
       store.storeLocation = storeFields.storeLocation;
     }
-    const storeTypeChanged =
-      storeType !== undefined && store.storeType !== storeType;
+    if (storeType !== undefined && store.storeType !== storeType) {
+      if (!isValidStoreType(storeType)) {
+        throw new Error(
+          `Invalid storeType: ${storeType}. Must be one of: ${getAvailableStoreTypes().join(", ")}`
+        );
+      }
+      store.storeType = storeType;
+    }
 
-  await store.save();
+    store.updatedBy = clerkUserId;
+    await store.save();
+  }
 
   // Update or create variable values if provided
-  if (variables && typeof variables === "object") {
-    const variableEntries = Object.entries(variables);
+  if (providedVariables && typeof providedVariables === "object") {
+    const variableEntries = Object.entries(providedVariables);
     for (const [key, value] of variableEntries) {
       await VariableValue.setVariable(
         "store",
@@ -426,7 +474,7 @@ storeSchema.statics.updateStore = async function (
       appliesTo: "store",
       ownerId: store._id,
     });
-    const newKeys = new Set(Object.keys(variables));
+    const newKeys = new Set(Object.keys(providedVariables));
     for (const existingVar of existingVariables) {
       if (!newKeys.has(existingVar.variableKey)) {
         await VariableValue.deleteOne({ _id: existingVar._id });
@@ -439,14 +487,16 @@ storeSchema.statics.updateStore = async function (
     const presetEntries = Object.entries(presetVariables);
     for (const [key, value] of presetEntries) {
       // Only set if not already set by variables above
-      if (!variables || !(key in variables)) {
-        const existing = await StoreVariableValue.findByStoreAndKey(
+      if (!(key in providedVariables)) {
+        const existing = await VariableValue.findByOwnerAndKey(
+          "store",
           store._id,
           key
         );
         if (!existing) {
           // Variable doesn't exist, create it with preset value
-          await StoreVariableValue.setVariable(
+          await VariableValue.setVariable(
+            "store",
             store._id,
             key,
             value,
@@ -482,16 +532,8 @@ storeSchema.statics.updateStore = async function (
  * @returns {Promise<Object>} Variables object
  */
 storeSchema.methods.getVariables = async function () {
-  // Use plugin's cached variables or load them
-  const variablesArray = await this._loadVariables();
-
-  // Convert array format to object format for convenience
-  const variablesObj = {};
-  variablesArray.forEach((v) => {
-    variablesObj[v.key] = v.value;
-  });
-
-  return variablesObj;
+  // Use plugin's cached variables or load them (valueMap format)
+  return await this._loadVariables();
 };
 
 /**

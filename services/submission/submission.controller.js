@@ -5,6 +5,7 @@ const Classroom = require("../classroom/classroom.model");
 const Enrollment = require("../enrollment/enrollment.model");
 const Member = require("../members/member.model");
 const LedgerEntry = require("../ledger/ledger.model");
+const Store = require("../store/store.model");
 
 /**
  * Submit scenario decisions
@@ -636,6 +637,14 @@ exports.getSubmission = async function (req, res) {
     await submission.populateVariables();
     const submissionObj = submission.toObject();
 
+    // Get user's store for this classroom
+    const store = submission.userId
+      ? await Store.getStoreByUser(
+          submission.classroomId,
+          submission.userId._id
+        )
+      : null;
+
     // Convert variables object to array forma
     res.json({
       success: true,
@@ -651,6 +660,7 @@ exports.getSubmission = async function (req, res) {
               lastName: submission.userId.lastName,
             }
           : null,
+        store: store,
         jobs: submissionObj.jobs || [],
         processingStatus: submissionObj.processingStatus || "pending",
       },

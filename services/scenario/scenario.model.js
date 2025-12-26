@@ -38,6 +38,7 @@ const scenarioSchema = new mongoose.Schema({
 scenarioSchema.plugin(variablePopulationPlugin, {
   variableValueModel: VariableValue,
   appliesTo: "scenario",
+  outputFormat: "valueMap",
 });
 
 // Compound indexes for performance

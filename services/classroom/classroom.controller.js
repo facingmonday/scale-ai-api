@@ -78,10 +78,7 @@ exports.getClassDashboard = async function (req, res) {
     // Get dashboard data
     const dashboard = await Classroom.getDashboard(classroomId, organizationId);
 
-    res.json({
-      success: true,
-      data: dashboard,
-    });
+    res.json(dashboard);
   } catch (error) {
     console.error("Error getting class dashboard:", error);
     if (error.message === "Class not found") {

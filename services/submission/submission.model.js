@@ -51,6 +51,7 @@ const submissionSchema = new mongoose.Schema({
 submissionSchema.plugin(variablePopulationPlugin, {
   variableValueModel: VariableValue,
   appliesTo: "submission",
+  outputFormat: "valueMap",
 });
 
 // Compound indexes for performance
