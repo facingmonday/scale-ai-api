@@ -87,6 +87,50 @@ const ledgerEntrySchema = new mongoose.Schema({
       default: Date.now,
     },
   },
+  calculationContext: {
+    // Store variables at time of calculation
+    storeVariables: {
+      type: Map,
+      of: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    // Scenario variables
+    scenarioVariables: {
+      type: Map,
+      of: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    // Submission variables (student decisions)
+    submissionVariables: {
+      type: Map,
+      of: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    // Outcome variables
+    outcomeVariables: {
+      type: Map,
+      of: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    // Prior ledger state
+    priorState: {
+      cashBefore: Number,
+      inventoryBefore: Number,
+      ledgerHistory: [
+        {
+          scenarioId: mongoose.Schema.Types.ObjectId,
+          scenarioTitle: String,
+          netProfit: Number,
+          cashAfter: Number,
+        },
+      ],
+    },
+    // Full prompt sent to OpenAI (stored as stringified JSON)
+    prompt: {
+      type: String,
+      default: null,
+    },
+  },
   overridden: {
     type: Boolean,
     default: false,
@@ -207,6 +251,17 @@ ledgerEntrySchema.statics.createLedgerEntry = async function (
       runId: input.aiMetadata.runId,
       generatedAt: input.aiMetadata.generatedAt || new Date(),
     },
+    calculationContext: input.calculationContext
+      ? {
+          storeVariables: input.calculationContext.storeVariables || {},
+          scenarioVariables: input.calculationContext.scenarioVariables || {},
+          submissionVariables:
+            input.calculationContext.submissionVariables || {},
+          outcomeVariables: input.calculationContext.outcomeVariables || {},
+          priorState: input.calculationContext.priorState || {},
+          prompt: input.calculationContext.prompt || null,
+        }
+      : undefined,
     overridden: false,
     organization: organizationId,
     createdBy: clerkUserId,
@@ -371,6 +426,87 @@ ledgerEntrySchema.statics.getLastLedgerEntryByStudent = async function (
     .sort({ createdDate: -1, _id: -1 })
     .lean()
     .exec();
+};
+
+/**
+ * Get calculation details for a ledger entry with variable definitions
+ * @param {string} ledgerId - Ledger entry ID
+ * @returns {Promise<Object|null>} Calculation details with variable definitions or null
+ */
+ledgerEntrySchema.statics.getCalculationDetails = async function (ledgerId) {
+  const VariableDefinition = require("../variableDefinition/variableDefinition.model");
+  const entry = await this.findById(ledgerId);
+  if (!entry) {
+    return null;
+  }
+
+  // Get variable definitions for the classroom
+  const allDefinitions = await VariableDefinition.getDefinitionsByClass(
+    entry.classroomId
+  );
+
+  // Group definitions by appliesTo
+  const definitionsByScope = {
+    store: [],
+    scenario: [],
+    submission: [],
+    outcome: [],
+  };
+
+  allDefinitions.forEach((def) => {
+    if (def.appliesTo in definitionsByScope) {
+      definitionsByScope[def.appliesTo].push({
+        key: def.key,
+        label: def.label,
+        description: def.description,
+        dataType: def.dataType,
+        inputType: def.inputType,
+      });
+    }
+  });
+
+  // Convert Map objects to plain objects for JSON serialization
+  const calculationContext = entry.calculationContext
+    ? {
+        storeVariables: entry.calculationContext.storeVariables
+          ? Object.fromEntries(entry.calculationContext.storeVariables)
+          : {},
+        scenarioVariables: entry.calculationContext.scenarioVariables
+          ? Object.fromEntries(entry.calculationContext.scenarioVariables)
+          : {},
+        submissionVariables: entry.calculationContext.submissionVariables
+          ? Object.fromEntries(entry.calculationContext.submissionVariables)
+          : {},
+        outcomeVariables: entry.calculationContext.outcomeVariables
+          ? Object.fromEntries(entry.calculationContext.outcomeVariables)
+          : {},
+        priorState: entry.calculationContext.priorState || {},
+        prompt: entry.calculationContext.prompt || null,
+      }
+    : null;
+
+  return {
+    ledgerEntry: {
+      _id: entry._id,
+      scenarioId: entry.scenarioId,
+      submissionId: entry.submissionId,
+      sales: entry.sales,
+      revenue: entry.revenue,
+      costs: entry.costs,
+      waste: entry.waste,
+      cashBefore: entry.cashBefore,
+      cashAfter: entry.cashAfter,
+      inventoryBefore: entry.inventoryBefore,
+      inventoryAfter: entry.inventoryAfter,
+      netProfit: entry.netProfit,
+      randomEvent: entry.randomEvent,
+      summary: entry.summary,
+      overridden: entry.overridden,
+      createdDate: entry.createdDate,
+    },
+    calculationContext,
+    variableDefinitions: definitionsByScope,
+  };
 };
 
 /**
