@@ -533,8 +533,13 @@ exports.getAllSubmissionsForUser = async function (req, res) {
     const classroomById = new Map(classrooms.map((c) => [c._id.toString(), c]));
     const scenarioById = new Map(scenarios.map((s) => [s._id.toString(), s]));
 
+    // Check if calculation details are requested (optional query parameter)
+    const includeCalculationDetails =
+      req.query.includeCalculationDetails === "true";
+    const LedgerEntry = require("../ledger/ledger.model");
+
     // Format submissions with their associated ledger entries
-    const formattedSubmissions = submissions.map((submission) => {
+    let formattedSubmissions = submissions.map((submission) => {
       const classroom = submission?.classroomId
         ? classroomById.get(submission.classroomId.toString())
         : null;
@@ -562,9 +567,28 @@ exports.getAllSubmissionsForUser = async function (req, res) {
               isClosed: scenario.isClosed,
             }
           : null,
-        ledgerEntry: ledgerEntry || null,
+        ledgerEntry: ledgerEntry ? ledgerEntry.toObject() : null,
       };
     });
+
+    // If calculation details are requested, fetch them for each ledger entry
+    if (includeCalculationDetails) {
+      const detailsPromises = formattedSubmissions.map(async (submission) => {
+        if (submission.ledgerEntry && submission.ledgerEntry._id) {
+          const details = await LedgerEntry.getCalculationDetails(
+            submission.ledgerEntry._id
+          );
+          if (details) {
+            submission.ledgerEntry.calculationDetails =
+              details.calculationContext;
+            submission.ledgerEntry.variableDefinitions =
+              details.variableDefinitions;
+          }
+        }
+        return submission;
+      });
+      formattedSubmissions = await Promise.all(detailsPromises);
+    }
 
     // Get all unique ledger entries (combine both maps)
     const allLedgerEntries = [
@@ -645,12 +669,69 @@ exports.getSubmission = async function (req, res) {
         )
       : null;
 
-    // Convert variables object to array forma
+    // Check if calculation details are requested (optional query parameter)
+    const includeCalculationDetails =
+      req.query.includeCalculationDetails === "true";
+    const LedgerEntry = require("../ledger/ledger.model");
+
+    // Get ledger entry with optional calculation details
+    let ledgerEntryData = submission.ledgerEntryId
+      ? submission.ledgerEntryId.toObject()
+      : null;
+
+    // Convert Map fields in calculationContext to plain objects
+    // Mongoose Maps need to be converted to plain objects for JSON serialization
+    if (ledgerEntryData && ledgerEntryData.calculationContext) {
+      const convertMapToObject = (mapValue) => {
+        if (!mapValue) return {};
+        // If it's already a plain object, return it
+        if (typeof mapValue === "object" && !(mapValue instanceof Map)) {
+          return mapValue;
+        }
+        // If it's a Map, convert it
+        if (mapValue instanceof Map) {
+          return Object.fromEntries(mapValue);
+        }
+        return {};
+      };
+
+      ledgerEntryData.calculationContext = {
+        storeVariables: convertMapToObject(
+          ledgerEntryData.calculationContext.storeVariables
+        ),
+        scenarioVariables: convertMapToObject(
+          ledgerEntryData.calculationContext.scenarioVariables
+        ),
+        submissionVariables: convertMapToObject(
+          ledgerEntryData.calculationContext.submissionVariables
+        ),
+        outcomeVariables: convertMapToObject(
+          ledgerEntryData.calculationContext.outcomeVariables
+        ),
+        priorState: ledgerEntryData.calculationContext.priorState || {},
+        prompt: ledgerEntryData.calculationContext.prompt || null,
+      };
+    }
+
+    if (ledgerEntryData && includeCalculationDetails) {
+      const details = await LedgerEntry.getCalculationDetails(
+        submission.ledgerEntryId._id
+      );
+      if (details) {
+        ledgerEntryData.calculationDetails = details.calculationContext;
+        ledgerEntryData.variableDefinitions = details.variableDefinitions;
+      }
+    }
+
+    // Remove ledgerEntryId from response to avoid duplication
+    // Keep only ledgerEntry with the full populated data
+    const { ledgerEntryId, ...submissionData } = submissionObj;
+
     res.json({
       success: true,
       data: {
-        ...submissionObj,
-        ledgerEntry: submission.ledgerEntryId,
+        ...submissionData,
+        ledgerEntry: ledgerEntryData,
         member: submission.userId
           ? {
               _id: submission.userId._id,

@@ -68,7 +68,7 @@ class SimulationWorker {
         console.log(
           `Writing ledger entry: ${JSON.stringify(logSafeResult, null, 2)}`
         );
-        await this.writeLedgerEntry(job, aiResult);
+        await this.writeLedgerEntry(job, aiResult, context);
       } else {
         // Create a safe copy for logging (without circular references)
         const logSafeResult = { ...aiResult };
@@ -194,11 +194,84 @@ class SimulationWorker {
    * Write ledger entry from AI result
    * @param {Object} job - Job document
    * @param {Object} aiResult - AI simulation result
+   * @param {Object} context - Calculation context (store, scenario, submission, etc.)
    * @returns {Promise<Object>} Created ledger entry
    */
-  static async writeLedgerEntry(job, aiResult) {
+  static async writeLedgerEntry(job, aiResult, context) {
     // Get organization from job
     const organizationId = job.organization;
+
+    // Extract variables from each context object
+    // Store: getStoreForSimulation returns flattened object, variables are at top level
+    // We need to extract only variable keys (exclude store metadata like shopName, storeType, etc.)
+    const storeMetadataKeys = [
+      "shopName",
+      "storeType",
+      "storeDescription",
+      "storeLocation",
+      "startingBalance",
+      "currentDetails",
+    ];
+    const storeVariables = {};
+    if (context.store) {
+      Object.keys(context.store).forEach((key) => {
+        if (!storeMetadataKeys.includes(key)) {
+          storeVariables[key] = context.store[key];
+        }
+      });
+    }
+
+    // Scenario: variables are in .variables property (from plugin)
+    const scenarioVariables =
+      context.scenario?.variables &&
+      typeof context.scenario.variables === "object"
+        ? context.scenario.variables
+        : {};
+
+    // Submission: variables are in .variables property (from plugin)
+    const submissionVariables =
+      context.submission?.variables &&
+      typeof context.submission.variables === "object"
+        ? context.submission.variables
+        : {};
+
+    // Outcome: may have variables, but also has randomEventsEnabled and notes
+    const outcomeVariables =
+      context.scenarioOutcome?.variables &&
+      typeof context.scenarioOutcome.variables === "object"
+        ? context.scenarioOutcome.variables
+        : {};
+    // Also include outcome metadata
+    if (context.scenarioOutcome) {
+      if (context.scenarioOutcome.randomEventsEnabled !== undefined) {
+        outcomeVariables.randomEventsEnabled =
+          context.scenarioOutcome.randomEventsEnabled;
+      }
+      if (context.scenarioOutcome.notes) {
+        outcomeVariables.notes = context.scenarioOutcome.notes;
+      }
+    }
+
+    // Prepare calculation context for storage
+    const calculationContext = {
+      storeVariables,
+      scenarioVariables,
+      submissionVariables,
+      outcomeVariables,
+      priorState: {
+        cashBefore: context.cashBefore,
+        inventoryBefore: aiResult.inventoryBefore,
+        ledgerHistory: (context.ledgerHistory || []).map((entry) => ({
+          scenarioId: entry.scenarioId?._id || entry.scenarioId || null,
+          scenarioTitle: entry.scenarioId?.title || "Initial Setup",
+          netProfit: entry.netProfit,
+          cashAfter: entry.cashAfter,
+        })),
+      },
+      prompt: aiResult.aiMetadata?.prompt
+        ? JSON.stringify(aiResult.aiMetadata.prompt, null, 2)
+        : null,
+    };
 
     // Prepare ledger entry input
     const ledgerInput = {
@@ -218,6 +291,7 @@ class SimulationWorker {
       randomEvent: aiResult.randomEvent,
       summary: aiResult.summary,
       aiMetadata: aiResult.aiMetadata,
+      calculationContext,
     };
 
     // Create ledger entry
