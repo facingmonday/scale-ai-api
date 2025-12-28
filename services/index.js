@@ -28,6 +28,9 @@ router.use("/", require("./store"));
 // VariableDefinition routes
 router.use("/", require("./variableDefinition"));
 
+// StoreType routes
+router.use("/", require("./storeType"));
+
 // Scenario routes
 router.use("/", require("./scenario"));
 

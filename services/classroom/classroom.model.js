@@ -287,17 +287,31 @@ classroomSchema.statics.generateJoinLink = function (classroomId) {
 
 /**
  * Get all variable definitions for a classroom, grouped by appliesTo type
+ * Includes both classroom-scoped definitions (store, scenario, submission) and
+ * organization-scoped storeType definitions
  * @param {string} classroomId - Class ID
  * @param {Object} options - Options (includeInactive)
- * @returns {Promise<Object>} Object with variableDefinitions grouped by type: { store: [], scenario: [], submission: [] }
+ * @returns {Promise<Object>} Object with variableDefinitions grouped by type: { store: [], scenario: [], submission: [], storeType: [] }
  */
 classroomSchema.statics.getAllVariableDefinitionsForClassroom = async function (
   classroomId,
   options = {}
 ) {
-  // Fetch all variableDefinitions for this classroom
-  const variableDefinitions = await VariableDefinition.getDefinitionsByClass(
-    classroomId,
+  // Get classroom to retrieve organization ID
+  const classroom = await this.findById(classroomId);
+  if (!classroom) {
+    throw new Error("Classroom not found");
+  }
+
+  const organizationId = classroom.organization;
+
+  // Fetch all classroom-scoped variableDefinitions (store, scenario, submission)
+  const classroomVariableDefinitions =
+    await VariableDefinition.getDefinitionsByClass(classroomId, options);
+
+  // Fetch organization-scoped storeType variableDefinitions
+  const storeTypeDefinitions = await VariableDefinition.getStoreTypeDefinitions(
+    organizationId,
     options
   );
 
@@ -306,13 +320,18 @@ classroomSchema.statics.getAllVariableDefinitionsForClassroom = async function (
     store: [],
     scenario: [],
     submission: [],
+    storeType: [],
   };
 
-  variableDefinitions.forEach((def) => {
+  // Add classroom-scoped definitions
+  classroomVariableDefinitions.forEach((def) => {
     if (variableDefinitionsByType[def.appliesTo]) {
       variableDefinitionsByType[def.appliesTo].push(def);
     }
   });
+
+  // Add organization-scoped storeType definitions
+  variableDefinitionsByType.storeType = storeTypeDefinitions;
 
   return variableDefinitionsByType;
 };

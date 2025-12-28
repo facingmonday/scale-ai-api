@@ -3,11 +3,7 @@ const baseSchema = require("../../lib/baseSchema");
 const VariableValue = require("../variableDefinition/variableValue.model");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
 const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
-const {
-  getPreset,
-  isValidStoreType,
-  getAvailableStoreTypes,
-} = require("./storeTypePresets");
+const StoreType = require("../storeType/storeType.model");
 const LedgerEntry = require("../ledger/ledger.model");
 
 const storeSchema = new mongoose.Schema({
@@ -34,20 +30,8 @@ const storeSchema = new mongoose.Schema({
     required: true,
   },
   storeType: {
-    type: String,
-    enum: [
-      "street_cart",
-      "food_truck",
-      "campus_kiosk",
-      "cafe",
-      "ghost_kitchen",
-      "bar_and_grill",
-      "franchise_location",
-      "upscale_bistro",
-      "fine_dining",
-      "late_night_window",
-      "festival_vendor",
-    ],
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "StoreType",
     required: true,
   },
 }).add(baseSchema);
@@ -95,9 +79,13 @@ storeSchema.statics._createInitialLedgerEntry = async function (
       return;
     }
 
-    // Get starting balance and inventory from storeType preset
+    // Get starting balance and inventory from storeType
     // This is more reliable than loading variables, and ensures consistency
-    const preset = getPreset(store.storeType);
+    const storeTypeDoc = await StoreType.findById(store.storeType);
+    if (!storeTypeDoc) {
+      throw new Error("Store type not found");
+    }
+    const preset = await storeTypeDoc.getPresetVariables();
     const startingBalance = preset.startingBalance || 0;
     const startingInventory = preset.startingInventory || 0;
 
@@ -158,21 +146,26 @@ storeSchema.statics.createStore = async function (
     throw new Error("Store already exists for this user in this class");
   }
 
-  // Validate storeType
+  // Validate storeType (should be ObjectId)
   const { storeType, variables: providedVariables, ...storeFields } = storeData;
 
   if (!storeType) {
     throw new Error("storeType is required");
   }
 
-  if (!isValidStoreType(storeType)) {
+  // Validate storeType exists and belongs to organization
+  const storeTypeDoc = await StoreType.getStoreTypeById(
+    organizationId,
+    storeType
+  );
+  if (!storeTypeDoc) {
     throw new Error(
-      `Invalid storeType: ${storeType}. Must be one of: ${getAvailableStoreTypes().join(", ")}`
+      "Invalid storeType: Store type not found or does not belong to this organization"
     );
   }
 
   // Load preset for store type
-  const presetVariables = getPreset(storeType);
+  const presetVariables = storeTypeDoc.getPresetVariables();
 
   const providedVars =
     providedVariables && typeof providedVariables === "object"
@@ -186,7 +179,7 @@ storeSchema.statics.createStore = async function (
     shopName: storeFields.shopName,
     storeDescription: storeFields.storeDescription,
     storeLocation: storeFields.storeLocation,
-    storeType,
+    storeType: template._id, // Use template ObjectId
     organization: organizationId,
     createdBy: clerkUserId,
     updatedBy: clerkUserId,
@@ -248,7 +241,9 @@ storeSchema.statics.createStore = async function (
  * @returns {Promise<Object|null>} Store with variables or null
  */
 storeSchema.statics.getStoreByUser = async function (classroomId, userId) {
-  const store = await this.findOne({ classroomId, userId });
+  const store = await this.findOne({ classroomId, userId }).populate(
+    "storeType"
+  );
 
   if (!store) {
     return null;
@@ -256,6 +251,11 @@ storeSchema.statics.getStoreByUser = async function (classroomId, userId) {
   // Explicitly load variables before calling toObject()
   // The post-init hook is async and may not complete before toObject() is called
   await store._loadVariables();
+
+  // Load storeType variables if storeType is populated
+  if (store.storeType && typeof store.storeType === "object" && store.storeType._id) {
+    await store.storeType._loadVariables();
+  }
 
   // Get current ledger summary details
   const currentDetails = await LedgerEntry.getLedgerSummary(
@@ -265,6 +265,13 @@ storeSchema.statics.getStoreByUser = async function (classroomId, userId) {
 
   // Variables are automatically included via plugin's toObject() override
   const storeObj = store.toObject();
+
+  // Add storeType info for backward compatibility
+  if (storeObj.storeType && typeof storeObj.storeType === "object") {
+    storeObj.storeTypeKey = storeObj.storeType.key;
+    storeObj.storeTypeLabel = storeObj.storeType.label;
+    // storeType.variables should already be included via plugin's toObject()
+  }
 
   // Add currentDetails to the returned object (must be added after toObject() since it's not a schema field)
   storeObj.currentDetails = currentDetails;
@@ -307,11 +314,18 @@ storeSchema.statics.getStoreForSimulation = async function (
       ? store.variables
       : {};
 
+  // Get storeType key for backward compatibility
+  // storeType should already be populated by getStoreByUser
+  const storeTypeKey = store.storeTypeKey || store.storeType?.key || null;
+  const storeTypeId =
+    store.storeType?._id?.toString() || store.storeType?.toString() || null;
+
   // Return normalized object for AI simulation
-  // Flatten store data: include storeType and variables directly
+  // Flatten store data: include storeType key and variables directly
   return {
     shopName: store.shopName,
-    storeType: store.storeType,
+    storeType: storeTypeKey, // Return key for compatibility
+    storeTypeId: storeTypeId, // Also include ID
     storeDescription: store.storeDescription,
     storeLocation: store.storeLocation,
     ...variablesObj,
@@ -324,13 +338,52 @@ storeSchema.statics.getStoreForSimulation = async function (
  * @returns {Promise<Array>} Array of stores with variables
  */
 storeSchema.statics.getStoresByClass = async function (classroomId) {
-  const stores = await this.find({ classroomId });
+  const stores = await this.find({ classroomId }).populate("storeType");
 
-  // Use plugin's efficient batch population
+  // Use plugin's efficient batch population for store variables
   await this.populateVariablesForMany(stores);
 
+  // Load variables for all populated storeTypes
+  const storeTypes = stores
+    .map((store) => store.storeType)
+    .filter((st) => st && typeof st === "object" && st._id);
+  
+  if (storeTypes.length > 0) {
+    // Batch load variables for all storeTypes efficiently
+    const storeTypeIds = storeTypes.map((st) => st._id);
+    const allStoreTypeVariables = await VariableValue.find({
+      appliesTo: "storeType",
+      ownerId: { $in: storeTypeIds },
+    });
+    
+    // Group variables by storeType ownerId
+    const variablesByStoreType = {};
+    allStoreTypeVariables.forEach((v) => {
+      const ownerId = v.ownerId.toString();
+      if (!variablesByStoreType[ownerId]) {
+        variablesByStoreType[ownerId] = {};
+      }
+      variablesByStoreType[ownerId][v.variableKey] = v.value;
+    });
+    
+    // Assign variables to each storeType
+    storeTypes.forEach((storeType) => {
+      const ownerId = storeType._id.toString();
+      storeType._storeTypeVariables = variablesByStoreType[ownerId] || {};
+    });
+  }
+
   // Variables are automatically included via plugin
-  return stores.map((store) => store.toObject());
+  return stores.map((store) => {
+    const storeObj = store.toObject();
+    // Add storeType info for backward compatibility
+    if (storeObj.storeType && typeof storeObj.storeType === "object") {
+      storeObj.storeTypeKey = storeObj.storeType.key;
+      storeObj.storeTypeLabel = storeObj.storeType.label;
+      // storeType.variables should already be included via plugin's toObject()
+    }
+    return storeObj;
+  });
 };
 
 /**
@@ -361,14 +414,19 @@ storeSchema.statics.updateStore = async function (
       throw new Error("storeType is required when creating a new store");
     }
 
-    if (!isValidStoreType(storeType)) {
+    // Validate storeType exists and belongs to organization
+    const storeTypeDoc = await StoreType.getStoreTypeById(
+      organizationId,
+      storeType
+    );
+    if (!storeTypeDoc) {
       throw new Error(
-        `Invalid storeType: ${storeType}. Must be one of: ${getAvailableStoreTypes().join(", ")}`
+        "Invalid storeType: Store type not found or does not belong to this organization"
       );
     }
 
     // Load preset for store type
-    const presetVariables = getPreset(storeType);
+    const presetVariables = storeTypeDoc.getPresetVariables();
 
     const providedVars =
       providedVariables && typeof providedVariables === "object"
@@ -382,7 +440,7 @@ storeSchema.statics.updateStore = async function (
       shopName: storeFields.shopName,
       storeDescription: storeFields.storeDescription,
       storeLocation: storeFields.storeLocation,
-      storeType,
+      storeType: storeTypeDoc._id, // Use store type ObjectId
       organization: organizationId,
       createdBy: clerkUserId,
       updatedBy: clerkUserId,
@@ -442,13 +500,24 @@ storeSchema.statics.updateStore = async function (
     if (storeFields.storeLocation !== undefined) {
       store.storeLocation = storeFields.storeLocation;
     }
-    if (storeType !== undefined && store.storeType !== storeType) {
-      if (!isValidStoreType(storeType)) {
-        throw new Error(
-          `Invalid storeType: ${storeType}. Must be one of: ${getAvailableStoreTypes().join(", ")}`
+    if (storeType !== undefined) {
+      // Convert to ObjectId for comparison
+      const currentStoreTypeId = store.storeType?.toString();
+      const newStoreTypeId = storeType.toString();
+
+      if (currentStoreTypeId !== newStoreTypeId) {
+        // Validate storeType exists and belongs to organization
+        const storeTypeDoc = await StoreType.getStoreTypeById(
+          organizationId,
+          storeType
         );
+        if (!storeTypeDoc) {
+          throw new Error(
+            "Invalid storeType: Store type not found or does not belong to this organization"
+          );
+        }
+        store.storeType = storeTypeDoc._id;
       }
-      store.storeType = storeType;
     }
 
     store.updatedBy = clerkUserId;
@@ -483,7 +552,15 @@ storeSchema.statics.updateStore = async function (
 
     // Ensure all preset variables exist (in case some were missing)
     // This handles cases where stores were created before preset logic was added
-    const presetVariables = getPreset(store.storeType);
+    // Populate storeType if needed
+    if (!store.storeType || typeof store.storeType === "string") {
+      await store.populate("storeType");
+    }
+    const storeTypeDoc = store.storeType;
+    if (!storeTypeDoc) {
+      throw new Error("Store type not found");
+    }
+    const presetVariables = storeTypeDoc.getPresetVariables();
     const presetEntries = Object.entries(presetVariables);
     for (const [key, value] of presetEntries) {
       // Only set if not already set by variables above
