@@ -235,7 +235,7 @@ class SimulationWorker {
         ? context.submission.variables
         : {};
 
-    // Outcome: may have variables, but also has randomEventsEnabled and notes
+    // Outcome: may have variables, plus random event chance + notes
     const outcomeVariables =
       context.scenarioOutcome?.variables &&
       typeof context.scenarioOutcome.variables === "object"
@@ -243,9 +243,9 @@ class SimulationWorker {
         : {};
     // Also include outcome metadata
     if (context.scenarioOutcome) {
-      if (context.scenarioOutcome.randomEventsEnabled !== undefined) {
-        outcomeVariables.randomEventsEnabled =
-          context.scenarioOutcome.randomEventsEnabled;
+      if (context.scenarioOutcome.randomEventChancePercent !== undefined) {
+        outcomeVariables.randomEventChancePercent =
+          context.scenarioOutcome.randomEventChancePercent;
       }
       if (context.scenarioOutcome.notes) {
         outcomeVariables.notes = context.scenarioOutcome.notes;
@@ -290,6 +290,7 @@ class SimulationWorker {
       netProfit: aiResult.netProfit,
       randomEvent: aiResult.randomEvent,
       summary: aiResult.summary,
+      education: aiResult.education,
       aiMetadata: aiResult.aiMetadata,
       calculationContext,
     };

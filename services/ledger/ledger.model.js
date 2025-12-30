@@ -72,6 +72,12 @@ const ledgerEntrySchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  // AI-calculated educational / explainability metrics for teaching purposes
+  // (Kept schema-light; validated via AI JSON schema + app-level checks)
+  education: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null,
+  },
   aiMetadata: {
     model: {
       type: String,
@@ -186,6 +192,156 @@ ledgerEntrySchema.pre("save", function (next) {
 // Static methods
 
 /**
+ * Get the OpenAI JSON schema for an AI-generated scenario ledger entry payload.
+ *
+ * Notes:
+ * - This schema describes the AI response payload (NOT the full Mongo document).
+ * - aiMetadata + calculationContext are added by the application after the AI responds.
+ * - Keep this in sync with how SimulationWorker writes ledger entries.
+ *
+ * @returns {Object} JSON schema object for OpenAI response_format.json_schema.schema
+ */
+ledgerEntrySchema.statics.getAISimulationResponseJsonSchema = function () {
+  return {
+    type: "object",
+    required: [
+      "sales",
+      "revenue",
+      "costs",
+      "waste",
+      "cashBefore",
+      "cashAfter",
+      "inventoryBefore",
+      "inventoryAfter",
+      "netProfit",
+      "randomEvent",
+      "summary",
+      "education",
+    ],
+    properties: {
+      sales: { type: "number" },
+      revenue: { type: "number" },
+      costs: { type: "number" },
+      waste: { type: "number" },
+      cashBefore: { type: "number" },
+      cashAfter: { type: "number" },
+      inventoryBefore: { type: "number" },
+      inventoryAfter: { type: "number" },
+      netProfit: { type: "number" },
+      randomEvent: { type: ["string", "null"] },
+      summary: { type: "string" },
+      education: {
+        type: "object",
+        required: [
+          "demandForecast",
+          "demandActual",
+          "serviceLevel",
+          "fillRate",
+          "stockoutUnits",
+          "lostSalesUnits",
+          "backorderUnits",
+          "materialFlowByBucket",
+          "costBreakdown",
+          "teachingNotes",
+        ],
+        properties: {
+          demandForecast: { type: "number" },
+          demandActual: { type: "number" },
+          serviceLevel: { type: "number" },
+          fillRate: { type: "number" },
+          stockoutUnits: { type: "number" },
+          lostSalesUnits: { type: "number" },
+          backorderUnits: { type: "number" },
+          materialFlowByBucket: {
+            type: "object",
+            required: ["refrigerated", "ambient", "notForResaleDry"],
+            properties: {
+              refrigerated: {
+                type: "object",
+                required: [
+                  "beginUnits",
+                  "receivedUnits",
+                  "usedUnits",
+                  "wasteUnits",
+                  "endUnits",
+                ],
+                properties: {
+                  beginUnits: { type: "number" },
+                  receivedUnits: { type: "number" },
+                  usedUnits: { type: "number" },
+                  wasteUnits: { type: "number" },
+                  endUnits: { type: "number" },
+                },
+              },
+              ambient: {
+                type: "object",
+                required: [
+                  "beginUnits",
+                  "receivedUnits",
+                  "usedUnits",
+                  "wasteUnits",
+                  "endUnits",
+                ],
+                properties: {
+                  beginUnits: { type: "number" },
+                  receivedUnits: { type: "number" },
+                  usedUnits: { type: "number" },
+                  wasteUnits: { type: "number" },
+                  endUnits: { type: "number" },
+                },
+              },
+              notForResaleDry: {
+                type: "object",
+                required: [
+                  "beginUnits",
+                  "receivedUnits",
+                  "usedUnits",
+                  "wasteUnits",
+                  "endUnits",
+                ],
+                properties: {
+                  beginUnits: { type: "number" },
+                  receivedUnits: { type: "number" },
+                  usedUnits: { type: "number" },
+                  wasteUnits: { type: "number" },
+                  endUnits: { type: "number" },
+                },
+              },
+            },
+          },
+          costBreakdown: {
+            type: "object",
+            required: [
+              "ingredientCost",
+              "laborCost",
+              "logisticsCost",
+              "tariffCost",
+              "holdingCost",
+              "overflowStorageCost",
+              "expediteCost",
+              "wasteDisposalCost",
+              "otherCost",
+            ],
+            properties: {
+              ingredientCost: { type: "number" },
+              laborCost: { type: "number" },
+              logisticsCost: { type: "number" },
+              tariffCost: { type: "number" },
+              holdingCost: { type: "number" },
+              overflowStorageCost: { type: "number" },
+              expediteCost: { type: "number" },
+              wasteDisposalCost: { type: "number" },
+              otherCost: { type: "number" },
+            },
+          },
+          teachingNotes: { type: "string" },
+        },
+      },
+    },
+  };
+};
+
+/**
  * Create a ledger entry
  * @param {Object} input - Ledger entry data
  * @param {string} organizationId - Organization ID
@@ -246,6 +402,7 @@ ledgerEntrySchema.statics.createLedgerEntry = async function (
     netProfit: input.netProfit,
     randomEvent: input.randomEvent || null,
     summary: input.summary,
+    education: input.education ?? null,
     aiMetadata: {
       model: input.aiMetadata.model,
       runId: input.aiMetadata.runId,
@@ -501,6 +658,7 @@ ledgerEntrySchema.statics.getCalculationDetails = async function (ledgerId) {
       netProfit: entry.netProfit,
       randomEvent: entry.randomEvent,
       summary: entry.summary,
+      education: entry.education ?? null,
       overridden: entry.overridden,
       createdDate: entry.createdDate,
     },

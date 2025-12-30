@@ -13,9 +13,17 @@ const scenarioOutcomeSchema = new mongoose.Schema({
     type: String,
     default: "",
   },
-  randomEventsEnabled: {
-    type: Boolean,
-    default: false,
+  hiddenNotes: {
+    type: String,
+    default: "",
+  },
+  // Probability (0-100) that a random event will occur for this scenario outcome.
+  // Default 0 means random events are disabled.
+  randomEventChancePercent: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 100,
   },
 }).add(baseSchema);
 
@@ -41,13 +49,17 @@ scenarioOutcomeSchema.statics.createOrUpdateOutcome = async function (
 ) {
   let outcome = await this.findOne({ scenarioId });
 
+  const normalizedChancePercent =
+    outcomeData.randomEventChancePercent !== undefined
+      ? outcomeData.randomEventChancePercent
+      : undefined;
+
   if (outcome) {
     // Update existing outcome
     outcome.notes = outcomeData.notes || outcome.notes;
-    outcome.randomEventsEnabled =
-      outcomeData.randomEventsEnabled !== undefined
-        ? outcomeData.randomEventsEnabled
-        : outcome.randomEventsEnabled;
+    if (normalizedChancePercent !== undefined) {
+      outcome.randomEventChancePercent = normalizedChancePercent;
+    }
     outcome.updatedBy = clerkUserId;
     await outcome.save();
   } else {
@@ -55,10 +67,8 @@ scenarioOutcomeSchema.statics.createOrUpdateOutcome = async function (
     outcome = new this({
       scenarioId,
       notes: outcomeData.notes || "",
-      randomEventsEnabled:
-        outcomeData.randomEventsEnabled !== undefined
-          ? outcomeData.randomEventsEnabled
-          : false,
+      randomEventChancePercent:
+        normalizedChancePercent !== undefined ? normalizedChancePercent : 0,
       organization: organizationId,
       createdBy: clerkUserId,
       updatedBy: clerkUserId,

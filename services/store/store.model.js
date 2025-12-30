@@ -307,6 +307,17 @@ storeSchema.statics.getStoreForSimulation = async function (
       ? store.variables
       : {};
 
+  // Merge store-type preset defaults in for any missing (null/undefined) variable values.
+  // Note: valueMap format intentionally includes ALL active definition keys, using null when no value exists.
+  // If we spread variablesObj directly, we'd overwrite preset defaults with nulls.
+  const { label, description, ...presetVars } = getPreset(store.storeType);
+  const mergedVariables = { ...presetVars };
+  Object.entries(variablesObj).forEach(([key, value]) => {
+    if (value !== null && value !== undefined) {
+      mergedVariables[key] = value;
+    }
+  });
+
   // Return normalized object for AI simulation
   // Flatten store data: include storeType and variables directly
   return {
@@ -314,7 +325,7 @@ storeSchema.statics.getStoreForSimulation = async function (
     storeType: store.storeType,
     storeDescription: store.storeDescription,
     storeLocation: store.storeLocation,
-    ...variablesObj,
+    ...mergedVariables,
   };
 };
 

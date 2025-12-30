@@ -536,7 +536,10 @@ exports.getAllSubmissionsForUser = async function (req, res) {
     // Check if calculation details are requested (optional query parameter)
     const includeCalculationDetails =
       req.query.includeCalculationDetails === "true";
-    const LedgerEntry = require("../ledger/ledger.model");
+    // NOTE: Do NOT redeclare LedgerEntry here.
+    // This function already uses the top-level LedgerEntry import above.
+    // Redeclaring with `const LedgerEntry = ...` creates a TDZ bug:
+    // "Cannot access 'LedgerEntry' before initialization".
 
     // Format submissions with their associated ledger entries
     let formattedSubmissions = submissions.map((submission) => {
@@ -554,6 +557,15 @@ exports.getAllSubmissionsForUser = async function (req, res) {
           ? ledgerByScenarioId.get(submission.scenarioId.toString())
           : null);
 
+      // LedgerEntry can be either:
+      // - a Mongoose document (from LedgerEntry.getLedgerEntry())
+      // - a plain object (from .lean())
+      // Normalize to a plain JSON-safe object.
+      const ledgerEntryObj =
+        ledgerEntry && typeof ledgerEntry.toObject === "function"
+          ? ledgerEntry.toObject()
+          : ledgerEntry || null;
+
       return {
         ...submission,
         classroom: classroom
@@ -567,7 +579,7 @@ exports.getAllSubmissionsForUser = async function (req, res) {
               isClosed: scenario.isClosed,
             }
           : null,
-        ledgerEntry: ledgerEntry ? ledgerEntry.toObject() : null,
+        ledgerEntry: ledgerEntryObj,
       };
     });
 
@@ -672,7 +684,7 @@ exports.getSubmission = async function (req, res) {
     // Check if calculation details are requested (optional query parameter)
     const includeCalculationDetails =
       req.query.includeCalculationDetails === "true";
-    const LedgerEntry = require("../ledger/ledger.model");
+    // NOTE: Do NOT redeclare LedgerEntry here (see comment above).
 
     // Get ledger entry with optional calculation details
     let ledgerEntryData = submission.ledgerEntryId

@@ -6,6 +6,9 @@ const Submission = require("../submission/submission.model");
 const JobService = require("../job/lib/jobService");
 const LedgerEntry = require("../ledger/ledger.model");
 const SimulationWorker = require("../job/lib/simulationWorker");
+const {
+  autoCreateSubmissionsForScenario,
+} = require("../submission/autoCreateSubmissionsForScenario");
 
 /**
  * Get all scenarios
@@ -36,6 +39,13 @@ exports.getScenarioById = async function (req, res) {
 
     if (!scenario) {
       return res.status(404).json({ error: "Scenario not found" });
+    }
+
+    // If a scenario is closed, we need to return stats for the scenario
+    if (scenario.isClosed) {
+      // This includes stats for the scenario
+      const stats = await Scenario.getStatsForScenario(scenario._id);
+      scenario.stats = stats;
     }
 
     res.status(200).json({ success: true, data: scenario });
@@ -241,12 +251,36 @@ exports.publishScenario = async function (req, res) {
     // Publish scenario
     await scenario.publish(clerkUserId);
 
-    // TODO: Notify students (email notification)
+    // Auto-generate submissions for all enrolled students (optional)
+    let autoSubmissionResult = null;
+    const autoEnabled = String(
+      process.env.AUTO_GENERATE_SUBMISSIONS_ON_PUBLISH ?? "false"
+    ).toLowerCase();
+    if (autoEnabled === "true") {
+      try {
+        autoSubmissionResult = await autoCreateSubmissionsForScenario({
+          scenarioId: scenario._id,
+          organizationId,
+          clerkUserId,
+          options: {
+            model: process.env.AUTO_SUBMISSION_MODEL || "gpt-4o-mini",
+            concurrency: Number(process.env.AUTO_SUBMISSION_CONCURRENCY || 10),
+          },
+        });
+      } catch (e) {
+        // Don't fail publish; return error details for visibility
+        autoSubmissionResult = {
+          skipped: false,
+          error: e?.message || String(e),
+        };
+      }
+    }
 
     res.json({
       success: true,
       message: "Scenario published successfully",
       data: scenario,
+      autoSubmissionResult,
     });
   } catch (error) {
     console.error("Error publishing scenario:", error);

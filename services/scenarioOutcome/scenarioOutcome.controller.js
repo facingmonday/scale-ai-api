@@ -11,7 +11,7 @@ const JobService = require("../job/lib/jobService");
 exports.setScenarioOutcome = async function (req, res) {
   try {
     const { scenarioId } = req.params;
-    const { notes, randomEventsEnabled } = req.body;
+    const { notes, randomEventChancePercent } = req.body;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
@@ -43,7 +43,7 @@ exports.setScenarioOutcome = async function (req, res) {
     // Create or update outcome using static method
     const outcome = await ScenarioOutcome.createOrUpdateOutcome(
       scenarioId,
-      { notes, randomEventsEnabled },
+      { notes, randomEventChancePercent },
       organizationId,
       clerkUserId
     );
