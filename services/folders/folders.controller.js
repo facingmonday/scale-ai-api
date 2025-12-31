@@ -5,9 +5,7 @@ const { getAccumulatedFilters } = require("../../lib/utils");
 
 exports.get = async function (req, res, next) {
   try {
-    console.log("Getting folders");
     const organizationId = req.organization._id;
-    console.log("Organization ID:", organizationId);
     let page = parseInt(req.query.page) || 0;
     page = page + 1;
 
@@ -124,7 +122,6 @@ exports.get = async function (req, res, next) {
 
 exports.show = async function (req, res, next) {
   try {
-    console.log("Getting folder");
     const organizationId = req.organization._id;
 
     const { id } = req.params;
