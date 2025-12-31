@@ -29,7 +29,7 @@ exports.getStatus = async (req, res) => {
 
   res.json({
     status: "healthy",
-    service: "kikits-workers-service",
+    service: "scale-ai-workers-service",
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || "development",
     mongodb: {

@@ -46,4 +46,10 @@ router.use("/admin/ledger", require("./ledger"));
 // Job routes
 router.use("/admin/job", require("./job"));
 
+// Files routes
+router.use("/files", require("./files"));
+
+// Folder routes
+router.use("/folders", require("./folders"));
+
 module.exports = router;
