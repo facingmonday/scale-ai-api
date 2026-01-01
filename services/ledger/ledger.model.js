@@ -450,12 +450,46 @@ cold inventory → higher holding cost
 
 Narratives may NOT contradict inventory math.
 
-11. FINAL CHECK
+11. INVENTORY ORDERING (REQUIRED)
+You MUST calculate receivedUnits for each bucket based on the student's reorder policy and submission decisions:
+
+REORDER_POINT:
+- Order when: beginUnits < (capacityUnits × reorderPointPercent / 100) for that bucket
+- Order quantity: typically replenish to 80-90% of capacity (higher for BALANCED/HIGH safetyStockByBucketStrategy, lower for LOW)
+- Apply inventoryProtectionPriority to determine bucket ordering sequence
+- Example: If refrigeratedCapacityUnits=500, reorderPointRefrigeratedPercent=20, and beginUnits=80, then 80 < 100, so ORDER
+
+FIXED_INTERVAL:
+- Order every week/interval regardless of current stock level
+- Order quantity: typically 60-80% of capacity (adjust based on demandCommitmentLevel: AGGRESSIVE=higher, CONSERVATIVE=lower)
+- Consider safetyStockByBucketStrategy: HIGH=more, LOW=less
+- Example: If refrigeratedCapacityUnits=500 and demandCommitmentLevel=AGGRESSIVE, order ~350-400 units
+
+DEMAND_TRIGGERED:
+- Order based on plannedProductionUnits, expected demand, and current inventory
+- Order quantity: sufficient to support plannedProductionUnits plus safety stock (based on safetyStockByBucketStrategy)
+- Factor in supplierLeadTime: SHORT=less buffer needed, LONG=more buffer needed
+
+ORDER DISTRIBUTION:
+- receivedUnits must be allocated across buckets based on:
+  - inventoryProtectionPriority (REFRIGERATED_FIRST prioritizes cold storage, etc.)
+  - The bucket's capacity limits
+  - The bucket's reorderPointPercent threshold (for REORDER_POINT policy)
+  
+- For each bucket, calculate:
+  - Should I order? (based on policy)
+  - How much should I order? (based on capacity, strategy, and demand)
+  - Add to receivedUnits for that bucket
+
+CRITICAL: receivedUnits must be > 0 for buckets where ordering is triggered. Do NOT set all receivedUnits to 0 unless the student explicitly chose to order nothing.
+
+12. FINAL CHECK
 Before returning output:
 - Buckets reconcile
 - No capacity violations
 - Costs match inventory state
 - No inventory appears or disappears
+- receivedUnits reflect ordering decisions based on reorder policy
 `;
 
   return {
@@ -751,6 +785,18 @@ ledgerEntrySchema.statics.runAISimulation = async function (context) {
   }
 
   console.log(`AI response: ${JSON.stringify(aiResult, null, 2)}`);
+
+  // Normalize response: Move teachingNotes from root to education if needed
+  // This handles cases where the AI places teachingNotes at the root level instead of inside education
+  if (aiResult.teachingNotes && typeof aiResult.teachingNotes === "string") {
+    if (!aiResult.education) {
+      aiResult.education = {};
+    }
+    // Always move teachingNotes from root to education if it exists at root
+    // If education.teachingNotes already exists, prefer the root level one (it's more likely to be correct)
+    aiResult.education.teachingNotes = aiResult.teachingNotes;
+    delete aiResult.teachingNotes;
+  }
 
   // Validate response structure
   this.validateAISimulationResponse(aiResult);
@@ -1203,6 +1249,12 @@ ledgerEntrySchema.statics.getLedgerSummary = async function (
     firstEntryDate: summary.firstEntryDate,
     lastEntryDate: summary.lastEntryDate,
   };
+};
+
+ledgerEntrySchema.statics.getLedgerEntriesByStore = async function (storeId) {
+  return await this.find({ storeId })
+    .populate("userId", "_id firstName lastName")
+    .sort({ createdDate: 1 });
 };
 
 const LedgerEntry = mongoose.model("LedgerEntry", ledgerEntrySchema);

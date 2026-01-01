@@ -101,12 +101,27 @@ storeSchema.statics._createInitialLedgerEntry = async function (
     const startingBalance = preset.startingBalance || 0;
     const startingInventory = preset.startingInventory || 0;
 
-    // Initial inventory is typically all in refrigerated (can be adjusted per store type)
-    const initialInventoryState = {
-      refrigeratedUnits: startingInventory,
-      ambientUnits: 0,
-      notForResaleUnits: 0,
-    };
+    // Handle both number (legacy) and object (new bucket-based) formats for startingInventory
+    let initialInventoryState;
+    if (
+      typeof startingInventory === "object" &&
+      startingInventory !== null &&
+      !Array.isArray(startingInventory)
+    ) {
+      // Object format with bucket structure
+      initialInventoryState = {
+        refrigeratedUnits: startingInventory.refrigeratedUnits || 0,
+        ambientUnits: startingInventory.ambientUnits || 0,
+        notForResaleUnits: startingInventory.notForResaleUnits || 0,
+      };
+    } else {
+      // Legacy number format: all inventory in refrigerated
+      initialInventoryState = {
+        refrigeratedUnits: Number(startingInventory) || 0,
+        ambientUnits: 0,
+        notForResaleUnits: 0,
+      };
+    }
 
     // Create initial ledger entry with null scenarioId
     await LedgerEntry.createLedgerEntry(
@@ -269,6 +284,9 @@ storeSchema.statics.getStoreByUser = async function (classroomId, userId) {
 
   // Add currentDetails to the returned object (must be added after toObject() since it's not a schema field)
   storeObj.currentDetails = currentDetails;
+
+  // Add ledger entries to the returned object
+  storeObj.ledgerEntries = await LedgerEntry.getLedgerEntriesByStore(store._id);
 
   return storeObj;
 };
