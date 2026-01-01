@@ -9,7 +9,7 @@ const { sendEmail } = require("../../lib/sendGrid/sendEmail");
  */
 exports.createClass = async function (req, res) {
   try {
-    const { name, description, imageUrl } = req.body;
+    const { name, description, imageUrl, seedSubmissionVariables } = req.body;
     const memberId = req.user._id;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
@@ -46,9 +46,30 @@ exports.createClass = async function (req, res) {
       clerkUserId
     );
 
+    // Optionally seed submission variables
+    let submissionVariablesStats = null;
+    if (seedSubmissionVariables) {
+      try {
+        submissionVariablesStats = await Classroom.seedSubmissionVariables(
+          newClassroom._id,
+          organizationId,
+          clerkUserId
+        );
+      } catch (seedError) {
+        // Log error but don't fail the classroom creation
+        console.error(
+          "Error seeding submission variables for new classroom:",
+          seedError
+        );
+      }
+    }
+
     res.status(201).json({
       success: true,
       data: newClassroom,
+      ...(submissionVariablesStats && {
+        submissionVariables: submissionVariablesStats,
+      }),
     });
   } catch (error) {
     console.error("Error creating class:", error);

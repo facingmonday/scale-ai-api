@@ -49,9 +49,15 @@ function parseArgs(argv) {
     admin: null,
     force: false,
     dryRun: false,
+<<<<<<< HEAD
+    classrooms: 2,
+    scenariosPerClassroom: 6,
+    studentsPerClassroom: 100,
+=======
     classrooms: 1,
     scenariosPerClassroom: 0,
     studentsPerClassroom: 1,
+>>>>>>> develop
   };
 
   for (const raw of argv.slice(2)) {
@@ -494,7 +500,11 @@ function buildSubmissionVariables(rng, storePreset, scenarioVars) {
 function computeLedgerFromVars({
   rng,
   cashBefore,
+<<<<<<< HEAD
+  inventoryState,
+=======
   inventoryBefore,
+>>>>>>> develop
   scenarioVars,
   submissionVars,
 }) {
@@ -531,7 +541,12 @@ function computeLedgerFromVars({
   const laborCost = roundMoney(submissionVars.staffingLevel * laborRate);
   const logisticsCost = roundMoney(submissionVars.inventoryOrder * 0.1); // 10% of order value
   const tariffCost = 0;
-  const holdingCost = roundMoney(inventoryBefore * 0.02); // 2% of inventory value
+  // Calculate total inventory for holding cost
+  const totalInventory =
+    (inventoryState?.refrigeratedUnits || 0) +
+    (inventoryState?.ambientUnits || 0) +
+    (inventoryState?.notForResaleUnits || 0);
+  const holdingCost = roundMoney(totalInventory * 0.02); // 2% of inventory value
   const overflowStorageCost = 0;
   const expediteCost = 0;
   const wasteDisposalCost = roundMoney(waste * wasteUnitCost);
@@ -553,6 +568,8 @@ function computeLedgerFromVars({
   const cashAfter = roundMoney(cashBefore + (revenue - costs));
   const netProfit = roundMoney(cashAfter - cashBefore);
 
+<<<<<<< HEAD
+=======
   const inventoryAfter = Math.max(
     0,
     Math.round(
@@ -562,11 +579,12 @@ function computeLedgerFromVars({
     )
   );
 
+>>>>>>> develop
   // Material flow by bucket (simplified for seed data)
   // Assume refrigerated is used for production, ambient/notForResaleDry are mostly static
   const refrigeratedUsed = Math.round(sales * 0.5); // Rough estimate: 50% of sales uses refrigerated
   const refrigeratedWaste = Math.round(waste * 0.3); // 30% of waste is refrigerated
-  const refrigeratedBegin = Math.round(inventoryBefore * 0.5);
+  const refrigeratedBegin = inventoryState?.refrigeratedUnits || 0;
   const refrigeratedReceived = Math.round(submissionVars.inventoryOrder * 0.5);
   const refrigeratedEnd = Math.max(
     0,
@@ -576,15 +594,25 @@ function computeLedgerFromVars({
       refrigeratedWaste
   );
 
-  const ambientBegin = Math.round(inventoryBefore * 0.3);
+  const ambientBegin = inventoryState?.ambientUnits || 0;
   const ambientReceived = Math.round(submissionVars.inventoryOrder * 0.3);
   const ambientEnd = ambientBegin + ambientReceived; // Ambient doesn't get used in simplified model
 
+<<<<<<< HEAD
+  const notForResaleDryBegin = inventoryState?.notForResaleUnits || 0;
+=======
   const notForResaleDryBegin = Math.round(inventoryBefore * 0.2);
+>>>>>>> develop
   const notForResaleDryReceived = Math.round(
     submissionVars.inventoryOrder * 0.2
   );
   const notForResaleDryEnd = notForResaleDryBegin + notForResaleDryReceived; // Static inventory
+
+  const inventoryStateAfter = {
+    refrigeratedUnits: refrigeratedEnd,
+    ambientUnits: ambientEnd,
+    notForResaleUnits: notForResaleDryEnd,
+  };
 
   // Teaching notes (brief summary)
   const teachingNotes =
@@ -603,7 +631,7 @@ function computeLedgerFromVars({
     waste,
     netProfit,
     cashAfter,
-    inventoryAfter,
+    inventoryState: inventoryStateAfter,
     education: {
       demandForecast,
       demandActual,
@@ -806,7 +834,7 @@ async function main() {
     created.students += students.length;
 
     // Track per-student economic state in-memory while seeding this class
-    const studentState = new Map(); // memberId -> { clerkUserId, storeType, cash, inventory }
+    const studentState = new Map(); // memberId -> { clerkUserId, storeType, cash, inventoryState }
 
     for (let i = 0; i < students.length; i++) {
       const student = students[i];
@@ -841,7 +869,11 @@ async function main() {
         clerkUserId: student.clerkUserId,
         storeType,
         cash: preset.startingBalance || 0,
-        inventory: preset.startingInventory || 0,
+        inventoryState: {
+          refrigeratedUnits: preset.startingInventory || 0,
+          ambientUnits: 0,
+          notForResaleUnits: 0,
+        },
       });
       created.ledgerEntries += 1; // initial ledger entry created by Store.createStore
     }
@@ -913,11 +945,15 @@ async function main() {
 
         // Ledger entry
         const cashBefore = state.cash;
-        const inventoryBefore = state.inventory;
+        const inventoryState = state.inventoryState || {
+          refrigeratedUnits: 0,
+          ambientUnits: 0,
+          notForResaleUnits: 0,
+        };
         const computed = computeLedgerFromVars({
           rng,
           cashBefore,
-          inventoryBefore,
+          inventoryState,
           scenarioVars,
           submissionVars,
         });
@@ -934,8 +970,7 @@ async function main() {
             waste: computed.waste,
             cashBefore,
             cashAfter: computed.cashAfter,
-            inventoryBefore,
-            inventoryAfter: computed.inventoryAfter,
+            inventoryState: computed.inventoryState,
             netProfit: computed.netProfit,
             randomEvent: null,
             summary: "Seeded simulation result.",
@@ -952,7 +987,7 @@ async function main() {
               outcomeVariables: {},
               priorState: {
                 cashBefore,
-                inventoryBefore,
+                inventoryState,
                 ledgerHistory: [],
               },
               prompt: null,
@@ -974,7 +1009,7 @@ async function main() {
 
         // Update in-memory state
         state.cash = computed.cashAfter;
-        state.inventory = computed.inventoryAfter;
+        state.inventoryState = computed.inventoryState;
       }
 
       await scenarioDoc.close(adminClerkUserId);

@@ -4,7 +4,6 @@ const Scenario = require("../../scenario/scenario.model");
 const ScenarioOutcome = require("../../scenarioOutcome/scenarioOutcome.model");
 const Submission = require("../../submission/submission.model");
 const LedgerEntry = require("../../ledger/ledger.model");
-const AISimulationService = require("../../../lib/aiSimulationService");
 
 /**
  * Simulation Worker
@@ -37,7 +36,7 @@ class SimulationWorker {
       const context = await this.fetchJobContext(job);
 
       // Run AI simulation
-      const aiResult = await AISimulationService.runSimulation(context);
+      const aiResult = await LedgerEntry.runAISimulation(context);
 
       // Validate and correct cashBefore if needed
       // The AI should calculate this from ledger history, but we ensure continuity
@@ -171,13 +170,46 @@ class SimulationWorker {
       job.scenarioId // Exclude current scenario to avoid including old entries during reruns
     );
 
-    // Determine cashBefore from ledger history
+    // Determine cashBefore and inventoryState from ledger history
     // startingBalance is now in variables, but getStoreForSimulation flattens it
     let cashBefore = store.startingBalance || 0;
+    let inventoryState = {
+      refrigeratedUnits: 0,
+      ambientUnits: 0,
+      notForResaleUnits: 0,
+    };
     if (ledgerHistory.length > 0) {
       // Get the most recent ledger entry
       const lastEntry = ledgerHistory[ledgerHistory.length - 1];
       cashBefore = lastEntry.cashAfter;
+      // Get inventoryState from last entry, or use defaults if not present (for backward compatibility)
+      if (lastEntry.inventoryState) {
+        inventoryState = {
+          refrigeratedUnits: lastEntry.inventoryState.refrigeratedUnits || 0,
+          ambientUnits: lastEntry.inventoryState.ambientUnits || 0,
+          notForResaleUnits: lastEntry.inventoryState.notForResaleUnits || 0,
+        };
+      }
+    } else {
+      // For initial entries, use starting inventory from store preset
+      // Handle both number (legacy) and object (new bucket-based) formats
+      const startingInventory = store.startingInventory || 0;
+      
+      // Normalize to object format
+      if (typeof startingInventory === 'object' && startingInventory !== null && !Array.isArray(startingInventory)) {
+        inventoryState = {
+          refrigeratedUnits: startingInventory.refrigeratedUnits || 0,
+          ambientUnits: startingInventory.ambientUnits || 0,
+          notForResaleUnits: startingInventory.notForResaleUnits || 0,
+        };
+      } else {
+        // Legacy number format: all inventory in refrigerated
+        inventoryState = {
+          refrigeratedUnits: Number(startingInventory) || 0,
+          ambientUnits: 0,
+          notForResaleUnits: 0,
+        };
+      }
     }
 
     return {
@@ -187,6 +219,7 @@ class SimulationWorker {
       submission,
       ledgerHistory,
       cashBefore,
+      inventoryState,
     };
   }
 
@@ -260,12 +293,21 @@ class SimulationWorker {
       outcomeVariables,
       priorState: {
         cashBefore: context.cashBefore,
-        inventoryBefore: aiResult.inventoryBefore,
+        inventoryState: context.inventoryState || {
+          refrigeratedUnits: 0,
+          ambientUnits: 0,
+          notForResaleUnits: 0,
+        },
         ledgerHistory: (context.ledgerHistory || []).map((entry) => ({
           scenarioId: entry.scenarioId?._id || entry.scenarioId || null,
           scenarioTitle: entry.scenarioId?.title || "Initial Setup",
           netProfit: entry.netProfit,
           cashAfter: entry.cashAfter,
+          inventoryState: entry.inventoryState || {
+            refrigeratedUnits: 0,
+            ambientUnits: 0,
+            notForResaleUnits: 0,
+          },
         })),
       },
       prompt: aiResult.aiMetadata?.prompt
@@ -285,8 +327,11 @@ class SimulationWorker {
       waste: aiResult.waste,
       cashBefore: aiResult.cashBefore,
       cashAfter: aiResult.cashAfter,
-      inventoryBefore: aiResult.inventoryBefore,
-      inventoryAfter: aiResult.inventoryAfter,
+      inventoryState: aiResult.inventoryState || {
+        refrigeratedUnits: 0,
+        ambientUnits: 0,
+        notForResaleUnits: 0,
+      },
       netProfit: aiResult.netProfit,
       randomEvent: aiResult.randomEvent,
       summary: aiResult.summary,

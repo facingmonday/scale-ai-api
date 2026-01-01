@@ -569,7 +569,11 @@ scenarioSchema.statics.getStoreTypeStats = async function (
           waste: 0,
           netProfit: 0,
           cashAfter: 0,
-          inventoryAfter: 0,
+          inventoryState: {
+            refrigeratedUnits: 0,
+            ambientUnits: 0,
+            notForResaleUnits: 0,
+          },
         },
         averages: {
           sales: 0,
@@ -578,7 +582,11 @@ scenarioSchema.statics.getStoreTypeStats = async function (
           waste: 0,
           netProfit: 0,
           cashAfter: 0,
-          inventoryAfter: 0,
+          inventoryState: {
+            refrigeratedUnits: 0,
+            ambientUnits: 0,
+            notForResaleUnits: 0,
+          },
         },
         winners: [], // Top performers by netProfit
         losers: [], // Bottom performers by netProfit
@@ -596,7 +604,17 @@ scenarioSchema.statics.getStoreTypeStats = async function (
     stats.totals.waste += ledger.waste || 0;
     stats.totals.netProfit += ledger.netProfit || 0;
     stats.totals.cashAfter += ledger.cashAfter || 0;
-    stats.totals.inventoryAfter += ledger.inventoryAfter || 0;
+    const ledgerInventoryState = ledger.inventoryState || {
+      refrigeratedUnits: 0,
+      ambientUnits: 0,
+      notForResaleUnits: 0,
+    };
+    stats.totals.inventoryState.refrigeratedUnits +=
+      ledgerInventoryState.refrigeratedUnits || 0;
+    stats.totals.inventoryState.ambientUnits +=
+      ledgerInventoryState.ambientUnits || 0;
+    stats.totals.inventoryState.notForResaleUnits +=
+      ledgerInventoryState.notForResaleUnits || 0;
 
     // Store submission data for winner/loser analysis
     stats.submissions.push({
@@ -613,7 +631,11 @@ scenarioSchema.statics.getStoreTypeStats = async function (
         waste: ledger.waste || 0,
         netProfit: ledger.netProfit || 0,
         cashAfter: ledger.cashAfter || 0,
-        inventoryAfter: ledger.inventoryAfter || 0,
+        inventoryState: ledger.inventoryState || {
+          refrigeratedUnits: 0,
+          ambientUnits: 0,
+          notForResaleUnits: 0,
+        },
       },
     });
 
@@ -632,8 +654,12 @@ scenarioSchema.statics.getStoreTypeStats = async function (
     stats.averages.waste = count > 0 ? stats.totals.waste / count : 0;
     stats.averages.netProfit = count > 0 ? stats.totals.netProfit / count : 0;
     stats.averages.cashAfter = count > 0 ? stats.totals.cashAfter / count : 0;
-    stats.averages.inventoryAfter =
-      count > 0 ? stats.totals.inventoryAfter / count : 0;
+    stats.averages.inventoryState.refrigeratedUnits =
+      count > 0 ? stats.totals.inventoryState.refrigeratedUnits / count : 0;
+    stats.averages.inventoryState.ambientUnits =
+      count > 0 ? stats.totals.inventoryState.ambientUnits / count : 0;
+    stats.averages.inventoryState.notForResaleUnits =
+      count > 0 ? stats.totals.inventoryState.notForResaleUnits / count : 0;
 
     // Sort submissions by netProfit to find winners and losers
     const sortedSubmissions = [...stats.submissions].sort(
@@ -762,7 +788,7 @@ scenarioSchema.statics.getStatsForScenario = async function (scenarioId) {
     .populate({
       path: "ledgerEntryId",
       select:
-        "_id sales revenue costs waste cashBefore cashAfter inventoryBefore inventoryAfter netProfit",
+        "_id sales revenue costs waste cashBefore cashAfter inventoryState netProfit",
     })
     .lean();
 

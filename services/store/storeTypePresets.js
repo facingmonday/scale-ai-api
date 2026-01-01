@@ -79,16 +79,23 @@ const OverflowStoragePolicyEnum = Object.freeze({
 
 // Base preset ensures every store type has the exact same keys (with sensible defaults).
 const BASE_PRESET = Object.freeze({
+  // ---------------------------------------------------------------------------
   // Identity / copy
+  // ---------------------------------------------------------------------------
   label: "",
   description: "",
 
-  // Plan / Source / Make / Deliver (supply chain)
+  // ---------------------------------------------------------------------------
+  // PLAN – demand planning & uncertainty
+  // ---------------------------------------------------------------------------
   planStrategy: PlanStrategyEnum.FORECAST_DRIVEN,
   forecastReliance: RiskLevelEnum.MEDIUM,
   demandVolatility: RiskLevelEnum.MEDIUM,
   planningHorizonWeeks: 2,
 
+  // ---------------------------------------------------------------------------
+  // SOURCE – suppliers, inbound logistics, cost exposure
+  // ---------------------------------------------------------------------------
   ingredientSource: IngredientSourceEnum.NATIONAL_COST_EFFECTIVE,
   ingredientCost: IngredientCostEnum.MEDIUM,
   tariffExposure: TariffExposureEnum.MEDIUM,
@@ -98,59 +105,94 @@ const BASE_PRESET = Object.freeze({
   coldChainDependency: RiskLevelEnum.MEDIUM,
   logisticsCost: LogisticsCostEnum.MEDIUM,
 
-  refrigeratedStorageSpace: RiskLevelEnum.MEDIUM,
-  refrigeratedStorageSpaceCost: RiskLevelEnum.MEDIUM,
-  ambientStorageSpace: RiskLevelEnum.MEDIUM,
-  ambientStorageSpaceCost: RiskLevelEnum.MEDIUM,
+  // ---------------------------------------------------------------------------
+  // WAREHOUSING – HARD CONSTRAINTS (unit-based, enforced)
+  // ---------------------------------------------------------------------------
+  refrigeratedCapacityUnits: 500,
+  ambientCapacityUnits: 300,
+  notForResaleCapacityUnits: 200,
+
+  // Per-unit holding cost per week
+  refrigeratedHoldingCostPerUnit: 2.5,
+  ambientHoldingCostPerUnit: 0.75,
+  notForResaleHoldingCostPerUnit: 0.25,
+
+  // Behavior when capacity is exceeded
   overflowStoragePolicy: OverflowStoragePolicyEnum.PAY_FOR_OVERFLOW,
 
+  // ---------------------------------------------------------------------------
+  // MAKE – production & labor conversion
+  // ---------------------------------------------------------------------------
   makeStrategy: InventoryStrategyEnum.HYBRID,
   batchPrepLevel: RiskLevelEnum.MEDIUM,
   capacityFlexibility: RiskLevelEnum.MEDIUM,
 
+  // ---------------------------------------------------------------------------
+  // DELIVER – fulfillment & customer behavior
+  // ---------------------------------------------------------------------------
   fulfillmentModel: FulfillmentModelEnum.PICKUP,
   deliveryPlatformDependency: RiskLevelEnum.MEDIUM,
   lastMileCostSensitivity: RiskLevelEnum.MEDIUM,
 
-  // Financial starting point (also used for initial ledger entry)
+  // ---------------------------------------------------------------------------
+  // Financial starting point (initial ledger seed)
+  // ---------------------------------------------------------------------------
   startingBalance: 50000,
   initialStartupCost: 0,
-  startingInventory: 1000,
 
-  // Cost levers (kept generic; AI can interpret)
-  rawMaterialCost: 1000,
-  finishedGoodCost: 1000,
-  refrigeratedSpaceCost: 1000,
-  ambientSpaceCost: 1000,
+  // Starting inventory is now interpreted *by bucket* downstream
+  startingInventory: {
+    refrigeratedUnits: 500,
+    ambientUnits: 300,
+    notForResaleUnits: 200,
+  },
 
-  // Ops
+  // ---------------------------------------------------------------------------
+  // Cost anchors (used as AI baselines, not direct math)
+  // ---------------------------------------------------------------------------
+  rawMaterialCostBaseline: 1000,
+  finishedGoodCostBaseline: 1000,
+
+  // ---------------------------------------------------------------------------
+  // Operations
+  // ---------------------------------------------------------------------------
   weeklyRent: 0,
   maxDailyCapacity: 100,
   staffRequired: 2,
+
   weatherSensitivity: "medium",
   mobility: "none",
   vibe: "standard",
   riskProfile: "balanced",
+
   peakHours: [],
   customerPatience: "medium",
   marketingPower: "local",
   commonIssues: [],
   growthCeiling: "medium",
 
-  // Equipment / facilities (counts)
+  // ---------------------------------------------------------------------------
+  // Equipment / facilities (capacity multipliers, not inventory)
+  // ---------------------------------------------------------------------------
   numberOfFridges: 1,
   numberOfOvens: 1,
   numberOfWarehouses: 1,
 
+  // ---------------------------------------------------------------------------
   // Selling model
+  // ---------------------------------------------------------------------------
   salesMethod: "whole pie",
   costPerSlice: 8,
   costPerPie: 20,
 
-  // Franchise-only lever (0 for non-franchise)
+  // ---------------------------------------------------------------------------
+  // Franchise-only lever
+  // ---------------------------------------------------------------------------
   royaltyRate: 0,
 
+  // ---------------------------------------------------------------------------
   // AI narration helpers
+  // ---------------------------------------------------------------------------
   aiFlavor: "",
   pros: "",
   cons: "",
@@ -192,7 +234,11 @@ const STORE_TYPE_PRESETS = {
 
     initialStartupCost: 20000,
     startingBalance: 50000,
-    startingInventory: 1000,
+    startingInventory: {
+      refrigeratedUnits: 800,
+      ambientUnits: 150,
+      notForResaleUnits: 50,
+    },
     rawMaterialCost: 1000,
     finishedGoodCost: 1000,
     refrigeratedSpaceCost: 1000,
@@ -258,7 +304,11 @@ const STORE_TYPE_PRESETS = {
 
     startingBalance: 50000,
     initialStartupCost: 25000,
-    startingInventory: 1000,
+    startingInventory: {
+      refrigeratedUnits: 500,
+      ambientUnits: 300,
+      notForResaleUnits: 200,
+    },
     weeklyRent: 700,
     maxDailyCapacity: 120,
     staffRequired: 3,
@@ -310,7 +360,11 @@ const STORE_TYPE_PRESETS = {
 
     startingBalance: 50000,
     initialStartupCost: 35000,
-    startingInventory: 1000,
+    startingInventory: {
+      refrigeratedUnits: 700,
+      ambientUnits: 200,
+      notForResaleUnits: 100,
+    },
     weeklyRent: 1600,
     maxDailyCapacity: 180,
     staffRequired: 5,
@@ -369,7 +423,11 @@ const STORE_TYPE_PRESETS = {
     lastMileCostSensitivity: RiskLevelEnum.LOW,
 
     initialStartupCost: 45000,
-    startingInventory: 10000,
+    startingInventory: {
+      refrigeratedUnits: 6000,
+      ambientUnits: 2500,
+      notForResaleUnits: 1500,
+    },
     rawMaterialCost: 2500,
     finishedGoodCost: 2500,
     refrigeratedSpaceCost: 3000,
@@ -432,7 +490,11 @@ const STORE_TYPE_PRESETS = {
 
     startingBalance: 50000,
     initialStartupCost: 7000,
-    startingInventory: 1000,
+    startingInventory: {
+      refrigeratedUnits: 900,
+      ambientUnits: 75,
+      notForResaleUnits: 25,
+    },
     weeklyRent: 50,
     maxDailyCapacity: 60,
     staffRequired: 1,
@@ -488,7 +550,11 @@ const STORE_TYPE_PRESETS = {
 
     startingBalance: 50000,
     initialStartupCost: 19000,
-    startingInventory: 1000,
+    startingInventory: {
+      refrigeratedUnits: 750,
+      ambientUnits: 200,
+      notForResaleUnits: 50,
+    },
     weeklyRent: 500,
     maxDailyCapacity: 120,
     staffRequired: 2,
@@ -547,7 +613,11 @@ const STORE_TYPE_PRESETS = {
 
     startingBalance: 50000,
     initialStartupCost: 21000,
-    startingInventory: 1000,
+    startingInventory: {
+      refrigeratedUnits: 650,
+      ambientUnits: 250,
+      notForResaleUnits: 100,
+    },
     weeklyRent: 600,
     maxDailyCapacity: 150,
     staffRequired: 4,
@@ -606,7 +676,11 @@ const STORE_TYPE_PRESETS = {
 
     startingBalance: 50000,
     initialStartupCost: 13000,
-    startingInventory: 1000,
+    startingInventory: {
+      refrigeratedUnits: 550,
+      ambientUnits: 300,
+      notForResaleUnits: 150,
+    },
     weeklyRent: 500,
     maxDailyCapacity: 180,
     staffRequired: 2,
@@ -664,7 +738,11 @@ const STORE_TYPE_PRESETS = {
 
     startingBalance: 50000,
     initialStartupCost: 32000,
-    startingInventory: 1000,
+    startingInventory: {
+      refrigeratedUnits: 600,
+      ambientUnits: 250,
+      notForResaleUnits: 150,
+    },
     weeklyRent: 2200,
     maxDailyCapacity: 90,
     staffRequired: 8,
@@ -723,7 +801,11 @@ const STORE_TYPE_PRESETS = {
 
     startingBalance: 50000,
     initialStartupCost: 11000,
-    startingInventory: 1000,
+    startingInventory: {
+      refrigeratedUnits: 850,
+      ambientUnits: 100,
+      notForResaleUnits: 50,
+    },
     weeklyRent: 0,
     maxDailyCapacity: 300,
     staffRequired: 5,
@@ -781,7 +863,11 @@ const STORE_TYPE_PRESETS = {
 
     startingBalance: 50000,
     initialStartupCost: 38000,
-    startingInventory: 5000,
+    startingInventory: {
+      refrigeratedUnits: 3000,
+      ambientUnits: 1500,
+      notForResaleUnits: 500,
+    },
     weeklyRent: 1800,
     royaltyRate: 0.08,
     maxDailyCapacity: 220,
