@@ -1,5 +1,8 @@
 const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
+const openai = require("../../lib/openai");
+const { v4: uuidv4 } = require("uuid");
+const AI_MODEL = process.env.AI_MODEL || "gpt-4o";
 
 const ledgerEntrySchema = new mongoose.Schema({
   classroomId: {
@@ -50,15 +53,10 @@ const ledgerEntrySchema = new mongoose.Schema({
     type: Number,
     required: true,
   },
-  inventoryBefore: {
-    type: Number,
-    required: true,
-    min: 0,
-  },
-  inventoryAfter: {
-    type: Number,
-    required: true,
-    min: 0,
+  inventoryState: {
+    refrigeratedUnits: { type: Number, default: 0, min: 0 },
+    ambientUnits: { type: Number, default: 0, min: 0 },
+    notForResaleUnits: { type: Number, default: 0, min: 0 },
   },
   netProfit: {
     type: Number,
@@ -121,7 +119,11 @@ const ledgerEntrySchema = new mongoose.Schema({
     // Prior ledger state
     priorState: {
       cashBefore: Number,
-      inventoryBefore: Number,
+      inventoryState: {
+        refrigeratedUnits: { type: Number, default: 0 },
+        ambientUnits: { type: Number, default: 0 },
+        notForResaleUnits: { type: Number, default: 0 },
+      },
       ledgerHistory: [
         {
           scenarioId: mongoose.Schema.Types.ObjectId,
@@ -211,8 +213,7 @@ ledgerEntrySchema.statics.getAISimulationResponseJsonSchema = function () {
       "waste",
       "cashBefore",
       "cashAfter",
-      "inventoryBefore",
-      "inventoryAfter",
+      "inventoryState",
       "netProfit",
       "randomEvent",
       "summary",
@@ -225,8 +226,15 @@ ledgerEntrySchema.statics.getAISimulationResponseJsonSchema = function () {
       waste: { type: "number" },
       cashBefore: { type: "number" },
       cashAfter: { type: "number" },
-      inventoryBefore: { type: "number" },
-      inventoryAfter: { type: "number" },
+      inventoryState: {
+        type: "object",
+        required: ["refrigeratedUnits", "ambientUnits", "notForResaleUnits"],
+        properties: {
+          refrigeratedUnits: { type: "number", minimum: 0 },
+          ambientUnits: { type: "number", minimum: 0 },
+          notForResaleUnits: { type: "number", minimum: 0 },
+        },
+      },
       netProfit: { type: "number" },
       randomEvent: { type: ["string", "null"] },
       summary: { type: "string" },
@@ -342,6 +350,428 @@ ledgerEntrySchema.statics.getAISimulationResponseJsonSchema = function () {
 };
 
 /**
+ * Build warehouse rules message for AI prompt
+ * @param {Object} inventoryState - Current inventory state
+ * @returns {Object} Message object with warehouse rules
+ */
+ledgerEntrySchema.statics.buildWarehouseRulesMessage = function (
+  inventoryState
+) {
+  const currentInventoryState = inventoryState || {
+    refrigeratedUnits: 0,
+    ambientUnits: 0,
+    notForResaleUnits: 0,
+  };
+
+  const warehouseRules = `
+WAREHOUSE RULES - YOU MUST OBEY THESE RULES. Outputs that violate these rules are invalid.
+
+1. INVENTORY BUCKETS
+Inventory exists ONLY in these buckets:
+- refrigerated
+- ambient
+- notForResaleDry
+
+All units belong to exactly one bucket.
+
+2. CAPACITY (HARD LIMITS)
+Each bucket has a fixed capacity:
+- refrigeratedCapacityUnits
+- ambientCapacityUnits
+- notForResaleCapacityUnits
+
+Rule:
+endUnits(bucket) ≤ capacityUnits(bucket)
+
+3. INVENTORY RECONCILIATION (REQUIRED)
+For EACH bucket track:
+beginUnits, receivedUnits, usedUnits, wasteUnits, endUnits
+
+This equation MUST hold:
+endUnits = beginUnits + receivedUnits - usedUnits - wasteUnits
+
+4. RECEIPTS & OVERFLOW
+If beginUnits + receivedUnits > capacityUnits, you MUST apply overflowStoragePolicy.
+
+PAY_FOR_OVERFLOW:
+- Excess units incur overflowStorageCost
+- Excess units do NOT increase endUnits
+- Excess units are not usable
+
+DISCARD_EXCESS:
+- Excess units become wasteUnits
+- Waste disposal cost applies
+
+EMERGENCY_REPLENISHMENT:
+- Excess units rejected
+- Emergency units incur expediteCost
+- Capacity rules still apply
+
+Overflow inventory may NEVER be carried forward as normal inventory.
+
+5. USAGE (MAKE)
+Inventory may only be used if it exists:
+usedUnits ≤ beginUnits + receivedUnits
+
+Default consumption order:
+refrigerated → ambient → notForResaleDry
+
+6. WASTE
+wasteUnits ≥ 0
+wasteUnits ≤ beginUnits + receivedUnits - usedUnits
+Waste must be explicitly recorded per bucket.
+
+7. HOLDING COST
+After inventory movement:
+holdingCost(bucket) = endUnits(bucket) × holdingCostPerUnit(bucket)
+
+Total holding cost = sum across all buckets.
+
+8. PROHIBITED
+You MUST NEVER:
+- Create inventory without receipt
+- Use inventory that does not exist
+- Store inventory outside buckets
+- Exceed capacity without overflow handling
+- Adjust inventory to force profitability
+
+9. LEDGER REQUIREMENTS
+If inventory exists, ledger MUST include:
+- education.materialFlowByBucket
+- holdingCost
+- overflowStorageCost (if any)
+- wasteDisposalCost (if any)
+
+10. CAUSAL EXPLANATIONS
+Narratives must follow physical causality:
+overstock → overflow/waste → higher cost
+understock → stockout → lost sales
+cold inventory → higher holding cost
+
+Narratives may NOT contradict inventory math.
+
+11. FINAL CHECK
+Before returning output:
+- Buckets reconcile
+- No capacity violations
+- Costs match inventory state
+- No inventory appears or disappears
+`;
+
+  return {
+    role: "user",
+    content: `CURRENT INVENTORY STATE:\n${JSON.stringify(
+      currentInventoryState,
+      null,
+      2
+    )}${warehouseRules}\n\nCalculate the ending inventoryState based on production, sales, waste, and orders, strictly following these warehouse rules.`,
+  };
+};
+
+/**
+ * Build OpenAI prompt messages
+ * @param {Object} store - Store configuration
+ * @param {Object} scenario - Scenario data
+ * @param {Object} scenarioOutcome - Global scenario outcome
+ * @param {Object} submission - Student submission
+ * @param {Array} ledgerHistory - Prior ledger entries
+ * @param {Object} inventoryState - Current inventory state (refrigeratedUnits, ambientUnits, notForResaleUnits)
+ * @returns {Array} Array of message objects
+ */
+ledgerEntrySchema.statics.buildAISimulationPrompt = function (
+  store,
+  scenario,
+  scenarioOutcome,
+  submission,
+  ledgerHistory,
+  inventoryState
+) {
+  const chancePercent =
+    scenarioOutcome?.randomEventChancePercent !== undefined
+      ? Number(scenarioOutcome.randomEventChancePercent)
+      : 0;
+  const shouldGenerateEvent =
+    Number.isFinite(chancePercent) &&
+    chancePercent > 0 &&
+    Math.random() * 100 < chancePercent;
+
+  const messages = [
+    {
+      role: "system",
+      content:
+        "You are the SCALE.ai simulation engine for a supply chain class using a pizza shop game. Calculate outcomes for one student based on store configuration, scenario context, global outcome, and the student's decisions. Apply realistic business logic and environmental effects.\n\n" +
+        "Return ONLY valid JSON matching the provided schema. You may invent reasonable intermediate numbers when needed. Also compute the required education metrics so instructors can explain results (service level, stockouts/lost sales, by-bucket material flow, and cost breakdown).",
+    },
+    {
+      role: "user",
+      content: `STORE CONFIGURATION:\n${JSON.stringify(
+        {
+          shopName: store.shopName || "Student Shop",
+          storeType: store.storeType,
+          // Variables are flattened by getStoreForSimulation, so all variable keys are at top level
+          ...store,
+        },
+        null,
+        2
+      )}`,
+    },
+    {
+      role: "user",
+      content: `SCENARIO:\n${JSON.stringify(
+        {
+          title: scenario.title,
+          description: scenario.description,
+          variables: scenario.variables || {},
+        },
+        null,
+        2
+      )}`,
+    },
+    {
+      role: "user",
+      content: `GLOBAL SCENARIO OUTCOME:\n${JSON.stringify(
+        {
+          notes: scenarioOutcome.notes || "",
+          hiddenNotes: scenarioOutcome.hiddenNotes || "",
+          ...(shouldGenerateEvent
+            ? {
+                randomEvent: `Generate ONE plausible, educational random operational event grounded in the inputs and set randomEvent to that event text (1-3 sentences). Apply its impact in your calculations.`,
+              }
+            : {}),
+        },
+        null,
+        2
+      )}`,
+    },
+    {
+      role: "user",
+      content: `STUDENT DECISIONS:\n${JSON.stringify(
+        submission.variables || {},
+        null,
+        2
+      )}`,
+    },
+  ];
+
+  // Add current inventory state with warehouse rules
+  messages.push(this.buildWarehouseRulesMessage(inventoryState));
+
+  // Add ledger history if available
+  if (ledgerHistory && ledgerHistory.length > 0) {
+    const historyData = ledgerHistory.map((entry) => ({
+      scenarioId: entry.scenarioId?._id || entry.scenarioId || null,
+      scenarioTitle: entry.scenarioId?.title || "Initial Setup",
+      netProfit: entry.netProfit,
+      cashAfter: entry.cashAfter,
+      inventoryState: entry.inventoryState || {
+        refrigeratedUnits: 0,
+        ambientUnits: 0,
+        notForResaleUnits: 0,
+      },
+    }));
+
+    messages.push({
+      role: "user",
+      content: `LEDGER HISTORY:\n${JSON.stringify(
+        { entries: historyData },
+        null,
+        2
+      )}`,
+    });
+  }
+
+  return messages;
+};
+
+/**
+ * Validate AI response structure
+ * @param {Object} response - AI response
+ * @throws {Error} If response is invalid
+ */
+ledgerEntrySchema.statics.validateAISimulationResponse = function (response) {
+  const requiredFields = [
+    "sales",
+    "revenue",
+    "costs",
+    "waste",
+    "cashBefore",
+    "cashAfter",
+    "inventoryState",
+    "netProfit",
+    "randomEvent",
+    "summary",
+    "education",
+  ];
+
+  for (const field of requiredFields) {
+    if (response[field] === undefined) {
+      throw new Error(`Missing required field in AI response: ${field}`);
+    }
+  }
+
+  // Validate types
+  if (typeof response.sales !== "number") {
+    throw new Error("sales must be a number");
+  }
+  if (typeof response.revenue !== "number") {
+    throw new Error("revenue must be a number");
+  }
+  if (typeof response.costs !== "number") {
+    throw new Error("costs must be a number");
+  }
+  if (typeof response.waste !== "number") {
+    throw new Error("waste must be a number");
+  }
+  if (typeof response.cashBefore !== "number") {
+    throw new Error("cashBefore must be a number");
+  }
+  if (typeof response.cashAfter !== "number") {
+    throw new Error("cashAfter must be a number");
+  }
+  if (!response.inventoryState || typeof response.inventoryState !== "object") {
+    throw new Error("inventoryState must be an object");
+  }
+  if (
+    typeof response.inventoryState.refrigeratedUnits !== "number" ||
+    response.inventoryState.refrigeratedUnits < 0
+  ) {
+    throw new Error(
+      "inventoryState.refrigeratedUnits must be a non-negative number"
+    );
+  }
+  if (
+    typeof response.inventoryState.ambientUnits !== "number" ||
+    response.inventoryState.ambientUnits < 0
+  ) {
+    throw new Error(
+      "inventoryState.ambientUnits must be a non-negative number"
+    );
+  }
+  if (
+    typeof response.inventoryState.notForResaleUnits !== "number" ||
+    response.inventoryState.notForResaleUnits < 0
+  ) {
+    throw new Error(
+      "inventoryState.notForResaleUnits must be a non-negative number"
+    );
+  }
+  if (typeof response.netProfit !== "number") {
+    throw new Error("netProfit must be a number");
+  }
+  if (
+    response.randomEvent !== null &&
+    typeof response.randomEvent !== "string"
+  ) {
+    throw new Error("randomEvent must be a string or null");
+  }
+  if (typeof response.summary !== "string") {
+    throw new Error("summary must be a string");
+  }
+
+  // Education metrics (for teaching/explainability)
+  if (typeof response.education !== "object" || response.education === null) {
+    throw new Error("education must be an object");
+  }
+  if (typeof response.education.teachingNotes !== "string") {
+    throw new Error("education.teachingNotes must be a string");
+  }
+  for (const field of ["serviceLevel", "fillRate"]) {
+    const v = response.education[field];
+    if (typeof v !== "number" || v < 0 || v > 1) {
+      throw new Error(`education.${field} must be a number between 0 and 1`);
+    }
+  }
+
+  // Validate cash continuity
+  const expectedCashAfter = response.cashBefore + response.netProfit;
+  if (Math.abs(response.cashAfter - expectedCashAfter) > 0.01) {
+    throw new Error(
+      `Cash continuity error: cashAfter (${response.cashAfter}) must equal cashBefore (${response.cashBefore}) + netProfit (${response.netProfit})`
+    );
+  }
+};
+
+/**
+ * Run AI simulation for a student
+ * @param {Object} context - Simulation context
+ * @param {Object} context.store - Store configuration
+ * @param {Object} context.scenario - Scenario data
+ * @param {Object} context.scenarioOutcome - Global scenario outcome
+ * @param {Object} context.submission - Student submission
+ * @param {Array} context.ledgerHistory - Prior ledger entries
+ * @param {Object} context.inventoryState - Current inventory state
+ * @returns {Promise<Object>} AI response matching ledger entry schema
+ */
+ledgerEntrySchema.statics.runAISimulation = async function (context) {
+  console.log(
+    `Running AI simulation for scenario ${context.scenario._id} for submission ${context.submission._id}`
+  );
+  const {
+    store,
+    scenario,
+    scenarioOutcome,
+    submission,
+    ledgerHistory,
+    inventoryState,
+  } = context;
+
+  // Build OpenAI prompt
+  const messages = this.buildAISimulationPrompt(
+    store,
+    scenario,
+    scenarioOutcome,
+    submission,
+    ledgerHistory,
+    inventoryState
+  );
+
+  const aiResponseSchema = this.getAISimulationResponseJsonSchema();
+
+  // Call OpenAI with JSON schema
+  const response = await openai.chat.completions.create({
+    model: AI_MODEL,
+    temperature: 0,
+    messages,
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "scenario_ledger_entry",
+        schema: aiResponseSchema,
+      },
+    },
+  });
+
+  // Parse response
+  const content = response.choices[0].message.content;
+  let aiResult;
+  try {
+    aiResult = JSON.parse(content);
+  } catch (error) {
+    throw new Error(`Failed to parse AI response as JSON: ${error.message}`);
+  }
+
+  console.log(`AI response: ${JSON.stringify(aiResult, null, 2)}`);
+
+  // Validate response structure
+  this.validateAISimulationResponse(aiResult);
+
+  // Create a deep copy of the result before adding metadata to avoid circular reference
+  // This ensures the copy is completely independent
+  const resultCopy = JSON.parse(JSON.stringify(aiResult));
+
+  // Add metadata
+  aiResult.aiMetadata = {
+    model: AI_MODEL,
+    runId: uuidv4(),
+    generatedAt: new Date(),
+    prompt: messages,
+    aiResult: resultCopy, // Use deep copy to avoid circular reference
+  };
+
+  return aiResult;
+};
+
+/**
  * Create a ledger entry
  * @param {Object} input - Ledger entry data
  * @param {string} organizationId - Organization ID
@@ -397,8 +827,11 @@ ledgerEntrySchema.statics.createLedgerEntry = async function (
     waste: input.waste,
     cashBefore: input.cashBefore,
     cashAfter: input.cashAfter,
-    inventoryBefore: input.inventoryBefore,
-    inventoryAfter: input.inventoryAfter,
+    inventoryState: input.inventoryState || {
+      refrigeratedUnits: 0,
+      ambientUnits: 0,
+      notForResaleUnits: 0,
+    },
     netProfit: input.netProfit,
     randomEvent: input.randomEvent || null,
     summary: input.summary,
@@ -503,8 +936,7 @@ ledgerEntrySchema.statics.overrideLedgerEntry = async function (
     "waste",
     "cashBefore",
     "cashAfter",
-    "inventoryBefore",
-    "inventoryAfter",
+    "inventoryState",
     "netProfit",
     "randomEvent",
     "summary",
@@ -653,8 +1085,11 @@ ledgerEntrySchema.statics.getCalculationDetails = async function (ledgerId) {
       waste: entry.waste,
       cashBefore: entry.cashBefore,
       cashAfter: entry.cashAfter,
-      inventoryBefore: entry.inventoryBefore,
-      inventoryAfter: entry.inventoryAfter,
+      inventoryState: entry.inventoryState || {
+        refrigeratedUnits: 0,
+        ambientUnits: 0,
+        notForResaleUnits: 0,
+      },
       netProfit: entry.netProfit,
       randomEvent: entry.randomEvent,
       summary: entry.summary,
@@ -710,7 +1145,7 @@ ledgerEntrySchema.statics.getLedgerSummary = async function (
         firstEntryDate: { $min: "$createdDate" },
         lastEntryDate: { $max: "$createdDate" },
         lastCashAfter: { $last: "$cashAfter" },
-        lastInventoryAfter: { $last: "$inventoryAfter" },
+        lastInventoryState: { $last: "$inventoryState" },
       },
     },
   ]);
@@ -727,12 +1162,27 @@ ledgerEntrySchema.statics.getLedgerSummary = async function (
       scenarioCount: 0,
       totalEntries: 0,
       cashBalance: 0,
-      inventory: 0,
+      inventoryState: {
+        refrigeratedUnits: 0,
+        ambientUnits: 0,
+        notForResaleUnits: 0,
+      },
       firstEntryDate: null,
       lastEntryDate: null,
       lastScenarioId: null,
     };
   }
+
+  // Calculate aggregate inventory from last inventoryState
+  const lastInventoryState = summary.lastInventoryState || {
+    refrigeratedUnits: 0,
+    ambientUnits: 0,
+    notForResaleUnits: 0,
+  };
+  const inventory =
+    (lastInventoryState.refrigeratedUnits || 0) +
+    (lastInventoryState.ambientUnits || 0) +
+    (lastInventoryState.notForResaleUnits || 0);
 
   return {
     totalSales: summary.totalSales,
@@ -743,7 +1193,8 @@ ledgerEntrySchema.statics.getLedgerSummary = async function (
     scenarioCount: summary.scenarioCount,
     totalEntries: summary.totalEntries,
     cashBalance: summary.lastCashAfter,
-    inventory: summary.lastInventoryAfter,
+    inventory,
+    inventoryState: lastInventoryState,
     firstEntryDate: summary.firstEntryDate,
     lastEntryDate: summary.lastEntryDate,
   };

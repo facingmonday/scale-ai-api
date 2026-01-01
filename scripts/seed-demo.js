@@ -49,7 +49,7 @@ function parseArgs(argv) {
     admin: null,
     force: false,
     dryRun: false,
-    classrooms: 6,
+    classrooms: 2,
     scenariosPerClassroom: 6,
     studentsPerClassroom: 100,
   };
@@ -57,8 +57,10 @@ function parseArgs(argv) {
   for (const raw of argv.slice(2)) {
     if (raw === "--force") args.force = true;
     else if (raw === "--dry-run") args.dryRun = true;
-    else if (raw.startsWith("--admin=")) args.admin = raw.split("=").slice(1).join("=");
-    else if (raw.startsWith("--classrooms=")) args.classrooms = parseInt(raw.split("=").pop(), 10);
+    else if (raw.startsWith("--admin="))
+      args.admin = raw.split("=").slice(1).join("=");
+    else if (raw.startsWith("--classrooms="))
+      args.classrooms = parseInt(raw.split("=").pop(), 10);
     else if (raw.startsWith("--scenarios="))
       args.scenariosPerClassroom = parseInt(raw.split("=").pop(), 10);
     else if (raw.startsWith("--students="))
@@ -76,10 +78,17 @@ Options:
     }
   }
 
-  if (!Number.isFinite(args.classrooms) || args.classrooms < 1) args.classrooms = 6;
-  if (!Number.isFinite(args.scenariosPerClassroom) || args.scenariosPerClassroom < 1)
+  if (!Number.isFinite(args.classrooms) || args.classrooms < 1)
+    args.classrooms = 6;
+  if (
+    !Number.isFinite(args.scenariosPerClassroom) ||
+    args.scenariosPerClassroom < 1
+  )
     args.scenariosPerClassroom = 6;
-  if (!Number.isFinite(args.studentsPerClassroom) || args.studentsPerClassroom < 1)
+  if (
+    !Number.isFinite(args.studentsPerClassroom) ||
+    args.studentsPerClassroom < 1
+  )
     args.studentsPerClassroom = 100;
 
   return args;
@@ -97,7 +106,13 @@ function getMongoUrlFromEnv() {
     MONGO_DB,
   } = process.env;
 
-  if (!MONGO_SCHEME || !MONGO_USERNAME || !MONGO_PASSWORD || !MONGO_HOSTNAME || !MONGO_DB) {
+  if (
+    !MONGO_SCHEME ||
+    !MONGO_USERNAME ||
+    !MONGO_PASSWORD ||
+    !MONGO_HOSTNAME ||
+    !MONGO_DB
+  ) {
     return null;
   }
 
@@ -132,7 +147,9 @@ async function findTargetAdmin({ adminClerkUserId }) {
   }
 
   // Find any member with an org:admin membership
-  const m = await Member.findOne({ "organizationMemberships.role": "org:admin" }).sort({ _id: 1 });
+  const m = await Member.findOne({
+    "organizationMemberships.role": "org:admin",
+  }).sort({ _id: 1 });
   return m || null;
 }
 
@@ -145,7 +162,11 @@ function pickAdminOrgMembership(member) {
   );
 }
 
-async function deleteSeedDataForAdmin({ seedTag, organizationId, adminMemberId }) {
+async function deleteSeedDataForAdmin({
+  seedTag,
+  organizationId,
+  adminMemberId,
+}) {
   // Find seed classrooms first
   const seedClassrooms = await Classroom.find({
     organization: organizationId,
@@ -157,13 +178,19 @@ async function deleteSeedDataForAdmin({ seedTag, organizationId, adminMemberId }
 
   const classroomIds = seedClassrooms.map((c) => c._id);
 
-  const scenarios = await Scenario.find({ classroomId: { $in: classroomIds } }).select("_id");
+  const scenarios = await Scenario.find({
+    classroomId: { $in: classroomIds },
+  }).select("_id");
   const scenarioIds = scenarios.map((s) => s._id);
 
-  const submissions = await Submission.find({ classroomId: { $in: classroomIds } }).select("_id");
+  const submissions = await Submission.find({
+    classroomId: { $in: classroomIds },
+  }).select("_id");
   const submissionIds = submissions.map((s) => s._id);
 
-  const stores = await Store.find({ classroomId: { $in: classroomIds } }).select("_id");
+  const stores = await Store.find({
+    classroomId: { $in: classroomIds },
+  }).select("_id");
   const storeIds = stores.map((s) => s._id);
 
   const ownerIdsForVariables = [...scenarioIds, ...submissionIds, ...storeIds];
@@ -179,7 +206,10 @@ async function deleteSeedDataForAdmin({ seedTag, organizationId, adminMemberId }
     Enrollment.deleteMany({ classroomId: { $in: classroomIds } }),
     VariableDefinition.deleteMany({ classroomId: { $in: classroomIds } }),
     ownerIdsForVariables.length > 0
-      ? VariableValue.deleteMany({ organization: organizationId, ownerId: { $in: ownerIdsForVariables } })
+      ? VariableValue.deleteMany({
+          organization: organizationId,
+          ownerId: { $in: ownerIdsForVariables },
+        })
       : Promise.resolve(),
     Classroom.deleteMany({ _id: { $in: classroomIds } }),
   ]);
@@ -191,7 +221,11 @@ async function deleteSeedDataForAdmin({ seedTag, organizationId, adminMemberId }
   return { deleted: true, classrooms: classroomIds.length };
 }
 
-async function ensureVariableDefinitions({ classroomId, organizationId, clerkUserId }) {
+async function ensureVariableDefinitions({
+  classroomId,
+  organizationId,
+  clerkUserId,
+}) {
   const definitions = [
     // Store (4)
     {
@@ -279,7 +313,8 @@ async function ensureVariableDefinitions({ classroomId, organizationId, clerkUse
     {
       key: "specialEvent",
       label: "Special Event",
-      description: "Optional special event affecting demand (e.g., campus game day).",
+      description:
+        "Optional special event affecting demand (e.g., campus game day).",
       appliesTo: "scenario",
       dataType: "string",
       inputType: "text",
@@ -289,7 +324,8 @@ async function ensureVariableDefinitions({ classroomId, organizationId, clerkUse
     {
       key: "expectedDemandMultiplier",
       label: "Expected Demand Multiplier",
-      description: "Instructor-provided demand multiplier expectation (0.5–2.0).",
+      description:
+        "Instructor-provided demand multiplier expectation (0.5–2.0).",
       appliesTo: "scenario",
       dataType: "number",
       inputType: "number",
@@ -414,14 +450,17 @@ async function createSeedMembersForClass({
   }
 
   // Return full list as docs (fresh query)
-  return await Member.find({ clerkUserId: { $in: ids } }).select("_id clerkUserId").lean();
+  return await Member.find({ clerkUserId: { $in: ids } })
+    .select("_id clerkUserId")
+    .lean();
 }
 
 function buildScenarioVariables(rng, week) {
   const expectedDemand = Math.round(900 + rng() * 900 + week * 30);
   const expectedDemandMultiplier = roundMoney(clamp(0.8 + rng() * 0.6, 0.5, 2));
   const weatherOptions = ["sunny", "cloudy", "rainy", "storm"];
-  const forecastedWeather = weatherOptions[Math.floor(rng() * weatherOptions.length)];
+  const forecastedWeather =
+    weatherOptions[Math.floor(rng() * weatherOptions.length)];
   const specialEvent = rng() > 0.75 ? "Campus event (increased traffic)" : "";
 
   return {
@@ -436,25 +475,44 @@ function buildSubmissionVariables(rng, storePreset, scenarioVars) {
   const maxDailyCapacity = storePreset.maxDailyCapacity || 120;
   const maxWeeklyCapacity = Math.max(100, maxDailyCapacity * 7);
 
-  const plannedProduction = Math.round(clamp(scenarioVars.expectedDemand * (0.85 + rng() * 0.4), 0, maxWeeklyCapacity));
+  const plannedProduction = Math.round(
+    clamp(
+      scenarioVars.expectedDemand * (0.85 + rng() * 0.4),
+      0,
+      maxWeeklyCapacity
+    )
+  );
   const staffingLevel = Math.round(clamp(30 + rng() * 80, 0, 1000));
   const marketingSpend = Math.round(clamp(rng() * 1200, 0, 20000));
-  const inventoryOrder = Math.round(clamp(plannedProduction * (0.7 + rng() * 0.6), 0, 100000));
+  const inventoryOrder = Math.round(
+    clamp(plannedProduction * (0.7 + rng() * 0.6), 0, 100000)
+  );
 
   return { plannedProduction, staffingLevel, marketingSpend, inventoryOrder };
 }
 
-function computeLedgerFromVars({ rng, cashBefore, inventoryBefore, scenarioVars, submissionVars }) {
+function computeLedgerFromVars({
+  rng,
+  cashBefore,
+  inventoryState,
+  scenarioVars,
+  submissionVars,
+}) {
   const price = 14.0; // $ per pizza (demo)
   const unitCost = 6.25; // $ per pizza produced (demo)
   const wasteUnitCost = 1.0; // disposal / spoilage cost per unsold pizza (demo)
   const laborRate = 18.0; // $ per staff-hour (demo abstraction)
 
-  const demandForecast = Math.round(scenarioVars.expectedDemand * scenarioVars.expectedDemandMultiplier);
+  const demandForecast = Math.round(
+    scenarioVars.expectedDemand * scenarioVars.expectedDemandMultiplier
+  );
   const demandActual = Math.round(demandForecast * (0.85 + rng() * 0.4));
-  const sales = Math.max(0, Math.min(submissionVars.plannedProduction, demandActual));
+  const sales = Math.max(
+    0,
+    Math.min(submissionVars.plannedProduction, demandActual)
+  );
   const waste = Math.max(0, submissionVars.plannedProduction - sales);
-  
+
   // Calculate stockouts/lost sales
   const stockoutUnits = Math.max(0, demandActual - sales);
   const lostSalesUnits = stockoutUnits; // For seed data, assume no backorders
@@ -465,62 +523,79 @@ function computeLedgerFromVars({ rng, cashBefore, inventoryBefore, scenarioVars,
   const fillRate = serviceLevel; // Simplified for seed data
 
   const revenue = roundMoney(sales * price);
-  
+
   // Cost breakdown
-  const ingredientCost = roundMoney(submissionVars.plannedProduction * unitCost);
+  const ingredientCost = roundMoney(
+    submissionVars.plannedProduction * unitCost
+  );
   const laborCost = roundMoney(submissionVars.staffingLevel * laborRate);
   const logisticsCost = roundMoney(submissionVars.inventoryOrder * 0.1); // 10% of order value
   const tariffCost = 0;
-  const holdingCost = roundMoney(inventoryBefore * 0.02); // 2% of inventory value
+  // Calculate total inventory for holding cost
+  const totalInventory =
+    (inventoryState?.refrigeratedUnits || 0) +
+    (inventoryState?.ambientUnits || 0) +
+    (inventoryState?.notForResaleUnits || 0);
+  const holdingCost = roundMoney(totalInventory * 0.02); // 2% of inventory value
   const overflowStorageCost = 0;
   const expediteCost = 0;
   const wasteDisposalCost = roundMoney(waste * wasteUnitCost);
   const otherCost = roundMoney(submissionVars.marketingSpend);
-  
+
   const costs = roundMoney(
     ingredientCost +
-    laborCost +
-    logisticsCost +
-    tariffCost +
-    holdingCost +
-    overflowStorageCost +
-    expediteCost +
-    wasteDisposalCost +
-    otherCost
+      laborCost +
+      logisticsCost +
+      tariffCost +
+      holdingCost +
+      overflowStorageCost +
+      expediteCost +
+      wasteDisposalCost +
+      otherCost
   );
 
   // Force exact continuity: cashAfter === cashBefore + netProfit (within cents)
   const cashAfter = roundMoney(cashBefore + (revenue - costs));
   const netProfit = roundMoney(cashAfter - cashBefore);
 
-  const inventoryAfter = Math.max(
-    0,
-    Math.round(inventoryBefore + submissionVars.inventoryOrder - submissionVars.plannedProduction)
-  );
-
   // Material flow by bucket (simplified for seed data)
   // Assume refrigerated is used for production, ambient/notForResaleDry are mostly static
   const refrigeratedUsed = Math.round(sales * 0.5); // Rough estimate: 50% of sales uses refrigerated
   const refrigeratedWaste = Math.round(waste * 0.3); // 30% of waste is refrigerated
-  const refrigeratedBegin = Math.round(inventoryBefore * 0.5);
+  const refrigeratedBegin = inventoryState?.refrigeratedUnits || 0;
   const refrigeratedReceived = Math.round(submissionVars.inventoryOrder * 0.5);
-  const refrigeratedEnd = Math.max(0, refrigeratedBegin + refrigeratedReceived - refrigeratedUsed - refrigeratedWaste);
+  const refrigeratedEnd = Math.max(
+    0,
+    refrigeratedBegin +
+      refrigeratedReceived -
+      refrigeratedUsed -
+      refrigeratedWaste
+  );
 
-  const ambientBegin = Math.round(inventoryBefore * 0.3);
+  const ambientBegin = inventoryState?.ambientUnits || 0;
   const ambientReceived = Math.round(submissionVars.inventoryOrder * 0.3);
   const ambientEnd = ambientBegin + ambientReceived; // Ambient doesn't get used in simplified model
 
-  const notForResaleDryBegin = Math.round(inventoryBefore * 0.2);
-  const notForResaleDryReceived = Math.round(submissionVars.inventoryOrder * 0.2);
+  const notForResaleDryBegin = inventoryState?.notForResaleUnits || 0;
+  const notForResaleDryReceived = Math.round(
+    submissionVars.inventoryOrder * 0.2
+  );
   const notForResaleDryEnd = notForResaleDryBegin + notForResaleDryReceived; // Static inventory
 
+  const inventoryStateAfter = {
+    refrigeratedUnits: refrigeratedEnd,
+    ambientUnits: ambientEnd,
+    notForResaleUnits: notForResaleDryEnd,
+  };
+
   // Teaching notes (brief summary)
-  const teachingNotes = `Seeded simulation: ${sales} pizzas sold from ${submissionVars.plannedProduction} produced. ` +
+  const teachingNotes =
+    `Seeded simulation: ${sales} pizzas sold from ${submissionVars.plannedProduction} produced. ` +
     `Service level: ${(serviceLevel * 100).toFixed(1)}%. ` +
     `Net profit: $${netProfit.toFixed(2)}. ` +
-    (stockoutUnits > 0 ? `${stockoutUnits} units lost due to stockout. ` : '') +
-    (waste > 0 ? `${waste} units wasted. ` : '') +
-    `Key factors: ${scenarioVars.forecastedWeather || 'normal'} weather, ` +
+    (stockoutUnits > 0 ? `${stockoutUnits} units lost due to stockout. ` : "") +
+    (waste > 0 ? `${waste} units wasted. ` : "") +
+    `Key factors: ${scenarioVars.forecastedWeather || "normal"} weather, ` +
     `${submissionVars.staffingLevel} staff-hours, $${submissionVars.marketingSpend} marketing spend.`;
 
   return {
@@ -530,7 +605,7 @@ function computeLedgerFromVars({ rng, cashBefore, inventoryBefore, scenarioVars,
     waste,
     netProfit,
     cashAfter,
-    inventoryAfter,
+    inventoryState: inventoryStateAfter,
     education: {
       demandForecast,
       demandActual,
@@ -593,14 +668,18 @@ async function main() {
 
   const admin = await findTargetAdmin({ adminClerkUserId: args.admin });
   if (!admin) {
-    console.log("No admin found (requires at least one Member with org role 'org:admin'). Skipping seed.");
+    console.log(
+      "No admin found (requires at least one Member with org role 'org:admin'). Skipping seed."
+    );
     await mongoose.disconnect();
     process.exit(0);
   }
 
   const orgMembership = pickAdminOrgMembership(admin);
   if (!orgMembership?.organizationId) {
-    console.error("Admin does not have an organization membership with organizationId. Cannot seed.");
+    console.error(
+      "Admin does not have an organization membership with organizationId. Cannot seed."
+    );
     await mongoose.disconnect();
     process.exit(1);
   }
@@ -631,9 +710,13 @@ async function main() {
         organizationId,
         adminMemberId: admin._id,
       });
-      console.log(`Deleted prior seed data: ${del.deleted ? "yes" : "no"} (classrooms=${del.classrooms})`);
+      console.log(
+        `Deleted prior seed data: ${del.deleted ? "yes" : "no"} (classrooms=${del.classrooms})`
+      );
     } else {
-      console.log(`--dry-run: would delete prior seed data for seedTag=${seedTag}`);
+      console.log(
+        `--dry-run: would delete prior seed data for seedTag=${seedTag}`
+      );
     }
   }
 
@@ -725,7 +808,7 @@ async function main() {
     created.students += students.length;
 
     // Track per-student economic state in-memory while seeding this class
-    const studentState = new Map(); // memberId -> { clerkUserId, storeType, cash, inventory }
+    const studentState = new Map(); // memberId -> { clerkUserId, storeType, cash, inventoryState }
 
     for (let i = 0; i < students.length; i++) {
       const student = students[i];
@@ -760,7 +843,11 @@ async function main() {
         clerkUserId: student.clerkUserId,
         storeType,
         cash: preset.startingBalance || 0,
-        inventory: preset.startingInventory || 0,
+        inventoryState: {
+          refrigeratedUnits: preset.startingInventory || 0,
+          ambientUnits: 0,
+          notForResaleUnits: 0,
+        },
       });
       created.ledgerEntries += 1; // initial ledger entry created by Store.createStore
     }
@@ -796,8 +883,13 @@ async function main() {
         // Always use a hydrated scenario variables map (avoid empty cached vars)
         const scenarioVars = scenarios[sIdx]?.variables
           ? scenarios[sIdx].variables
-          : (await Scenario.getScenarioById(scenarioDoc._id, organizationId))?.variables || {};
-        const submissionVars = buildSubmissionVariables(rng, preset, scenarioVars);
+          : (await Scenario.getScenarioById(scenarioDoc._id, organizationId))
+              ?.variables || {};
+        const submissionVars = buildSubmissionVariables(
+          rng,
+          preset,
+          scenarioVars
+        );
 
         const submission = await Submission.createSubmission(
           classroom._id,
@@ -827,11 +919,15 @@ async function main() {
 
         // Ledger entry
         const cashBefore = state.cash;
-        const inventoryBefore = state.inventory;
+        const inventoryState = state.inventoryState || {
+          refrigeratedUnits: 0,
+          ambientUnits: 0,
+          notForResaleUnits: 0,
+        };
         const computed = computeLedgerFromVars({
           rng,
           cashBefore,
-          inventoryBefore,
+          inventoryState,
           scenarioVars,
           submissionVars,
         });
@@ -848,8 +944,7 @@ async function main() {
             waste: computed.waste,
             cashBefore,
             cashAfter: computed.cashAfter,
-            inventoryBefore,
-            inventoryAfter: computed.inventoryAfter,
+            inventoryState: computed.inventoryState,
             netProfit: computed.netProfit,
             randomEvent: null,
             summary: "Seeded simulation result.",
@@ -866,7 +961,7 @@ async function main() {
               outcomeVariables: {},
               priorState: {
                 cashBefore,
-                inventoryBefore,
+                inventoryState,
                 ledgerHistory: [],
               },
               prompt: null,
@@ -888,7 +983,7 @@ async function main() {
 
         // Update in-memory state
         state.cash = computed.cashAfter;
-        state.inventory = computed.inventoryAfter;
+        state.inventoryState = computed.inventoryState;
       }
 
       await scenarioDoc.close(adminClerkUserId);
@@ -913,5 +1008,3 @@ main().catch(async (err) => {
   } catch (_) {}
   process.exit(1);
 });
-
-
