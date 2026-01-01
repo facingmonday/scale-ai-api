@@ -56,6 +56,13 @@ exports.me = async function (req, res, next) {
       routes,
       organization: req.organization,
       activeClassroom: activeClassroomResponse,
+      user: {
+        _id: req.user._id,
+        firstName: req.user.firstName,
+        lastName: req.user.lastName,
+        email: req.user.email,
+        imageUrl: req.user.imageUrl,
+      },
     });
   } catch (error) {
     next(error);

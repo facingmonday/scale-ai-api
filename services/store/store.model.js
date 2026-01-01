@@ -29,6 +29,10 @@ const storeSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  imageUrl: {
+    type: String,
+    required: false,
+  },
   storeType: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "StoreType",
@@ -89,6 +93,28 @@ storeSchema.statics._createInitialLedgerEntry = async function (
     const startingBalance = preset.startingBalance || 0;
     const startingInventory = preset.startingInventory || 0;
 
+    // Handle both number (legacy) and object (new bucket-based) formats for startingInventory
+    let initialInventoryState;
+    if (
+      typeof startingInventory === "object" &&
+      startingInventory !== null &&
+      !Array.isArray(startingInventory)
+    ) {
+      // Object format with bucket structure
+      initialInventoryState = {
+        refrigeratedUnits: startingInventory.refrigeratedUnits || 0,
+        ambientUnits: startingInventory.ambientUnits || 0,
+        notForResaleUnits: startingInventory.notForResaleUnits || 0,
+      };
+    } else {
+      // Legacy number format: all inventory in refrigerated
+      initialInventoryState = {
+        refrigeratedUnits: Number(startingInventory) || 0,
+        ambientUnits: 0,
+        notForResaleUnits: 0,
+      };
+    }
+
     // Create initial ledger entry with null scenarioId
     await LedgerEntry.createLedgerEntry(
       {
@@ -101,8 +127,7 @@ storeSchema.statics._createInitialLedgerEntry = async function (
         waste: 0,
         cashBefore: 0,
         cashAfter: startingBalance,
-        inventoryBefore: 0,
-        inventoryAfter: startingInventory,
+        inventoryState: initialInventoryState,
         netProfit: startingBalance,
         summary: "Initial store setup",
         aiMetadata: {
@@ -164,9 +189,12 @@ storeSchema.statics.createStore = async function (
     );
   }
 
+<<<<<<< HEAD
   // Load preset for store type
   const presetVariables = storeTypeDoc.getPresetVariables();
 
+=======
+>>>>>>> develop
   const providedVars =
     providedVariables && typeof providedVariables === "object"
       ? providedVariables
@@ -179,7 +207,12 @@ storeSchema.statics.createStore = async function (
     shopName: storeFields.shopName,
     storeDescription: storeFields.storeDescription,
     storeLocation: storeFields.storeLocation,
+<<<<<<< HEAD
     storeType: template._id, // Use template ObjectId
+=======
+    storeType,
+    imageUrl: imageUrl || null,
+>>>>>>> develop
     organization: organizationId,
     createdBy: clerkUserId,
     updatedBy: clerkUserId,
@@ -188,7 +221,7 @@ storeSchema.statics.createStore = async function (
   await store.save();
 
   // Create variable values from active definitions, using provided values first,
-  // then preset values, then definition defaultValue.
+  // then definition defaultValue. Presets are NOT persisted - they're used at read time.
   const definitions = await VariableDefinition.getDefinitionsForScope(
     classroomId,
     "store"
@@ -199,11 +232,9 @@ storeSchema.statics.createStore = async function (
       const value =
         providedVars[key] !== undefined
           ? providedVars[key]
-          : presetVariables[key] !== undefined
-            ? presetVariables[key]
-            : def.defaultValue !== undefined
-              ? def.defaultValue
-              : null;
+          : def.defaultValue !== undefined
+            ? def.defaultValue
+            : null;
 
       return {
         appliesTo: "store",
@@ -276,6 +307,9 @@ storeSchema.statics.getStoreByUser = async function (classroomId, userId) {
   // Add currentDetails to the returned object (must be added after toObject() since it's not a schema field)
   storeObj.currentDetails = currentDetails;
 
+  // Add ledger entries to the returned object
+  storeObj.ledgerEntries = await LedgerEntry.getLedgerEntriesByStore(store._id);
+
   return storeObj;
 };
 
@@ -314,11 +348,24 @@ storeSchema.statics.getStoreForSimulation = async function (
       ? store.variables
       : {};
 
+<<<<<<< HEAD
   // Get storeType key for backward compatibility
   // storeType should already be populated by getStoreByUser
   const storeTypeKey = store.storeTypeKey || store.storeType?.key || null;
   const storeTypeId =
     store.storeType?._id?.toString() || store.storeType?.toString() || null;
+=======
+  // Merge store-type preset defaults in for any missing (null/undefined) variable values.
+  // Note: valueMap format intentionally includes ALL active definition keys, using null when no value exists.
+  // If we spread variablesObj directly, we'd overwrite preset defaults with nulls.
+  const { label, description, ...presetVars } = getPreset(store.storeType);
+  const mergedVariables = { ...presetVars };
+  Object.entries(variablesObj).forEach(([key, value]) => {
+    if (value !== null && value !== undefined) {
+      mergedVariables[key] = value;
+    }
+  });
+>>>>>>> develop
 
   // Return normalized object for AI simulation
   // Flatten store data: include storeType key and variables directly
@@ -328,7 +375,7 @@ storeSchema.statics.getStoreForSimulation = async function (
     storeTypeId: storeTypeId, // Also include ID
     storeDescription: store.storeDescription,
     storeLocation: store.storeLocation,
-    ...variablesObj,
+    ...mergedVariables,
   };
 };
 
@@ -402,8 +449,13 @@ storeSchema.statics.updateStore = async function (
   organizationId,
   clerkUserId
 ) {
-  // Extract variables and storeType from storeData
-  const { variables: providedVariables, storeType, ...storeFields } = storeData;
+  // Extract variables, storeType, and imageUrl from storeData
+  const {
+    variables: providedVariables,
+    storeType,
+    imageUrl,
+    ...storeFields
+  } = storeData;
 
   // Find existing store
   let store = await this.findOne({ classroomId, userId });
@@ -425,9 +477,12 @@ storeSchema.statics.updateStore = async function (
       );
     }
 
+<<<<<<< HEAD
     // Load preset for store type
     const presetVariables = storeTypeDoc.getPresetVariables();
 
+=======
+>>>>>>> develop
     const providedVars =
       providedVariables && typeof providedVariables === "object"
         ? providedVariables
@@ -440,7 +495,12 @@ storeSchema.statics.updateStore = async function (
       shopName: storeFields.shopName,
       storeDescription: storeFields.storeDescription,
       storeLocation: storeFields.storeLocation,
+<<<<<<< HEAD
       storeType: storeTypeDoc._id, // Use store type ObjectId
+=======
+      storeType,
+      imageUrl: imageUrl || null,
+>>>>>>> develop
       organization: organizationId,
       createdBy: clerkUserId,
       updatedBy: clerkUserId,
@@ -449,7 +509,7 @@ storeSchema.statics.updateStore = async function (
     await store.save();
 
     // Create variable values from active definitions, using provided values first,
-    // then preset values, then definition defaultValue.
+    // then definition defaultValue. Presets are NOT persisted - they're used at read time.
     const definitions = await VariableDefinition.getDefinitionsForScope(
       classroomId,
       "store"
@@ -460,11 +520,9 @@ storeSchema.statics.updateStore = async function (
         const value =
           providedVars[key] !== undefined
             ? providedVars[key]
-            : presetVariables[key] !== undefined
-              ? presetVariables[key]
-              : def.defaultValue !== undefined
-                ? def.defaultValue
-                : null;
+            : def.defaultValue !== undefined
+              ? def.defaultValue
+              : null;
 
         return {
           appliesTo: "store",
@@ -519,6 +577,9 @@ storeSchema.statics.updateStore = async function (
         store.storeType = storeTypeDoc._id;
       }
     }
+    if (imageUrl !== undefined) {
+      store.imageUrl = imageUrl || null;
+    }
 
     store.updatedBy = clerkUserId;
     await store.save();
@@ -550,6 +611,7 @@ storeSchema.statics.updateStore = async function (
       }
     }
 
+<<<<<<< HEAD
     // Ensure all preset variables exist (in case some were missing)
     // This handles cases where stores were created before preset logic was added
     // Populate storeType if needed
@@ -583,6 +645,11 @@ storeSchema.statics.updateStore = async function (
         }
       }
     }
+=======
+    // Note: Presets are NOT persisted here. They're merged at read time
+    // (e.g., in getStoreForSimulation) to avoid data duplication and allow
+    // preset updates without affecting existing stores.
+>>>>>>> develop
 
     store.updatedBy = clerkUserId;
     await store.save();

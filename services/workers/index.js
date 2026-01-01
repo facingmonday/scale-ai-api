@@ -1,6 +1,6 @@
 /**
  * Workers Service Routes
- * 
+ *
  * Provides endpoints for managing and monitoring background workers.
  * These routes are typically used for debugging and monitoring worker health.
  * Mounted at: /v1/workers (if enabled)
@@ -14,7 +14,7 @@ const router = express.Router();
 router.get("/", (req, res) => {
   res.status(200).json({
     status: "healthy",
-    service: "kikits-workers-service",
+    service: "scale-ai-workers-service",
     timestamp: new Date().toISOString(),
   });
 });

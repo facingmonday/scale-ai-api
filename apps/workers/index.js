@@ -81,7 +81,7 @@ createBullBoard({
   serverAdapter: serverAdapter,
   options: {
     uiConfig: {
-      boardTitle: "Kikits Queues",
+      boardTitle: "ScaleAI Queues",
     },
   },
 });
@@ -144,7 +144,7 @@ app.use("/", require("../../services/workers"));
 
 async function main() {
   try {
-    console.log("🚀 Starting Kikits Workers Service...");
+    console.log("🚀 Starting ScaleAI Workers Service...");
     console.log(`⏰ Started at: ${new Date().toISOString()}`);
     console.log(`🌍 Environment: ${process.env.NODE_ENV || "development"}`);
 

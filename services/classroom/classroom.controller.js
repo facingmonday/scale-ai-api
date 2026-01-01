@@ -9,7 +9,7 @@ const { sendEmail } = require("../../lib/sendGrid/sendEmail");
  */
 exports.createClass = async function (req, res) {
   try {
-    const { name, description } = req.body;
+    const { name, description, imageUrl, seedSubmissionVariables } = req.body;
     const memberId = req.user._id;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
@@ -26,6 +26,7 @@ exports.createClass = async function (req, res) {
     const newClassroom = new Classroom({
       name,
       description: description || "",
+      imageUrl: imageUrl || null,
       isActive: true,
       adminIds: [clerkUserId], // Auto-enroll creator as admin
       ownership: memberId, // Set ownership to the creator
@@ -45,9 +46,30 @@ exports.createClass = async function (req, res) {
       clerkUserId
     );
 
+    // Optionally seed submission variables
+    let submissionVariablesStats = null;
+    if (seedSubmissionVariables) {
+      try {
+        submissionVariablesStats = await Classroom.seedSubmissionVariables(
+          newClassroom._id,
+          organizationId,
+          clerkUserId
+        );
+      } catch (seedError) {
+        // Log error but don't fail the classroom creation
+        console.error(
+          "Error seeding submission variables for new classroom:",
+          seedError
+        );
+      }
+    }
+
     res.status(201).json({
       success: true,
       data: newClassroom,
+      ...(submissionVariablesStats && {
+        submissionVariables: submissionVariablesStats,
+      }),
     });
   } catch (error) {
     console.error("Error creating class:", error);
@@ -116,6 +138,61 @@ exports.getStudentDashboard = async function (req, res) {
     });
   } catch (error) {
     console.error("Error getting student dashboard:", error);
+  }
+};
+
+/**
+ * Update a classroom
+ * PUT /api/admin/class/:classroomId
+ */
+exports.updateClass = async function (req, res) {
+  try {
+    const { classroomId } = req.params;
+    const { name, description, imageUrl, isActive } = req.body;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    // Validate admin access
+    const classroom = await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId
+    );
+
+    // Update allowed fields
+    if (name !== undefined) {
+      classroom.name = name;
+    }
+    if (description !== undefined) {
+      classroom.description = description;
+    }
+    if (imageUrl !== undefined) {
+      classroom.imageUrl = imageUrl || null;
+    }
+    if (isActive !== undefined) {
+      classroom.isActive = isActive;
+    }
+
+    classroom.updatedBy = clerkUserId;
+    await classroom.save();
+
+    res.json({
+      success: true,
+      message: "Classroom updated successfully",
+      data: classroom,
+    });
+  } catch (error) {
+    console.error("Error updating classroom:", error);
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    if (error.name === "ValidationError") {
+      return res.status(400).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
   }
 };
 

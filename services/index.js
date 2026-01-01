@@ -25,6 +25,9 @@ router.use("/enrollment", require("./enrollment"));
 // Store routes
 router.use("/", require("./store"));
 
+// Store type presets (read-only)
+router.use("/", require("./storeTypePresets"));
+
 // VariableDefinition routes
 router.use("/", require("./variableDefinition"));
 

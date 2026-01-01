@@ -4,7 +4,6 @@ const Scenario = require("../../scenario/scenario.model");
 const ScenarioOutcome = require("../../scenarioOutcome/scenarioOutcome.model");
 const Submission = require("../../submission/submission.model");
 const LedgerEntry = require("../../ledger/ledger.model");
-const AISimulationService = require("../../../lib/aiSimulationService");
 
 /**
  * Simulation Worker
@@ -37,7 +36,7 @@ class SimulationWorker {
       const context = await this.fetchJobContext(job);
 
       // Run AI simulation
-      const aiResult = await AISimulationService.runSimulation(context);
+      const aiResult = await LedgerEntry.runAISimulation(context);
 
       // Validate and correct cashBefore if needed
       // The AI should calculate this from ledger history, but we ensure continuity
@@ -68,7 +67,7 @@ class SimulationWorker {
         console.log(
           `Writing ledger entry: ${JSON.stringify(logSafeResult, null, 2)}`
         );
-        await this.writeLedgerEntry(job, aiResult);
+        await this.writeLedgerEntry(job, aiResult, context);
       } else {
         // Create a safe copy for logging (without circular references)
         const logSafeResult = { ...aiResult };
@@ -171,13 +170,46 @@ class SimulationWorker {
       job.scenarioId // Exclude current scenario to avoid including old entries during reruns
     );
 
-    // Determine cashBefore from ledger history
+    // Determine cashBefore and inventoryState from ledger history
     // startingBalance is now in variables, but getStoreForSimulation flattens it
     let cashBefore = store.startingBalance || 0;
+    let inventoryState = {
+      refrigeratedUnits: 0,
+      ambientUnits: 0,
+      notForResaleUnits: 0,
+    };
     if (ledgerHistory.length > 0) {
       // Get the most recent ledger entry
       const lastEntry = ledgerHistory[ledgerHistory.length - 1];
       cashBefore = lastEntry.cashAfter;
+      // Get inventoryState from last entry, or use defaults if not present (for backward compatibility)
+      if (lastEntry.inventoryState) {
+        inventoryState = {
+          refrigeratedUnits: lastEntry.inventoryState.refrigeratedUnits || 0,
+          ambientUnits: lastEntry.inventoryState.ambientUnits || 0,
+          notForResaleUnits: lastEntry.inventoryState.notForResaleUnits || 0,
+        };
+      }
+    } else {
+      // For initial entries, use starting inventory from store preset
+      // Handle both number (legacy) and object (new bucket-based) formats
+      const startingInventory = store.startingInventory || 0;
+      
+      // Normalize to object format
+      if (typeof startingInventory === 'object' && startingInventory !== null && !Array.isArray(startingInventory)) {
+        inventoryState = {
+          refrigeratedUnits: startingInventory.refrigeratedUnits || 0,
+          ambientUnits: startingInventory.ambientUnits || 0,
+          notForResaleUnits: startingInventory.notForResaleUnits || 0,
+        };
+      } else {
+        // Legacy number format: all inventory in refrigerated
+        inventoryState = {
+          refrigeratedUnits: Number(startingInventory) || 0,
+          ambientUnits: 0,
+          notForResaleUnits: 0,
+        };
+      }
     }
 
     return {
@@ -187,6 +219,7 @@ class SimulationWorker {
       submission,
       ledgerHistory,
       cashBefore,
+      inventoryState,
     };
   }
 
@@ -194,11 +227,93 @@ class SimulationWorker {
    * Write ledger entry from AI result
    * @param {Object} job - Job document
    * @param {Object} aiResult - AI simulation result
+   * @param {Object} context - Calculation context (store, scenario, submission, etc.)
    * @returns {Promise<Object>} Created ledger entry
    */
-  static async writeLedgerEntry(job, aiResult) {
+  static async writeLedgerEntry(job, aiResult, context) {
     // Get organization from job
     const organizationId = job.organization;
+
+    // Extract variables from each context object
+    // Store: getStoreForSimulation returns flattened object, variables are at top level
+    // We need to extract only variable keys (exclude store metadata like shopName, storeType, etc.)
+    const storeMetadataKeys = [
+      "shopName",
+      "storeType",
+      "storeDescription",
+      "storeLocation",
+      "startingBalance",
+      "currentDetails",
+    ];
+    const storeVariables = {};
+    if (context.store) {
+      Object.keys(context.store).forEach((key) => {
+        if (!storeMetadataKeys.includes(key)) {
+          storeVariables[key] = context.store[key];
+        }
+      });
+    }
+
+    // Scenario: variables are in .variables property (from plugin)
+    const scenarioVariables =
+      context.scenario?.variables &&
+      typeof context.scenario.variables === "object"
+        ? context.scenario.variables
+        : {};
+
+    // Submission: variables are in .variables property (from plugin)
+    const submissionVariables =
+      context.submission?.variables &&
+      typeof context.submission.variables === "object"
+        ? context.submission.variables
+        : {};
+
+    // Outcome: may have variables, plus random event chance + notes
+    const outcomeVariables =
+      context.scenarioOutcome?.variables &&
+      typeof context.scenarioOutcome.variables === "object"
+        ? context.scenarioOutcome.variables
+        : {};
+    // Also include outcome metadata
+    if (context.scenarioOutcome) {
+      if (context.scenarioOutcome.randomEventChancePercent !== undefined) {
+        outcomeVariables.randomEventChancePercent =
+          context.scenarioOutcome.randomEventChancePercent;
+      }
+      if (context.scenarioOutcome.notes) {
+        outcomeVariables.notes = context.scenarioOutcome.notes;
+      }
+    }
+
+    // Prepare calculation context for storage
+    const calculationContext = {
+      storeVariables,
+      scenarioVariables,
+      submissionVariables,
+      outcomeVariables,
+      priorState: {
+        cashBefore: context.cashBefore,
+        inventoryState: context.inventoryState || {
+          refrigeratedUnits: 0,
+          ambientUnits: 0,
+          notForResaleUnits: 0,
+        },
+        ledgerHistory: (context.ledgerHistory || []).map((entry) => ({
+          scenarioId: entry.scenarioId?._id || entry.scenarioId || null,
+          scenarioTitle: entry.scenarioId?.title || "Initial Setup",
+          netProfit: entry.netProfit,
+          cashAfter: entry.cashAfter,
+          inventoryState: entry.inventoryState || {
+            refrigeratedUnits: 0,
+            ambientUnits: 0,
+            notForResaleUnits: 0,
+          },
+        })),
+      },
+      prompt: aiResult.aiMetadata?.prompt
+        ? JSON.stringify(aiResult.aiMetadata.prompt, null, 2)
+        : null,
+    };
 
     // Prepare ledger entry input
     const ledgerInput = {
@@ -212,12 +327,17 @@ class SimulationWorker {
       waste: aiResult.waste,
       cashBefore: aiResult.cashBefore,
       cashAfter: aiResult.cashAfter,
-      inventoryBefore: aiResult.inventoryBefore,
-      inventoryAfter: aiResult.inventoryAfter,
+      inventoryState: aiResult.inventoryState || {
+        refrigeratedUnits: 0,
+        ambientUnits: 0,
+        notForResaleUnits: 0,
+      },
       netProfit: aiResult.netProfit,
       randomEvent: aiResult.randomEvent,
       summary: aiResult.summary,
+      education: aiResult.education,
       aiMetadata: aiResult.aiMetadata,
+      calculationContext,
     };
 
     // Create ledger entry

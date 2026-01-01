@@ -32,6 +32,10 @@ const scenarioSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  imageUrl: {
+    type: String,
+    required: false,
+  },
 }).add(baseSchema);
 
 // Apply variable population plugin
@@ -103,8 +107,8 @@ scenarioSchema.statics.createScenario = async function (
 ) {
   // Get next week number
   const week = await this.getNextWeekNumber(classroomId);
-  // Extract variables from scenarioData
-  const { variables, ...scenarioFields } = scenarioData;
+  // Extract variables and imageUrl from scenarioData
+  const { variables, imageUrl, ...scenarioFields } = scenarioData;
 
   // Validate variables if provided
   if (variables && Object.keys(variables).length > 0) {
@@ -132,6 +136,7 @@ scenarioSchema.statics.createScenario = async function (
       week,
       title: scenarioFields.title,
       description: scenarioFields.description || "",
+      imageUrl: imageUrl || null,
       isPublished: false,
       isClosed: false,
       organization: organizationId,
@@ -168,6 +173,7 @@ scenarioSchema.statics.createScenario = async function (
     week,
     title: scenarioFields.title,
     description: scenarioFields.description || "",
+    imageUrl: imageUrl || null,
     isPublished: false,
     isClosed: false,
     organization: organizationId,
@@ -532,6 +538,460 @@ async function queueScenarioCreatedEmails(scenario) {
     })
   );
 }
+
+/**
+ * Get store type statistics aggregated from ledger entries
+ * @param {Array} submissionsWithStores - Array of submissions with stores attached
+ * @returns {Promise<Object>} Store type statistics object
+ */
+scenarioSchema.statics.getStoreTypeStats = async function (
+  submissionsWithStores
+) {
+  // Aggregate statistics by store type from ledger entries
+  const storeTypeStats = submissionsWithStores.reduce((acc, submission) => {
+    const store = submission.store;
+    const ledger = submission.ledgerEntryId;
+
+    // Skip if no store or no ledger entry
+    if (!store || !ledger) {
+      return acc;
+    }
+
+    const storeType = store.storeType;
+    if (!acc[storeType]) {
+      acc[storeType] = {
+        storeType: storeType,
+        count: 0,
+        totals: {
+          sales: 0,
+          revenue: 0,
+          costs: 0,
+          waste: 0,
+          netProfit: 0,
+          cashAfter: 0,
+          inventoryState: {
+            refrigeratedUnits: 0,
+            ambientUnits: 0,
+            notForResaleUnits: 0,
+          },
+        },
+        averages: {
+          sales: 0,
+          revenue: 0,
+          costs: 0,
+          waste: 0,
+          netProfit: 0,
+          cashAfter: 0,
+          inventoryState: {
+            refrigeratedUnits: 0,
+            ambientUnits: 0,
+            notForResaleUnits: 0,
+          },
+        },
+        winners: [], // Top performers by netProfit
+        losers: [], // Bottom performers by netProfit
+        submissions: [], // Store submission data for detailed analysis
+      };
+    }
+
+    const stats = acc[storeType];
+    stats.count += 1;
+
+    // Accumulate totals
+    stats.totals.sales += ledger.sales || 0;
+    stats.totals.revenue += ledger.revenue || 0;
+    stats.totals.costs += ledger.costs || 0;
+    stats.totals.waste += ledger.waste || 0;
+    stats.totals.netProfit += ledger.netProfit || 0;
+    stats.totals.cashAfter += ledger.cashAfter || 0;
+    const ledgerInventoryState = ledger.inventoryState || {
+      refrigeratedUnits: 0,
+      ambientUnits: 0,
+      notForResaleUnits: 0,
+    };
+    stats.totals.inventoryState.refrigeratedUnits +=
+      ledgerInventoryState.refrigeratedUnits || 0;
+    stats.totals.inventoryState.ambientUnits +=
+      ledgerInventoryState.ambientUnits || 0;
+    stats.totals.inventoryState.notForResaleUnits +=
+      ledgerInventoryState.notForResaleUnits || 0;
+
+    // Store submission data for winner/loser analysis
+    stats.submissions.push({
+      userId: submission.userId,
+      store: {
+        _id: store._id,
+        shopName: store.shopName,
+        storeType: store.storeType,
+      },
+      ledger: {
+        sales: ledger.sales || 0,
+        revenue: ledger.revenue || 0,
+        costs: ledger.costs || 0,
+        waste: ledger.waste || 0,
+        netProfit: ledger.netProfit || 0,
+        cashAfter: ledger.cashAfter || 0,
+        inventoryState: ledger.inventoryState || {
+          refrigeratedUnits: 0,
+          ambientUnits: 0,
+          notForResaleUnits: 0,
+        },
+      },
+    });
+
+    return acc;
+  }, {});
+
+  // Calculate averages and identify winners/losers for each store type
+  Object.keys(storeTypeStats).forEach((storeType) => {
+    const stats = storeTypeStats[storeType];
+    const count = stats.count;
+
+    // Calculate averages
+    stats.averages.sales = count > 0 ? stats.totals.sales / count : 0;
+    stats.averages.revenue = count > 0 ? stats.totals.revenue / count : 0;
+    stats.averages.costs = count > 0 ? stats.totals.costs / count : 0;
+    stats.averages.waste = count > 0 ? stats.totals.waste / count : 0;
+    stats.averages.netProfit = count > 0 ? stats.totals.netProfit / count : 0;
+    stats.averages.cashAfter = count > 0 ? stats.totals.cashAfter / count : 0;
+    stats.averages.inventoryState.refrigeratedUnits =
+      count > 0 ? stats.totals.inventoryState.refrigeratedUnits / count : 0;
+    stats.averages.inventoryState.ambientUnits =
+      count > 0 ? stats.totals.inventoryState.ambientUnits / count : 0;
+    stats.averages.inventoryState.notForResaleUnits =
+      count > 0 ? stats.totals.inventoryState.notForResaleUnits / count : 0;
+
+    // Sort submissions by netProfit to find winners and losers
+    const sortedSubmissions = [...stats.submissions].sort(
+      (a, b) => b.ledger.netProfit - a.ledger.netProfit
+    );
+
+    // Top 3 winners (highest netProfit)
+    stats.winners = sortedSubmissions.slice(0, 3).map((sub) => ({
+      userId: sub.userId,
+      store: sub.store,
+      netProfit: sub.ledger.netProfit,
+      revenue: sub.ledger.revenue,
+      sales: sub.ledger.sales,
+    }));
+
+    // Bottom 3 losers (lowest netProfit)
+    stats.losers = sortedSubmissions
+      .slice(-3)
+      .reverse()
+      .map((sub) => ({
+        userId: sub.userId,
+        store: sub.store,
+        netProfit: sub.ledger.netProfit,
+        revenue: sub.ledger.revenue,
+        sales: sub.ledger.sales,
+      }));
+
+    // Remove detailed submissions array to keep response lean
+    delete stats.submissions;
+  });
+
+  return storeTypeStats;
+};
+
+/**
+ * Get total enrolled students count for a classroom
+ * @param {string} classroomId - Classroom ID
+ * @returns {Promise<number>} Total enrolled students count
+ */
+scenarioSchema.statics.getTotalEnrolled = async function (classroomId) {
+  const Enrollment = require("../enrollment/enrollment.model");
+  return await Enrollment.countByClass(classroomId);
+};
+
+/**
+ * Get submitted count for a scenario
+ * @param {string} scenarioId - Scenario ID
+ * @returns {Promise<number>} Submitted count
+ */
+scenarioSchema.statics.getSubmittedCount = async function (scenarioId) {
+  const Submission = require("../submission/submission.model");
+  return await Submission.countDocuments({ scenarioId });
+};
+
+/**
+ * Get missing submissions count for a scenario
+ * @param {string} classroomId - Classroom ID
+ * @param {string} scenarioId - Scenario ID
+ * @returns {Promise<number>} Missing submissions count
+ */
+scenarioSchema.statics.getMissingCount = async function (
+  classroomId,
+  scenarioId
+) {
+  const Submission = require("../submission/submission.model");
+  const missingUserIds = await Submission.getMissingSubmissions(
+    classroomId,
+    scenarioId
+  );
+  return missingUserIds.length;
+};
+
+/**
+ * Get missing submissions with user details for a scenario
+ * @param {string} classroomId - Classroom ID
+ * @param {string} scenarioId - Scenario ID
+ * @returns {Promise<Array>} Array of missing users with details
+ */
+scenarioSchema.statics.getMissingSubmissions = async function (
+  classroomId,
+  scenarioId
+) {
+  const Submission = require("../submission/submission.model");
+  const Member = require("../members/member.model");
+
+  const missingUserIds = await Submission.getMissingSubmissions(
+    classroomId,
+    scenarioId
+  );
+
+  // Get user details for missing submissions
+  const missingUsers = await Member.find({
+    _id: { $in: missingUserIds },
+  }).select("_id firstName lastName maskedEmail clerkUserId");
+
+  return missingUsers.map((u) => ({
+    ...u.toObject(),
+    email: u.maskedEmail,
+  }));
+};
+
+/**
+ * Get stats for a scenario
+ * @param {string} scenarioId - Scenario ID
+ * @returns {Promise<Object>} Stats object
+ */
+scenarioSchema.statics.getStatsForScenario = async function (scenarioId) {
+  // Lazy load to avoid circular dependencies
+  const Submission = require("../submission/submission.model");
+  const Store = require("../store/store.model");
+
+  const scenario = await this.findById(scenarioId);
+  if (!scenario) {
+    return null;
+  }
+
+  const submissions = await Submission.find({ scenarioId: scenarioId })
+    .populate({
+      path: "userId",
+      select: "_id clerkUserId firstName lastName maskedEmail",
+    })
+    .populate({
+      path: "jobs",
+      select: "_id status error attempts startedAt completedAt dryRun",
+    })
+    .populate({
+      path: "ledgerEntryId",
+      select:
+        "_id sales revenue costs waste cashBefore cashAfter inventoryState netProfit",
+    })
+    .lean();
+
+  // Fetch all stores for this classroom (with variables populated)
+  const stores = await Store.getStoresByClass(scenario.classroomId);
+
+  // Create a map of userId -> store for quick lookup
+  const storeMap = new Map();
+  stores.forEach((store) => {
+    storeMap.set(store.userId.toString(), store);
+  });
+
+  // Attach stores to submissions
+  const submissionsWithStores = submissions.map((submission) => {
+    const store = storeMap.get(submission.userId._id.toString());
+    return {
+      ...submission,
+      store: store || null,
+    };
+  });
+
+  // Get all stats in parallel
+  const [
+    storeTypeStats,
+    totalEnrolled,
+    submittedCount,
+    missingCount,
+    missingSubmissions,
+  ] = await Promise.all([
+    this.getStoreTypeStats(submissionsWithStores),
+    this.getTotalEnrolled(scenario.classroomId),
+    this.getSubmittedCount(scenarioId),
+    this.getMissingCount(scenario.classroomId, scenarioId),
+    this.getMissingSubmissions(scenario.classroomId, scenarioId),
+  ]);
+
+  return {
+    submissions: submissionsWithStores,
+    storeTypeStats: storeTypeStats,
+    totalEnrolled: totalEnrolled,
+    submittedCount: submittedCount,
+    missingCount: missingCount,
+    missingSubmissions: missingSubmissions,
+  };
+};
+
+/**
+ * Process scenario export - generates CSV with all submissions and uploads to S3
+ * @param {string} scenarioId - Scenario ID
+ * @param {string} organizationId - Organization ID
+ * @returns {Promise<Object>} Export result with s3Url and total
+ */
+scenarioSchema.statics.processScenarioExport = async function (
+  scenarioId,
+  organizationId
+) {
+  const Submission = require("../submission/submission.model");
+  const LedgerEntry = require("../ledger/ledger.model");
+  const AWS = require("aws-sdk");
+  const { Parser } = require("json2csv");
+
+  // Get scenario
+  const scenario = await this.findById(scenarioId);
+  if (!scenario) {
+    throw new Error("Scenario not found");
+  }
+
+  // Get all submissions with populated user (don't use lean yet so we can populate variables)
+  const submissionDocs = await Submission.find({ scenarioId }).populate({
+    path: "userId",
+    select: "_id clerkUserId firstName lastName maskedEmail",
+  });
+
+  // Batch populate variables for all submissions
+  await Submission.populateVariablesForMany(submissionDocs);
+
+  // Get all ledger entries for this scenario
+  const ledgerEntries = await LedgerEntry.find({ scenarioId }).lean();
+
+  // Create a map of userId -> ledger entry for quick lookup
+  const ledgerMap = new Map();
+  ledgerEntries.forEach((ledger) => {
+    ledgerMap.set(ledger.userId.toString(), ledger);
+  });
+
+  // Flatten data for CSV
+  const csvData = submissionDocs.map((submission) => {
+    const submissionObj = submission.toObject();
+    const userId =
+      submissionObj.userId?._id?.toString() || submissionObj.userId?.toString();
+    const ledger = userId ? ledgerMap.get(userId) : null;
+    const variables = submissionObj.variables || {};
+
+    // Build base row with submission and user data
+    const row = {
+      // Submission metadata
+      submissionId: submissionObj._id.toString(),
+      submissionSubmittedAt: submissionObj.submittedAt
+        ? new Date(submissionObj.submittedAt).toISOString()
+        : "",
+      submissionProcessingStatus: submissionObj.processingStatus || "pending",
+
+      // User/Student data
+      userId: userId || "",
+      studentFirstName: submissionObj.userId?.firstName || "",
+      studentLastName: submissionObj.userId?.lastName || "",
+      studentEmail: submissionObj.userId?.maskedEmail || "",
+      studentClerkUserId: submissionObj.userId?.clerkUserId || "",
+
+      // Submission variables (flattened)
+      ...Object.keys(variables).reduce((acc, key) => {
+        const value = variables[key];
+        // Handle complex values by stringifying
+        acc[`submission_${key}`] =
+          typeof value === "object" ? JSON.stringify(value) : value;
+        return acc;
+      }, {}),
+    };
+
+    // Add ledger data if it exists
+    if (ledger) {
+      row.ledgerId = ledger._id.toString();
+      row.ledgerSales = ledger.sales || 0;
+      row.ledgerRevenue = ledger.revenue || 0;
+      row.ledgerCosts = ledger.costs || 0;
+      row.ledgerWaste = ledger.waste || 0;
+      row.ledgerCashBefore = ledger.cashBefore || 0;
+      row.ledgerCashAfter = ledger.cashAfter || 0;
+      row.ledgerInventoryBefore = ledger.inventoryBefore || 0;
+      row.ledgerInventoryAfter = ledger.inventoryAfter || 0;
+      row.ledgerNetProfit = ledger.netProfit || 0;
+      row.ledgerRandomEvent = ledger.randomEvent || "";
+      row.ledgerSummary = ledger.summary || "";
+      row.ledgerOverridden = ledger.overridden || false;
+      row.ledgerCreatedDate = ledger.createdDate
+        ? new Date(ledger.createdDate).toISOString()
+        : "";
+    } else {
+      // Add empty ledger columns
+      row.ledgerId = "";
+      row.ledgerSales = "";
+      row.ledgerRevenue = "";
+      row.ledgerCosts = "";
+      row.ledgerWaste = "";
+      row.ledgerCashBefore = "";
+      row.ledgerCashAfter = "";
+      row.ledgerInventoryBefore = "";
+      row.ledgerInventoryAfter = "";
+      row.ledgerNetProfit = "";
+      row.ledgerRandomEvent = "";
+      row.ledgerSummary = "";
+      row.ledgerOverridden = "";
+      row.ledgerCreatedDate = "";
+    }
+
+    return row;
+  });
+
+  // Generate CSV
+  // If no submissions, return empty result
+  if (csvData.length === 0) {
+    throw new Error("No submissions found for this scenario");
+  }
+
+  // Let json2csv auto-detect all fields from all rows (handles dynamic variable columns)
+  const parser = new Parser();
+  const csv = parser.parse(csvData);
+
+  // Upload to S3/Spaces
+  const spacesEndpoint = new AWS.Endpoint(
+    "https://nyc3.digitaloceanspaces.com"
+  );
+  const s3 = new AWS.S3({
+    endpoint: spacesEndpoint,
+    accessKeyId: process.env.SPACES_API_KEY,
+    secretAccessKey: process.env.SPACES_API_SECRET,
+  });
+
+  const timestamp = Date.now();
+  const fileName = `scenario_${scenarioId}_export_${timestamp}.csv`;
+  const keyPath = `organizations/${organizationId}/exports/${fileName}`;
+
+  const uploadParams = {
+    Bucket: process.env.SPACES_BUCKET,
+    Key: keyPath,
+    Body: csv,
+    ACL: "public-read",
+    ContentType: "text/csv",
+  };
+
+  const uploadResult = await s3.upload(uploadParams).promise();
+  let fileUrl = uploadResult.Location;
+
+  // Ensure URL has https
+  if (!fileUrl.startsWith("http")) {
+    fileUrl = "https://" + fileUrl;
+  }
+
+  return {
+    s3Url: fileUrl,
+    total: csvData.length,
+  };
+};
 
 const Scenario = mongoose.model("Scenario", scenarioSchema);
 

@@ -1573,6 +1573,163 @@ Each successful job creates a ledger entry that:
 - `summary` - Narrative summary of the week
 - `overridden` - Whether instructor manually adjusted values
 
+### Example Ledger Entry
+
+```
+{
+    "_id" : ObjectId("69533dd3a2d760069510c3c5"),
+    "classroomId" : ObjectId("694ecce9f4f7c85a1cac7a61"),
+    "scenarioId" : ObjectId("69533b5ca2d760069510c037"),
+    "submissionId" : ObjectId("69533bc7a2d760069510c199"),
+    "userId" : ObjectId("6947298125b16ceea4650339"),
+    "sales" : NumberInt(50),
+    "revenue" : NumberInt(950),
+    "costs" : NumberInt(800),
+    "waste" : NumberInt(10),
+    "cashBefore" : NumberInt(3500),
+    "cashAfter" : NumberInt(3650),
+    "inventoryBefore" : NumberInt(1000),
+    "inventoryAfter" : NumberInt(940),
+    "netProfit" : NumberInt(150),
+    "randomEvent" : null,
+    "summary" : "In a week marked by input cost volatility, Fat Boys Pizza managed to maintain operations by reducing staffing and inventory supply. Despite poor weather, the street cart achieved a reasonable sales volume by setting a higher unit sale price. The strategy resulted in a modest net profit, highlighting the importance of flexibility in cost management.",
+    "education" : {
+        "demandForecast" : NumberInt(60),
+        "demandActual" : NumberInt(50),
+        "serviceLevel" : 0.833,
+        "fillRate" : 0.833,
+        "stockoutUnits" : NumberInt(10),
+        "lostSalesUnits" : NumberInt(10),
+        "backorderUnits" : NumberInt(0),
+        "materialFlowByBucket" : {
+            "refrigerated" : {
+                "beginUnits" : NumberInt(500),
+                "receivedUnits" : NumberInt(0),
+                "usedUnits" : NumberInt(50),
+                "wasteUnits" : NumberInt(5),
+                "endUnits" : NumberInt(445)
+            },
+            "ambient" : {
+                "beginUnits" : NumberInt(300),
+                "receivedUnits" : NumberInt(0),
+                "usedUnits" : NumberInt(0),
+                "wasteUnits" : NumberInt(0),
+                "endUnits" : NumberInt(300)
+            },
+            "notForResaleDry" : {
+                "beginUnits" : NumberInt(200),
+                "receivedUnits" : NumberInt(0),
+                "usedUnits" : NumberInt(0),
+                "wasteUnits" : NumberInt(0),
+                "endUnits" : NumberInt(200)
+            }
+        },
+        "costBreakdown" : {
+            "ingredientCost" : NumberInt(500),
+            "laborCost" : NumberInt(200),
+            "logisticsCost" : NumberInt(50),
+            "tariffCost" : NumberInt(0),
+            "holdingCost" : NumberInt(20),
+            "overflowStorageCost" : NumberInt(0),
+            "expediteCost" : NumberInt(0),
+            "wasteDisposalCost" : NumberInt(30),
+            "otherCost" : NumberInt(0)
+        },
+        "teachingNotes" : "The student effectively managed cost volatility by adjusting staffing and inventory levels, which helped maintain profitability despite increased input costs. The decision to set a higher sale price was crucial in offsetting the cost increases, though it did result in some lost sales due to price sensitivity. This scenario underscores the need for dynamic pricing strategies and cost control in volatile environments."
+    },
+    "aiMetadata" : {
+        "model" : "gpt-4o",
+        "runId" : "bc790ce5-2b6c-4a9a-bd1d-62e05f392f86",
+        "generatedAt" : ISODate("2025-12-30T02:49:55.447+0000")
+    },
+    "calculationContext" : {
+        "storeVariables" : {
+            "label" : "Street Cart",
+            "description" : "Ultra-lean operation with massive foot traffic swings and razor-thin margins.",
+            "startingInventory" : NumberInt(1000),
+            "weeklyRent" : NumberInt(50),
+            "maxDailyCapacity" : NumberInt(60),
+            "staffRequired" : NumberInt(1),
+            "weatherSensitivity" : "very high",
+            "mobility" : "very high",
+            "vibe" : "gritty",
+            "riskProfile" : "survival",
+            "peakHours" : [
+                "11:00-14:00"
+            ],
+            "customerPatience" : "very low",
+            "marketingPower" : "location",
+            "commonIssues" : [
+                "weather shutdowns",
+                "permits",
+                "supply runouts"
+            ],
+            "growthCeiling" : "very low",
+            "aiFlavor" : "scrappy decisions, cash flow panic, opportunistic selling"
+        },
+        "scenarioVariables" : {
+            "weather" : "Poor",
+            "expected-demand" : "Average",
+            "scenario-theme" : "Input Cost Volatility"
+        },
+        "submissionVariables" : {
+            "staffing" : "Less than Average",
+            "inventory-supply" : "Less Than Usual",
+            "unit-sale-price" : NumberInt(19),
+            "discount-intensity" : NumberInt(0)
+        },
+        "outcomeVariables" : {
+            "randomEventChancePercent" : NumberInt(0),
+            "notes" : "Higher costs exposed weak margin structures and punished businesses that failed to adapt. Those that adjusted pricing, moderated production, or prioritized cash protection weathered the volatility more effectively. This week highlights the importance of flexibility in cost management."
+        },
+        "priorState" : {
+            "cashBefore" : NumberInt(3500),
+            "inventoryBefore" : NumberInt(1000),
+            "ledgerHistory" : [
+                {
+                    "scenarioId" : ObjectId("694ed000f4f7c85a1cac7f4b"),
+                    "scenarioTitle" : "Back to School Week",
+                    "netProfit" : NumberInt(400),
+                    "cashAfter" : NumberInt(2900),
+                    "_id" : ObjectId("69533dd3a2d760069510c3c6")
+                },
+                {
+                    "scenarioId" : ObjectId("69514a02ff5ba73716900561"),
+                    "scenarioTitle" : "Week 2 - Supply Crunch",
+                    "netProfit" : NumberInt(-100),
+                    "cashAfter" : NumberInt(2800),
+                    "_id" : ObjectId("69533dd3a2d760069510c3c7")
+                },
+                {
+                    "scenarioId" : ObjectId("6952a32137727834f81df2d9"),
+                    "scenarioTitle" : "Week 2 – Demand Forecasting Variability",
+                    "netProfit" : NumberInt(400),
+                    "cashAfter" : NumberInt(3200),
+                    "_id" : ObjectId("69533dd3a2d760069510c3c8")
+                },
+                {
+                    "scenarioId" : ObjectId("6952b2af37727834f81dfb9c"),
+                    "scenarioTitle" : "Week 4 - Labor Constraints",
+                    "netProfit" : NumberInt(300),
+                    "cashAfter" : NumberInt(3500),
+                    "_id" : ObjectId("69533dd3a2d760069510c3c9")
+                }
+            ]
+        },
+        "prompt" : "[\n  {\n    \"role\": \"system\",\n    \"content\": \"You are the SCALE.ai simulation engine for a supply chain class using a pizza shop game. Calculate outcomes for one student based on store configuration, scenario context, global outcome, and the student's decisions. Apply realistic business logic and environmental effects.\\n\\nReturn ONLY valid JSON matching the provided schema. You may invent reasonable intermediate numbers when needed. Also compute the required education metrics so instructors can explain results (service level, stockouts/lost sales, by-bucket material flow, and cost breakdown).\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"STORE CONFIGURATION:\\n{\\n  \\\"shopName\\\": \\\"Fat Boys Pizza\\\",\\n  \\\"storeType\\\": \\\"street_cart\\\",\\n  \\\"storeDescription\\\": \\\"Fat Boys Pizza is a high-volume street cart located on campus that specializes in selling pizza by the slice to students, staff, and late-night crowds. Operating with limited space and equipment, the business focuses on fast service, predictable demand peaks, and tight margins. Success depends on smart inventory planning, efficient labor scheduling, and pricing decisions that balance affordability with profitability. Fat Boys Pizza serves as an ideal real-world example of quick-service operations, where small changes in cost, demand, or waste can have an outsized impact on daily cash flow and overall performance.\\\",\\n  \\\"storeLocation\\\": \\\"All over campus and outside the bars late at night\\\",\\n  \\\"label\\\": \\\"Street Cart\\\",\\n  \\\"description\\\": \\\"Ultra-lean operation with massive foot traffic swings and razor-thin margins.\\\",\\n  \\\"startingBalance\\\": 2500,\\n  \\\"startingInventory\\\": 1000,\\n  \\\"weeklyRent\\\": 50,\\n  \\\"maxDailyCapacity\\\": 60,\\n  \\\"staffRequired\\\": 1,\\n  \\\"weatherSensitivity\\\": \\\"very high\\\",\\n  \\\"mobility\\\": \\\"very high\\\",\\n  \\\"vibe\\\": \\\"gritty\\\",\\n  \\\"riskProfile\\\": \\\"survival\\\",\\n  \\\"peakHours\\\": [\\n    \\\"11:00-14:00\\\"\\n  ],\\n  \\\"customerPatience\\\": \\\"very low\\\",\\n  \\\"marketingPower\\\": \\\"location\\\",\\n  \\\"commonIssues\\\": [\\n    \\\"weather shutdowns\\\",\\n    \\\"permits\\\",\\n    \\\"supply runouts\\\"\\n  ],\\n  \\\"growthCeiling\\\": \\\"very low\\\",\\n  \\\"aiFlavor\\\": \\\"scrappy decisions, cash flow panic, opportunistic selling\\\"\\n}\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"SCENARIO:\\n{\\n  \\\"title\\\": \\\"Week 6 - Input Cost Volatility\\\",\\n  \\\"description\\\": \\\"Costs that were once stable begin to fluctuate unexpectedly. Key inputs increase in price, sometimes with little warning, compressing margins and increasing financial risk. Inventory purchased this week may cost significantly more than inventory purchased last week, forcing businesses to rethink pricing, output, or volume strategies. Vendor invoices rise faster than anticipated, and cash outflows accelerate. Decisions now require balancing customer price sensitivity against the need to protect margins. This scenario highlights how cost volatility can destabilize even well-run operations.\\\",\\n  \\\"variables\\\": {\\n    \\\"weather\\\": \\\"Poor\\\",\\n    \\\"expected-demand\\\": \\\"Average\\\",\\n    \\\"scenario-theme\\\": \\\"Input Cost Volatility\\\"\\n  }\\n}\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"GLOBAL SCENARIO OUTCOME:\\n{\\n  \\\"notes\\\": \\\"Higher costs exposed weak margin structures and punished businesses that failed to adapt. Those that adjusted pricing, moderated production, or prioritized cash protection weathered the volatility more effectively. This week highlights the importance of flexibility in cost management.\\\",\\n  \\\"hiddenNotes\\\": \\\"\\\"\\n}\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"STUDENT DECISIONS:\\n{\\n  \\\"staffing\\\": \\\"Less than Average\\\",\\n  \\\"inventory-supply\\\": \\\"Less Than Usual\\\",\\n  \\\"unit-sale-price\\\": 19,\\n  \\\"discount-intensity\\\": 0\\n}\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"LEDGER HISTORY:\\n{\\n  \\\"entries\\\": [\\n    {\\n      \\\"scenarioId\\\": \\\"694ed000f4f7c85a1cac7f4b\\\",\\n      \\\"scenarioTitle\\\": \\\"Back to School Week\\\",\\n      \\\"netProfit\\\": 400,\\n      \\\"cashAfter\\\": 2900\\n    },\\n    {\\n      \\\"scenarioId\\\": \\\"69514a02ff5ba73716900561\\\",\\n      \\\"scenarioTitle\\\": \\\"Week 2 - Supply Crunch\\\",\\n      \\\"netProfit\\\": -100,\\n      \\\"cashAfter\\\": 2800\\n    },\\n    {\\n      \\\"scenarioId\\\": \\\"6952a32137727834f81df2d9\\\",\\n      \\\"scenarioTitle\\\": \\\"Week 2 – Demand Forecasting Variability\\\",\\n      \\\"netProfit\\\": 400,\\n      \\\"cashAfter\\\": 3200\\n    },\\n    {\\n      \\\"scenarioId\\\": \\\"6952b2af37727834f81dfb9c\\\",\\n      \\\"scenarioTitle\\\": \\\"Week 4 - Labor Constraints\\\",\\n      \\\"netProfit\\\": 300,\\n      \\\"cashAfter\\\": 3500\\n    }\\n  ]\\n}\"\n  }\n]"
+    },
+    "overridden" : false,
+    "overriddenBy" : null,
+    "overriddenAt" : null,
+    "organization" : ObjectId("694573704c5eaf60ca44c365"),
+    "createdBy" : "user_36u7M7ZRpCulCOpmaSLXYW4uKWr",
+    "updatedBy" : "user_36u7M7ZRpCulCOpmaSLXYW4uKWr",
+    "createdDate" : ISODate("2025-12-30T02:49:55.462+0000"),
+    "updatedDate" : ISODate("2025-12-30T02:49:55.462+0000"),
+    "__v" : NumberInt(0)
+}
+```
+
 ## Email Sending & Notifications
 
 The system supports email notifications through two approaches: **direct email queuing** and **notification-based sending**. Both use React Email templates and SendGrid for delivery.
@@ -1683,6 +1840,38 @@ Templates are rendered server-side using `@react-email/render`:
 #### Previewing Templates
 
 Fixtures for email preview are in `apps/email-preview/fixtures/`. Run `npm run email:preview` to preview templates locally.
+
+## Seed Demo Data
+
+If your database already has **at least one org admin** (a `Member` with Clerk org role `org:admin`), you can generate a large demo dataset for load-testing:
+
+- **6 classrooms**
+- **6 completed scenarios per classroom**
+- **100 students per classroom**, each with a store (various store types)
+- Variable definitions (store/scenario/submission)
+- Submissions + completed simulation jobs + ledger entries
+
+Run:
+
+`npm run seed:demo`
+
+Options:
+
+- `npm run seed:demo -- --dry-run`
+- `npm run seed:demo -- --admin=<clerkUserId>`
+- `npm run seed:demo -- --force`
+
+## Auto-Generate Submissions on Scenario Publish (LLM)
+
+When an instructor publishes a scenario (`POST /v1/admin/scenarios/:scenarioId/publish`), the API can automatically create a **Submission for every enrolled student** by using a cheap OpenAI model with structured JSON output.
+
+**Environment Variables:**
+
+- `AUTO_GENERATE_SUBMISSIONS_ON_PUBLISH`: default `"true"`. Set to `"false"` to disable.
+- `AUTO_SUBMISSION_MODEL`: default `"gpt-4o-mini"` (cheap).
+- `AUTO_SUBMISSION_CONCURRENCY`: default `10` (parallel submission creation).
+
+If `OPENAI_API_KEY` is not set, auto-generation is skipped.
 
 ### Email Queue Configuration
 

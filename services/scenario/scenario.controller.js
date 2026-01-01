@@ -6,6 +6,9 @@ const Submission = require("../submission/submission.model");
 const JobService = require("../job/lib/jobService");
 const LedgerEntry = require("../ledger/ledger.model");
 const SimulationWorker = require("../job/lib/simulationWorker");
+const {
+  autoCreateSubmissionsForScenario,
+} = require("../submission/autoCreateSubmissionsForScenario");
 
 /**
  * Get all scenarios
@@ -38,6 +41,13 @@ exports.getScenarioById = async function (req, res) {
       return res.status(404).json({ error: "Scenario not found" });
     }
 
+    // If a scenario is closed, we need to return stats for the scenario
+    if (scenario.isClosed) {
+      // This includes stats for the scenario
+      const stats = await Scenario.getStatsForScenario(scenario._id);
+      scenario.stats = stats;
+    }
+
     res.status(200).json({ success: true, data: scenario });
   } catch (error) {
     console.error("Error getting scenario by id:", error);
@@ -51,7 +61,7 @@ exports.getScenarioById = async function (req, res) {
  */
 exports.createScenario = async function (req, res) {
   try {
-    const { classroomId, title, description, variables } = req.body;
+    const { classroomId, title, description, variables, imageUrl } = req.body;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
@@ -73,7 +83,7 @@ exports.createScenario = async function (req, res) {
     // Create scenario using static method
     const scenario = await Scenario.createScenario(
       classroomId,
-      { title, description, variables },
+      { title, description, variables, imageUrl },
       organizationId,
       clerkUserId
     );
@@ -138,10 +148,10 @@ exports.updateScenario = async function (req, res) {
     }
 
     // Update allowed fields (excluding variables)
-    const allowedFields = ["title", "description"];
+    const allowedFields = ["title", "description", "imageUrl"];
     allowedFields.forEach((field) => {
       if (req.body[field] !== undefined) {
-        scenario[field] = req.body[field];
+        scenario[field] = req.body[field] || null;
       }
     });
 
@@ -241,12 +251,36 @@ exports.publishScenario = async function (req, res) {
     // Publish scenario
     await scenario.publish(clerkUserId);
 
-    // TODO: Notify students (email notification)
+    // Auto-generate submissions for all enrolled students (optional)
+    let autoSubmissionResult = null;
+    const autoEnabled = String(
+      process.env.AUTO_GENERATE_SUBMISSIONS_ON_PUBLISH ?? "false"
+    ).toLowerCase();
+    if (autoEnabled === "true") {
+      try {
+        autoSubmissionResult = await autoCreateSubmissionsForScenario({
+          scenarioId: scenario._id,
+          organizationId,
+          clerkUserId,
+          options: {
+            model: process.env.AUTO_SUBMISSION_MODEL || "gpt-4o-mini",
+            concurrency: Number(process.env.AUTO_SUBMISSION_CONCURRENCY || 10),
+          },
+        });
+      } catch (e) {
+        // Don't fail publish; return error details for visibility
+        autoSubmissionResult = {
+          skipped: false,
+          error: e?.message || String(e),
+        };
+      }
+    }
 
     res.json({
       success: true,
       message: "Scenario published successfully",
       data: scenario,
+      autoSubmissionResult,
     });
   } catch (error) {
     console.error("Error publishing scenario:", error);
@@ -703,8 +737,6 @@ exports.getScenarioByIdForStudent = async function (req, res) {
       member._id
     );
 
-    console.log("submission", submission);
-
     // Get scenario outcome
     const outcome = await ScenarioOutcome.getOutcomeByScenario(scenario._id);
 
@@ -746,6 +778,53 @@ exports.deleteScenario = async function (req, res) {
     });
   } catch (error) {
     console.error("Error deleting scenario:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Export scenario submissions as CSV
+ * GET /api/admin/scenarios/:scenarioId/export
+ */
+exports.exportScenario = async function (req, res) {
+  try {
+    const { scenarioId } = req.params;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    // Find scenario to verify it exists and user has access
+    const scenario = await Scenario.getScenarioById(scenarioId, organizationId);
+
+    if (!scenario) {
+      return res.status(404).json({ error: "Scenario not found" });
+    }
+
+    // Verify admin access
+    await Classroom.validateAdminAccess(
+      scenario.classroomId,
+      clerkUserId,
+      organizationId
+    );
+
+    // Process export
+    const result = await Scenario.processScenarioExport(
+      scenarioId,
+      organizationId
+    );
+
+    return res.json({
+      success: true,
+      url: result.s3Url,
+      total: result.total,
+    });
+  } catch (error) {
+    console.error("Error exporting scenario:", error);
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
     res.status(500).json({ error: error.message });
   }
 };

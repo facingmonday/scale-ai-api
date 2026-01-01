@@ -1,5 +1,5 @@
 {
-  "name": "kikits-api",
+  "name": "scale-ai-api",
   "version": "1.0.0",
   "description": "",
   "main": "apps/api/index.js",
@@ -15,7 +15,10 @@
     "start:all": "concurrently -k -n api,webhooks,workers -c blue,green,magenta \"npm:start:api\" \"npm:start:webhooks\" \"npm:start:workers\"",
     "postinstall": "if [ \"$SKIP_PUPPETEER_INSTALL\" != \"1\" ]; then npx puppeteer browsers install; fi",
     "ngrok": "ngrok start --config ~/.ngrok/ngrok.yml --all",
-    "email:preview": "node apps/email-preview/index.js"
+    "email:preview": "node apps/email-preview/index.js",
+    "seed:demo": "node scripts/seed-demo.js",
+    "seed:submission-variables": "node scripts/seed-submission-variables.js",
+    "sync:clerk": "node scripts/sync-clerk.js"
   },
   "keywords": [],
   "author": "",

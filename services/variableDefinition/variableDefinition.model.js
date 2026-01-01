@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 
 const variableDefinitionSchema = new mongoose.Schema({
+<<<<<<< HEAD
   classroomId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Classroom",
@@ -9,6 +10,8 @@ const variableDefinitionSchema = new mongoose.Schema({
     default: null,
     index: true,
   },
+=======
+>>>>>>> develop
   key: {
     type: String,
     required: true,
@@ -153,8 +156,8 @@ variableDefinitionSchema.statics.createDefinition = async function (
 
   // Validate dataType and inputType compatibility
   const validCombinations = {
-    number: ["number", "slider"],
-    string: ["text", "dropdown"],
+    number: ["number", "slider", "knob"],
+    string: ["text", "dropdown", "selectbutton", "multiple-choice"],
     boolean: ["checkbox"],
     select: ["dropdown"],
   };
@@ -356,11 +359,28 @@ variableDefinitionSchema.statics.validateValues = async function (
         break;
 
       case "select":
-        if (!definition.options.includes(value)) {
-          errors.push({
-            key: definition.key,
-            message: `${definition.label} must be one of: ${definition.options.join(", ")}`,
-          });
+        // Support both primitive options (["a","b"]) and structured options ([{label,value}])
+        // because UI layers often store select options as objects.
+        {
+          const rawOptions = Array.isArray(definition.options)
+            ? definition.options
+            : [];
+          const allowedValues = rawOptions
+            .map((opt) => {
+              if (opt && typeof opt === "object") {
+                // Prefer value, fall back to label
+                return opt.value !== undefined ? opt.value : opt.label;
+              }
+              return opt;
+            })
+            .filter((v) => v !== undefined && v !== null);
+
+          if (!allowedValues.includes(value)) {
+            errors.push({
+              key: definition.key,
+              message: `${definition.label} must be one of: ${allowedValues.join(", ")}`,
+            });
+          }
         }
         break;
 
