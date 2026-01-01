@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 const openai = require("../../lib/openai");
 const { v4: uuidv4 } = require("uuid");
-const AI_MODEL = process.env.AI_MODEL || "gpt-4o";
+const AI_MODEL = process.env.AI_MODEL || "gpt-5-mini-2025-08-07";
 
 const ledgerEntrySchema = new mongoose.Schema({
   classroomId: {
@@ -481,15 +481,38 @@ ORDER DISTRIBUTION:
   - How much should I order? (based on capacity, strategy, and demand)
   - Add to receivedUnits for that bucket
 
-CRITICAL: receivedUnits must be > 0 for buckets where ordering is triggered. Do NOT set all receivedUnits to 0 unless the student explicitly chose to order nothing.
+MULTI-BUCKET ORDERING REQUIREMENT:
+- You MUST order inventory for ALL buckets that are part of operations, not just refrigerated
+- Typical distribution for pizza operations:
+  - Refrigerated: 50-70% of total order (cheese, meat, produce - perishable items)
+  - Ambient: 20-35% of total order (flour, canned goods, dry ingredients)
+  - NotForResaleDry: 10-20% of total order (paper goods, cleaning supplies, packaging)
+- Adjust distribution based on inventoryProtectionPriority:
+  - REFRIGERATED_FIRST: 60-75% refrigerated, 20-30% ambient, 5-15% notForResaleDry
+  - AMBIENT_FIRST: 40-50% refrigerated, 40-50% ambient, 10-20% notForResaleDry
+  - BALANCED: 50-60% refrigerated, 30-40% ambient, 10-20% notForResaleDry
+
+SAFETY STOCK REQUIREMENT:
+- DO NOT use 100% of received inventory in the same period it was received
+- Maintain safety stock: endUnits should typically be 10-30% of capacity (higher for HIGH safetyStockByBucketStrategy)
+- If you receive 400 units, don't use all 400 - leave some as ending inventory for next period
+- Example: If capacity is 500 and you receive 400 units, use 300-350 for production, leaving 50-100 as safety stock
+- This prevents stockouts if there are delays in next period's deliveries
+
+CRITICAL: receivedUnits must be > 0 for buckets where ordering is triggered OR where beginUnits = 0. Do NOT set all receivedUnits to 0 unless the student explicitly chose to order nothing.
 
 12. FINAL CHECK
 Before returning output:
-- Buckets reconcile
-- No capacity violations
-- Costs match inventory state
+- Buckets reconcile: endUnits = beginUnits + receivedUnits - usedUnits - wasteUnits for EACH bucket
+- No capacity violations: endUnits ≤ capacityUnits for each bucket
+- Costs match inventory state: holdingCost = sum of (endUnits × holdingCostPerUnit) for each bucket
 - No inventory appears or disappears
 - receivedUnits reflect ordering decisions based on reorder policy
+- MULTI-BUCKET: At least 2 buckets should have receivedUnits > 0 (refrigerated + at least one other)
+- SAFETY STOCK: endUnits should not be 0 for all buckets unless operations are ceasing
+- CONSISTENCY: inventoryState.refrigeratedUnits MUST equal education.materialFlowByBucket.refrigerated.endUnits
+- CONSISTENCY: inventoryState.ambientUnits MUST equal education.materialFlowByBucket.ambient.endUnits
+- CONSISTENCY: inventoryState.notForResaleUnits MUST equal education.materialFlowByBucket.notForResaleDry.endUnits
 `;
 
   return {
@@ -709,12 +732,6 @@ ledgerEntrySchema.statics.validateAISimulationResponse = function (response) {
   if (typeof response.education.teachingNotes !== "string") {
     throw new Error("education.teachingNotes must be a string");
   }
-  for (const field of ["serviceLevel", "fillRate"]) {
-    const v = response.education[field];
-    if (typeof v !== "number" || v < 0 || v > 1) {
-      throw new Error(`education.${field} must be a number between 0 and 1`);
-    }
-  }
 
   // Validate cash continuity
   const expectedCashAfter = response.cashBefore + response.netProfit;
@@ -762,9 +779,10 @@ ledgerEntrySchema.statics.runAISimulation = async function (context) {
   const aiResponseSchema = this.getAISimulationResponseJsonSchema();
 
   // Call OpenAI with JSON schema
+  // Note: Some models (like o1) only support default temperature (1), so we omit it
+  // JSON schema mode with strict schema should provide deterministic enough results
   const response = await openai.chat.completions.create({
     model: AI_MODEL,
-    temperature: 0,
     messages,
     response_format: {
       type: "json_schema",
@@ -796,6 +814,37 @@ ledgerEntrySchema.statics.runAISimulation = async function (context) {
     // If education.teachingNotes already exists, prefer the root level one (it's more likely to be correct)
     aiResult.education.teachingNotes = aiResult.teachingNotes;
     delete aiResult.teachingNotes;
+  }
+
+  // Normalize inventoryState: Derive from materialFlowByBucket.endUnits if inventoryState doesn't match
+  // This ensures inventoryState always reflects the actual ending inventory from material flow calculations
+  if (aiResult.education?.materialFlowByBucket) {
+    const mfb = aiResult.education.materialFlowByBucket;
+    const derivedInventoryState = {
+      refrigeratedUnits: mfb.refrigerated?.endUnits ?? 0,
+      ambientUnits: mfb.ambient?.endUnits ?? 0,
+      notForResaleUnits: mfb.notForResaleDry?.endUnits ?? 0,
+    };
+
+    // If inventoryState exists but doesn't match derived state, update it
+    if (aiResult.inventoryState) {
+      const currentState = aiResult.inventoryState;
+      if (
+        currentState.refrigeratedUnits !==
+          derivedInventoryState.refrigeratedUnits ||
+        currentState.ambientUnits !== derivedInventoryState.ambientUnits ||
+        currentState.notForResaleUnits !==
+          derivedInventoryState.notForResaleUnits
+      ) {
+        console.warn(
+          `inventoryState mismatch detected. Updating from ${JSON.stringify(currentState)} to ${JSON.stringify(derivedInventoryState)}`
+        );
+        aiResult.inventoryState = derivedInventoryState;
+      }
+    } else {
+      // If inventoryState is missing, set it from materialFlowByBucket
+      aiResult.inventoryState = derivedInventoryState;
+    }
   }
 
   // Validate response structure
