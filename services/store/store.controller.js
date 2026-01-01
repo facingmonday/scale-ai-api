@@ -15,6 +15,7 @@ exports.createStore = async function (req, res) {
       storeLocation,
       storeType,
       variables,
+      imageUrl,
     } = req.body;
     const clerkUserId = req.clerkUser.id;
 
@@ -64,6 +65,7 @@ exports.createStore = async function (req, res) {
         storeLocation,
         storeType,
         variables,
+        imageUrl,
       },
       organizationId,
       clerkUserId
@@ -99,6 +101,7 @@ exports.updateStore = async function (req, res) {
       storeLocation,
       storeType,
       variables,
+      imageUrl,
     } = req.body;
     const member = req.user;
     const clerkUserId = req.clerkUser.id;
@@ -155,6 +158,7 @@ exports.updateStore = async function (req, res) {
         storeLocation,
         storeType,
         variables,
+        imageUrl,
       },
       organizationId,
       clerkUserId

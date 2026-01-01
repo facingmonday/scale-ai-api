@@ -61,7 +61,7 @@ exports.getScenarioById = async function (req, res) {
  */
 exports.createScenario = async function (req, res) {
   try {
-    const { classroomId, title, description, variables } = req.body;
+    const { classroomId, title, description, variables, imageUrl } = req.body;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
@@ -83,7 +83,7 @@ exports.createScenario = async function (req, res) {
     // Create scenario using static method
     const scenario = await Scenario.createScenario(
       classroomId,
-      { title, description, variables },
+      { title, description, variables, imageUrl },
       organizationId,
       clerkUserId
     );
@@ -148,10 +148,10 @@ exports.updateScenario = async function (req, res) {
     }
 
     // Update allowed fields (excluding variables)
-    const allowedFields = ["title", "description"];
+    const allowedFields = ["title", "description", "imageUrl"];
     allowedFields.forEach((field) => {
       if (req.body[field] !== undefined) {
-        scenario[field] = req.body[field];
+        scenario[field] = req.body[field] || null;
       }
     });
 
@@ -778,6 +778,53 @@ exports.deleteScenario = async function (req, res) {
     });
   } catch (error) {
     console.error("Error deleting scenario:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Export scenario submissions as CSV
+ * GET /api/admin/scenarios/:scenarioId/export
+ */
+exports.exportScenario = async function (req, res) {
+  try {
+    const { scenarioId } = req.params;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    // Find scenario to verify it exists and user has access
+    const scenario = await Scenario.getScenarioById(scenarioId, organizationId);
+
+    if (!scenario) {
+      return res.status(404).json({ error: "Scenario not found" });
+    }
+
+    // Verify admin access
+    await Classroom.validateAdminAccess(
+      scenario.classroomId,
+      clerkUserId,
+      organizationId
+    );
+
+    // Process export
+    const result = await Scenario.processScenarioExport(
+      scenarioId,
+      organizationId
+    );
+
+    return res.json({
+      success: true,
+      url: result.s3Url,
+      total: result.total,
+    });
+  } catch (error) {
+    console.error("Error exporting scenario:", error);
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
     res.status(500).json({ error: error.message });
   }
 };

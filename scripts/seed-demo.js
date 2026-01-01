@@ -55,7 +55,7 @@ function parseArgs(argv) {
     studentsPerClassroom: 100,
 =======
     classrooms: 1,
-    scenariosPerClassroom: 1,
+    scenariosPerClassroom: 0,
     studentsPerClassroom: 1,
 >>>>>>> develop
   };
@@ -90,7 +90,7 @@ Options:
     !Number.isFinite(args.scenariosPerClassroom) ||
     args.scenariosPerClassroom < 1
   )
-    args.scenariosPerClassroom = 6;
+    args.scenariosPerClassroom = 0;
   if (
     !Number.isFinite(args.studentsPerClassroom) ||
     args.studentsPerClassroom < 1

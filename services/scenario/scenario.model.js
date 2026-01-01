@@ -32,6 +32,10 @@ const scenarioSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  imageUrl: {
+    type: String,
+    required: false,
+  },
 }).add(baseSchema);
 
 // Apply variable population plugin
@@ -103,8 +107,8 @@ scenarioSchema.statics.createScenario = async function (
 ) {
   // Get next week number
   const week = await this.getNextWeekNumber(classroomId);
-  // Extract variables from scenarioData
-  const { variables, ...scenarioFields } = scenarioData;
+  // Extract variables and imageUrl from scenarioData
+  const { variables, imageUrl, ...scenarioFields } = scenarioData;
 
   // Validate variables if provided
   if (variables && Object.keys(variables).length > 0) {
@@ -132,6 +136,7 @@ scenarioSchema.statics.createScenario = async function (
       week,
       title: scenarioFields.title,
       description: scenarioFields.description || "",
+      imageUrl: imageUrl || null,
       isPublished: false,
       isClosed: false,
       organization: organizationId,
@@ -168,6 +173,7 @@ scenarioSchema.statics.createScenario = async function (
     week,
     title: scenarioFields.title,
     description: scenarioFields.description || "",
+    imageUrl: imageUrl || null,
     isPublished: false,
     isClosed: false,
     organization: organizationId,
@@ -826,6 +832,164 @@ scenarioSchema.statics.getStatsForScenario = async function (scenarioId) {
     submittedCount: submittedCount,
     missingCount: missingCount,
     missingSubmissions: missingSubmissions,
+  };
+};
+
+/**
+ * Process scenario export - generates CSV with all submissions and uploads to S3
+ * @param {string} scenarioId - Scenario ID
+ * @param {string} organizationId - Organization ID
+ * @returns {Promise<Object>} Export result with s3Url and total
+ */
+scenarioSchema.statics.processScenarioExport = async function (
+  scenarioId,
+  organizationId
+) {
+  const Submission = require("../submission/submission.model");
+  const LedgerEntry = require("../ledger/ledger.model");
+  const AWS = require("aws-sdk");
+  const { Parser } = require("json2csv");
+
+  // Get scenario
+  const scenario = await this.findById(scenarioId);
+  if (!scenario) {
+    throw new Error("Scenario not found");
+  }
+
+  // Get all submissions with populated user (don't use lean yet so we can populate variables)
+  const submissionDocs = await Submission.find({ scenarioId }).populate({
+    path: "userId",
+    select: "_id clerkUserId firstName lastName maskedEmail",
+  });
+
+  // Batch populate variables for all submissions
+  await Submission.populateVariablesForMany(submissionDocs);
+
+  // Get all ledger entries for this scenario
+  const ledgerEntries = await LedgerEntry.find({ scenarioId }).lean();
+
+  // Create a map of userId -> ledger entry for quick lookup
+  const ledgerMap = new Map();
+  ledgerEntries.forEach((ledger) => {
+    ledgerMap.set(ledger.userId.toString(), ledger);
+  });
+
+  // Flatten data for CSV
+  const csvData = submissionDocs.map((submission) => {
+    const submissionObj = submission.toObject();
+    const userId =
+      submissionObj.userId?._id?.toString() || submissionObj.userId?.toString();
+    const ledger = userId ? ledgerMap.get(userId) : null;
+    const variables = submissionObj.variables || {};
+
+    // Build base row with submission and user data
+    const row = {
+      // Submission metadata
+      submissionId: submissionObj._id.toString(),
+      submissionSubmittedAt: submissionObj.submittedAt
+        ? new Date(submissionObj.submittedAt).toISOString()
+        : "",
+      submissionProcessingStatus: submissionObj.processingStatus || "pending",
+
+      // User/Student data
+      userId: userId || "",
+      studentFirstName: submissionObj.userId?.firstName || "",
+      studentLastName: submissionObj.userId?.lastName || "",
+      studentEmail: submissionObj.userId?.maskedEmail || "",
+      studentClerkUserId: submissionObj.userId?.clerkUserId || "",
+
+      // Submission variables (flattened)
+      ...Object.keys(variables).reduce((acc, key) => {
+        const value = variables[key];
+        // Handle complex values by stringifying
+        acc[`submission_${key}`] =
+          typeof value === "object" ? JSON.stringify(value) : value;
+        return acc;
+      }, {}),
+    };
+
+    // Add ledger data if it exists
+    if (ledger) {
+      row.ledgerId = ledger._id.toString();
+      row.ledgerSales = ledger.sales || 0;
+      row.ledgerRevenue = ledger.revenue || 0;
+      row.ledgerCosts = ledger.costs || 0;
+      row.ledgerWaste = ledger.waste || 0;
+      row.ledgerCashBefore = ledger.cashBefore || 0;
+      row.ledgerCashAfter = ledger.cashAfter || 0;
+      row.ledgerInventoryBefore = ledger.inventoryBefore || 0;
+      row.ledgerInventoryAfter = ledger.inventoryAfter || 0;
+      row.ledgerNetProfit = ledger.netProfit || 0;
+      row.ledgerRandomEvent = ledger.randomEvent || "";
+      row.ledgerSummary = ledger.summary || "";
+      row.ledgerOverridden = ledger.overridden || false;
+      row.ledgerCreatedDate = ledger.createdDate
+        ? new Date(ledger.createdDate).toISOString()
+        : "";
+    } else {
+      // Add empty ledger columns
+      row.ledgerId = "";
+      row.ledgerSales = "";
+      row.ledgerRevenue = "";
+      row.ledgerCosts = "";
+      row.ledgerWaste = "";
+      row.ledgerCashBefore = "";
+      row.ledgerCashAfter = "";
+      row.ledgerInventoryBefore = "";
+      row.ledgerInventoryAfter = "";
+      row.ledgerNetProfit = "";
+      row.ledgerRandomEvent = "";
+      row.ledgerSummary = "";
+      row.ledgerOverridden = "";
+      row.ledgerCreatedDate = "";
+    }
+
+    return row;
+  });
+
+  // Generate CSV
+  // If no submissions, return empty result
+  if (csvData.length === 0) {
+    throw new Error("No submissions found for this scenario");
+  }
+
+  // Let json2csv auto-detect all fields from all rows (handles dynamic variable columns)
+  const parser = new Parser();
+  const csv = parser.parse(csvData);
+
+  // Upload to S3/Spaces
+  const spacesEndpoint = new AWS.Endpoint(
+    "https://nyc3.digitaloceanspaces.com"
+  );
+  const s3 = new AWS.S3({
+    endpoint: spacesEndpoint,
+    accessKeyId: process.env.SPACES_API_KEY,
+    secretAccessKey: process.env.SPACES_API_SECRET,
+  });
+
+  const timestamp = Date.now();
+  const fileName = `scenario_${scenarioId}_export_${timestamp}.csv`;
+  const keyPath = `organizations/${organizationId}/exports/${fileName}`;
+
+  const uploadParams = {
+    Bucket: process.env.SPACES_BUCKET,
+    Key: keyPath,
+    Body: csv,
+    ACL: "public-read",
+    ContentType: "text/csv",
+  };
+
+  const uploadResult = await s3.upload(uploadParams).promise();
+  let fileUrl = uploadResult.Location;
+
+  // Ensure URL has https
+  if (!fileUrl.startsWith("http")) {
+    fileUrl = "https://" + fileUrl;
+  }
+
+  return {
+    s3Url: fileUrl,
+    total: csvData.length,
   };
 };
 

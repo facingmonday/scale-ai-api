@@ -15,15 +15,8 @@ const {
   requireMemberAuth,
 } = require("../../middleware/auth");
 
-/** Get scenario by id */
-router.get(
-  "/admin/scenarios/:id",
-  requireAuth(),
-  checkRole("org:admin"),
-  controller.getScenarioById
-);
-
 // Admin routes - require org:admin role
+// Put specific routes before parameterized routes
 router.post(
   "/admin/scenarios",
   requireAuth(),
@@ -66,6 +59,13 @@ router.post(
   controller.rerunScenario
 );
 
+router.post(
+  "/admin/scenarios/:scenarioId/export",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.exportScenario
+);
+
 router.get(
   "/admin/scenarios",
   requireAuth(),
@@ -78,6 +78,14 @@ router.get(
   requireAuth(),
   checkRole("org:admin"),
   controller.getCurrentScenarioForAdmin
+);
+
+/** Get scenario by id - must come after specific routes */
+router.get(
+  "/admin/scenarios/:id",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.getScenarioById
 );
 
 router.delete(
