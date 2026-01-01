@@ -13,9 +13,6 @@ const Submission = require("../submission/submission.model");
 exports.getLedgerHistory = async function (req, res) {
   try {
     const { classroomId, userId: clerkUserId } = req.params;
-    console.log("clerkUserId", clerkUserId);
-    const adminClerkUserId = req.clerkUser.id;
-    const organizationId = req.organization._id;
 
     // Convert Clerk user ID to Member ID
     const member = await Member.findByClerkUserId(clerkUserId);
@@ -48,6 +45,7 @@ exports.getLedgerHistory = async function (req, res) {
       });
     }
 
+    console.log("historyData", historyData);
     res.json({
       success: true,
       data: historyData,

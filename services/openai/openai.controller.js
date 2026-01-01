@@ -69,7 +69,7 @@ exports.generateImage = async function (req, res) {
     const imageKey = `image/${uuidv4()}.jpg`;
 
     const uploadParams = {
-      Bucket: `kikits/${bucket}`,
+      Bucket: process.env.SPACES_BUCKET,
       Key: imageKey,
       Body: imageBuffer,
       ContentType: "image/jpeg",
@@ -137,7 +137,7 @@ exports.transcribeAudio = async function (req, res) {
 
     // Delete the audio file from storage
     try {
-      await deleteFile("kikits/garbage", file.key);
+      await deleteFile(process.env.SPACES_BUCKET, file.key);
     } catch (error) {
       console.error("Error deleting audio file", error);
     }
