@@ -12,12 +12,14 @@ const {
 async function mapWithConcurrency(items, concurrency, mapper) {
   const results = [];
   let idx = 0;
-  const workers = new Array(Math.max(1, concurrency)).fill(null).map(async () => {
-    while (idx < items.length) {
-      const current = idx++;
-      results[current] = await mapper(items[current], current);
-    }
-  });
+  const workers = new Array(Math.max(1, concurrency))
+    .fill(null)
+    .map(async () => {
+      while (idx < items.length) {
+        const current = idx++;
+        results[current] = await mapper(items[current], current);
+      }
+    });
   await Promise.all(workers);
   return results;
 }
@@ -25,12 +27,20 @@ async function mapWithConcurrency(items, concurrency, mapper) {
 /**
  * Auto-create a Submission for every enrolled student in the class for a published scenario.
  * Uses one LLM call per storeType, then reuses the generated values for all students of that type.
+ *
+ * @param {Object} params
+ * @param {string} params.scenarioId - Scenario ID
+ * @param {string} params.organizationId - Organization ID
+ * @param {string} params.clerkUserId - Clerk user ID
+ * @param {Object} [params.options] - Options object
+ * @param {string} [params.punishAbsentStudents] - Optional: "high", "medium", "low" to punish absent students
  */
 async function autoCreateSubmissionsForScenario({
   scenarioId,
   organizationId,
   clerkUserId,
   options = {},
+  punishAbsentStudents,
 }) {
   const {
     model = process.env.AUTO_SUBMISSION_MODEL || "gpt-4o-mini",
@@ -49,7 +59,10 @@ async function autoCreateSubmissionsForScenario({
     };
   }
 
-  const scenario = await Scenario.findOne({ _id: scenarioId, organization: organizationId });
+  const scenario = await Scenario.findOne({
+    _id: scenarioId,
+    organization: organizationId,
+  });
   if (!scenario) {
     throw new Error("Scenario not found");
   }
@@ -66,10 +79,16 @@ async function autoCreateSubmissionsForScenario({
   }
 
   const classroomId = scenario.classroomId;
-  const hydratedScenario = await Scenario.getScenarioById(scenarioId, organizationId);
+  const hydratedScenario = await Scenario.getScenarioById(
+    scenarioId,
+    organizationId
+  );
 
   // Enrollments (students only)
-  const enrollments = await Enrollment.findByClassAndRole(classroomId, "member");
+  const enrollments = await Enrollment.findByClassAndRole(
+    classroomId,
+    "member"
+  );
   if (!enrollments || enrollments.length === 0) {
     return {
       skipped: false,
@@ -85,7 +104,9 @@ async function autoCreateSubmissionsForScenario({
   const members = await Member.find({ _id: { $in: studentIds } })
     .select("_id clerkUserId")
     .lean();
-  const clerkByMemberId = new Map(members.map((m) => [m._id.toString(), m.clerkUserId]));
+  const clerkByMemberId = new Map(
+    members.map((m) => [m._id.toString(), m.clerkUserId])
+  );
 
   // Load stores for all students
   const stores = await Store.find({ classroomId, userId: { $in: studentIds } })
@@ -105,11 +126,29 @@ async function autoCreateSubmissionsForScenario({
       continue;
     }
     const storeType = store.storeType;
-    if (!studentsByStoreType.has(storeType)) studentsByStoreType.set(storeType, []);
+    if (!studentsByStoreType.has(storeType))
+      studentsByStoreType.set(storeType, []);
     studentsByStoreType.get(storeType).push({
       userId: enrollment.userId,
       clerkUserId: clerkByMemberId.get(uid) || clerkUserId, // fallback to admin
     });
+  }
+
+  // Normalize punishment level (case-insensitive) if provided
+  let absentPunishmentLevel = null;
+  if (punishAbsentStudents) {
+    const normalized =
+      typeof punishAbsentStudents === "string"
+        ? punishAbsentStudents.toLowerCase()
+        : String(punishAbsentStudents).toLowerCase();
+    // Only set punishment level if it's not "none"
+    if (
+      normalized !== "none" &&
+      normalized !== null &&
+      normalized !== undefined
+    ) {
+      absentPunishmentLevel = normalized;
+    }
   }
 
   // Generate one submission vars object per storeType
@@ -124,6 +163,7 @@ async function autoCreateSubmissionsForScenario({
       organizationId,
       clerkUserId,
       model,
+      absentPunishmentLevel, // Pass absence punishment level to AI
     });
     generatedByStoreType.set(storeType, vars);
   }
@@ -179,5 +219,3 @@ async function autoCreateSubmissionsForScenario({
 }
 
 module.exports = { autoCreateSubmissionsForScenario };
-
-

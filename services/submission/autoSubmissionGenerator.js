@@ -61,8 +61,12 @@ function buildJsonSchemaFromDefinitions(definitions) {
       properties[def.key] = {
         type: "number",
         description: def.description || def.label || def.key,
-        ...(def.min !== null && def.min !== undefined ? { minimum: def.min } : {}),
-        ...(def.max !== null && def.max !== undefined ? { maximum: def.max } : {}),
+        ...(def.min !== null && def.min !== undefined
+          ? { minimum: def.min }
+          : {}),
+        ...(def.max !== null && def.max !== undefined
+          ? { maximum: def.max }
+          : {}),
       };
       continue;
     }
@@ -104,7 +108,11 @@ function fillMissingWithDefaults(definitions, values) {
   const out = { ...(values || {}) };
 
   for (const def of definitions) {
-    if (out[def.key] !== undefined && out[def.key] !== null && out[def.key] !== "") {
+    if (
+      out[def.key] !== undefined &&
+      out[def.key] !== null &&
+      out[def.key] !== ""
+    ) {
       continue;
     }
 
@@ -128,6 +136,16 @@ function fillMissingWithDefaults(definitions, values) {
 /**
  * Generate a fully-filled submission variables object for a given storeType + scenario.
  * Uses a cheap OpenAI model with structured JSON schema output.
+ *
+ * @param {Object} params
+ * @param {string} params.classroomId
+ * @param {string} params.storeType
+ * @param {Object} params.storePreset
+ * @param {Object} params.scenario
+ * @param {string} params.organizationId
+ * @param {string} params.clerkUserId
+ * @param {string} params.model
+ * @param {string} [params.absentPunishmentLevel] - Optional: "high", "medium", "low" to indicate student was absent
  */
 async function generateSubmissionVariablesForStoreType({
   classroomId,
@@ -137,6 +155,7 @@ async function generateSubmissionVariablesForStoreType({
   organizationId,
   clerkUserId,
   model,
+  absentPunishmentLevel,
 }) {
   const definitions = await VariableDefinition.getDefinitionsForScope(
     classroomId,
@@ -173,16 +192,38 @@ async function generateSubmissionVariablesForStoreType({
       dataType: d.dataType,
       min: d.min,
       max: d.max,
-      options: d.dataType === "select" ? normalizeSelectAllowedValues(d) : undefined,
+      options:
+        d.dataType === "select" ? normalizeSelectAllowedValues(d) : undefined,
       description: d.description || d.label || "",
     })),
+    // Include absence punishment level if provided
+    ...(absentPunishmentLevel && {
+      studentWasAbsent: true,
+      absencePunishmentLevel: absentPunishmentLevel,
+    }),
   };
 
-  const system = [
+  // Build system message with absence punishment context if applicable
+  let systemMessages = [
     "You generate realistic, conservative weekly student decisions (submission variables) for SCALE.ai (pizza shop supply chain simulation).",
     "Return ONLY JSON that matches the provided schema.",
     "Values must be plausible and within min/max constraints and enums.",
-  ].join("\n");
+  ];
+
+  if (absentPunishmentLevel) {
+    const punishmentGuidance = {
+      high: "The student was absent and should receive significantly negative outcomes. Generate decisions that will result in poor performance (e.g., low production, insufficient staffing, poor inventory management). The store should be heavily penalized for the absence.",
+      medium:
+        "The student was absent and should receive moderately negative outcomes. Generate decisions that will result in below-average performance. The store should be penalized for the absence but not severely.",
+      low: "The student was absent and should receive slightly negative outcomes. Generate decisions that will result in slightly below-average performance. The store should be mildly penalized for the absence.",
+    };
+
+    systemMessages.push(
+      `IMPORTANT: The student was ABSENT for this scenario. ${punishmentGuidance[absentPunishmentLevel] || punishmentGuidance.medium}`
+    );
+  }
+
+  const system = systemMessages.join("\n");
 
   const response = await openai.chat.completions.create({
     model: model || process.env.AUTO_SUBMISSION_MODEL || "gpt-4o-mini",
@@ -242,5 +283,3 @@ async function generateSubmissionVariablesForStoreType({
 module.exports = {
   generateSubmissionVariablesForStoreType,
 };
-
-

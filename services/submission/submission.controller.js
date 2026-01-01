@@ -386,9 +386,9 @@ exports.getSubmissionsForScenario = async function (req, res) {
     );
 
     // Get user details for missing submissions
+    // Note: getMissingSubmissions already filters by org:member role, so we just fetch by ID
     const missingUsers = await Member.find({
       _id: { $in: missingUserIds },
-      role: "org:member",
     }).select("_id firstName lastName maskedEmail clerkUserId");
 
     res.json({

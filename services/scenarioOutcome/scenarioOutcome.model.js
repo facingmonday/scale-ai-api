@@ -25,6 +25,20 @@ const scenarioOutcomeSchema = new mongoose.Schema({
     min: 0,
     max: 100,
   },
+  // Auto-generate submissions for missing students when outcome is set
+  // Options: "USE_AI", "FORWARD_PREVIOUS", or undefined/null (no auto-generation)
+  autoGenerateSubmissionsOnOutcome: {
+    type: String,
+    enum: ["USE_AI", "FORWARD_PREVIOUS"],
+    default: null,
+  },
+  // Punishment level for absent students when using FORWARD_PREVIOUS
+  // Options: "high", "medium", "low", "none", or undefined/null (no punishment)
+  punishAbsentStudents: {
+    type: String,
+    enum: ["high", "medium", "low", "none"],
+    default: null,
+  },
 }).add(baseSchema);
 
 // Indexes for performance
@@ -54,11 +68,30 @@ scenarioOutcomeSchema.statics.createOrUpdateOutcome = async function (
       ? outcomeData.randomEventChancePercent
       : undefined;
 
+  // Normalize autoGenerateSubmissionsOnOutcome (allow null/undefined to clear)
+  const normalizedAutoGenerate =
+    outcomeData.autoGenerateSubmissionsOnOutcome !== undefined
+      ? outcomeData.autoGenerateSubmissionsOnOutcome || null
+      : undefined;
+
+  // Normalize punishAbsentStudents (allow null/undefined to clear)
+  const normalizedPunishAbsent =
+    outcomeData.punishAbsentStudents !== undefined
+      ? outcomeData.punishAbsentStudents || "none"
+      : "none";
+
   if (outcome) {
     // Update existing outcome
-    outcome.notes = outcomeData.notes || outcome.notes;
+    outcome.notes =
+      outcomeData.notes !== undefined ? outcomeData.notes : outcome.notes;
     if (normalizedChancePercent !== undefined) {
       outcome.randomEventChancePercent = normalizedChancePercent;
+    }
+    if (normalizedAutoGenerate !== undefined) {
+      outcome.autoGenerateSubmissionsOnOutcome = normalizedAutoGenerate;
+    }
+    if (normalizedPunishAbsent !== undefined) {
+      outcome.punishAbsentStudents = normalizedPunishAbsent;
     }
     outcome.updatedBy = clerkUserId;
     await outcome.save();
@@ -69,6 +102,8 @@ scenarioOutcomeSchema.statics.createOrUpdateOutcome = async function (
       notes: outcomeData.notes || "",
       randomEventChancePercent:
         normalizedChancePercent !== undefined ? normalizedChancePercent : 0,
+      autoGenerateSubmissionsOnOutcome: normalizedAutoGenerate || null,
+      punishAbsentStudents: normalizedPunishAbsent || null,
       organization: organizationId,
       createdBy: clerkUserId,
       updatedBy: clerkUserId,

@@ -462,8 +462,8 @@ exports.exportMembers = async (req, res) => {
         const msg = {
           to: recipientEmail,
           from: {
-            email: process.env.SENDGRID_FROM_EMAIL || "no-reply@kikits.com",
-            name: process.env.SENDGRID_FROM_NAME || "Kikits",
+            email: process.env.SENDGRID_FROM_EMAIL || "no-reply@scaleai.com",
+            name: process.env.SENDGRID_FROM_NAME || "ScaleAI",
           },
           subject: `Member Export - ${organization.name || "Organization"}`,
           text: `Please find attached the member export CSV file for ${organization.name || "your organization"}.\n\nTotal members: ${membersData.length}`,
@@ -492,8 +492,8 @@ exports.exportMembers = async (req, res) => {
           await sgMail.send({
             to: recipientEmail,
             from: {
-              email: process.env.SENDGRID_FROM_EMAIL || "no-reply@kikits.com",
-              name: process.env.SENDGRID_FROM_NAME || "Kikits",
+              email: process.env.SENDGRID_FROM_EMAIL || "no-reply@scaleai.com",
+              name: process.env.SENDGRID_FROM_NAME || "ScaleAI",
             },
             subject: "Member Export Failed",
             text: `The member export request failed with the following error: ${error.message}`,

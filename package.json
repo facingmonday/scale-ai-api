@@ -1,5 +1,5 @@
 {
-  "name": "kikits-api",
+  "name": "scale-ai-api",
   "version": "1.0.0",
   "description": "",
   "main": "apps/api/index.js",

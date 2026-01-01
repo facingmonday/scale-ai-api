@@ -49,9 +49,15 @@ function parseArgs(argv) {
     admin: null,
     force: false,
     dryRun: false,
+<<<<<<< HEAD
     classrooms: 2,
     scenariosPerClassroom: 6,
     studentsPerClassroom: 100,
+=======
+    classrooms: 1,
+    scenariosPerClassroom: 1,
+    studentsPerClassroom: 1,
+>>>>>>> develop
   };
 
   for (const raw of argv.slice(2)) {
@@ -494,7 +500,11 @@ function buildSubmissionVariables(rng, storePreset, scenarioVars) {
 function computeLedgerFromVars({
   rng,
   cashBefore,
+<<<<<<< HEAD
   inventoryState,
+=======
+  inventoryBefore,
+>>>>>>> develop
   scenarioVars,
   submissionVars,
 }) {
@@ -558,6 +568,18 @@ function computeLedgerFromVars({
   const cashAfter = roundMoney(cashBefore + (revenue - costs));
   const netProfit = roundMoney(cashAfter - cashBefore);
 
+<<<<<<< HEAD
+=======
+  const inventoryAfter = Math.max(
+    0,
+    Math.round(
+      inventoryBefore +
+        submissionVars.inventoryOrder -
+        submissionVars.plannedProduction
+    )
+  );
+
+>>>>>>> develop
   // Material flow by bucket (simplified for seed data)
   // Assume refrigerated is used for production, ambient/notForResaleDry are mostly static
   const refrigeratedUsed = Math.round(sales * 0.5); // Rough estimate: 50% of sales uses refrigerated
@@ -576,7 +598,11 @@ function computeLedgerFromVars({
   const ambientReceived = Math.round(submissionVars.inventoryOrder * 0.3);
   const ambientEnd = ambientBegin + ambientReceived; // Ambient doesn't get used in simplified model
 
+<<<<<<< HEAD
   const notForResaleDryBegin = inventoryState?.notForResaleUnits || 0;
+=======
+  const notForResaleDryBegin = Math.round(inventoryBefore * 0.2);
+>>>>>>> develop
   const notForResaleDryReceived = Math.round(
     submissionVars.inventoryOrder * 0.2
   );

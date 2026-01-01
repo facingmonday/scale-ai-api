@@ -875,6 +875,11 @@ ledgerEntrySchema.statics.getLedgerHistory = async function (
   excludeScenarioId = null
 ) {
   const query = { classroomId };
+
+  if (userId) {
+    query.userId = userId;
+  }
+
   if (excludeScenarioId) {
     query.scenarioId = { $ne: excludeScenarioId };
   }
