@@ -234,7 +234,11 @@ const STORE_TYPE_PRESETS = {
 
     initialStartupCost: 20000,
     startingBalance: 50000,
-    startingInventory: 1000,
+    startingInventory: {
+      refrigeratedUnits: 800,
+      ambientUnits: 150,
+      notForResaleUnits: 50,
+    },
     rawMaterialCost: 1000,
     finishedGoodCost: 1000,
     refrigeratedSpaceCost: 1000,
@@ -300,7 +304,11 @@ const STORE_TYPE_PRESETS = {
 
     startingBalance: 50000,
     initialStartupCost: 25000,
-    startingInventory: 1000,
+    startingInventory: {
+      refrigeratedUnits: 500,
+      ambientUnits: 300,
+      notForResaleUnits: 200,
+    },
     weeklyRent: 700,
     maxDailyCapacity: 120,
     staffRequired: 3,
@@ -352,7 +360,11 @@ const STORE_TYPE_PRESETS = {
 
     startingBalance: 50000,
     initialStartupCost: 35000,
-    startingInventory: 1000,
+    startingInventory: {
+      refrigeratedUnits: 700,
+      ambientUnits: 200,
+      notForResaleUnits: 100,
+    },
     weeklyRent: 1600,
     maxDailyCapacity: 180,
     staffRequired: 5,
@@ -411,7 +423,11 @@ const STORE_TYPE_PRESETS = {
     lastMileCostSensitivity: RiskLevelEnum.LOW,
 
     initialStartupCost: 45000,
-    startingInventory: 10000,
+    startingInventory: {
+      refrigeratedUnits: 6000,
+      ambientUnits: 2500,
+      notForResaleUnits: 1500,
+    },
     rawMaterialCost: 2500,
     finishedGoodCost: 2500,
     refrigeratedSpaceCost: 3000,
@@ -474,7 +490,11 @@ const STORE_TYPE_PRESETS = {
 
     startingBalance: 50000,
     initialStartupCost: 7000,
-    startingInventory: 1000,
+    startingInventory: {
+      refrigeratedUnits: 900,
+      ambientUnits: 75,
+      notForResaleUnits: 25,
+    },
     weeklyRent: 50,
     maxDailyCapacity: 60,
     staffRequired: 1,
@@ -530,7 +550,11 @@ const STORE_TYPE_PRESETS = {
 
     startingBalance: 50000,
     initialStartupCost: 19000,
-    startingInventory: 1000,
+    startingInventory: {
+      refrigeratedUnits: 750,
+      ambientUnits: 200,
+      notForResaleUnits: 50,
+    },
     weeklyRent: 500,
     maxDailyCapacity: 120,
     staffRequired: 2,
@@ -589,7 +613,11 @@ const STORE_TYPE_PRESETS = {
 
     startingBalance: 50000,
     initialStartupCost: 21000,
-    startingInventory: 1000,
+    startingInventory: {
+      refrigeratedUnits: 650,
+      ambientUnits: 250,
+      notForResaleUnits: 100,
+    },
     weeklyRent: 600,
     maxDailyCapacity: 150,
     staffRequired: 4,
@@ -648,7 +676,11 @@ const STORE_TYPE_PRESETS = {
 
     startingBalance: 50000,
     initialStartupCost: 13000,
-    startingInventory: 1000,
+    startingInventory: {
+      refrigeratedUnits: 550,
+      ambientUnits: 300,
+      notForResaleUnits: 150,
+    },
     weeklyRent: 500,
     maxDailyCapacity: 180,
     staffRequired: 2,
@@ -706,7 +738,11 @@ const STORE_TYPE_PRESETS = {
 
     startingBalance: 50000,
     initialStartupCost: 32000,
-    startingInventory: 1000,
+    startingInventory: {
+      refrigeratedUnits: 600,
+      ambientUnits: 250,
+      notForResaleUnits: 150,
+    },
     weeklyRent: 2200,
     maxDailyCapacity: 90,
     staffRequired: 8,
@@ -765,7 +801,11 @@ const STORE_TYPE_PRESETS = {
 
     startingBalance: 50000,
     initialStartupCost: 11000,
-    startingInventory: 1000,
+    startingInventory: {
+      refrigeratedUnits: 850,
+      ambientUnits: 100,
+      notForResaleUnits: 50,
+    },
     weeklyRent: 0,
     maxDailyCapacity: 300,
     staffRequired: 5,
@@ -823,7 +863,11 @@ const STORE_TYPE_PRESETS = {
 
     startingBalance: 50000,
     initialStartupCost: 38000,
-    startingInventory: 5000,
+    startingInventory: {
+      refrigeratedUnits: 3000,
+      ambientUnits: 1500,
+      notForResaleUnits: 500,
+    },
     weeklyRent: 1800,
     royaltyRate: 0.08,
     maxDailyCapacity: 220,

@@ -375,19 +375,19 @@ submissionSchema.statics.getMissingSubmissions = async function (
   });
 
   // Extract ObjectIds from enrolled users (userId is populated, so it's an object with _id)
-  const enrolledUserIds = filteredEnrollments.map((e) => {
-    const userId = e.userId;
-    // userId is populated, so it's a document object - extract the _id
-    // If _id exists, use it; otherwise userId itself should be the ObjectId
-    if (!userId) return null;
-    return userId._id ? userId._id : userId;
-  }).filter(Boolean); // Remove any null values
+  const enrolledUserIds = filteredEnrollments
+    .map((e) => {
+      const userId = e.userId;
+      // userId is populated, so it's a document object - extract the _id
+      // If _id exists, use it; otherwise userId itself should be the ObjectId
+      if (!userId) return null;
+      return userId._id ? userId._id : userId;
+    })
+    .filter(Boolean); // Remove any null values
 
   // Get all submissions for this scenario (use lean to avoid population issues)
   const submissions = await this.find({ scenarioId }).lean();
-  const submittedUserIds = new Set(
-    submissions.map((s) => s.userId.toString())
-  );
+  const submittedUserIds = new Set(submissions.map((s) => s.userId.toString()));
 
   // Find missing user IDs (convert to string for comparison)
   const missingUserIds = enrolledUserIds.filter((userId) => {

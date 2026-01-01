@@ -192,13 +192,24 @@ class SimulationWorker {
       }
     } else {
       // For initial entries, use starting inventory from store preset
-      // Starting inventory is typically all in refrigerated
+      // Handle both number (legacy) and object (new bucket-based) formats
       const startingInventory = store.startingInventory || 0;
-      inventoryState = {
-        refrigeratedUnits: startingInventory,
-        ambientUnits: 0,
-        notForResaleUnits: 0,
-      };
+      
+      // Normalize to object format
+      if (typeof startingInventory === 'object' && startingInventory !== null && !Array.isArray(startingInventory)) {
+        inventoryState = {
+          refrigeratedUnits: startingInventory.refrigeratedUnits || 0,
+          ambientUnits: startingInventory.ambientUnits || 0,
+          notForResaleUnits: startingInventory.notForResaleUnits || 0,
+        };
+      } else {
+        // Legacy number format: all inventory in refrigerated
+        inventoryState = {
+          refrigeratedUnits: Number(startingInventory) || 0,
+          ambientUnits: 0,
+          notForResaleUnits: 0,
+        };
+      }
     }
 
     return {
