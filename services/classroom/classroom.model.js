@@ -30,6 +30,10 @@ const classroomSchema = new mongoose.Schema({
     required: true,
     index: true,
   },
+  imageUrl: {
+    type: String,
+    required: false,
+  },
 }).add(baseSchema);
 
 // Indexes for performance

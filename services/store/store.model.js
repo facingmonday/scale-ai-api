@@ -33,6 +33,10 @@ const storeSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  imageUrl: {
+    type: String,
+    required: false,
+  },
   storeType: {
     type: String,
     enum: [
@@ -187,6 +191,7 @@ storeSchema.statics.createStore = async function (
     storeDescription: storeFields.storeDescription,
     storeLocation: storeFields.storeLocation,
     storeType,
+    imageUrl: imageUrl || null,
     organization: organizationId,
     createdBy: clerkUserId,
     updatedBy: clerkUserId,
@@ -360,8 +365,13 @@ storeSchema.statics.updateStore = async function (
   organizationId,
   clerkUserId
 ) {
-  // Extract variables and storeType from storeData
-  const { variables: providedVariables, storeType, ...storeFields } = storeData;
+  // Extract variables, storeType, and imageUrl from storeData
+  const {
+    variables: providedVariables,
+    storeType,
+    imageUrl,
+    ...storeFields
+  } = storeData;
 
   // Find existing store
   let store = await this.findOne({ classroomId, userId });
@@ -394,6 +404,7 @@ storeSchema.statics.updateStore = async function (
       storeDescription: storeFields.storeDescription,
       storeLocation: storeFields.storeLocation,
       storeType,
+      imageUrl: imageUrl || null,
       organization: organizationId,
       createdBy: clerkUserId,
       updatedBy: clerkUserId,
@@ -460,6 +471,9 @@ storeSchema.statics.updateStore = async function (
         );
       }
       store.storeType = storeType;
+    }
+    if (imageUrl !== undefined) {
+      store.imageUrl = imageUrl || null;
     }
 
     store.updatedBy = clerkUserId;
