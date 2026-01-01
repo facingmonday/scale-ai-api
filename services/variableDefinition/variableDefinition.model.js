@@ -2,12 +2,6 @@ const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 
 const variableDefinitionSchema = new mongoose.Schema({
-  classroomId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Classroom",
-    required: true,
-    index: true,
-  },
   key: {
     type: String,
     required: true,
@@ -312,11 +306,11 @@ variableDefinitionSchema.statics.validateValues = async function (
             .filter((v) => v !== undefined && v !== null);
 
           if (!allowedValues.includes(value)) {
-          errors.push({
-            key: definition.key,
+            errors.push({
+              key: definition.key,
               message: `${definition.label} must be one of: ${allowedValues.join(", ")}`,
-          });
-        }
+            });
+          }
         }
         break;
 

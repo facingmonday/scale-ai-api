@@ -79,16 +79,23 @@ const OverflowStoragePolicyEnum = Object.freeze({
 
 // Base preset ensures every store type has the exact same keys (with sensible defaults).
 const BASE_PRESET = Object.freeze({
+  // ---------------------------------------------------------------------------
   // Identity / copy
+  // ---------------------------------------------------------------------------
   label: "",
   description: "",
 
-  // Plan / Source / Make / Deliver (supply chain)
+  // ---------------------------------------------------------------------------
+  // PLAN – demand planning & uncertainty
+  // ---------------------------------------------------------------------------
   planStrategy: PlanStrategyEnum.FORECAST_DRIVEN,
   forecastReliance: RiskLevelEnum.MEDIUM,
   demandVolatility: RiskLevelEnum.MEDIUM,
   planningHorizonWeeks: 2,
 
+  // ---------------------------------------------------------------------------
+  // SOURCE – suppliers, inbound logistics, cost exposure
+  // ---------------------------------------------------------------------------
   ingredientSource: IngredientSourceEnum.NATIONAL_COST_EFFECTIVE,
   ingredientCost: IngredientCostEnum.MEDIUM,
   tariffExposure: TariffExposureEnum.MEDIUM,
@@ -98,59 +105,94 @@ const BASE_PRESET = Object.freeze({
   coldChainDependency: RiskLevelEnum.MEDIUM,
   logisticsCost: LogisticsCostEnum.MEDIUM,
 
-  refrigeratedStorageSpace: RiskLevelEnum.MEDIUM,
-  refrigeratedStorageSpaceCost: RiskLevelEnum.MEDIUM,
-  ambientStorageSpace: RiskLevelEnum.MEDIUM,
-  ambientStorageSpaceCost: RiskLevelEnum.MEDIUM,
+  // ---------------------------------------------------------------------------
+  // WAREHOUSING – HARD CONSTRAINTS (unit-based, enforced)
+  // ---------------------------------------------------------------------------
+  refrigeratedCapacityUnits: 500,
+  ambientCapacityUnits: 300,
+  notForResaleCapacityUnits: 200,
+
+  // Per-unit holding cost per week
+  refrigeratedHoldingCostPerUnit: 2.5,
+  ambientHoldingCostPerUnit: 0.75,
+  notForResaleHoldingCostPerUnit: 0.25,
+
+  // Behavior when capacity is exceeded
   overflowStoragePolicy: OverflowStoragePolicyEnum.PAY_FOR_OVERFLOW,
 
+  // ---------------------------------------------------------------------------
+  // MAKE – production & labor conversion
+  // ---------------------------------------------------------------------------
   makeStrategy: InventoryStrategyEnum.HYBRID,
   batchPrepLevel: RiskLevelEnum.MEDIUM,
   capacityFlexibility: RiskLevelEnum.MEDIUM,
 
+  // ---------------------------------------------------------------------------
+  // DELIVER – fulfillment & customer behavior
+  // ---------------------------------------------------------------------------
   fulfillmentModel: FulfillmentModelEnum.PICKUP,
   deliveryPlatformDependency: RiskLevelEnum.MEDIUM,
   lastMileCostSensitivity: RiskLevelEnum.MEDIUM,
 
-  // Financial starting point (also used for initial ledger entry)
+  // ---------------------------------------------------------------------------
+  // Financial starting point (initial ledger seed)
+  // ---------------------------------------------------------------------------
   startingBalance: 50000,
   initialStartupCost: 0,
-  startingInventory: 1000,
 
-  // Cost levers (kept generic; AI can interpret)
-  rawMaterialCost: 1000,
-  finishedGoodCost: 1000,
-  refrigeratedSpaceCost: 1000,
-  ambientSpaceCost: 1000,
+  // Starting inventory is now interpreted *by bucket* downstream
+  startingInventory: {
+    refrigeratedUnits: 500,
+    ambientUnits: 300,
+    notForResaleUnits: 200,
+  },
 
-  // Ops
+  // ---------------------------------------------------------------------------
+  // Cost anchors (used as AI baselines, not direct math)
+  // ---------------------------------------------------------------------------
+  rawMaterialCostBaseline: 1000,
+  finishedGoodCostBaseline: 1000,
+
+  // ---------------------------------------------------------------------------
+  // Operations
+  // ---------------------------------------------------------------------------
   weeklyRent: 0,
   maxDailyCapacity: 100,
   staffRequired: 2,
+
   weatherSensitivity: "medium",
   mobility: "none",
   vibe: "standard",
   riskProfile: "balanced",
+
   peakHours: [],
   customerPatience: "medium",
   marketingPower: "local",
   commonIssues: [],
   growthCeiling: "medium",
 
-  // Equipment / facilities (counts)
+  // ---------------------------------------------------------------------------
+  // Equipment / facilities (capacity multipliers, not inventory)
+  // ---------------------------------------------------------------------------
   numberOfFridges: 1,
   numberOfOvens: 1,
   numberOfWarehouses: 1,
 
+  // ---------------------------------------------------------------------------
   // Selling model
+  // ---------------------------------------------------------------------------
   salesMethod: "whole pie",
   costPerSlice: 8,
   costPerPie: 20,
 
-  // Franchise-only lever (0 for non-franchise)
+  // ---------------------------------------------------------------------------
+  // Franchise-only lever
+  // ---------------------------------------------------------------------------
   royaltyRate: 0,
 
+  // ---------------------------------------------------------------------------
   // AI narration helpers
+  // ---------------------------------------------------------------------------
   aiFlavor: "",
   pros: "",
   cons: "",
