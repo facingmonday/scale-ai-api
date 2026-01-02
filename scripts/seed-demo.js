@@ -38,26 +38,50 @@ const ScenarioOutcome = require("../services/scenarioOutcome/scenarioOutcome.mod
 const LedgerEntry = require("../services/ledger/ledger.model");
 const SimulationJob = require("../services/job/job.model");
 const Member = require("../services/members/member.model");
+const StoreType = require("../services/storeType/storeType.model");
 
-const {
-  getPreset,
-  getAvailableStoreTypes,
-} = require("../services/store/storeTypePresets");
+function normalizeInventoryStateFromStartingInventory(startingInventory) {
+  if (
+    typeof startingInventory === "object" &&
+    startingInventory !== null &&
+    !Array.isArray(startingInventory)
+  ) {
+    return {
+      refrigeratedUnits: startingInventory.refrigeratedUnits || 0,
+      ambientUnits: startingInventory.ambientUnits || 0,
+      notForResaleUnits: startingInventory.notForResaleUnits || 0,
+    };
+  }
+  return {
+    refrigeratedUnits: Number(startingInventory) || 0,
+    ambientUnits: 0,
+    notForResaleUnits: 0,
+  };
+}
+
+function normalizeInventoryStateFromStoreTypeVars(vars) {
+  if (!vars || typeof vars !== "object") {
+    return normalizeInventoryStateFromStartingInventory(0);
+  }
+  if (vars.startingInventory !== undefined && vars.startingInventory !== null) {
+    return normalizeInventoryStateFromStartingInventory(vars.startingInventory);
+  }
+  // Support bucketed keys
+  return {
+    refrigeratedUnits: Number(vars.startingInventoryRefrigeratedUnits) || 0,
+    ambientUnits: Number(vars.startingInventoryAmbientUnits) || 0,
+    notForResaleUnits: Number(vars.startingInventoryNotForResaleUnits) || 0,
+  };
+}
 
 function parseArgs(argv) {
   const args = {
     admin: null,
     force: false,
     dryRun: false,
-<<<<<<< HEAD
-    classrooms: 2,
+    classrooms: 6,
     scenariosPerClassroom: 6,
     studentsPerClassroom: 100,
-=======
-    classrooms: 1,
-    scenariosPerClassroom: 0,
-    studentsPerClassroom: 1,
->>>>>>> develop
   };
 
   for (const raw of argv.slice(2)) {
@@ -500,11 +524,8 @@ function buildSubmissionVariables(rng, storePreset, scenarioVars) {
 function computeLedgerFromVars({
   rng,
   cashBefore,
-<<<<<<< HEAD
-  inventoryState,
-=======
   inventoryBefore,
->>>>>>> develop
+  inventoryState,
   scenarioVars,
   submissionVars,
 }) {
@@ -568,18 +589,6 @@ function computeLedgerFromVars({
   const cashAfter = roundMoney(cashBefore + (revenue - costs));
   const netProfit = roundMoney(cashAfter - cashBefore);
 
-<<<<<<< HEAD
-=======
-  const inventoryAfter = Math.max(
-    0,
-    Math.round(
-      inventoryBefore +
-        submissionVars.inventoryOrder -
-        submissionVars.plannedProduction
-    )
-  );
-
->>>>>>> develop
   // Material flow by bucket (simplified for seed data)
   // Assume refrigerated is used for production, ambient/notForResaleDry are mostly static
   const refrigeratedUsed = Math.round(sales * 0.5); // Rough estimate: 50% of sales uses refrigerated
@@ -598,11 +607,7 @@ function computeLedgerFromVars({
   const ambientReceived = Math.round(submissionVars.inventoryOrder * 0.3);
   const ambientEnd = ambientBegin + ambientReceived; // Ambient doesn't get used in simplified model
 
-<<<<<<< HEAD
   const notForResaleDryBegin = inventoryState?.notForResaleUnits || 0;
-=======
-  const notForResaleDryBegin = Math.round(inventoryBefore * 0.2);
->>>>>>> develop
   const notForResaleDryReceived = Math.round(
     submissionVars.inventoryOrder * 0.2
   );
@@ -754,7 +759,17 @@ async function main() {
     process.exit(0);
   }
 
-  const storeTypes = getAvailableStoreTypes();
+  const storeTypeDocs = await StoreType.find({
+    organization: organizationId,
+    isActive: true,
+  });
+  await Promise.all(storeTypeDocs.map((st) => st._loadVariables()));
+
+  if (!storeTypeDocs || storeTypeDocs.length === 0) {
+    throw new Error(
+      "No StoreTypes found for this organization. Create StoreTypes (and storeType variable definitions/values) before running seed-demo."
+    );
+  }
 
   const created = {
     classrooms: 0,
@@ -847,8 +862,14 @@ async function main() {
         adminClerkUserId
       );
 
-      const storeType = storeTypes[i % storeTypes.length];
-      const preset = getPreset(storeType);
+      const storeTypeDoc = storeTypeDocs[i % storeTypeDocs.length];
+      const storeTypeId = storeTypeDoc._id;
+      const storeTypeVars =
+        storeTypeDoc.variables &&
+        typeof storeTypeDoc.variables === "object" &&
+        !Array.isArray(storeTypeDoc.variables)
+          ? storeTypeDoc.variables
+          : {};
 
       await Store.createStore(
         classroom._id,
@@ -857,7 +878,7 @@ async function main() {
           shopName: `Seed Pizza ${cIdx + 1}-${i + 1}`,
           storeDescription: "Seeded store for demo / load testing.",
           storeLocation: "Demo City",
-          storeType,
+          storeType: storeTypeId,
           variables: {}, // let presets + defaults populate
         },
         organizationId,
@@ -867,13 +888,9 @@ async function main() {
 
       studentState.set(student._id.toString(), {
         clerkUserId: student.clerkUserId,
-        storeType,
-        cash: preset.startingBalance || 0,
-        inventoryState: {
-          refrigeratedUnits: preset.startingInventory || 0,
-          ambientUnits: 0,
-          notForResaleUnits: 0,
-        },
+        storeTypeId: storeTypeId.toString(),
+        cash: storeTypeVars.startingBalance || 0,
+        inventoryState: normalizeInventoryStateFromStoreTypeVars(storeTypeVars),
       });
       created.ledgerEntries += 1; // initial ledger entry created by Store.createStore
     }
@@ -905,7 +922,15 @@ async function main() {
           (cIdx + 1) * 100000 + (sIdx + 1) * 1000 + (i + 1) * 17
         );
 
-        const preset = getPreset(state.storeType);
+        const storeTypeDoc = storeTypeDocs.find(
+          (st) => st._id.toString() === state.storeTypeId
+        );
+        const storeTypeVars =
+          storeTypeDoc?.variables &&
+          typeof storeTypeDoc.variables === "object" &&
+          !Array.isArray(storeTypeDoc.variables)
+            ? storeTypeDoc.variables
+            : {};
         // Always use a hydrated scenario variables map (avoid empty cached vars)
         const scenarioVars = scenarios[sIdx]?.variables
           ? scenarios[sIdx].variables
@@ -913,7 +938,7 @@ async function main() {
               ?.variables || {};
         const submissionVars = buildSubmissionVariables(
           rng,
-          preset,
+          storeTypeVars,
           scenarioVars
         );
 

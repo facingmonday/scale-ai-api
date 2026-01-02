@@ -4,7 +4,7 @@ const Submission = require("./submission.model");
 const Scenario = require("../scenario/scenario.model");
 const Member = require("../members/member.model");
 
-const { getPreset } = require("../store/storeTypePresets");
+const StoreType = require("../storeType/storeType.model");
 const {
   generateSubmissionVariablesForStoreType,
 } = require("./autoSubmissionGenerator");
@@ -115,7 +115,7 @@ async function autoCreateSubmissionsForScenario({
   const storeByUserId = new Map(stores.map((s) => [s.userId.toString(), s]));
 
   // Group students by storeType
-  const studentsByStoreType = new Map(); // storeType -> [{ userId, clerkUserId }]
+  const studentsByStoreTypeId = new Map(); // storeTypeId -> [{ userId, clerkUserId }]
   let missingStore = 0;
 
   for (const enrollment of enrollments) {
@@ -125,10 +125,11 @@ async function autoCreateSubmissionsForScenario({
       missingStore += 1;
       continue;
     }
-    const storeType = store.storeType;
-    if (!studentsByStoreType.has(storeType))
-      studentsByStoreType.set(storeType, []);
-    studentsByStoreType.get(storeType).push({
+    const storeTypeId =
+      store.storeType?.toString?.() || String(store.storeType);
+    if (!studentsByStoreTypeId.has(storeTypeId))
+      studentsByStoreTypeId.set(storeTypeId, []);
+    studentsByStoreTypeId.get(storeTypeId).push({
       userId: enrollment.userId,
       clerkUserId: clerkByMemberId.get(uid) || clerkUserId, // fallback to admin
     });
@@ -153,25 +154,40 @@ async function autoCreateSubmissionsForScenario({
 
   // Generate one submission vars object per storeType
   const generatedByStoreType = new Map();
-  for (const [storeType] of studentsByStoreType) {
-    const preset = getPreset(storeType);
+  const storeTypeIds = Array.from(studentsByStoreTypeId.keys());
+  const storeTypeDocs = await StoreType.find({
+    _id: { $in: storeTypeIds },
+    organization: organizationId,
+    isActive: true,
+  });
+  // Ensure variables are loaded (storeType is organization-scoped, so we load manually)
+  await Promise.all(storeTypeDocs.map((st) => st._loadVariables()));
+  const storeTypeById = new Map(
+    storeTypeDocs.map((st) => [st._id.toString(), st])
+  );
+
+  for (const [storeTypeId] of studentsByStoreTypeId) {
+    const storeTypeDoc = storeTypeById.get(storeTypeId);
+    if (!storeTypeDoc) {
+      throw new Error(`StoreType not found or inactive: ${storeTypeId}`);
+    }
     const vars = await generateSubmissionVariablesForStoreType({
       classroomId,
-      storeType,
-      storePreset: preset,
+      storeTypeKey: storeTypeDoc.key,
+      storeTypeVariables: storeTypeDoc.variables || {},
       scenario: hydratedScenario,
       organizationId,
       clerkUserId,
       model,
       absentPunishmentLevel, // Pass absence punishment level to AI
     });
-    generatedByStoreType.set(storeType, vars);
+    generatedByStoreType.set(storeTypeId, vars);
   }
 
   // Flatten tasks to create submissions
   const tasks = [];
-  for (const [storeType, students] of studentsByStoreType) {
-    for (const s of students) tasks.push({ storeType, ...s });
+  for (const [storeTypeId, students] of studentsByStoreTypeId) {
+    for (const s of students) tasks.push({ storeTypeId, ...s });
   }
 
   let created = 0;
@@ -179,7 +195,7 @@ async function autoCreateSubmissionsForScenario({
   const errors = [];
 
   await mapWithConcurrency(tasks, concurrency, async (task) => {
-    const vars = generatedByStoreType.get(task.storeType);
+    const vars = generatedByStoreType.get(task.storeTypeId);
     try {
       await Submission.createSubmission(
         classroomId,
@@ -202,7 +218,7 @@ async function autoCreateSubmissionsForScenario({
       }
       errors.push({
         userId: task.userId?.toString?.() || String(task.userId),
-        storeType: task.storeType,
+        storeTypeId: task.storeTypeId,
         error: e?.message || String(e),
       });
     }
@@ -214,7 +230,7 @@ async function autoCreateSubmissionsForScenario({
     existing,
     missingStore,
     errors,
-    storeTypes: Array.from(studentsByStoreType.keys()),
+    storeTypeIds: Array.from(studentsByStoreTypeId.keys()),
   };
 }
 

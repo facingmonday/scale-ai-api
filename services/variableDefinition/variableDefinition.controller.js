@@ -26,10 +26,6 @@ exports.createVariableDefinition = async function (req, res) {
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
-    // Validate required fields
-    if (!classroomId) {
-      return res.status(400).json({ error: "classroomId is required" });
-    }
     if (!key) {
       return res.status(400).json({ error: "key is required" });
     }
@@ -44,29 +40,41 @@ exports.createVariableDefinition = async function (req, res) {
     }
 
     // Validate appliesTo enum
-    if (!["store", "scenario", "submission"].includes(appliesTo)) {
-      return res.status(400).json({
-        error: "appliesTo must be one of: store, scenario, submission",
-      });
+    if (!["store", "scenario", "submission", "storeType"].includes(appliesTo)) {
+      throw new Error(
+        "appliesTo must be one of: store, scenario, submission, storeType"
+      );
     }
 
     // Validate dataType enum
     if (!["number", "string", "boolean", "select"].includes(dataType)) {
-      return res.status(400).json({
-        error: "dataType must be one of: number, string, boolean, select",
-      });
+      throw new Error(
+        "dataType must be one of: number, string, boolean, select"
+      );
     }
 
-    // Verify admin access to class
-    await Classroom.validateAdminAccess(
-      classroomId,
-      clerkUserId,
-      organizationId
-    );
+    // Handle storeType definitions (organization-scoped, not classroom-scoped)
+    const isStoreTypeDefinition = appliesTo === "storeType";
+    const finalClassroomId = isStoreTypeDefinition ? null : classroomId;
+
+    // Verify admin access to class (only for classroom-scoped definitions)
+    if (!isStoreTypeDefinition) {
+      if (!classroomId) {
+        return res.status(400).json({
+          error:
+            "classroomId is required for store, scenario, and submission definitions",
+        });
+      }
+      await Classroom.validateAdminAccess(
+        classroomId,
+        clerkUserId,
+        organizationId
+      );
+    }
 
     // Create definition using static method
     const definition = await VariableDefinition.createDefinition(
-      classroomId,
+      finalClassroomId,
       {
         key,
         label,
@@ -247,18 +255,25 @@ exports.getVariableDefinitions = async function (req, res) {
       }
     }
 
-    let definitions;
-
+    const query = {
+      organization: organizationId,
+    };
     if (appliesTo) {
-      // Get definitions for specific scope
-      definitions = await VariableDefinition.getDefinitionsForScope(
-        classroomId,
-        appliesTo
-      );
-    } else {
-      // Get all definitions for class
-      definitions = await VariableDefinition.getDefinitionsByClass(classroomId);
+      query.appliesTo = appliesTo;
     }
+    if (classroomId) {
+      // Find definitions where classroomId matches the provided value OR is null
+      // This allows returning both classroom-scoped and organization-scoped definitions
+      query.$or = [
+        { classroomId: classroomId },
+        { classroomId: null },
+        { classroomId: { $exists: false } },
+      ];
+    } else {
+      // If no classroomId provided, only return organization-scoped (null) definitions
+      query.classroomId = null;
+    }
+    const definitions = await VariableDefinition.find(query).sort({ label: 1 });
 
     res.json({
       success: true,

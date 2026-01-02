@@ -2,6 +2,13 @@ const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 
 const variableDefinitionSchema = new mongoose.Schema({
+  classroomId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Classroom",
+    required: false, // Optional - null for organization-scoped storeType definitions
+    default: null,
+    index: true,
+  },
   key: {
     type: String,
     required: true,
@@ -17,14 +24,8 @@ const variableDefinitionSchema = new mongoose.Schema({
   },
   appliesTo: {
     type: String,
-    enum: ["store", "scenario", "submission"],
+    enum: ["store", "scenario", "submission", "storeType"],
     required: true,
-    index: true,
-  },
-  classroomId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Classroom",
-    default: null,
     index: true,
   },
   dataType: {
@@ -79,10 +80,28 @@ const variableDefinitionSchema = new mongoose.Schema({
 }).add(baseSchema);
 
 // Compound indexes for performance
-variableDefinitionSchema.index({ classroomId: 1, key: 1 }, { unique: true });
+// For classroom-scoped definitions: unique on classroomId + key
+variableDefinitionSchema.index(
+  { classroomId: 1, key: 1 },
+  {
+    unique: true,
+    sparse: true,
+    partialFilterExpression: { classroomId: { $ne: null } },
+  }
+);
+// For organization-scoped storeType definitions: unique on organization + appliesTo + key (where classroomId is null)
+variableDefinitionSchema.index(
+  { organization: 1, appliesTo: 1, key: 1 },
+  {
+    unique: true,
+    sparse: true,
+    partialFilterExpression: { classroomId: null, appliesTo: "storeType" },
+  }
+);
 variableDefinitionSchema.index({ classroomId: 1, appliesTo: 1 });
 variableDefinitionSchema.index({ classroomId: 1, isActive: 1 });
 variableDefinitionSchema.index({ organization: 1, classroomId: 1 });
+variableDefinitionSchema.index({ organization: 1, appliesTo: 1 }); // For organization-scoped storeType definitions
 
 // Static methods - Shared utilities for variable definition operations
 
@@ -95,16 +114,40 @@ variableDefinitionSchema.index({ organization: 1, classroomId: 1 });
  * @returns {Promise<Object>} Created variable definition
  */
 variableDefinitionSchema.statics.createDefinition = async function (
-  classroomId,
+  classroomId, // Can be null for organization-scoped storeType definitions
   payload,
   organizationId,
   clerkUserId
 ) {
-  // Check if key already exists for this class
-  const existing = await this.findOne({ classroomId, key: payload.key });
-  if (existing) {
+  // Validate classroomId requirement based on appliesTo
+  if (payload.appliesTo !== "storeType" && !classroomId) {
     throw new Error(
-      `Variable definition with key "${payload.key}" already exists for this class`
+      "classroomId is required for store, scenario, and submission definitions"
+    );
+  }
+
+  if (payload.appliesTo === "storeType" && classroomId !== null) {
+    throw new Error("classroomId must be null for storeType definitions");
+  }
+
+  // Check uniqueness - different logic for organization vs classroom scope
+  const existing =
+    payload.appliesTo === "storeType"
+      ? await this.findOne({
+          organization: organizationId,
+          appliesTo: "storeType",
+          classroomId: null,
+          key: payload.key,
+        })
+      : await this.findOne({
+          classroomId,
+          key: payload.key,
+        });
+
+  if (existing) {
+    const scope = payload.appliesTo === "storeType" ? "organization" : "class";
+    throw new Error(
+      `Variable definition with key "${payload.key}" already exists for this ${scope}`
     );
   }
 
@@ -152,7 +195,7 @@ variableDefinitionSchema.statics.createDefinition = async function (
   }
 
   const definition = new this({
-    classroomId,
+    classroomId: payload.appliesTo === "storeType" ? null : classroomId,
     key: payload.key,
     label: payload.label,
     description: payload.description || "",
@@ -181,17 +224,35 @@ variableDefinitionSchema.statics.createDefinition = async function (
 
 /**
  * Get variable definitions for a specific scope
- * @param {string} classroomId - Class ID
- * @param {string} appliesTo - Scope ("store", "scenario", "submission")
- * @param {Object} options - Options (includeInactive)
+ * @param {string|null} classroomId - Class ID (null for organization-scoped storeType definitions)
+ * @param {string} appliesTo - Scope ("store", "scenario", "submission", "storeType")
+ * @param {Object} options - Options (includeInactive, organizationId for storeType)
  * @returns {Promise<Array>} Array of variable definitions
  */
 variableDefinitionSchema.statics.getDefinitionsForScope = async function (
-  classroomId,
+  classroomId, // Can be null for storeType
   appliesTo,
   options = {}
 ) {
-  const query = { classroomId, appliesTo, isActive: true };
+  const query = { appliesTo, isActive: true };
+
+  if (appliesTo === "storeType") {
+    // For storeType, query by organization and null classroomId
+    if (!options.organizationId) {
+      throw new Error("organizationId is required for storeType definitions");
+    }
+    query.organization = options.organizationId;
+    query.classroomId = null;
+  } else {
+    // For other scopes, require classroomId
+    if (!classroomId) {
+      throw new Error(
+        "classroomId is required for store, scenario, and submission definitions"
+      );
+    }
+    query.classroomId = classroomId;
+  }
+
   if (options.includeInactive) {
     delete query.isActive;
   }
@@ -221,16 +282,22 @@ variableDefinitionSchema.statics.getDefinitionsByClass = async function (
 
 /**
  * Validate values against definitions
- * @param {string} classroomId - Class ID
+ * @param {string} classroomId - Class ID (required for store/scenario/submission)
  * @param {string} appliesTo - Scope ("store", "scenario", "submission")
  * @param {Object} valuesObject - Values to validate
  * @returns {Promise<Object>} Validation result with errors array
+ * @note This method is for classroom-scoped entities only, not storeType
  */
 variableDefinitionSchema.statics.validateValues = async function (
   classroomId,
   appliesTo,
   valuesObject
 ) {
+  if (appliesTo === "storeType") {
+    throw new Error(
+      "validateValues is not supported for storeType. Use organization-scoped validation instead."
+    );
+  }
   const definitions = await this.getDefinitionsForScope(classroomId, appliesTo);
   const errors = [];
 
@@ -333,16 +400,22 @@ variableDefinitionSchema.statics.validateValues = async function (
 
 /**
  * Apply default values to an object based on definitions
- * @param {string} classroomId - Class ID
+ * @param {string} classroomId - Class ID (required for store/scenario/submission)
  * @param {string} appliesTo - Scope ("store", "scenario", "submission")
  * @param {Object} valuesObject - Values object to apply defaults to
  * @returns {Promise<Object>} Values object with defaults applied
+ * @note This method is for classroom-scoped entities only, not storeType
  */
 variableDefinitionSchema.statics.applyDefaults = async function (
   classroomId,
   appliesTo,
   valuesObject
 ) {
+  if (appliesTo === "storeType") {
+    throw new Error(
+      "applyDefaults is not supported for storeType. Use organization-scoped defaults instead."
+    );
+  }
   const definitions = await this.getDefinitionsForScope(classroomId, appliesTo);
   const result = { ...valuesObject };
 
@@ -367,15 +440,62 @@ variableDefinitionSchema.statics.applyDefaults = async function (
 
 /**
  * Get variable definition by key
- * @param {string} classroomId - Class ID
+ * @param {string|null} classroomId - Class ID (null for organization-scoped storeType definitions)
  * @param {string} key - Variable key
+ * @param {Object} options - Options (organizationId for storeType, appliesTo)
  * @returns {Promise<Object|null>} Variable definition or null
  */
 variableDefinitionSchema.statics.getDefinitionByKey = async function (
-  classroomId,
-  key
+  classroomId, // Can be null for storeType
+  key,
+  options = {}
 ) {
-  return await this.findOne({ classroomId, key, isActive: true });
+  const query = { key, isActive: true };
+
+  if (options.appliesTo === "storeType") {
+    if (!options.organizationId) {
+      throw new Error("organizationId is required for storeType definitions");
+    }
+    query.organization = options.organizationId;
+    query.appliesTo = "storeType";
+    query.classroomId = null;
+  } else {
+    if (!classroomId) {
+      throw new Error(
+        "classroomId is required for store, scenario, and submission definitions"
+      );
+    }
+    query.classroomId = classroomId;
+    if (options.appliesTo) {
+      query.appliesTo = options.appliesTo;
+    }
+  }
+
+  return await this.findOne(query);
+};
+
+/**
+ * Get variable definitions for organization-scoped storeType
+ * @param {string} organizationId - Organization ID
+ * @param {Object} options - Options (includeInactive)
+ * @returns {Promise<Array>} Array of variable definitions
+ */
+variableDefinitionSchema.statics.getStoreTypeDefinitions = async function (
+  organizationId,
+  options = {}
+) {
+  const query = {
+    organization: organizationId,
+    appliesTo: "storeType",
+    classroomId: null,
+    isActive: true,
+  };
+  if (options.includeInactive) {
+    delete query.isActive;
+  }
+
+  const definitions = await this.find(query).sort({ label: 1 });
+  return definitions;
 };
 
 // Instance methods

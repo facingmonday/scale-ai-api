@@ -1,5 +1,6 @@
 const Member = require("../../members/member.model");
 const Organization = require("../../organizations/organization.model");
+const StoreType = require("../../storeType/storeType.model");
 
 // Helper function to convert Clerk user to Member data
 const convertClerkUserToMemberData = (clerkUser) => {

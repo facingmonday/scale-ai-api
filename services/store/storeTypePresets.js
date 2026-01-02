@@ -2,9 +2,10 @@
  * Store Type Presets
  *
  * These presets define default variable values for each store type.
- * They are used only during store creation to populate initial values.
+ * They are used for seeding initial templates when organizations are created.
  *
- * Presets do not lock or constrain future edits unless enforced elsewhere.
+ * NOTE: In production, store templates are stored in the database and are
+ * organization-specific. This file provides the default seed data.
  */
 // Supply-chain defaults (Plan / Source / Make / Deliver)
 

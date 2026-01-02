@@ -139,8 +139,8 @@ function fillMissingWithDefaults(definitions, values) {
  *
  * @param {Object} params
  * @param {string} params.classroomId
- * @param {string} params.storeType
- * @param {Object} params.storePreset
+ * @param {string} params.storeTypeKey
+ * @param {Object} [params.storeTypeVariables]
  * @param {Object} params.scenario
  * @param {string} params.organizationId
  * @param {string} params.clerkUserId
@@ -149,8 +149,8 @@ function fillMissingWithDefaults(definitions, values) {
  */
 async function generateSubmissionVariablesForStoreType({
   classroomId,
-  storeType,
-  storePreset,
+  storeTypeKey,
+  storeTypeVariables,
   scenario,
   organizationId,
   clerkUserId,
@@ -169,15 +169,15 @@ async function generateSubmissionVariablesForStoreType({
   const jsonSchema = buildJsonSchemaFromDefinitions(definitions);
 
   const promptPayload = {
-    storeType,
-    // include a small subset of preset signals (avoid huge payloads)
-    storePreset: storePreset
+    storeType: storeTypeKey,
+    // include a small subset of storeType signals (avoid huge payloads)
+    storeTypeVariables: storeTypeVariables
       ? {
-          startingBalance: storePreset.startingBalance,
-          startingInventory: storePreset.startingInventory,
-          maxDailyCapacity: storePreset.maxDailyCapacity,
-          weeklyRent: storePreset.weeklyRent,
-          fulfillmentModel: storePreset.fulfillmentModel,
+          startingBalance: storeTypeVariables.startingBalance,
+          startingInventory: storeTypeVariables.startingInventory,
+          maxDailyCapacity: storeTypeVariables.maxDailyCapacity,
+          weeklyRent: storeTypeVariables.weeklyRent,
+          fulfillmentModel: storeTypeVariables.fulfillmentModel,
         }
       : null,
     scenario: scenario

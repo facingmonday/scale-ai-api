@@ -10,6 +10,7 @@ A classroom-based supply chain simulation platform built with Node.js, Express, 
 - [Project Structure](#project-structure)
 - [Services & Models](#services--models)
 - [API Routes](#api-routes)
+- [Store Types & Stores](#store-types--stores)
 - [Authentication](#authentication)
 - [Setup & Development](#setup--development)
 - [Deployment](#deployment)
@@ -104,8 +105,10 @@ scale-ai-api/
 
 #### Store Service
 
-- **Models**: `Store`, `VariableValue`
+- **Models**: `Store`, `StoreType`, `VariableValue`
 - **Purpose**: Manages student business setup (one store per student per class)
+- **Store Types**: Organization-scoped templates that define default variable values
+- **Stores**: Classroom-scoped student instances created from store types
 
 #### VariableDefinition Service
 
@@ -344,13 +347,15 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 
 - **Auth**: `requireMemberAuth()`
 - **Description**: Create store for authenticated student
-- **Body**: `{ classroomId, shopName, storeType, dailyCapacity, deliveryRatio, startingBalance?, variables? }`
+- **Body**: `{ classroomId, shopName, storeDescription, storeLocation, storeType (ObjectId), variables? }`
+- **See**: [Store Types & Stores](#store-types--stores) section for detailed documentation
 
 ##### `PUT /v1/student/store`
 
 - **Auth**: `requireMemberAuth()`
-- **Description**: Update student's store
-- **Query Params**: `classroomId` (required)
+- **Description**: Update or create (upsert) student's store
+- **Body**: `{ classroomId, shopName?, storeDescription?, storeLocation?, storeType? (ObjectId), variables? }`
+- **See**: [Store Types & Stores](#store-types--stores) section for detailed documentation
 
 ##### `GET /v1/student/store`
 
@@ -364,6 +369,599 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Get student's store (admin view)
+
+### StoreType Routes (`/v1/admin/store-types`)
+
+All routes require `requireAuth()` and `checkRole('org:admin')`.
+
+#### `GET /v1/admin/store-types`
+
+- **Description**: Get all store types for the organization
+
+#### `GET /v1/admin/store-types/:storeTypeId`
+
+- **Description**: Get a specific store type by ID
+
+#### `POST /v1/admin/store-types`
+
+- **Description**: Create a new store type
+- **Body**: `{ key, label, description?, variables? }`
+
+#### `PUT /v1/admin/store-types/:storeTypeId`
+
+- **Description**: Update a store type
+- **Body**: `{ label?, description?, variables? }`
+
+#### `DELETE /v1/admin/store-types/:storeTypeId`
+
+- **Description**: Soft delete a store type
+
+#### `POST /v1/admin/store-types/seed`
+
+- **Description**: Seed default store types for the organization
+
+**See**: [Store Types & Stores](#store-types--stores) section for detailed documentation.
+
+### StoreType Student Routes (`/v1/student/store-types`)
+
+#### `GET /v1/student/store-types`
+
+- **Auth**: `requireMemberAuth()`
+- **Description**: Get all active store types for a classroom (for students to select when creating a store)
+- **Query Params**: `classroomId` (required)
+- **Response**: Returns array of store types with their variables populated
+- **Note**: Only returns active store types (inactive ones are hidden from students)
+
+## Store Types & Stores
+
+This section explains how store types and stores work, how to define variables, and how to set values. This is essential for building the frontend UI for store configuration.
+
+### Overview
+
+**Store Types** are organization-scoped templates that define default variable values for different types of stores (e.g., "Food Truck", "Café", "Fine Dining"). Each organization can have its own set of store types with customizable default values.
+
+**Stores** are student-specific business instances created from store types. Each student can have one store per classroom, and stores inherit default values from their store type but can be customized.
+
+### Store Types (Organization-Level)
+
+Store types are **organization-scoped** templates that define:
+
+- **Basic Info**: `key` (unique identifier), `label` (display name), `description`
+- **Default Variables**: All variable values stored in the `VariableValue` collection with `appliesTo: "storeType"`
+
+#### Store Type API Endpoints
+
+##### Student Routes
+
+##### `GET /v1/student/store-types`
+
+Get all active store types for a classroom. Students use this to see available store types when creating their store.
+
+**Query Parameters:**
+
+- `classroomId` (required) - The classroom ID
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "_id": "storeTypeId",
+      "key": "food_truck",
+      "label": "Food Truck",
+      "description": "A scrappy, mobile kitchen...",
+      "variables": {
+        "startingBalance": 5000,
+        "startingInventory": 1000,
+        "weeklyRent": 200,
+        "maxDailyCapacity": 80,
+        "staffRequired": 2,
+        "weatherSensitivity": "high"
+        // ... other variables
+      },
+      "isActive": true,
+      "organization": "orgId",
+      "createdDate": "2024-01-01T00:00:00.000Z",
+      "updatedDate": "2024-01-01T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+**Note**: Only returns active store types (inactive ones are hidden from students).
+
+##### Admin Routes
+
+All admin routes require `requireAuth()` and `checkRole("org:admin")`.
+
+##### `GET /v1/admin/store-types`
+
+Get all store types for the organization.
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "_id": "storeTypeId",
+      "key": "food_truck",
+      "label": "Food Truck",
+      "description": "A scrappy, mobile kitchen...",
+      "variables": {
+        "startingBalance": 5000,
+        "startingInventory": 1000,
+        "weeklyRent": 200,
+        "maxDailyCapacity": 80,
+        "staffRequired": 2,
+        "weatherSensitivity": "high"
+        // ... other variables
+      },
+      "isActive": true,
+      "organization": "orgId",
+      "createdDate": "2024-01-01T00:00:00.000Z",
+      "updatedDate": "2024-01-01T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+##### `GET /v1/admin/store-types/:storeTypeId`
+
+Get a specific store type by ID.
+
+##### `POST /v1/admin/store-types`
+
+Create a new store type.
+
+**Request Body:**
+
+```json
+{
+  "key": "food_truck",
+  "label": "Food Truck",
+  "description": "A scrappy, mobile kitchen...",
+  "variables": {
+    "startingBalance": 5000,
+    "startingInventory": 1000,
+    "weeklyRent": 200,
+    "maxDailyCapacity": 80,
+    "staffRequired": 2,
+    "weatherSensitivity": "high"
+    // ... any other variables
+  }
+}
+```
+
+**Note**: The `variables` object can contain any key-value pairs. These are stored as `VariableValue` documents with `appliesTo: "storeType"`.
+
+##### `PUT /v1/admin/store-types/:storeTypeId`
+
+Update a store type. You can update `label`, `description`, and `variables`.
+
+**Request Body:**
+
+```json
+{
+  "label": "Updated Food Truck",
+  "description": "Updated description",
+  "variables": {
+    "startingBalance": 6000, // Updated value
+    "newVariable": "newValue" // New variable added
+    // Variables not included will be deleted
+  }
+}
+```
+
+**Important**: When updating `variables`, the entire object replaces the existing variables. Variables not included in the request will be deleted.
+
+##### `DELETE /v1/admin/store-types/:storeTypeId`
+
+Soft delete a store type (sets `isActive: false`).
+
+##### `POST /v1/admin/store-types/seed`
+
+**Deprecated / removed**: store type preset seeding is no longer supported. Create StoreTypes (and their variables) via the StoreType API/UI.
+
+#### Store Type Variables
+
+Store type variables are stored in the `VariableValue` collection with:
+
+- `appliesTo: "storeType"`
+- `ownerId: storeType._id`
+- `variableKey: "startingBalance"` (or any key)
+- `value: 5000` (the actual value)
+
+Variables are automatically included in the response via the `variablePopulationPlugin`, which adds a `variables` object to the store type when calling `toObject()` or `toJSON()`.
+
+### Stores (Student-Level)
+
+Stores are **classroom-scoped** and represent a student's business instance. Each student can have **one store per classroom**.
+
+#### Store Structure
+
+A store contains:
+
+- **Basic Info**: `shopName`, `storeDescription`, `storeLocation`
+- **Store Type Reference**: `storeType` (ObjectId reference to a `StoreType`)
+- **Variables**: Stored in `VariableValue` collection with `appliesTo: "store"`
+
+#### Store Variable Value Precedence
+
+When a store is created, variable values are determined in this order (highest to lowest priority):
+
+1. **Provided Values** - Values explicitly passed when creating/updating the store
+2. **Store Type Values** - Default values stored on the selected StoreType (via `VariableValue` with `appliesTo: "storeType"`)
+3. **Variable Definition Defaults** - Default values from `VariableDefinition`
+
+#### Store API Endpoints
+
+##### Student Routes
+
+All student routes require `requireMemberAuth()`.
+
+##### `POST /v1/student/store`
+
+Create a store for the authenticated student.
+
+**Request Body:**
+
+```json
+{
+  "classroomId": "classroomId",
+  "shopName": "Tony's Pizza",
+  "storeDescription": "Best pizza in town",
+  "storeLocation": "123 Main St",
+  "storeType": "storeTypeId", // ObjectId of the store type
+  "variables": {
+    "startingBalance": 6000, // Optional: override store type default
+    "customVariable": "value" // Optional: add custom variables
+  }
+}
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "message": "Store created successfully",
+  "data": {
+    "_id": "storeId",
+    "shopName": "Tony's Pizza",
+    "storeDescription": "Best pizza in town",
+    "storeLocation": "123 Main St",
+    "storeType": {
+      "_id": "storeTypeId",
+      "key": "food_truck",
+      "label": "Food Truck"
+    },
+    "storeTypeKey": "food_truck", // For backward compatibility
+    "storeTypeLabel": "Food Truck",
+    "variables": {
+      "startingBalance": 6000, // From provided values or store type
+      "startingInventory": 1000, // From store type
+      "weeklyRent": 200 // From store type
+      // ... all variables merged
+    },
+    "currentDetails": {
+      "cashAfter": 6000,
+      "inventoryAfter": 1000
+      // ... ledger summary
+    }
+  }
+}
+```
+
+##### `PUT /v1/student/store`
+
+Update or create (upsert) a store.
+
+**Request Body:** Same as `POST`, but `shopName`, `storeDescription`, `storeLocation`, and `storeType` are only required if creating a new store.
+
+**Note**: When updating `variables`, the entire object replaces existing variables. Variables not included will be deleted.
+
+##### `GET /v1/student/store?classroomId=classroomId`
+
+Get the authenticated student's store for a classroom.
+
+**Response:** Same format as `POST` response.
+
+##### Admin Routes
+
+All admin routes require `requireAuth()` and `checkRole("org:admin")`.
+
+##### `GET /v1/admin/class/:classroomId/store/:userId`
+
+Get a specific student's store (admin view).
+
+### Variable Definitions for Stores
+
+Variable definitions define the structure and validation rules for store variables. They are **classroom-scoped** and apply to all stores in that classroom.
+
+#### Creating Variable Definitions
+
+Use the VariableDefinition API to create definitions:
+
+##### `POST /v1/admin/variables`
+
+Create a variable definition for stores.
+
+**Request Body:**
+
+```json
+{
+  "classroomId": "classroomId",
+  "key": "startingBalance",
+  "label": "Starting Balance",
+  "description": "Initial cash available to the business",
+  "appliesTo": "store", // Must be "store" for store variables
+  "dataType": "number",
+  "inputType": "number", // or "slider"
+  "defaultValue": 5000,
+  "min": 0,
+  "max": 100000,
+  "required": true,
+  "affectsCalculation": true
+}
+```
+
+**Field Descriptions:**
+
+- `key` - Unique identifier (used in `variables` object)
+- `label` - Display name for UI
+- `description` - Help text/tooltip
+- `appliesTo` - Must be `"store"` for store variables
+- `dataType` - `"number"`, `"string"`, `"boolean"`, or `"select"`
+- `inputType` - UI input type: `"text"`, `"number"`, `"slider"`, `"dropdown"`, `"checkbox"`, `"switch"`, etc.
+- `defaultValue` - Default value if not provided
+- `min`/`max` - Validation constraints (for numbers)
+- `required` - Whether field is required
+- `affectsCalculation` - Whether this variable affects AI calculations
+
+**Valid `dataType` and `inputType` combinations:**
+
+- `dataType: "number"` → `inputType: "number"` or `"slider"`
+- `dataType: "string"` → `inputType: "text"` or `"dropdown"`
+- `dataType: "boolean"` → `inputType: "checkbox"` or `"switch"`
+- `dataType: "select"` → `inputType: "dropdown"` (requires `options` array)
+
+##### `GET /v1/admin/variables?classroomId=classroomId&appliesTo=store`
+
+Get all variable definitions for stores in a classroom.
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "_id": "defId",
+      "key": "startingBalance",
+      "label": "Starting Balance",
+      "description": "Initial cash available",
+      "appliesTo": "store",
+      "dataType": "number",
+      "inputType": "number",
+      "defaultValue": 5000,
+      "min": 0,
+      "max": 100000,
+      "required": true,
+      "affectsCalculation": true,
+      "isActive": true
+    }
+  ]
+}
+```
+
+### Frontend Implementation Guide
+
+#### 1. Store Type Configuration UI (Admin)
+
+**Step 1: Fetch Store Types**
+
+```javascript
+GET / v1 / admin / store - types;
+// Returns list of all store types with their variables
+```
+
+**Step 2: Display Store Types List**
+
+- Show `label` and `description` for each store type
+- Display `variables` object (can be shown as key-value pairs or in a structured form)
+
+**Step 3: Create/Edit Store Type**
+
+- Form fields: `key`, `label`, `description`
+- Dynamic variables editor:
+  - Allow adding/editing/removing variable key-value pairs
+  - Variables can be any JSON-serializable values (numbers, strings, booleans, arrays, objects)
+  - Store as `variables` object in request body
+
+**Step 4: Delete Store Type**
+
+- Call `DELETE /v1/admin/store-types/:storeTypeId`
+- Note: This is a soft delete (`isActive: false`)
+
+#### 2. Store Creation UI (Student)
+
+**Step 1: Fetch Available Store Types**
+
+```javascript
+GET /v1/student/store-types?classroomId={classroomId}
+// Note: Students might need a different endpoint or filtered view
+```
+
+**Step 2: Fetch Variable Definitions**
+
+```javascript
+GET /v1/admin/variables?classroomId={classroomId}&appliesTo=store
+// Returns all variable definitions for stores in this classroom
+```
+
+**Step 3: Display Store Creation Form**
+
+1. **Basic Fields:**
+   - `shopName` (text input)
+   - `storeDescription` (textarea)
+   - `storeLocation` (text input)
+   - `storeType` (dropdown/select from available store types)
+
+2. **Dynamic Variables Form:**
+   - When a store type is selected, fetch its variables
+   - For each variable definition:
+     - If variable exists in store type's `variables`, use that as default
+     - Otherwise, use `defaultValue` from variable definition
+     - Render appropriate input based on `inputType`:
+       - `number` → number input with min/max
+       - `slider` → range slider
+       - `text` → text input
+       - `dropdown` → select dropdown (use `options` from definition)
+       - `checkbox`/`switch` → checkbox/switch
+   - Allow students to override defaults
+
+**Step 4: Submit Store Creation**
+
+```javascript
+POST /v1/student/store
+{
+  "classroomId": "...",
+  "shopName": "...",
+  "storeDescription": "...",
+  "storeLocation": "...",
+  "storeType": "storeTypeId",
+  "variables": {
+    "startingBalance": 6000,  // Override store type default
+    "customVar": "value"      // Custom variable
+  }
+}
+```
+
+#### 3. Store Edit UI (Student)
+
+**Step 1: Fetch Current Store**
+
+```javascript
+GET /v1/student/store?classroomId={classroomId}
+```
+
+**Step 2: Display Edit Form**
+
+- Pre-populate with current store values
+- Show store type info (read-only, can't change after creation)
+- Allow editing `shopName`, `storeDescription`, `storeLocation`
+- Allow editing `variables` (same dynamic form as creation)
+
+**Step 3: Submit Updates**
+
+```javascript
+PUT /v1/student/store
+{
+  "classroomId": "...",
+  "shopName": "Updated Name",
+  "variables": {
+    // Include ALL variables you want to keep
+    // Variables not included will be deleted
+  }
+}
+```
+
+#### 4. Variable Definition Management UI (Admin)
+
+**Step 1: Fetch Definitions**
+
+```javascript
+GET /v1/admin/variables?classroomId={classroomId}&appliesTo=store
+```
+
+**Step 2: Create Definition Form**
+
+- Fields: `key`, `label`, `description`, `dataType`, `inputType`, `defaultValue`, `min`, `max`, `required`, `affectsCalculation`
+- If `dataType: "select"` or `inputType: "dropdown"`, show `options` array editor
+- Validate `dataType`/`inputType` compatibility
+
+**Step 3: Update Definition**
+
+```javascript
+PUT /v1/admin/variables/:key?classroomId={classroomId}
+// Can update all fields except `key` (immutable)
+```
+
+**Step 4: Delete Definition**
+
+```javascript
+DELETE /v1/admin/variables/:key?classroomId={classroomId}
+// Soft delete (sets isActive: false)
+```
+
+### Key Concepts for Frontend Developers
+
+1. **Store Types are Organization-Scoped**: Each organization has its own set of store types. They're not shared across organizations.
+
+2. **Stores are Classroom-Scoped**: Each student has one store per classroom. Store variables are specific to that classroom's variable definitions.
+
+3. **Variable Value Merging**: When creating a store, values are merged from:
+   - Provided values (highest priority)
+   - Store type defaults
+   - Variable definition defaults (lowest priority)
+
+4. **Variables are Dynamic**: The `variables` object can contain any key-value pairs. The structure is defined by variable definitions, but values can be any JSON-serializable data.
+
+5. **Variable Updates Replace All**: When updating `variables` in a store or store type, the entire object replaces existing variables. Variables not included are deleted.
+
+6. **Store Type Variables vs Store Variables**:
+   - Store type variables (`appliesTo: "storeType"`) are defaults/templates
+   - Store variables (`appliesTo: "store"`) are actual values for a student's store
+   - Store variables inherit from store type variables when the store is created
+
+7. **Variable Definitions Define Structure**: Variable definitions (`appliesTo: "store"`) define what variables are available, their types, validation rules, and UI hints. They don't store values.
+
+### Example: Complete Store Creation Flow
+
+```javascript
+// 1. Fetch store types (for dropdown)
+const storeTypes = await fetch(
+  `/v1/student/store-types?classroomId=${classroomId}`
+);
+// Returns: [{ _id: "...", key: "food_truck", label: "Food Truck", variables: {...} }]
+// Note: Only returns active store types
+
+// 2. Fetch variable definitions (for form structure)
+const definitions = await fetch(
+  "/v1/admin/variables?classroomId=xxx&appliesTo=store"
+);
+// Returns: [{ key: "startingBalance", label: "Starting Balance", dataType: "number", ... }]
+
+// 3. User selects store type "food_truck"
+const selectedStoreType = storeTypes.find((st) => st.key === "food_truck");
+
+// 4. Build form with:
+//    - Basic fields (shopName, etc.)
+//    - For each definition, use:
+//      - selectedStoreType.variables[def.key] as default (if exists)
+//      - OR def.defaultValue
+//    - Render input based on def.inputType
+
+// 5. User fills form and submits
+await fetch("/v1/student/store", {
+  method: "POST",
+  body: JSON.stringify({
+    classroomId: "xxx",
+    shopName: "Tony's Pizza",
+    storeDescription: "...",
+    storeLocation: "...",
+    storeType: selectedStoreType._id,
+    variables: {
+      startingBalance: 6000, // User overrode default of 5000
+      // ... other variables from form
+    },
+  }),
+});
+```
 
 ### VariableDefinition Routes (`/v1/admin/variables`)
 
@@ -389,7 +987,7 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Delete variable definition (soft delete)
-- **Query Params**: `classroomId` (required)
+- **Query Params**: `classroomId` (required)`
 
 ### Scenario Routes (`/v1/admin/scenarios` and `/v1/student/scenarios`)
 

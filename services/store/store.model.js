@@ -3,11 +3,7 @@ const baseSchema = require("../../lib/baseSchema");
 const VariableValue = require("../variableDefinition/variableValue.model");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
 const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
-const {
-  getPreset,
-  isValidStoreType,
-  getAvailableStoreTypes,
-} = require("./storeTypePresets");
+const StoreType = require("../storeType/storeType.model");
 const LedgerEntry = require("../ledger/ledger.model");
 
 const storeSchema = new mongoose.Schema({
@@ -38,20 +34,8 @@ const storeSchema = new mongoose.Schema({
     required: false,
   },
   storeType: {
-    type: String,
-    enum: [
-      "street_cart",
-      "food_truck",
-      "campus_kiosk",
-      "cafe",
-      "ghost_kitchen",
-      "bar_and_grill",
-      "franchise_location",
-      "upscale_bistro",
-      "fine_dining",
-      "late_night_window",
-      "festival_vendor",
-    ],
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "StoreType",
     required: true,
   },
 }).add(baseSchema);
@@ -99,11 +83,32 @@ storeSchema.statics._createInitialLedgerEntry = async function (
       return;
     }
 
-    // Get starting balance and inventory from storeType preset
-    // This is more reliable than loading variables, and ensures consistency
-    const preset = getPreset(store.storeType);
-    const startingBalance = preset.startingBalance || 0;
-    const startingInventory = preset.startingInventory || 0;
+    // Get starting balance and inventory from storeType variables
+    // StoreType variables are stored as VariableValue(appliesTo="storeType", ownerId=storeTypeId)
+    const storeTypeDoc = await StoreType.findById(store.storeType);
+    if (!storeTypeDoc) {
+      throw new Error("Store type not found");
+    }
+    await storeTypeDoc._loadVariables();
+    const storeTypeVars =
+      storeTypeDoc.variables &&
+      typeof storeTypeDoc.variables === "object" &&
+      !Array.isArray(storeTypeDoc.variables)
+        ? storeTypeDoc.variables
+        : {};
+    const startingBalance = storeTypeVars.startingBalance || 0;
+    const startingInventory =
+      storeTypeVars.startingInventory !== undefined &&
+      storeTypeVars.startingInventory !== null
+        ? storeTypeVars.startingInventory
+        : {
+            refrigeratedUnits:
+              Number(storeTypeVars.startingInventoryRefrigeratedUnits) || 0,
+            ambientUnits:
+              Number(storeTypeVars.startingInventoryAmbientUnits) || 0,
+            notForResaleUnits:
+              Number(storeTypeVars.startingInventoryNotForResaleUnits) || 0,
+          };
 
     // Handle both number (legacy) and object (new bucket-based) formats for startingInventory
     let initialInventoryState;
@@ -183,16 +188,26 @@ storeSchema.statics.createStore = async function (
     throw new Error("Store already exists for this user in this class");
   }
 
-  // Validate storeType
-  const { storeType, variables: providedVariables, ...storeFields } = storeData;
+  // Validate storeType (should be ObjectId)
+  const {
+    storeType,
+    variables: providedVariables,
+    imageUrl,
+    ...storeFields
+  } = storeData;
 
   if (!storeType) {
     throw new Error("storeType is required");
   }
 
-  if (!isValidStoreType(storeType)) {
+  // Validate storeType exists and belongs to organization
+  const storeTypeDoc = await StoreType.getStoreTypeById(
+    organizationId,
+    storeType
+  );
+  if (!storeTypeDoc) {
     throw new Error(
-      `Invalid storeType: ${storeType}. Must be one of: ${getAvailableStoreTypes().join(", ")}`
+      "Invalid storeType: Store type not found or does not belong to this organization"
     );
   }
 
@@ -208,7 +223,7 @@ storeSchema.statics.createStore = async function (
     shopName: storeFields.shopName,
     storeDescription: storeFields.storeDescription,
     storeLocation: storeFields.storeLocation,
-    storeType,
+    storeType: storeTypeDoc._id,
     imageUrl: imageUrl || null,
     organization: organizationId,
     createdBy: clerkUserId,
@@ -269,7 +284,9 @@ storeSchema.statics.createStore = async function (
  * @returns {Promise<Object|null>} Store with variables or null
  */
 storeSchema.statics.getStoreByUser = async function (classroomId, userId) {
-  const store = await this.findOne({ classroomId, userId });
+  const store = await this.findOne({ classroomId, userId }).populate(
+    "storeType"
+  );
 
   if (!store) {
     return null;
@@ -277,6 +294,15 @@ storeSchema.statics.getStoreByUser = async function (classroomId, userId) {
   // Explicitly load variables before calling toObject()
   // The post-init hook is async and may not complete before toObject() is called
   await store._loadVariables();
+
+  // Load storeType variables if storeType is populated
+  if (
+    store.storeType &&
+    typeof store.storeType === "object" &&
+    store.storeType._id
+  ) {
+    await store.storeType._loadVariables();
+  }
 
   // Get current ledger summary details
   const currentDetails = await LedgerEntry.getLedgerSummary(
@@ -286,6 +312,13 @@ storeSchema.statics.getStoreByUser = async function (classroomId, userId) {
 
   // Variables are automatically included via plugin's toObject() override
   const storeObj = store.toObject();
+
+  // Add storeType info for backward compatibility
+  if (storeObj.storeType && typeof storeObj.storeType === "object") {
+    storeObj.storeTypeKey = storeObj.storeType.key;
+    storeObj.storeTypeLabel = storeObj.storeType.label;
+    // storeType.variables should already be included via plugin's toObject()
+  }
 
   // Add currentDetails to the returned object (must be added after toObject() since it's not a schema field)
   storeObj.currentDetails = currentDetails;
@@ -331,25 +364,101 @@ storeSchema.statics.getStoreForSimulation = async function (
       ? store.variables
       : {};
 
-  // Merge store-type preset defaults in for any missing (null/undefined) variable values.
-  // Note: valueMap format intentionally includes ALL active definition keys, using null when no value exists.
-  // If we spread variablesObj directly, we'd overwrite preset defaults with nulls.
-  const { label, description, ...presetVars } = getPreset(store.storeType);
-  const mergedVariables = { ...presetVars };
-  Object.entries(variablesObj).forEach(([key, value]) => {
-    if (value !== null && value !== undefined) {
-      mergedVariables[key] = value;
-    }
+  const storeTypeVariables =
+    store.storeType?.variables &&
+    typeof store.storeType.variables === "object" &&
+    !Array.isArray(store.storeType.variables)
+      ? store.storeType.variables
+      : {};
+
+  // Merge storeType defaults with store overrides (store wins)
+  const mergedVariableValues = {
+    ...storeTypeVariables,
+    ...variablesObj,
+  };
+
+  // Build variable metadata (label/description) from definitions so the simulation context
+  // can include richer info for debugging/teaching: { key, label, description, value }
+  const organizationId =
+    store.organization?.toString?.() ||
+    store.storeType?.organization?.toString?.() ||
+    store.storeType?.organization ||
+    null;
+
+  // Backward-compat / normalization: if we have bucketed starting inventory keys but not
+  // the legacy startingInventory object, expose startingInventory as an object for code paths
+  // that still expect it (initial ledger + worker).
+  if (
+    (mergedVariableValues.startingInventory === undefined ||
+      mergedVariableValues.startingInventory === null) &&
+    (mergedVariableValues.startingInventoryRefrigeratedUnits !== undefined ||
+      mergedVariableValues.startingInventoryAmbientUnits !== undefined ||
+      mergedVariableValues.startingInventoryNotForResaleUnits !== undefined)
+  ) {
+    mergedVariableValues.startingInventory = {
+      refrigeratedUnits:
+        Number(mergedVariableValues.startingInventoryRefrigeratedUnits) || 0,
+      ambientUnits:
+        Number(mergedVariableValues.startingInventoryAmbientUnits) || 0,
+      notForResaleUnits:
+        Number(mergedVariableValues.startingInventoryNotForResaleUnits) || 0,
+    };
+  }
+
+  const [storeDefs, storeTypeDefs] = await Promise.all([
+    VariableDefinition.getDefinitionsForScope(classroomId, "store"),
+    organizationId
+      ? VariableDefinition.getDefinitionsForScope(null, "storeType", {
+          organizationId,
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const metaByKey = new Map();
+  // Start with storeType definitions, then let store definitions override if same key exists.
+  (storeTypeDefs || []).forEach((def) => {
+    metaByKey.set(def.key, {
+      label: def.label,
+      description: def.description || "",
+    });
+  });
+  (storeDefs || []).forEach((def) => {
+    metaByKey.set(def.key, {
+      label: def.label,
+      description: def.description || "",
+    });
   });
 
+  // mergedVariables = { [variableKey]: { key, label, description, value } }
+  const mergedVariables = {};
+  Object.entries(mergedVariableValues).forEach(([key, value]) => {
+    const meta = metaByKey.get(key);
+    mergedVariables[key] = {
+      key,
+      label: meta?.label || key,
+      description: meta?.description || "",
+      value,
+    };
+  });
+
+  // Get storeType key for backward compatibility
+  // storeType should already be populated by getStoreByUser
+  const storeTypeKey = store.storeTypeKey || store.storeType?.key || null;
+  const storeTypeId =
+    store.storeType?._id?.toString() || store.storeType?.toString() || null;
+
   // Return normalized object for AI simulation
-  // Flatten store data: include storeType and variables directly
+  // Flatten store data: include storeType key and variables directly
   return {
     shopName: store.shopName,
-    storeType: store.storeType,
+    storeType: storeTypeKey, // Return key for compatibility
+    storeTypeId: storeTypeId, // Also include ID
     storeDescription: store.storeDescription,
     storeLocation: store.storeLocation,
-    ...mergedVariables,
+    // Flat values at top-level (backward compatibility + easiest for AI)
+    ...mergedVariableValues,
+    // Rich metadata map for debugging/teaching/inspection
+    variablesDetailed: mergedVariables,
   };
 };
 
@@ -359,13 +468,52 @@ storeSchema.statics.getStoreForSimulation = async function (
  * @returns {Promise<Array>} Array of stores with variables
  */
 storeSchema.statics.getStoresByClass = async function (classroomId) {
-  const stores = await this.find({ classroomId });
+  const stores = await this.find({ classroomId }).populate("storeType");
 
-  // Use plugin's efficient batch population
+  // Use plugin's efficient batch population for store variables
   await this.populateVariablesForMany(stores);
 
+  // Load variables for all populated storeTypes
+  const storeTypes = stores
+    .map((store) => store.storeType)
+    .filter((st) => st && typeof st === "object" && st._id);
+
+  if (storeTypes.length > 0) {
+    // Batch load variables for all storeTypes efficiently
+    const storeTypeIds = storeTypes.map((st) => st._id);
+    const allStoreTypeVariables = await VariableValue.find({
+      appliesTo: "storeType",
+      ownerId: { $in: storeTypeIds },
+    });
+
+    // Group variables by storeType ownerId
+    const variablesByStoreType = {};
+    allStoreTypeVariables.forEach((v) => {
+      const ownerId = v.ownerId.toString();
+      if (!variablesByStoreType[ownerId]) {
+        variablesByStoreType[ownerId] = {};
+      }
+      variablesByStoreType[ownerId][v.variableKey] = v.value;
+    });
+
+    // Assign variables to each storeType
+    storeTypes.forEach((storeType) => {
+      const ownerId = storeType._id.toString();
+      storeType._storeTypeVariables = variablesByStoreType[ownerId] || {};
+    });
+  }
+
   // Variables are automatically included via plugin
-  return stores.map((store) => store.toObject());
+  return stores.map((store) => {
+    const storeObj = store.toObject();
+    // Add storeType info for backward compatibility
+    if (storeObj.storeType && typeof storeObj.storeType === "object") {
+      storeObj.storeTypeKey = storeObj.storeType.key;
+      storeObj.storeTypeLabel = storeObj.storeType.label;
+      // storeType.variables should already be included via plugin's toObject()
+    }
+    return storeObj;
+  });
 };
 
 /**
@@ -401,9 +549,14 @@ storeSchema.statics.updateStore = async function (
       throw new Error("storeType is required when creating a new store");
     }
 
-    if (!isValidStoreType(storeType)) {
+    // Validate storeType exists and belongs to organization
+    const storeTypeDoc = await StoreType.getStoreTypeById(
+      organizationId,
+      storeType
+    );
+    if (!storeTypeDoc) {
       throw new Error(
-        `Invalid storeType: ${storeType}. Must be one of: ${getAvailableStoreTypes().join(", ")}`
+        "Invalid storeType: Store type not found or does not belong to this organization"
       );
     }
 
@@ -419,7 +572,7 @@ storeSchema.statics.updateStore = async function (
       shopName: storeFields.shopName,
       storeDescription: storeFields.storeDescription,
       storeLocation: storeFields.storeLocation,
-      storeType,
+      storeType: storeTypeDoc._id, // Use store type ObjectId
       imageUrl: imageUrl || null,
       organization: organizationId,
       createdBy: clerkUserId,
@@ -478,13 +631,24 @@ storeSchema.statics.updateStore = async function (
     if (storeFields.storeLocation !== undefined) {
       store.storeLocation = storeFields.storeLocation;
     }
-    if (storeType !== undefined && store.storeType !== storeType) {
-      if (!isValidStoreType(storeType)) {
-        throw new Error(
-          `Invalid storeType: ${storeType}. Must be one of: ${getAvailableStoreTypes().join(", ")}`
+    if (storeType !== undefined) {
+      // Convert to ObjectId for comparison
+      const currentStoreTypeId = store.storeType?.toString();
+      const newStoreTypeId = storeType.toString();
+
+      if (currentStoreTypeId !== newStoreTypeId) {
+        // Validate storeType exists and belongs to organization
+        const storeTypeDoc = await StoreType.getStoreTypeById(
+          organizationId,
+          storeType
         );
+        if (!storeTypeDoc) {
+          throw new Error(
+            "Invalid storeType: Store type not found or does not belong to this organization"
+          );
+        }
+        store.storeType = storeTypeDoc._id;
       }
-      store.storeType = storeType;
     }
     if (imageUrl !== undefined) {
       store.imageUrl = imageUrl || null;
@@ -519,10 +683,6 @@ storeSchema.statics.updateStore = async function (
         await VariableValue.deleteOne({ _id: existingVar._id });
       }
     }
-
-    // Note: Presets are NOT persisted here. They're merged at read time
-    // (e.g., in getStoreForSimulation) to avoid data duplication and allow
-    // preset updates without affecting existing stores.
 
     store.updatedBy = clerkUserId;
     await store.save();
