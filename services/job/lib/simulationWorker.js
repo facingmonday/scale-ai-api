@@ -193,7 +193,17 @@ class SimulationWorker {
     } else {
       // For initial entries, use starting inventory from store preset
       // Handle both number (legacy) and object (new bucket-based) formats
-      const startingInventory = store.startingInventory || 0;
+      const startingInventory =
+        store.startingInventory !== undefined &&
+        store.startingInventory !== null
+          ? store.startingInventory
+          : {
+              refrigeratedUnits:
+                Number(store.startingInventoryRefrigeratedUnits) || 0,
+              ambientUnits: Number(store.startingInventoryAmbientUnits) || 0,
+              notForResaleUnits:
+                Number(store.startingInventoryNotForResaleUnits) || 0,
+            };
 
       // Normalize to object format
       if (

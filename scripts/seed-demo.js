@@ -59,6 +59,21 @@ function normalizeInventoryStateFromStartingInventory(startingInventory) {
   };
 }
 
+function normalizeInventoryStateFromStoreTypeVars(vars) {
+  if (!vars || typeof vars !== "object") {
+    return normalizeInventoryStateFromStartingInventory(0);
+  }
+  if (vars.startingInventory !== undefined && vars.startingInventory !== null) {
+    return normalizeInventoryStateFromStartingInventory(vars.startingInventory);
+  }
+  // Support bucketed keys
+  return {
+    refrigeratedUnits: Number(vars.startingInventoryRefrigeratedUnits) || 0,
+    ambientUnits: Number(vars.startingInventoryAmbientUnits) || 0,
+    notForResaleUnits: Number(vars.startingInventoryNotForResaleUnits) || 0,
+  };
+}
+
 function parseArgs(argv) {
   const args = {
     admin: null,
@@ -509,11 +524,8 @@ function buildSubmissionVariables(rng, storePreset, scenarioVars) {
 function computeLedgerFromVars({
   rng,
   cashBefore,
-<<<<<<< HEAD
-  inventoryState,
-=======
   inventoryBefore,
->>>>>>> develop
+  inventoryState,
   scenarioVars,
   submissionVars,
 }) {
@@ -577,18 +589,6 @@ function computeLedgerFromVars({
   const cashAfter = roundMoney(cashBefore + (revenue - costs));
   const netProfit = roundMoney(cashAfter - cashBefore);
 
-<<<<<<< HEAD
-=======
-  const inventoryAfter = Math.max(
-    0,
-    Math.round(
-      inventoryBefore +
-        submissionVars.inventoryOrder -
-        submissionVars.plannedProduction
-    )
-  );
-
->>>>>>> develop
   // Material flow by bucket (simplified for seed data)
   // Assume refrigerated is used for production, ambient/notForResaleDry are mostly static
   const refrigeratedUsed = Math.round(sales * 0.5); // Rough estimate: 50% of sales uses refrigerated
@@ -607,11 +607,7 @@ function computeLedgerFromVars({
   const ambientReceived = Math.round(submissionVars.inventoryOrder * 0.3);
   const ambientEnd = ambientBegin + ambientReceived; // Ambient doesn't get used in simplified model
 
-<<<<<<< HEAD
   const notForResaleDryBegin = inventoryState?.notForResaleUnits || 0;
-=======
-  const notForResaleDryBegin = Math.round(inventoryBefore * 0.2);
->>>>>>> develop
   const notForResaleDryReceived = Math.round(
     submissionVars.inventoryOrder * 0.2
   );
@@ -894,9 +890,7 @@ async function main() {
         clerkUserId: student.clerkUserId,
         storeTypeId: storeTypeId.toString(),
         cash: storeTypeVars.startingBalance || 0,
-        inventoryState: normalizeInventoryStateFromStartingInventory(
-          storeTypeVars.startingInventory || 0
-        ),
+        inventoryState: normalizeInventoryStateFromStoreTypeVars(storeTypeVars),
       });
       created.ledgerEntries += 1; // initial ledger entry created by Store.createStore
     }

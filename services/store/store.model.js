@@ -97,7 +97,18 @@ storeSchema.statics._createInitialLedgerEntry = async function (
         ? storeTypeDoc.variables
         : {};
     const startingBalance = storeTypeVars.startingBalance || 0;
-    const startingInventory = storeTypeVars.startingInventory || 0;
+    const startingInventory =
+      storeTypeVars.startingInventory !== undefined &&
+      storeTypeVars.startingInventory !== null
+        ? storeTypeVars.startingInventory
+        : {
+            refrigeratedUnits:
+              Number(storeTypeVars.startingInventoryRefrigeratedUnits) || 0,
+            ambientUnits:
+              Number(storeTypeVars.startingInventoryAmbientUnits) || 0,
+            notForResaleUnits:
+              Number(storeTypeVars.startingInventoryNotForResaleUnits) || 0,
+          };
 
     // Handle both number (legacy) and object (new bucket-based) formats for startingInventory
     let initialInventoryState;
@@ -373,6 +384,26 @@ storeSchema.statics.getStoreForSimulation = async function (
     store.storeType?.organization?.toString?.() ||
     store.storeType?.organization ||
     null;
+
+  // Backward-compat / normalization: if we have bucketed starting inventory keys but not
+  // the legacy startingInventory object, expose startingInventory as an object for code paths
+  // that still expect it (initial ledger + worker).
+  if (
+    (mergedVariableValues.startingInventory === undefined ||
+      mergedVariableValues.startingInventory === null) &&
+    (mergedVariableValues.startingInventoryRefrigeratedUnits !== undefined ||
+      mergedVariableValues.startingInventoryAmbientUnits !== undefined ||
+      mergedVariableValues.startingInventoryNotForResaleUnits !== undefined)
+  ) {
+    mergedVariableValues.startingInventory = {
+      refrigeratedUnits:
+        Number(mergedVariableValues.startingInventoryRefrigeratedUnits) || 0,
+      ambientUnits:
+        Number(mergedVariableValues.startingInventoryAmbientUnits) || 0,
+      notForResaleUnits:
+        Number(mergedVariableValues.startingInventoryNotForResaleUnits) || 0,
+    };
+  }
 
   const [storeDefs, storeTypeDefs] = await Promise.all([
     VariableDefinition.getDefinitionsForScope(classroomId, "store"),

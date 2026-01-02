@@ -17,6 +17,7 @@
     "ngrok": "ngrok start --config ~/.ngrok/ngrok.yml --all",
     "email:preview": "node apps/email-preview/index.js",
     "seed:demo": "node scripts/seed-demo.js",
+    "seed:store-types-from-presets": "node scripts/seed-store-types-from-presets.js",
     "seed:submission-variables": "node scripts/seed-submission-variables.js",
     "sync:clerk": "node scripts/sync-clerk.js"
   },
