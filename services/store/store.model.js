@@ -361,10 +361,54 @@ storeSchema.statics.getStoreForSimulation = async function (
       : {};
 
   // Merge storeType defaults with store overrides (store wins)
-  const mergedVariables = {
+  const mergedVariableValues = {
     ...storeTypeVariables,
     ...variablesObj,
   };
+
+  // Build variable metadata (label/description) from definitions so the simulation context
+  // can include richer info for debugging/teaching: { key, label, description, value }
+  const organizationId =
+    store.organization?.toString?.() ||
+    store.storeType?.organization?.toString?.() ||
+    store.storeType?.organization ||
+    null;
+
+  const [storeDefs, storeTypeDefs] = await Promise.all([
+    VariableDefinition.getDefinitionsForScope(classroomId, "store"),
+    organizationId
+      ? VariableDefinition.getDefinitionsForScope(null, "storeType", {
+          organizationId,
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const metaByKey = new Map();
+  // Start with storeType definitions, then let store definitions override if same key exists.
+  (storeTypeDefs || []).forEach((def) => {
+    metaByKey.set(def.key, {
+      label: def.label,
+      description: def.description || "",
+    });
+  });
+  (storeDefs || []).forEach((def) => {
+    metaByKey.set(def.key, {
+      label: def.label,
+      description: def.description || "",
+    });
+  });
+
+  // mergedVariables = { [variableKey]: { key, label, description, value } }
+  const mergedVariables = {};
+  Object.entries(mergedVariableValues).forEach(([key, value]) => {
+    const meta = metaByKey.get(key);
+    mergedVariables[key] = {
+      key,
+      label: meta?.label || key,
+      description: meta?.description || "",
+      value,
+    };
+  });
 
   // Get storeType key for backward compatibility
   // storeType should already be populated by getStoreByUser
@@ -380,7 +424,10 @@ storeSchema.statics.getStoreForSimulation = async function (
     storeTypeId: storeTypeId, // Also include ID
     storeDescription: store.storeDescription,
     storeLocation: store.storeLocation,
-    ...mergedVariables,
+    // Flat values at top-level (backward compatibility + easiest for AI)
+    ...mergedVariableValues,
+    // Rich metadata map for debugging/teaching/inspection
+    variablesDetailed: mergedVariables,
   };
 };
 

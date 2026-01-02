@@ -229,41 +229,12 @@ exports.deleteStoreType = async function (req, res) {
  */
 exports.getStoreTypesForStudent = async function (req, res) {
   try {
-    const { classroomId } = req.query;
-    const member = req.user;
-
-    if (!classroomId) {
-      return res
-        .status(400)
-        .json({ error: "classroomId query parameter is required" });
-    }
-
-    // Verify user is enrolled in class
-    const Enrollment = require("../enrollment/enrollment.model");
-    const isEnrolled = await Enrollment.isUserEnrolled(classroomId, member._id);
-
-    if (!isEnrolled) {
-      return res.status(403).json({
-        error: "User is not enrolled in this class",
-      });
-    }
-
-    // Get organization from class
-    const Classroom = require("../classroom/classroom.model");
-    const classDoc = await Classroom.findById(classroomId);
-    if (!classDoc) {
-      return res.status(404).json({ error: "Class not found" });
-    }
-
-    const organizationId = classDoc.organization;
-
+    const organizationId = req.organization;
     // Get only active store types (students shouldn't see inactive ones)
-    const storeTypes = await StoreType.getStoreTypesByOrganization(
-      organizationId,
-      {
-        includeInactive: false, // Only active store types for students
-      }
-    );
+    const storeTypes = await StoreType.find({
+      organization: organizationId,
+      isActive: true,
+    });
 
     res.json({
       success: true,

@@ -194,9 +194,13 @@ class SimulationWorker {
       // For initial entries, use starting inventory from store preset
       // Handle both number (legacy) and object (new bucket-based) formats
       const startingInventory = store.startingInventory || 0;
-      
+
       // Normalize to object format
-      if (typeof startingInventory === 'object' && startingInventory !== null && !Array.isArray(startingInventory)) {
+      if (
+        typeof startingInventory === "object" &&
+        startingInventory !== null &&
+        !Array.isArray(startingInventory)
+      ) {
         inventoryState = {
           refrigeratedUnits: startingInventory.refrigeratedUnits || 0,
           ambientUnits: startingInventory.ambientUnits || 0,
@@ -240,10 +244,12 @@ class SimulationWorker {
     const storeMetadataKeys = [
       "shopName",
       "storeType",
+      "storeTypeId",
       "storeDescription",
       "storeLocation",
       "startingBalance",
       "currentDetails",
+      "variablesDetailed",
     ];
     const storeVariables = {};
     if (context.store) {
