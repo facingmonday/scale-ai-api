@@ -2,7 +2,6 @@ const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 
 const variableDefinitionSchema = new mongoose.Schema({
-<<<<<<< HEAD
   classroomId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Classroom",
@@ -10,8 +9,6 @@ const variableDefinitionSchema = new mongoose.Schema({
     default: null,
     index: true,
   },
-=======
->>>>>>> develop
   key: {
     type: String,
     required: true,

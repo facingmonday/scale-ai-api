@@ -6,7 +6,7 @@ const StoreType = require("./storeType.model");
  */
 exports.createStoreType = async function (req, res) {
   try {
-    const { key, label, description, presetVariables } = req.body;
+    const { key, label, description, variables, presetVariables } = req.body;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
@@ -25,7 +25,8 @@ exports.createStoreType = async function (req, res) {
         key,
         label,
         description,
-        variables: presetVariables || {},
+        // Backward compat: accept presetVariables, but canonical field is variables
+        variables: variables || presetVariables || {},
       },
       clerkUserId
     );
@@ -280,18 +281,11 @@ exports.getStoreTypesForStudent = async function (req, res) {
  */
 exports.seedDefaultStoreTypes = async function (req, res) {
   try {
-    const organizationId = req.organization._id;
-    const clerkUserId = req.clerkUser.id;
-
-    const createdStoreTypes = await StoreType.seedDefaultStoreTypes(
-      organizationId,
-      clerkUserId
-    );
-
-    res.json({
-      success: true,
-      message: `Seeded ${createdStoreTypes.length} store types`,
-      data: createdStoreTypes,
+    // storeTypePresets-based seeding is deprecated; store types should be created via API/UI.
+    res.status(410).json({
+      success: false,
+      error:
+        "StoreType preset seeding is no longer supported. Create StoreTypes and their variables via the StoreType API instead.",
     });
   } catch (error) {
     console.error("Error seeding store types:", error);

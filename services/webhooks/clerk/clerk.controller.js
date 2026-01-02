@@ -192,23 +192,6 @@ const organizationCreated = async (orgData) => {
         "Created new organization:",
         organization.clerkOrganizationId
       );
-
-      // Seed default store templates for new organization
-      try {
-        // Use system user ID or a default - webhooks don't have a specific user
-        const systemUserId = "system_webhook";
-        const createdStoreTypes = await StoreType.seedDefaultStoreTypes(
-          organization._id,
-          systemUserId
-        );
-        console.log(
-          `Seeded ${createdStoreTypes.length} store types for organization:`,
-          organization.clerkOrganizationId
-        );
-      } catch (seedError) {
-        // Log but don't fail organization creation if seeding fails
-        console.error("Error seeding store types for organization:", seedError);
-      }
     } else {
       console.log(
         "Organization already exists:",

@@ -239,141 +239,11 @@ storeTypeSchema.statics.seedDefaultStoreTypes = async function (
   organizationId,
   clerkUserId
 ) {
-  const defaultStoreTypes =
-    require("../store/storeTypePresets").STORE_TYPE_PRESETS;
-  const createdStoreTypes = [];
-
-  // First, seed variable definitions for storeType variables
-  // Extract all unique variable keys from all presets
-  const allVariableKeys = new Set();
-  Object.values(defaultStoreTypes).forEach((preset) => {
-    Object.keys(preset).forEach((key) => {
-      // Exclude label and description (they're storeType fields, not variables)
-      if (key !== "label" && key !== "description") {
-        allVariableKeys.add(key);
-      }
-    });
-  });
-
-  // Create variable definitions for each key
-  for (const variableKey of allVariableKeys) {
-    const existingDef = await VariableDefinition.findOne({
-      organization: organizationId,
-      appliesTo: "storeType",
-      classroomId: null,
-      key: variableKey,
-    });
-
-    if (!existingDef) {
-      // Infer dataType from first preset value that has this key
-      const sampleValue = Object.values(defaultStoreTypes).find(
-        (p) => p[variableKey] !== undefined
-      )?.[variableKey];
-
-      let dataType = "string";
-      let inputType = "text";
-      let options = [];
-
-      if (typeof sampleValue === "number") {
-        dataType = "number";
-        inputType = "number";
-      } else if (typeof sampleValue === "boolean") {
-        dataType = "boolean";
-        inputType = "checkbox";
-      } else if (Array.isArray(sampleValue)) {
-        dataType = "select";
-        inputType = "dropdown";
-        // Extract unique options from all presets that have this key
-        const allOptions = new Set();
-        Object.values(defaultStoreTypes).forEach((p) => {
-          if (Array.isArray(p[variableKey])) {
-            p[variableKey].forEach((opt) => allOptions.add(opt));
-          } else if (p[variableKey] !== undefined) {
-            allOptions.add(p[variableKey]);
-          }
-        });
-        options = Array.from(allOptions);
-      } else if (typeof sampleValue === "string") {
-        // Check if it's a select-like field (limited set of values)
-        const uniqueValues = new Set();
-        Object.values(defaultStoreTypes).forEach((p) => {
-          if (p[variableKey] !== undefined) {
-            uniqueValues.add(p[variableKey]);
-          }
-        });
-        // If there are 10 or fewer unique values, treat as select
-        if (uniqueValues.size <= 10 && uniqueValues.size > 1) {
-          dataType = "select";
-          inputType = "dropdown";
-          options = Array.from(uniqueValues);
-        } else {
-          dataType = "string";
-          inputType = "text";
-        }
-      }
-
-      // Create a human-readable label from the key
-      const label = variableKey
-        .replace(/([A-Z])/g, " $1") // Add space before capital letters
-        .replace(/^./, (str) => str.toUpperCase()) // Capitalize first letter
-        .trim();
-
-      try {
-        await VariableDefinition.createDefinition(
-          null, // classroomId is null for storeType
-          {
-            key: variableKey,
-            label,
-            description: `Default variable for store types: ${variableKey}`,
-            appliesTo: "storeType",
-            dataType,
-            inputType,
-            options: options.length > 0 ? options : [],
-            defaultValue: null,
-            required: false,
-            affectsCalculation: true,
-          },
-          organizationId,
-          clerkUserId
-        );
-      } catch (error) {
-        // Log but continue - definition might already exist from concurrent seeding
-        console.warn(
-          `Warning: Could not create variable definition for ${variableKey}:`,
-          error.message
-        );
-      }
-    }
-  }
-
-  // Then seed store types themselves
-  for (const [key, preset] of Object.entries(defaultStoreTypes)) {
-    // Check if store type already exists
-    const existing = await this.findOne({
-      organization: organizationId,
-      key,
-    });
-
-    if (!existing) {
-      // Extract label and description, rest goes to variables
-      const { label, description, ...variables } = preset;
-
-      const storeType = await this.createStoreType(
-        organizationId,
-        {
-          key,
-          label,
-          description,
-          variables, // All other preset fields become variables
-        },
-        clerkUserId
-      );
-
-      createdStoreTypes.push(storeType);
-    }
-  }
-
-  return createdStoreTypes;
+  // storeTypePresets-based seeding is deprecated.
+  // StoreTypes should be created via API/UI and configured via:
+  // - VariableDefinition(appliesTo="storeType", classroomId=null, organization=orgId)
+  // - VariableValue(appliesTo="storeType", ownerId=storeTypeId)
+  return [];
 };
 
 // Instance methods
@@ -405,7 +275,7 @@ storeTypeSchema.methods.restore = async function (clerkUserId) {
  * Get preset variables for this store type
  * @returns {Promise<Object>} Preset variables object (from variables)
  */
-storeTypeSchema.methods.getPresetVariables = async function () {
+storeTypeSchema.methods.getStoreTypeVariables = async function () {
   await this._loadVariables();
   return this.variables || {};
 };

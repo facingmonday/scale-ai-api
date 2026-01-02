@@ -1,7 +1,7 @@
 /**
  * StoreType Service Routes
  *
- * Provides endpoints for managing store types (presets).
+ * Provides endpoints for managing store types.
  * Store types are organization-specific and define default variable values for store types.
  * Admin routes require org:admin role.
  * Mounted at: /v1/admin/store-types
@@ -57,13 +57,6 @@ router.delete(
   requireAuth(),
   checkRole("org:admin"),
   controller.deleteStoreType
-);
-
-router.post(
-  "/admin/store-types/seed",
-  requireAuth(),
-  checkRole("org:admin"),
-  controller.seedDefaultStoreTypes
 );
 
 module.exports = router;

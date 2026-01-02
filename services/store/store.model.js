@@ -83,15 +83,21 @@ storeSchema.statics._createInitialLedgerEntry = async function (
       return;
     }
 
-    // Get starting balance and inventory from storeType
-    // This is more reliable than loading variables, and ensures consistency
+    // Get starting balance and inventory from storeType variables
+    // StoreType variables are stored as VariableValue(appliesTo="storeType", ownerId=storeTypeId)
     const storeTypeDoc = await StoreType.findById(store.storeType);
     if (!storeTypeDoc) {
       throw new Error("Store type not found");
     }
-    const preset = await storeTypeDoc.getPresetVariables();
-    const startingBalance = preset.startingBalance || 0;
-    const startingInventory = preset.startingInventory || 0;
+    await storeTypeDoc._loadVariables();
+    const storeTypeVars =
+      storeTypeDoc.variables &&
+      typeof storeTypeDoc.variables === "object" &&
+      !Array.isArray(storeTypeDoc.variables)
+        ? storeTypeDoc.variables
+        : {};
+    const startingBalance = storeTypeVars.startingBalance || 0;
+    const startingInventory = storeTypeVars.startingInventory || 0;
 
     // Handle both number (legacy) and object (new bucket-based) formats for startingInventory
     let initialInventoryState;
@@ -172,7 +178,12 @@ storeSchema.statics.createStore = async function (
   }
 
   // Validate storeType (should be ObjectId)
-  const { storeType, variables: providedVariables, ...storeFields } = storeData;
+  const {
+    storeType,
+    variables: providedVariables,
+    imageUrl,
+    ...storeFields
+  } = storeData;
 
   if (!storeType) {
     throw new Error("storeType is required");
@@ -189,12 +200,6 @@ storeSchema.statics.createStore = async function (
     );
   }
 
-<<<<<<< HEAD
-  // Load preset for store type
-  const presetVariables = storeTypeDoc.getPresetVariables();
-
-=======
->>>>>>> develop
   const providedVars =
     providedVariables && typeof providedVariables === "object"
       ? providedVariables
@@ -207,12 +212,8 @@ storeSchema.statics.createStore = async function (
     shopName: storeFields.shopName,
     storeDescription: storeFields.storeDescription,
     storeLocation: storeFields.storeLocation,
-<<<<<<< HEAD
-    storeType: template._id, // Use template ObjectId
-=======
-    storeType,
+    storeType: storeTypeDoc._id,
     imageUrl: imageUrl || null,
->>>>>>> develop
     organization: organizationId,
     createdBy: clerkUserId,
     updatedBy: clerkUserId,
@@ -284,7 +285,11 @@ storeSchema.statics.getStoreByUser = async function (classroomId, userId) {
   await store._loadVariables();
 
   // Load storeType variables if storeType is populated
-  if (store.storeType && typeof store.storeType === "object" && store.storeType._id) {
+  if (
+    store.storeType &&
+    typeof store.storeType === "object" &&
+    store.storeType._id
+  ) {
     await store.storeType._loadVariables();
   }
 
@@ -348,24 +353,24 @@ storeSchema.statics.getStoreForSimulation = async function (
       ? store.variables
       : {};
 
-<<<<<<< HEAD
+  const storeTypeVariables =
+    store.storeType?.variables &&
+    typeof store.storeType.variables === "object" &&
+    !Array.isArray(store.storeType.variables)
+      ? store.storeType.variables
+      : {};
+
+  // Merge storeType defaults with store overrides (store wins)
+  const mergedVariables = {
+    ...storeTypeVariables,
+    ...variablesObj,
+  };
+
   // Get storeType key for backward compatibility
   // storeType should already be populated by getStoreByUser
   const storeTypeKey = store.storeTypeKey || store.storeType?.key || null;
   const storeTypeId =
     store.storeType?._id?.toString() || store.storeType?.toString() || null;
-=======
-  // Merge store-type preset defaults in for any missing (null/undefined) variable values.
-  // Note: valueMap format intentionally includes ALL active definition keys, using null when no value exists.
-  // If we spread variablesObj directly, we'd overwrite preset defaults with nulls.
-  const { label, description, ...presetVars } = getPreset(store.storeType);
-  const mergedVariables = { ...presetVars };
-  Object.entries(variablesObj).forEach(([key, value]) => {
-    if (value !== null && value !== undefined) {
-      mergedVariables[key] = value;
-    }
-  });
->>>>>>> develop
 
   // Return normalized object for AI simulation
   // Flatten store data: include storeType key and variables directly
@@ -394,7 +399,7 @@ storeSchema.statics.getStoresByClass = async function (classroomId) {
   const storeTypes = stores
     .map((store) => store.storeType)
     .filter((st) => st && typeof st === "object" && st._id);
-  
+
   if (storeTypes.length > 0) {
     // Batch load variables for all storeTypes efficiently
     const storeTypeIds = storeTypes.map((st) => st._id);
@@ -402,7 +407,7 @@ storeSchema.statics.getStoresByClass = async function (classroomId) {
       appliesTo: "storeType",
       ownerId: { $in: storeTypeIds },
     });
-    
+
     // Group variables by storeType ownerId
     const variablesByStoreType = {};
     allStoreTypeVariables.forEach((v) => {
@@ -412,7 +417,7 @@ storeSchema.statics.getStoresByClass = async function (classroomId) {
       }
       variablesByStoreType[ownerId][v.variableKey] = v.value;
     });
-    
+
     // Assign variables to each storeType
     storeTypes.forEach((storeType) => {
       const ownerId = storeType._id.toString();
@@ -477,12 +482,6 @@ storeSchema.statics.updateStore = async function (
       );
     }
 
-<<<<<<< HEAD
-    // Load preset for store type
-    const presetVariables = storeTypeDoc.getPresetVariables();
-
-=======
->>>>>>> develop
     const providedVars =
       providedVariables && typeof providedVariables === "object"
         ? providedVariables
@@ -495,12 +494,8 @@ storeSchema.statics.updateStore = async function (
       shopName: storeFields.shopName,
       storeDescription: storeFields.storeDescription,
       storeLocation: storeFields.storeLocation,
-<<<<<<< HEAD
       storeType: storeTypeDoc._id, // Use store type ObjectId
-=======
-      storeType,
       imageUrl: imageUrl || null,
->>>>>>> develop
       organization: organizationId,
       createdBy: clerkUserId,
       updatedBy: clerkUserId,
@@ -610,46 +605,6 @@ storeSchema.statics.updateStore = async function (
         await VariableValue.deleteOne({ _id: existingVar._id });
       }
     }
-
-<<<<<<< HEAD
-    // Ensure all preset variables exist (in case some were missing)
-    // This handles cases where stores were created before preset logic was added
-    // Populate storeType if needed
-    if (!store.storeType || typeof store.storeType === "string") {
-      await store.populate("storeType");
-    }
-    const storeTypeDoc = store.storeType;
-    if (!storeTypeDoc) {
-      throw new Error("Store type not found");
-    }
-    const presetVariables = storeTypeDoc.getPresetVariables();
-    const presetEntries = Object.entries(presetVariables);
-    for (const [key, value] of presetEntries) {
-      // Only set if not already set by variables above
-      if (!(key in providedVariables)) {
-        const existing = await VariableValue.findByOwnerAndKey(
-          "store",
-          store._id,
-          key
-        );
-        if (!existing) {
-          // Variable doesn't exist, create it with preset value
-          await VariableValue.setVariable(
-            "store",
-            store._id,
-            key,
-            value,
-            organizationId,
-            clerkUserId
-          );
-        }
-      }
-    }
-=======
-    // Note: Presets are NOT persisted here. They're merged at read time
-    // (e.g., in getStoreForSimulation) to avoid data duplication and allow
-    // preset updates without affecting existing stores.
->>>>>>> develop
 
     store.updatedBy = clerkUserId;
     await store.save();

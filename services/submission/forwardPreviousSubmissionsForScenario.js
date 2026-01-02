@@ -4,8 +4,8 @@ const VariableDefinition = require("../variableDefinition/variableDefinition.mod
 const {
   generateSubmissionVariablesForStoreType,
 } = require("./autoSubmissionGenerator");
-const { getPreset } = require("../store/storeTypePresets");
 const Store = require("../store/store.model");
+const StoreType = require("../storeType/storeType.model");
 
 /**
  * Forward previous submissions for missing students in a scenario.
@@ -143,7 +143,9 @@ async function forwardPreviousSubmissionsForScenario({
           const store = await Store.findOne({
             classroomId,
             userId,
-          }).lean();
+          })
+            .select("storeType")
+            .lean();
 
           if (!store) {
             missingPrevious += 1;
@@ -155,8 +157,21 @@ async function forwardPreviousSubmissionsForScenario({
             continue;
           }
 
-          // Get store preset
-          const preset = getPreset(store.storeType);
+          const storeTypeDoc = await StoreType.findOne({
+            _id: store.storeType,
+            organization: organizationId,
+            isActive: true,
+          });
+          if (!storeTypeDoc) {
+            missingPrevious += 1;
+            errors.push({
+              userId: userId.toString(),
+              error:
+                "No previous submission found and no storeType found for AI fallback",
+            });
+            continue;
+          }
+          await storeTypeDoc._loadVariables();
 
           // Get hydrated scenario
           const hydratedScenario = await Scenario.getScenarioById(
@@ -167,8 +182,8 @@ async function forwardPreviousSubmissionsForScenario({
           // Generate AI submission with absence punishment if configured
           const aiVars = await generateSubmissionVariablesForStoreType({
             classroomId,
-            storeType: store.storeType,
-            storePreset: preset,
+            storeTypeKey: storeTypeDoc.key,
+            storeTypeVariables: storeTypeDoc.variables || {},
             scenario: hydratedScenario,
             organizationId,
             clerkUserId,

@@ -564,9 +564,7 @@ Soft delete a store type (sets `isActive: false`).
 
 ##### `POST /v1/admin/store-types/seed`
 
-Seed default store types for the organization. This creates all default store types from `storeTypePresets.js` if they don't already exist.
-
-**Note**: This is automatically called when an organization is created, but can be manually triggered to re-seed.
+**Deprecated / removed**: store type preset seeding is no longer supported. Create StoreTypes (and their variables) via the StoreType API/UI.
 
 #### Store Type Variables
 
@@ -596,7 +594,7 @@ A store contains:
 When a store is created, variable values are determined in this order (highest to lowest priority):
 
 1. **Provided Values** - Values explicitly passed when creating/updating the store
-2. **Store Type Preset Values** - Default values from the selected store type
+2. **Store Type Values** - Default values stored on the selected StoreType (via `VariableValue` with `appliesTo: "storeType"`)
 3. **Variable Definition Defaults** - Default values from `VariableDefinition`
 
 #### Store API Endpoints
