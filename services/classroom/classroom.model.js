@@ -6,6 +6,7 @@ const Submission = require("../submission/submission.model");
 const LedgerEntry = require("../ledger/ledger.model");
 const ScenarioOutcome = require("../scenarioOutcome/scenarioOutcome.model");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
+const ClassroomTemplate = require("../classroomTemplate/classroomTemplate.model");
 
 const classroomSchema = new mongoose.Schema({
   name: {
@@ -15,6 +16,11 @@ const classroomSchema = new mongoose.Schema({
   description: {
     type: String,
     default: "",
+  },
+  // Starting cash used to seed the initial ledger entry (week 0) for newly created stores
+  startingBalance: {
+    type: Number,
+    default: 0,
   },
   isActive: {
     type: Boolean,
@@ -291,8 +297,7 @@ classroomSchema.statics.generateJoinLink = function (classroomId) {
 
 /**
  * Get all variable definitions for a classroom, grouped by appliesTo type
- * Includes both classroom-scoped definitions (store, scenario, submission) and
- * organization-scoped storeType definitions
+ * Includes classroom-scoped definitions (store, scenario, submission, storeType)
  * @param {string} classroomId - Class ID
  * @param {Object} options - Options (includeInactive)
  * @returns {Promise<Object>} Object with variableDefinitions grouped by type: { store: [], scenario: [], submission: [], storeType: [] }
@@ -301,21 +306,14 @@ classroomSchema.statics.getAllVariableDefinitionsForClassroom = async function (
   classroomId,
   options = {}
 ) {
-  // Get classroom to retrieve organization ID
-  const classroom = await this.findById(classroomId);
-  if (!classroom) {
-    throw new Error("Classroom not found");
-  }
-
-  const organizationId = classroom.organization;
-
   // Fetch all classroom-scoped variableDefinitions (store, scenario, submission)
   const classroomVariableDefinitions =
     await VariableDefinition.getDefinitionsByClass(classroomId, options);
 
-  // Fetch organization-scoped storeType variableDefinitions
-  const storeTypeDefinitions = await VariableDefinition.getStoreTypeDefinitions(
-    organizationId,
+  // Fetch classroom-scoped storeType variableDefinitions
+  const storeTypeDefinitions = await VariableDefinition.getDefinitionsForScope(
+    classroomId,
+    "storeType",
     options
   );
 
@@ -334,7 +332,7 @@ classroomSchema.statics.getAllVariableDefinitionsForClassroom = async function (
     }
   });
 
-  // Add organization-scoped storeType definitions
+  // Add classroom-scoped storeType definitions
   variableDefinitionsByType.storeType = storeTypeDefinitions;
 
   return variableDefinitionsByType;
@@ -345,193 +343,72 @@ classroomSchema.statics.getAllVariableDefinitionsForClassroom = async function (
  * @returns {Array} Array of submission variable definition objects
  */
 classroomSchema.statics.getDefaultSubmissionVariableDefinitions = function () {
-  return [
-    {
-      key: "demandForecastOverride",
-      label: "Demand Forecast Adjustment",
-      description:
-        "Adjust expected demand relative to the baseline forecast. Positive values assume higher demand. Negative values assume lower demand.",
-      appliesTo: "submission",
-      dataType: "number",
-      inputType: "slider",
-      min: -30,
-      max: 30,
-      defaultValue: 0,
-      required: true,
-    },
-    {
-      key: "demandCommitmentLevel",
-      label: "Demand Commitment Level",
-      description:
-        "How strongly you commit inventory decisions to forecasted demand. Aggressive commitments increase stockout risk if demand misses.",
-      appliesTo: "submission",
-      dataType: "string",
-      inputType: "dropdown",
-      options: ["CONSERVATIVE", "EXPECTED", "AGGRESSIVE"],
-      defaultValue: "EXPECTED",
-      required: true,
-    },
-    {
-      key: "reorderPolicy",
-      label: "Reorder Policy",
-      description:
-        "Defines when inventory is reordered. Different policies trade holding cost for stockout risk.",
-      appliesTo: "submission",
-      dataType: "string",
-      inputType: "dropdown",
-      options: ["FIXED_INTERVAL", "REORDER_POINT", "DEMAND_TRIGGERED"],
-      defaultValue: "REORDER_POINT",
-      required: true,
-    },
-    {
-      key: "reorderPointRefrigeratedPercent",
-      label: "Cold Storage Reorder Point (%)",
-      description:
-        "Triggers a refrigerated inventory reorder when stock falls below this percentage of capacity. Higher values reduce stockouts but increase holding cost.",
-      appliesTo: "submission",
-      dataType: "number",
-      inputType: "slider",
-      min: 0,
-      max: 50,
-      defaultValue: 20,
-      required: true,
-    },
-    {
-      key: "reorderPointAmbientPercent",
-      label: "Ambient Inventory Reorder Point (%)",
-      description:
-        "Triggers an ambient inventory reorder when stock falls below this percentage of capacity. Lower values save cost but increase risk of stockouts.",
-      appliesTo: "submission",
-      dataType: "number",
-      inputType: "slider",
-      min: 0,
-      max: 50,
-      defaultValue: 15,
-      required: true,
-    },
-    {
-      key: "reorderPointNotForResalePercent",
-      label: "Ops Supply Reorder Point (%)",
-      description:
-        "Triggers a reorder for non-resale operating supplies. Running out of ops supplies can limit production capacity.",
-      appliesTo: "submission",
-      dataType: "number",
-      inputType: "slider",
-      min: 0,
-      max: 50,
-      defaultValue: 10,
-      required: true,
-    },
-    {
-      key: "safetyStockByBucketStrategy",
-      label: "Safety Stock Strategy",
-      description:
-        "Controls how much buffer inventory is carried across all buckets. Higher safety stock improves service level but raises holding cost.",
-      appliesTo: "submission",
-      dataType: "string",
-      inputType: "dropdown",
-      options: ["LOW", "BALANCED", "HIGH"],
-      defaultValue: "BALANCED",
-      required: true,
-    },
-    {
-      key: "inventoryProtectionPriority",
-      label: "Inventory Protection Priority",
-      description:
-        "Determines which inventory bucket is prioritized when capacity, cash, or supply is constrained. Affects which inventory is replenished or sacrificed first.",
-      appliesTo: "submission",
-      dataType: "string",
-      inputType: "dropdown",
-      options: ["REFRIGERATED_FIRST", "AMBIENT_FIRST", "BALANCED"],
-      defaultValue: "BALANCED",
-      required: true,
-    },
-    {
-      key: "allowExpediteOrders",
-      label: "Allow Expedited Orders",
-      description:
-        "Allows emergency replenishment at a higher cost. Expediting avoids stockouts but significantly increases costs.",
-      appliesTo: "submission",
-      dataType: "boolean",
-      inputType: "switch",
-      defaultValue: false,
-      required: false,
-    },
-    {
-      key: "plannedProductionUnits",
-      label: "Planned Production Units",
-      description:
-        "Target number of units to produce this period. Production is limited by inventory, labor, and capacity.",
-      appliesTo: "submission",
-      dataType: "number",
-      inputType: "slider",
-      min: 0,
-      max: 1000,
-      defaultValue: 0,
-      required: true,
-    },
-    {
-      key: "staffingLevel",
-      label: "Staffing Level",
-      description:
-        "Adjust staffing relative to baseline requirements. Higher staffing increases cost but improves throughput.",
-      appliesTo: "submission",
-      dataType: "string",
-      inputType: "dropdown",
-      options: ["BELOW_AVERAGE", "AVERAGE", "ABOVE_AVERAGE"],
-      defaultValue: "AVERAGE",
-      required: true,
-    },
-    {
-      key: "inventoryConsumptionDiscipline",
-      label: "Inventory Consumption Discipline",
-      description:
-        "Controls how strictly inventory rotation rules are followed. Loose discipline can increase waste, especially in cold storage.",
-      appliesTo: "submission",
-      dataType: "string",
-      inputType: "dropdown",
-      options: ["FIFO_STRICT", "FIFO_LOOSE", "OPPORTUNISTIC"],
-      defaultValue: "FIFO_STRICT",
-      required: true,
-    },
-    {
-      key: "unitSalePrice",
-      label: "Unit Sale Price",
-      description:
-        "Price charged per unit sold. Higher prices increase margin but may reduce demand.",
-      appliesTo: "submission",
-      dataType: "number",
-      inputType: "number",
-      min: 0,
-      defaultValue: 0,
-      required: true,
-    },
-    {
-      key: "discountIntensity",
-      label: "Discount Intensity (%)",
-      description:
-        "Percentage discount applied to unit price. Discounts increase volume but reduce margin.",
-      appliesTo: "submission",
-      dataType: "number",
-      inputType: "slider",
-      min: 0,
-      max: 50,
-      defaultValue: 0,
-      required: false,
-    },
-    {
-      key: "priceElasticitySensitivity",
-      label: "Price Sensitivity",
-      description:
-        "How strongly demand responds to price changes. High sensitivity means price increases quickly reduce demand.",
-      appliesTo: "submission",
-      dataType: "string",
-      inputType: "dropdown",
-      options: ["LOW", "MEDIUM", "HIGH"],
-      defaultValue: "MEDIUM",
-      required: true,
-    },
-  ];
+  // Backward-compat wrapper: canonical defaults live on ClassroomTemplate
+  return ClassroomTemplate.getDefaultSubmissionVariableDefinitions();
+};
+
+/**
+ * Canonical classroom-scoped storeType variable definitions.
+ * @returns {Array} Array of storeType variable definition objects
+ */
+classroomSchema.statics.getDefaultStoreTypeVariableDefinitions = function () {
+  // Backward-compat wrapper: canonical defaults live on ClassroomTemplate
+  return ClassroomTemplate.getDefaultStoreTypeVariableDefinitions();
+};
+
+/**
+ * Seed classroom-scoped storeType VariableDefinitions + StoreTypes + VariableValues.
+ *
+ * - Definitions are classroom-scoped and apply only within this class.
+ * - StoreTypes are classroom-scoped and sourced from STORE_TYPE_PRESETS (key/label/description only).
+ * - VariableValues are created for each StoreType × Definition using definition.defaultValue.
+ *   Idempotent: does NOT overwrite existing VariableValues.
+ *
+ * @param {string} classroomId - Class ID
+ * @param {string} organizationId - Organization ID
+ * @param {string} clerkUserId - Clerk user ID for createdBy/updatedBy
+ * @returns {Promise<Object>} Stats
+ */
+classroomSchema.statics.seedStoreTypesAndVariables = async function (
+  classroomId,
+  organizationId,
+  clerkUserId
+) {
+  // Deprecated: seeding is now handled by ClassroomTemplate application.
+  const defaultKey = ClassroomTemplate.GLOBAL_DEFAULT_KEY;
+  let template = await ClassroomTemplate.findOne({
+    organization: organizationId,
+    key: defaultKey,
+    isActive: true,
+  });
+  if (!template) {
+    await ClassroomTemplate.copyGlobalToOrganization(
+      organizationId,
+      clerkUserId
+    );
+    template = await ClassroomTemplate.findOne({
+      organization: organizationId,
+      key: defaultKey,
+      isActive: true,
+    });
+  }
+
+  if (!template) {
+    return {
+      storeTypesCreated: 0,
+      storeTypesSkipped: 0,
+      variableDefinitionsCreated: 0,
+      variableDefinitionsSkipped: 0,
+      variableValuesCreated: 0,
+      variableValuesSkipped: 0,
+    };
+  }
+
+  return await template.applyToClassroom({
+    classroomId,
+    organizationId,
+    clerkUserId,
+  });
 };
 
 /**
@@ -547,7 +424,8 @@ classroomSchema.statics.seedSubmissionVariables = async function (
   organizationId,
   clerkUserId
 ) {
-  const variableDefinitions = this.getDefaultSubmissionVariableDefinitions();
+  const variableDefinitions =
+    ClassroomTemplate.getDefaultSubmissionVariableDefinitions();
   const stats = {
     created: 0,
     skipped: 0,

@@ -9,7 +9,8 @@ const { sendEmail } = require("../../lib/sendGrid/sendEmail");
  */
 exports.createClass = async function (req, res) {
   try {
-    const { name, description, imageUrl, seedSubmissionVariables } = req.body;
+    const { name, description, imageUrl, startingBalance, templateId } =
+      req.body;
     const memberId = req.user._id;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
@@ -22,11 +23,29 @@ exports.createClass = async function (req, res) {
       return res.status(400).json({ error: "Class name is required" });
     }
 
+    // If a templateId was provided, validate it belongs to this organization before creating the class
+    let templateToApply = null;
+    if (templateId) {
+      const ClassroomTemplate = require("../classroomTemplate/classroomTemplate.model");
+      templateToApply = await ClassroomTemplate.findOne({
+        _id: templateId,
+        organization: organizationId,
+        isActive: true,
+      });
+      if (!templateToApply) {
+        return res.status(400).json({ error: "Invalid templateId" });
+      }
+    }
+
     // Create classroom
     const newClassroom = new Classroom({
       name,
       description: description || "",
       imageUrl: imageUrl || null,
+      startingBalance:
+        startingBalance !== undefined && startingBalance !== null
+          ? Number(startingBalance)
+          : 0,
       isActive: true,
       adminIds: [clerkUserId], // Auto-enroll creator as admin
       ownership: memberId, // Set ownership to the creator
@@ -46,29 +65,51 @@ exports.createClass = async function (req, res) {
       clerkUserId
     );
 
-    // Optionally seed submission variables
-    let submissionVariablesStats = null;
-    if (seedSubmissionVariables) {
-      try {
-        submissionVariablesStats = await Classroom.seedSubmissionVariables(
-          newClassroom._id,
-          organizationId,
-          clerkUserId
-        );
-      } catch (seedError) {
-        // Log error but don't fail the classroom creation
-        console.error(
-          "Error seeding submission variables for new classroom:",
-          seedError
-        );
+    // Apply classroom template (create-only)
+    let templateApplyStats = null;
+    try {
+      const ClassroomTemplate = require("../classroomTemplate/classroomTemplate.model");
+
+      if (!templateToApply) {
+        // Default to the org copy of the global default template key.
+        const defaultKey = ClassroomTemplate.GLOBAL_DEFAULT_KEY;
+        templateToApply = await ClassroomTemplate.findOne({
+          organization: organizationId,
+          key: defaultKey,
+          isActive: true,
+        });
+
+        // If missing (older orgs), create org copy and retry.
+        if (!templateToApply) {
+          await ClassroomTemplate.copyGlobalToOrganization(
+            organizationId,
+            clerkUserId
+          );
+          templateToApply = await ClassroomTemplate.findOne({
+            organization: organizationId,
+            key: defaultKey,
+            isActive: true,
+          });
+        }
       }
+
+      if (templateToApply) {
+        templateApplyStats = await templateToApply.applyToClassroom({
+          classroomId: newClassroom._id,
+          organizationId,
+          clerkUserId,
+        });
+      }
+    } catch (seedError) {
+      // Log error but don't fail the classroom creation
+      console.error("Error applying template for new classroom:", seedError);
     }
 
     res.status(201).json({
       success: true,
       data: newClassroom,
-      ...(submissionVariablesStats && {
-        submissionVariables: submissionVariablesStats,
+      ...(templateApplyStats && {
+        templateApply: templateApplyStats,
       }),
     });
   } catch (error) {
@@ -148,7 +189,7 @@ exports.getStudentDashboard = async function (req, res) {
 exports.updateClass = async function (req, res) {
   try {
     const { classroomId } = req.params;
-    const { name, description, imageUrl, isActive } = req.body;
+    const { name, description, imageUrl, isActive, startingBalance } = req.body;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
@@ -171,6 +212,10 @@ exports.updateClass = async function (req, res) {
     }
     if (isActive !== undefined) {
       classroom.isActive = isActive;
+    }
+    if (startingBalance !== undefined) {
+      classroom.startingBalance =
+        startingBalance === null ? 0 : Number(startingBalance);
     }
 
     classroom.updatedBy = clerkUserId;

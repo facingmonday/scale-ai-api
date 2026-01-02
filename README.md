@@ -705,7 +705,6 @@ Create a variable definition for stores.
   "min": 0,
   "max": 100000,
   "required": true,
-  "affectsCalculation": true
 }
 ```
 
@@ -720,7 +719,6 @@ Create a variable definition for stores.
 - `defaultValue` - Default value if not provided
 - `min`/`max` - Validation constraints (for numbers)
 - `required` - Whether field is required
-- `affectsCalculation` - Whether this variable affects AI calculations
 
 **Valid `dataType` and `inputType` combinations:**
 
@@ -751,7 +749,6 @@ Get all variable definitions for stores in a classroom.
       "min": 0,
       "max": 100000,
       "required": true,
-      "affectsCalculation": true,
       "isActive": true
     }
   ]
@@ -880,7 +877,7 @@ GET /v1/admin/variables?classroomId={classroomId}&appliesTo=store
 
 **Step 2: Create Definition Form**
 
-- Fields: `key`, `label`, `description`, `dataType`, `inputType`, `defaultValue`, `min`, `max`, `required`, `affectsCalculation`
+- Fields: `key`, `label`, `description`, `dataType`, `inputType`, `defaultValue`, `min`, `max`, `required`
 - If `dataType: "select"` or `inputType: "dropdown"`, show `options` array editor
 - Validate `dataType`/`inputType` compatibility
 
@@ -969,7 +966,7 @@ await fetch("/v1/student/store", {
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Create variable definition
-- **Body**: `{ classroomId, key, label, description?, appliesTo, dataType, inputType?, options?, defaultValue?, min?, max?, required?, affectsCalculation? }`
+- **Body**: `{ classroomId, key, label, description?, appliesTo, dataType, inputType?, options?, defaultValue?, min?, max?, required? }`
 
 #### `PUT /v1/admin/variables/:key`
 

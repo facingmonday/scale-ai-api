@@ -149,6 +149,7 @@ scenarioSchema.statics.createScenario = async function (
     // Create variable values if provided
     const variableEntries = Object.entries(variablesWithDefaults);
     const variableDocs = variableEntries.map(([key, value]) => ({
+      classroomId,
       appliesTo: "scenario",
       ownerId: scenario._id,
       variableKey: key,
@@ -306,6 +307,7 @@ scenarioSchema.methods.updateVariables = async function (
   const variableEntries = Object.entries(variablesWithDefaults);
   for (const [key, value] of variableEntries) {
     await VariableValue.setVariable(
+      this.classroomId,
       "scenario",
       this._id,
       key,
@@ -317,6 +319,7 @@ scenarioSchema.methods.updateVariables = async function (
 
   // Delete variables that are not in the new set
   const existingVariables = await VariableValue.find({
+    classroomId: this.classroomId,
     appliesTo: "scenario",
     ownerId: this._id,
   });

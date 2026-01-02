@@ -1,4 +1,5 @@
 const StoreType = require("./storeType.model");
+const Classroom = require("../classroom/classroom.model");
 
 /**
  * Create store type
@@ -6,9 +7,14 @@ const StoreType = require("./storeType.model");
  */
 exports.createStoreType = async function (req, res) {
   try {
-    const { key, label, description, variables, presetVariables } = req.body;
+    const { classroomId, key, label, description, variables, presetVariables } =
+      req.body;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
+
+    if (!classroomId) {
+      return res.status(400).json({ error: "classroomId is required" });
+    }
 
     // Validate required fields
     if (!key) {
@@ -18,8 +24,11 @@ exports.createStoreType = async function (req, res) {
       return res.status(400).json({ error: "label is required" });
     }
 
+    await Classroom.validateAdminAccess(classroomId, clerkUserId, organizationId);
+
     // Create store type using static method
     const storeType = await StoreType.createStoreType(
+      classroomId,
       organizationId,
       {
         key,
@@ -55,11 +64,21 @@ exports.createStoreType = async function (req, res) {
 exports.updateStoreType = async function (req, res) {
   try {
     const { storeTypeId } = req.params;
+    const { classroomId } = req.query;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
+    if (!classroomId) {
+      return res
+        .status(400)
+        .json({ error: "classroomId query parameter is required" });
+    }
+
+    await Classroom.validateAdminAccess(classroomId, clerkUserId, organizationId);
+
     // Find store type
     const storeType = await StoreType.getStoreTypeById(
+      classroomId,
       organizationId,
       storeTypeId
     );
@@ -86,6 +105,7 @@ exports.updateStoreType = async function (req, res) {
       // Update or create variable values
       for (const [variableKey, value] of variableEntries) {
         await VariableValue.setVariable(
+          classroomId,
           "storeType",
           storeType._id,
           variableKey,
@@ -97,6 +117,7 @@ exports.updateStoreType = async function (req, res) {
 
       // Delete variables that are not in the new set
       const existingVariables = await VariableValue.find({
+        classroomId,
         appliesTo: "storeType",
         ownerId: storeType._id,
       });
@@ -141,9 +162,22 @@ exports.updateStoreType = async function (req, res) {
 exports.getStoreTypes = async function (req, res) {
   try {
     const organizationId = req.organization._id;
-    const { includeInactive } = req.query;
+    const { classroomId, includeInactive } = req.query;
 
-    const storeTypes = await StoreType.getStoreTypesByOrganization(
+    if (!classroomId) {
+      return res
+        .status(400)
+        .json({ error: "classroomId query parameter is required" });
+    }
+
+    await Classroom.validateAdminAccess(
+      classroomId,
+      req.clerkUser.id,
+      organizationId
+    );
+
+    const storeTypes = await StoreType.getStoreTypesByClassroom(
+      classroomId,
       organizationId,
       {
         includeInactive: includeInactive === "true",
@@ -167,9 +201,23 @@ exports.getStoreTypes = async function (req, res) {
 exports.getStoreType = async function (req, res) {
   try {
     const { storeTypeId } = req.params;
+    const { classroomId } = req.query;
     const organizationId = req.organization._id;
 
+    if (!classroomId) {
+      return res
+        .status(400)
+        .json({ error: "classroomId query parameter is required" });
+    }
+
+    await Classroom.validateAdminAccess(
+      classroomId,
+      req.clerkUser.id,
+      organizationId
+    );
+
     const storeTypeDoc = await StoreType.getStoreTypeById(
+      classroomId,
       organizationId,
       storeTypeId
     );
@@ -199,9 +247,23 @@ exports.getStoreType = async function (req, res) {
 exports.deleteStoreType = async function (req, res) {
   try {
     const { storeTypeId } = req.params;
+    const { classroomId } = req.query;
     const organizationId = req.organization._id;
 
+    if (!classroomId) {
+      return res
+        .status(400)
+        .json({ error: "classroomId query parameter is required" });
+    }
+
+    await Classroom.validateAdminAccess(
+      classroomId,
+      req.clerkUser.id,
+      organizationId
+    );
+
     const storeType = await StoreType.getStoreTypeById(
+      classroomId,
       organizationId,
       storeTypeId
     );
@@ -230,9 +292,21 @@ exports.deleteStoreType = async function (req, res) {
 exports.getStoreTypesForStudent = async function (req, res) {
   try {
     const organizationId = req.organization;
+    const { classroomId } = req.query;
+    const clerkUserId = req.clerkUser.id;
+
+    if (!classroomId) {
+      return res
+        .status(400)
+        .json({ error: "classroomId query parameter is required" });
+    }
+
+    await Classroom.validateStudentAccess(classroomId, clerkUserId, organizationId);
+
     // Get only active store types (students shouldn't see inactive ones)
     const storeTypes = await StoreType.find({
       organization: organizationId,
+      classroomId,
       isActive: true,
     });
 

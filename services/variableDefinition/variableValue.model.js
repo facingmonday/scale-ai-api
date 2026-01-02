@@ -14,6 +14,12 @@ const baseSchema = require("../../lib/baseSchema");
  * - SubmissionVariableValue
  */
 const variableValueSchema = new mongoose.Schema({
+  classroomId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Classroom",
+    required: true,
+    index: true,
+  },
   appliesTo: {
     type: String,
     required: true,
@@ -38,11 +44,11 @@ const variableValueSchema = new mongoose.Schema({
 
 // Compound indexes for performance + uniqueness
 variableValueSchema.index(
-  { organization: 1, appliesTo: 1, ownerId: 1, variableKey: 1 },
+  { organization: 1, classroomId: 1, appliesTo: 1, ownerId: 1, variableKey: 1 },
   { unique: true }
 );
-variableValueSchema.index({ appliesTo: 1, ownerId: 1 });
-variableValueSchema.index({ organization: 1, appliesTo: 1, ownerId: 1 });
+variableValueSchema.index({ classroomId: 1, appliesTo: 1, ownerId: 1 });
+variableValueSchema.index({ organization: 1, classroomId: 1, appliesTo: 1, ownerId: 1 });
 
 // Static methods
 
@@ -73,7 +79,8 @@ variableValueSchema.statics.findByOwnerAndKey = function (
 
 /**
  * Set or update a variable value
- * @param {string} appliesTo - Scope ("store", "scenario", "submission", ...)
+ * @param {string} classroomId - Classroom ID
+ * @param {string} appliesTo - Scope ("store", "scenario", "submission", "storeType")
  * @param {string} ownerId - Owning document ID
  * @param {string} variableKey - Variable key
  * @param {*} value - Variable value
@@ -82,6 +89,7 @@ variableValueSchema.statics.findByOwnerAndKey = function (
  * @returns {Promise<Object>} Variable value document
  */
 variableValueSchema.statics.setVariable = async function (
+  classroomId,
   appliesTo,
   ownerId,
   variableKey,
@@ -89,7 +97,16 @@ variableValueSchema.statics.setVariable = async function (
   organizationId,
   clerkUserId
 ) {
-  const existing = await this.findOne({ appliesTo, ownerId, variableKey });
+  if (!classroomId) {
+    throw new Error("classroomId is required");
+  }
+
+  const existing = await this.findOne({
+    classroomId,
+    appliesTo,
+    ownerId,
+    variableKey,
+  });
 
   if (existing) {
     existing.value = value;
@@ -99,6 +116,7 @@ variableValueSchema.statics.setVariable = async function (
   }
 
   const variableValue = new this({
+    classroomId,
     appliesTo,
     ownerId,
     variableKey,
