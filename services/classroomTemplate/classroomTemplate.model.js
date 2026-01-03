@@ -91,189 +91,140 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
   function () {
     return [
       {
-        key: "demandForecastOverride",
-        label: "Demand Forecast Adjustment",
+        key: "demandOutlook",
+        label: "How busy do you expect this week to be?",
         description:
-          "Adjust expected demand relative to the baseline forecast. Positive values assume higher demand. Negative values assume lower demand.",
-        appliesTo: "submission",
-        dataType: "number",
-        inputType: "slider",
-        min: -30,
-        max: 30,
-        defaultValue: 0,
-        required: true,
-      },
-      {
-        key: "demandCommitmentLevel",
-        label: "Demand Commitment Level",
-        description:
-          "How strongly you commit inventory decisions to forecasted demand. Aggressive commitments increase stockout risk if demand misses.",
+          "Your overall expectation of customer demand for the upcoming week.",
         appliesTo: "submission",
         dataType: "string",
-        inputType: "dropdown",
-        options: ["CONSERVATIVE", "EXPECTED", "AGGRESSIVE"],
-        defaultValue: "EXPECTED",
-        required: true,
-      },
-      {
-        key: "reorderPolicy",
-        label: "Reorder Policy",
-        description:
-          "Defines when inventory is reordered. Different policies trade holding cost for stockout risk.",
-        appliesTo: "submission",
-        dataType: "string",
-        inputType: "dropdown",
-        options: ["FIXED_INTERVAL", "REORDER_POINT", "DEMAND_TRIGGERED"],
-        defaultValue: "REORDER_POINT",
-        required: true,
-      },
-      {
-        key: "reorderPointRefrigeratedPercent",
-        label: "Cold Storage Reorder Point (%)",
-        description:
-          "Triggers a refrigerated inventory reorder when stock falls below this percentage of capacity. Higher values reduce stockouts but increase holding cost.",
-        appliesTo: "submission",
-        dataType: "number",
-        inputType: "slider",
-        min: 0,
-        max: 50,
-        defaultValue: 20,
-        required: true,
-      },
-      {
-        key: "reorderPointAmbientPercent",
-        label: "Ambient Inventory Reorder Point (%)",
-        description:
-          "Triggers an ambient inventory reorder when stock falls below this percentage of capacity. Lower values save cost but increase risk of stockouts.",
-        appliesTo: "submission",
-        dataType: "number",
-        inputType: "slider",
-        min: 0,
-        max: 50,
-        defaultValue: 15,
-        required: true,
-      },
-      {
-        key: "reorderPointNotForResalePercent",
-        label: "Ops Supply Reorder Point (%)",
-        description:
-          "Triggers a reorder for non-resale operating supplies. Running out of ops supplies can limit production capacity.",
-        appliesTo: "submission",
-        dataType: "number",
-        inputType: "slider",
-        min: 0,
-        max: 50,
-        defaultValue: 10,
-        required: true,
-      },
-      {
-        key: "safetyStockByBucketStrategy",
-        label: "Safety Stock Strategy",
-        description:
-          "Controls how much buffer inventory is carried across all buckets. Higher safety stock improves service level but raises holding cost.",
-        appliesTo: "submission",
-        dataType: "string",
-        inputType: "dropdown",
-        options: ["LOW", "BALANCED", "HIGH"],
-        defaultValue: "BALANCED",
-        required: true,
-      },
-      {
-        key: "inventoryProtectionPriority",
-        label: "Inventory Protection Priority",
-        description:
-          "Determines which inventory bucket is prioritized when capacity, cash, or supply is constrained. Affects which inventory is replenished or sacrificed first.",
-        appliesTo: "submission",
-        dataType: "string",
-        inputType: "dropdown",
-        options: ["REFRIGERATED_FIRST", "AMBIENT_FIRST", "BALANCED"],
-        defaultValue: "BALANCED",
-        required: true,
-      },
-      {
-        key: "allowExpediteOrders",
-        label: "Allow Expedited Orders",
-        description:
-          "Allows emergency replenishment at a higher cost. Expediting avoids stockouts but significantly increases costs.",
-        appliesTo: "submission",
-        dataType: "boolean",
-        inputType: "switch",
-        defaultValue: false,
-        required: false,
-      },
-      {
-        key: "plannedProductionUnits",
-        label: "Planned Production Units",
-        description:
-          "Target number of units to produce this period. Production is limited by inventory, labor, and capacity.",
-        appliesTo: "submission",
-        dataType: "number",
-        inputType: "slider",
-        min: 0,
-        max: 1000,
-        defaultValue: 0,
-        required: true,
-      },
-      {
-        key: "staffingLevel",
-        label: "Staffing Level",
-        description:
-          "Adjust staffing relative to baseline requirements. Higher staffing increases cost but improves throughput.",
-        appliesTo: "submission",
-        dataType: "string",
-        inputType: "dropdown",
-        options: ["BELOW_AVERAGE", "AVERAGE", "ABOVE_AVERAGE"],
+        inputType: "multiple-choice",
+        options: ["LOW", "AVERAGE", "HIGH"],
         defaultValue: "AVERAGE",
+        min: null,
+        max: null,
         required: true,
+        isActive: true,
       },
       {
-        key: "inventoryConsumptionDiscipline",
-        label: "Inventory Consumption Discipline",
+        key: "inventoryRiskTolerance",
+        label: "Which outcome worries you more this week?",
         description:
-          "Controls how strictly inventory rotation rules are followed. Loose discipline can increase waste, especially in cold storage.",
+          "Choose whether you are more concerned about running out of product or ending the week with leftovers.",
         appliesTo: "submission",
         dataType: "string",
-        inputType: "dropdown",
-        options: ["FIFO_STRICT", "FIFO_LOOSE", "OPPORTUNISTIC"],
-        defaultValue: "FIFO_STRICT",
+        inputType: "multiple-choice",
+        options: ["STOCKOUT_AVERSION", "BALANCED", "OVERSTOCK_AVERSION"],
+        defaultValue: "BALANCED",
+        min: null,
+        max: null,
         required: true,
+        isActive: true,
       },
       {
-        key: "unitSalePrice",
-        label: "Unit Sale Price",
+        key: "reorderIntensityRefrigerated",
+        label: "How aggressively are you restocking cold ingredients?",
         description:
-          "Price charged per unit sold. Higher prices increase margin but may reduce demand.",
-        appliesTo: "submission",
-        dataType: "number",
-        inputType: "number",
-        min: 0,
-        defaultValue: 0,
-        required: true,
-      },
-      {
-        key: "discountIntensity",
-        label: "Discount Intensity (%)",
-        description:
-          "Percentage discount applied to unit price. Discounts increase volume but reduce margin.",
-        appliesTo: "submission",
-        dataType: "number",
-        inputType: "slider",
-        min: 0,
-        max: 50,
-        defaultValue: 0,
-        required: false,
-      },
-      {
-        key: "priceElasticitySensitivity",
-        label: "Price Sensitivity",
-        description:
-          "How strongly demand responds to price changes. High sensitivity means price increases quickly reduce demand.",
+          "Cold inventory is costly to store and prone to waste if over-ordered.",
         appliesTo: "submission",
         dataType: "string",
-        inputType: "dropdown",
-        options: ["LOW", "MEDIUM", "HIGH"],
-        defaultValue: "MEDIUM",
+        inputType: "multiple-choice",
+        options: ["CONSERVATIVE", "BALANCED", "AGGRESSIVE"],
+        defaultValue: "BALANCED",
+        min: null,
+        max: null,
         required: true,
+        isActive: true,
+      },
+      {
+        key: "reorderIntensityAmbient",
+        label: "What’s your plan for shelf-stable supplies?",
+        description:
+          "Shelf-stable inventory is cheaper to hold but still ties up cash.",
+        appliesTo: "submission",
+        dataType: "string",
+        inputType: "multiple-choice",
+        options: ["CONSERVATIVE", "BALANCED", "AGGRESSIVE"],
+        defaultValue: "BALANCED",
+        min: null,
+        max: null,
+        required: true,
+        isActive: true,
+      },
+      {
+        key: "reorderIntensityOps",
+        label:
+          "How cautious are you about running out of everyday operating supplies?",
+        description:
+          "Operating supplies don’t generate revenue but can limit production if they run out.",
+        appliesTo: "submission",
+        dataType: "string",
+        inputType: "multiple-choice",
+        options: ["CONSERVATIVE", "BALANCED", "AGGRESSIVE"],
+        defaultValue: "BALANCED",
+        min: null,
+        max: null,
+        required: true,
+        isActive: true,
+      },
+      {
+        key: "productionPush",
+        label: "How hard are you pushing production this week?",
+        description:
+          "Pushing production can increase sales or lead to waste if demand is lower than expected.",
+        appliesTo: "submission",
+        dataType: "string",
+        inputType: "multiple-choice",
+        options: ["LIMITED", "NORMAL", "MAXIMIZE"],
+        defaultValue: "NORMAL",
+        min: null,
+        max: null,
+        required: true,
+        isActive: true,
+      },
+      {
+        key: "wasteDiscipline",
+        label: "How strict is your team about minimizing waste?",
+        description:
+          "Stricter waste discipline reduces spoilage but may slow down operations.",
+        appliesTo: "submission",
+        dataType: "string",
+        inputType: "multiple-choice",
+        options: ["LOOSE", "STANDARD", "STRICT"],
+        defaultValue: "STANDARD",
+        min: null,
+        max: null,
+        required: true,
+        isActive: true,
+      },
+      {
+        key: "pricingStrategy",
+        label: "How are you pricing your product this week?",
+        description:
+          "Pricing affects customer demand, revenue, and how quickly inventory moves.",
+        appliesTo: "submission",
+        dataType: "string",
+        inputType: "multiple-choice",
+        options: ["DISCOUNT", "STANDARD", "PREMIUM"],
+        defaultValue: "STANDARD",
+        min: null,
+        max: null,
+        required: true,
+        isActive: true,
+      },
+      {
+        key: "serviceLevelFocus",
+        label: "What matters more to you this week?",
+        description:
+          "Balancing cost control versus fulfilling every possible customer order.",
+        appliesTo: "submission",
+        dataType: "string",
+        inputType: "multiple-choice",
+        options: ["COST_FOCUSED", "BALANCED", "SERVICE_FOCUSED"],
+        defaultValue: "BALANCED",
+        min: null,
+        max: null,
+        required: true,
+        isActive: true,
       },
     ];
   };
@@ -514,6 +465,174 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
 
 classroomTemplateSchema.statics.GLOBAL_DEFAULT_KEY = "default_supply_chain_101";
 
+/**
+ * Default classroom prompts (prepended to OpenAI messages).
+ * These prompts do NOT depend on scenario/submission/store data.
+ */
+classroomTemplateSchema.statics.getDefaultClassroomPrompts = function () {
+  const warehouseRules = `
+WAREHOUSE RULES - YOU MUST OBEY THESE RULES. Outputs that violate these rules are invalid.
+
+1. INVENTORY BUCKETS
+Inventory exists ONLY in these buckets:
+- refrigerated
+- ambient
+- notForResaleDry
+
+All units belong to exactly one bucket.
+
+2. CAPACITY (HARD LIMITS)
+Each bucket has a fixed capacity:
+- refrigeratedCapacityUnits
+- ambientCapacityUnits
+- notForResaleCapacityUnits
+
+Rule:
+endUnits(bucket) ≤ capacityUnits(bucket)
+
+3. INVENTORY RECONCILIATION (REQUIRED)
+For EACH bucket track:
+beginUnits, receivedUnits, usedUnits, wasteUnits, endUnits
+
+This equation MUST hold:
+endUnits = beginUnits + receivedUnits - usedUnits - wasteUnits
+
+4. RECEIPTS & OVERFLOW
+If beginUnits + receivedUnits > capacityUnits, you MUST apply overflowStoragePolicy.
+
+PAY_FOR_OVERFLOW:
+- Excess units incur overflowStorageCost
+- Excess units do NOT increase endUnits
+- Excess units are not usable
+
+DISCARD_EXCESS:
+- Excess units become wasteUnits
+- Waste disposal cost applies
+
+EMERGENCY_REPLENISHMENT:
+- Excess units rejected
+- Emergency units incur expediteCost
+- Capacity rules still apply
+
+Overflow inventory may NEVER be carried forward as normal inventory.
+
+5. USAGE (MAKE)
+Inventory may only be used if it exists:
+usedUnits ≤ beginUnits + receivedUnits
+
+Default consumption order:
+refrigerated → ambient → notForResaleDry
+
+6. WASTE
+wasteUnits ≥ 0
+wasteUnits ≤ beginUnits + receivedUnits - usedUnits
+Waste must be explicitly recorded per bucket.
+
+7. HOLDING COST
+After inventory movement:
+holdingCost(bucket) = endUnits(bucket) × holdingCostPerUnit(bucket)
+
+Total holding cost = sum across all buckets.
+
+8. PROHIBITED
+You MUST NEVER:
+- Create inventory without receipt
+- Use inventory that does not exist
+- Store inventory outside buckets
+- Exceed capacity without overflow handling
+- Adjust inventory to force profitability
+
+9. LEDGER REQUIREMENTS
+If inventory exists, ledger MUST include:
+- education.materialFlowByBucket
+- holdingCost
+- overflowStorageCost (if any)
+- wasteDisposalCost (if any)
+
+10. CAUSAL EXPLANATIONS
+Narratives must follow physical causality:
+overstock → overflow/waste → higher cost
+understock → stockout → lost sales
+cold inventory → higher holding cost
+
+Narratives may NOT contradict inventory math.
+
+11. INVENTORY ORDERING (REQUIRED)
+You MUST calculate receivedUnits for each bucket based on the student's reorder policy and submission decisions:
+
+REORDER_POINT:
+- Order when: beginUnits < (capacityUnits × reorderPointPercent / 100) for that bucket
+- Order quantity: typically replenish to 80-90% of capacity (higher for BALANCED/HIGH safetyStockByBucketStrategy, lower for LOW)
+- Apply inventoryProtectionPriority to determine bucket ordering sequence
+- Example: If refrigeratedCapacityUnits=500, reorderPointRefrigeratedPercent=20, and beginUnits=80, then 80 < 100, so ORDER
+
+FIXED_INTERVAL:
+- Order every week/interval regardless of current stock level
+- Order quantity: typically 60-80% of capacity (adjust based on demandCommitmentLevel: AGGRESSIVE=higher, CONSERVATIVE=lower)
+- Consider safetyStockByBucketStrategy: HIGH=more, LOW=less
+- Example: If refrigeratedCapacityUnits=500 and demandCommitmentLevel=AGGRESSIVE, order ~350-400 units
+
+DEMAND_TRIGGERED:
+- Order based on plannedProductionUnits, expected demand, and current inventory
+- Order quantity: sufficient to support plannedProductionUnits plus safety stock (based on safetyStockByBucketStrategy)
+- Factor in supplierLeadTime: SHORT=less buffer needed, LONG=more buffer needed
+
+ORDER DISTRIBUTION:
+- receivedUnits must be allocated across buckets based on:
+  - inventoryProtectionPriority (REFRIGERATED_FIRST prioritizes cold storage, etc.)
+  - The bucket's capacity limits
+  - The bucket's reorderPointPercent threshold (for REORDER_POINT policy)
+  
+- For each bucket, calculate:
+  - Should I order? (based on policy)
+  - How much should I order? (based on capacity, strategy, and demand)
+  - Add to receivedUnits for that bucket
+
+MULTI-BUCKET ORDERING REQUIREMENT:
+- You MUST order inventory for ALL buckets that are part of operations, not just refrigerated
+- Typical distribution for pizza operations:
+  - Refrigerated: 50-70% of total order (cheese, meat, produce - perishable items)
+  - Ambient: 20-35% of total order (flour, canned goods, dry ingredients)
+  - NotForResaleDry: 10-20% of total order (paper goods, cleaning supplies, packaging)
+- Adjust distribution based on inventoryProtectionPriority:
+  - REFRIGERATED_FIRST: 60-75% refrigerated, 20-30% ambient, 5-15% notForResaleDry
+  - AMBIENT_FIRST: 40-50% refrigerated, 40-50% ambient, 10-20% notForResaleDry
+  - BALANCED: 50-60% refrigerated, 30-40% ambient, 10-20% notForResaleDry
+
+SAFETY STOCK REQUIREMENT:
+- DO NOT use 100% of received inventory in the same period it was received
+- Maintain safety stock: endUnits should typically be 10-30% of capacity (higher for HIGH safetyStockByBucketStrategy)
+- If you receive 400 units, don't use all 400 - leave some as ending inventory for next period
+- Example: If capacity is 500 and you receive 400 units, use 300-350 for production, leaving 50-100 as safety stock
+- This prevents stockouts if there are delays in next period's deliveries
+
+CRITICAL: receivedUnits must be > 0 for buckets where ordering is triggered OR where beginUnits = 0. Do NOT set all receivedUnits to 0 unless the student explicitly chose to order nothing.
+
+12. FINAL CHECK
+Before returning output:
+- Buckets reconcile: endUnits = beginUnits + receivedUnits - usedUnits - wasteUnits for EACH bucket
+- No capacity violations: endUnits ≤ capacityUnits for each bucket
+- Costs match inventory state: holdingCost = sum of (endUnits × holdingCostPerUnit) for each bucket
+- No inventory appears or disappears
+- receivedUnits reflect ordering decisions based on reorder policy
+- MULTI-BUCKET: At least 2 buckets should have receivedUnits > 0 (refrigerated + at least one other)
+- SAFETY STOCK: endUnits should not be 0 for all buckets unless operations are ceasing
+- CONSISTENCY: inventoryState.refrigeratedUnits MUST equal education.materialFlowByBucket.refrigerated.endUnits
+- CONSISTENCY: inventoryState.ambientUnits MUST equal education.materialFlowByBucket.ambient.endUnits
+- CONSISTENCY: inventoryState.notForResaleUnits MUST equal education.materialFlowByBucket.notForResaleDry.endUnits
+`;
+
+  return [
+    {
+      role: "system",
+      content:
+        "You are the SCALE.ai simulation engine for a supply chain class using a pizza shop game. Calculate outcomes for one student based on store configuration, scenario context, global outcome, and the student's decisions. Apply realistic business logic and environmental effects.\n\n" +
+        "Return ONLY valid JSON matching the provided schema. You may invent reasonable intermediate numbers when needed. Also compute the required education metrics so instructors can explain results (service level, stockouts/lost sales, by-bucket material flow, and cost breakdown).",
+    },
+    { role: "system", content: warehouseRules },
+  ];
+};
+
 function buildDefaultStoreTypeValuesByStoreTypeKey() {
   // These values are intended to be small, classroom-friendly “abstract units”
   // while still reflecting meaningful differences between store types.
@@ -710,6 +829,10 @@ classroomTemplateSchema.statics.ensureGlobalDefaultTemplate =
           buildDefaultStoreTypeValuesByStoreTypeKey();
       }
 
+      if (!Array.isArray(payload.prompts) || payload.prompts.length === 0) {
+        payload.prompts = this.getDefaultClassroomPrompts();
+      }
+
       existing.payload = payload;
       existing.updatedBy = existing.updatedBy || "system_startup";
       await existing.save();
@@ -731,6 +854,7 @@ classroomTemplateSchema.statics.ensureGlobalDefaultTemplate =
       },
       storeTypeValuesByStoreTypeKey:
         buildDefaultStoreTypeValuesByStoreTypeKey(),
+      prompts: this.getDefaultClassroomPrompts(),
     };
 
     const doc = new this({
@@ -774,6 +898,15 @@ classroomTemplateSchema.statics.copyGlobalToOrganization = async function (
     ) {
       payload.storeTypeValuesByStoreTypeKey =
         globalTemplate.payload?.storeTypeValuesByStoreTypeKey || {};
+      existingOrgTemplate.payload = payload;
+      existingOrgTemplate.updatedBy = clerkUserId;
+      await existingOrgTemplate.save();
+    }
+
+    // Backfill prompts if missing
+    if (!Array.isArray(payload.prompts) || payload.prompts.length === 0) {
+      payload.prompts =
+        globalTemplate.payload?.prompts || this.getDefaultClassroomPrompts();
       existingOrgTemplate.payload = payload;
       existingOrgTemplate.updatedBy = clerkUserId;
       await existingOrgTemplate.save();
