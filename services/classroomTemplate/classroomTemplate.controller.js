@@ -4,6 +4,81 @@ const StoreType = require("../storeType/storeType.model");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
 const VariableValue = require("../variableDefinition/variableValue.model");
 
+async function buildTemplatePayloadFromClassroom({
+  organizationId,
+  classroomId,
+  includeInactive,
+}) {
+  const storeTypes = await StoreType.find({
+    organization: organizationId,
+    classroomId,
+    ...(includeInactive === "true" ? {} : { isActive: true }),
+  })
+    .select("key label description isActive")
+    .sort({ label: 1 })
+    .lean();
+
+  const defsQuery = {
+    organization: organizationId,
+    classroomId,
+    ...(includeInactive === "true" ? {} : { isActive: true }),
+  };
+  const definitions = await VariableDefinition.find(defsQuery)
+    .sort({ appliesTo: 1, label: 1 })
+    .lean();
+
+  const defsByAppliesTo = {
+    storeType: [],
+    store: [],
+    submission: [],
+    scenario: [],
+  };
+  definitions.forEach((d) => {
+    if (defsByAppliesTo[d.appliesTo]) defsByAppliesTo[d.appliesTo].push(d);
+  });
+
+  const storeTypeValuesByStoreTypeKey = {};
+  if (storeTypes.length > 0) {
+    const storeTypeIds = storeTypes.map((st) => st._id);
+    const values = await VariableValue.find({
+      organization: organizationId,
+      classroomId,
+      appliesTo: "storeType",
+      ownerId: { $in: storeTypeIds },
+    }).lean();
+
+    const keyByStoreTypeId = new Map();
+    storeTypes.forEach((st) => keyByStoreTypeId.set(String(st._id), st.key));
+
+    values.forEach((v) => {
+      const stKey = keyByStoreTypeId.get(String(v.ownerId));
+      if (!stKey) return;
+      if (!storeTypeValuesByStoreTypeKey[stKey]) {
+        storeTypeValuesByStoreTypeKey[stKey] = {};
+      }
+      storeTypeValuesByStoreTypeKey[stKey][v.variableKey] = v.value;
+    });
+
+    // ensure keys exist even if no values yet
+    storeTypes.forEach((st) => {
+      if (!storeTypeValuesByStoreTypeKey[st.key]) {
+        storeTypeValuesByStoreTypeKey[st.key] = {};
+      }
+    });
+  }
+
+  return {
+    storeTypes: storeTypes.map((st) => ({
+      key: st.key,
+      label: st.label,
+      description: st.description || "",
+      isActive: st.isActive !== false,
+    })),
+    variableDefinitionsByAppliesTo: defsByAppliesTo,
+    storeTypeValuesByStoreTypeKey,
+  };
+}
+
 function validateTemplateVariableDefinition(appliesTo, def) {
   if (!def || typeof def !== "object") {
     throw new Error("definition is required");
@@ -156,6 +231,145 @@ exports.addVariableDefinition = async function (req, res) {
   }
 };
 
+/**
+ * Create a new template from a classroom snapshot
+ * POST /v1/admin/classroom-templates/from-classroom?classroomId=...
+ */
+exports.createFromClassroom = async function (req, res) {
+  try {
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+    const { classroomId, includeInactive } = req.query;
+    const { key, label, description, isActive } = req.body || {};
+
+    if (!classroomId) {
+      return res
+        .status(400)
+        .json({ error: "classroomId query parameter is required" });
+    }
+
+    await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId
+    );
+
+    const classroom = await Classroom.findById(classroomId).select("name");
+    const finalKey =
+      (key && String(key).trim()) ||
+      `template_${classroomId}_${Date.now().toString(36)}`;
+    const finalLabel =
+      (label && String(label).trim()) ||
+      `Template from ${classroom?.name || "Classroom"}`;
+
+    const existingKey = await ClassroomTemplate.findOne({
+      organization: organizationId,
+      key: finalKey,
+    }).select("_id");
+    if (existingKey) {
+      return res.status(409).json({
+        error: `Template with key "${finalKey}" already exists`,
+      });
+    }
+
+    const payload = await buildTemplatePayloadFromClassroom({
+      organizationId,
+      classroomId,
+      includeInactive,
+    });
+
+    const template = new ClassroomTemplate({
+      organization: organizationId,
+      key: finalKey,
+      label: finalLabel,
+      description: description || "",
+      isActive: isActive !== false,
+      version: 1,
+      sourceTemplateId: null,
+      payload,
+      createdBy: clerkUserId,
+      updatedBy: clerkUserId,
+    });
+
+    await template.save();
+
+    return res.status(201).json({
+      success: true,
+      message: "Template created from classroom",
+      data: template,
+    });
+  } catch (error) {
+    console.error("Error creating template from classroom:", error);
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Overwrite an existing org template (by key) from a classroom snapshot
+ * PUT /v1/admin/classroom-templates/from-classroom?classroomId=...&key=...
+ * If key is omitted, defaults to the org's default_supply_chain_101 template.
+ */
+exports.overwriteFromClassroom = async function (req, res) {
+  try {
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+    const { classroomId, includeInactive, key } = req.query;
+
+    if (!classroomId) {
+      return res
+        .status(400)
+        .json({ error: "classroomId query parameter is required" });
+    }
+
+    await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId
+    );
+
+    const templateKey =
+      (key && String(key).trim()) || ClassroomTemplate.GLOBAL_DEFAULT_KEY;
+
+    let template = await ClassroomTemplate.findOne({
+      organization: organizationId,
+      key: templateKey,
+    });
+
+    // If missing (older orgs), create the default copy and retry (only for default key).
+    if (!template && templateKey === ClassroomTemplate.GLOBAL_DEFAULT_KEY) {
+      await ClassroomTemplate.copyGlobalToOrganization(
+        organizationId,
+        clerkUserId
+      );
+      template = await ClassroomTemplate.findOne({
+        organization: organizationId,
+        key: templateKey,
+      });
+    }
+
+    if (!template) {
+      return res.status(404).json({ error: "Template not found" });
+    }
+
+    template.payload = await buildTemplatePayloadFromClassroom({
+      organizationId,
+      classroomId,
+      includeInactive,
+    });
+    template.updatedBy = clerkUserId;
+    await template.save();
+
+    return res.json({
+      success: true,
+      message: "Template overwritten from classroom",
+      data: template,
+    });
+  } catch (error) {
+    console.error("Error overwriting template from classroom:", error);
+    return res.status(500).json({ error: error.message });
+  }
+};
+
 exports.importFromClass = async function (req, res) {
   try {
     const organizationId = req.organization._id;
@@ -170,7 +384,11 @@ exports.importFromClass = async function (req, res) {
         .json({ error: "classroomId query parameter is required" });
     }
 
-    await Classroom.validateAdminAccess(classroomId, clerkUserId, organizationId);
+    await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId
+    );
 
     const template = await ClassroomTemplate.findOne({
       _id: templateId,
@@ -181,77 +399,11 @@ exports.importFromClass = async function (req, res) {
       return res.status(404).json({ error: "Template not found" });
     }
 
-    const storeTypes = await StoreType.find({
-      organization: organizationId,
+    template.payload = await buildTemplatePayloadFromClassroom({
+      organizationId,
       classroomId,
-      ...(includeInactive === "true" ? {} : { isActive: true }),
-    })
-      .select("key label description isActive")
-      .sort({ label: 1 })
-      .lean();
-
-    const defsQuery = {
-      organization: organizationId,
-      classroomId,
-      ...(includeInactive === "true" ? {} : { isActive: true }),
-    };
-    const definitions = await VariableDefinition.find(defsQuery)
-      .sort({ appliesTo: 1, label: 1 })
-      .lean();
-
-    const defsByAppliesTo = {
-      storeType: [],
-      store: [],
-      submission: [],
-      scenario: [],
-    };
-    definitions.forEach((d) => {
-      if (defsByAppliesTo[d.appliesTo]) defsByAppliesTo[d.appliesTo].push(d);
+      includeInactive,
     });
-
-    const storeTypeValuesByStoreTypeKey = {};
-    if (storeTypes.length > 0) {
-      const storeTypeIdByKey = new Map(
-        storeTypes.map((st) => [st.key, st._id])
-      );
-      const storeTypeIds = storeTypes.map((st) => st._id);
-      const values = await VariableValue.find({
-        organization: organizationId,
-        classroomId,
-        appliesTo: "storeType",
-        ownerId: { $in: storeTypeIds },
-      }).lean();
-
-      const keyByStoreTypeId = new Map();
-      storeTypes.forEach((st) => keyByStoreTypeId.set(String(st._id), st.key));
-
-      values.forEach((v) => {
-        const stKey = keyByStoreTypeId.get(String(v.ownerId));
-        if (!stKey) return;
-        if (!storeTypeValuesByStoreTypeKey[stKey]) {
-          storeTypeValuesByStoreTypeKey[stKey] = {};
-        }
-        storeTypeValuesByStoreTypeKey[stKey][v.variableKey] = v.value;
-      });
-
-      // ensure keys exist even if no values yet
-      storeTypeIdByKey.forEach((_id, stKey) => {
-        if (!storeTypeValuesByStoreTypeKey[stKey]) {
-          storeTypeValuesByStoreTypeKey[stKey] = {};
-        }
-      });
-    }
-
-    template.payload = {
-      storeTypes: storeTypes.map((st) => ({
-        key: st.key,
-        label: st.label,
-        description: st.description || "",
-        isActive: st.isActive !== false,
-      })),
-      variableDefinitionsByAppliesTo: defsByAppliesTo,
-      storeTypeValuesByStoreTypeKey,
-    };
     template.updatedBy = clerkUserId;
     await template.save();
 
@@ -265,5 +417,3 @@ exports.importFromClass = async function (req, res) {
     return res.status(500).json({ error: error.message });
   }
 };
-
-

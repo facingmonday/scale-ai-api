@@ -134,32 +134,9 @@ storeTypeSchema.statics.getStoreTypesByClassroom = async function (
   }
 
   const storeTypes = await this.find(query).sort({ label: 1 });
-
-  // Load variables for all store types (classroom-scoped, so we do it manually)
-  if (storeTypes.length > 0) {
-    const storeTypeIds = storeTypes.map((st) => st._id);
-    const allVariables = await VariableValue.find({
-      classroomId,
-      appliesTo: "storeType",
-      ownerId: { $in: storeTypeIds },
-    });
-
-    // Group variables by ownerId
-    const variablesByOwner = {};
-    allVariables.forEach((v) => {
-      const ownerId = v.ownerId.toString();
-      if (!variablesByOwner[ownerId]) {
-        variablesByOwner[ownerId] = {};
-      }
-      variablesByOwner[ownerId][v.variableKey] = v.value;
-    });
-
-    // Assign variables to each store type
-    storeTypes.forEach((storeType) => {
-      const ownerId = storeType._id.toString();
-      storeType._storeTypeVariables = variablesByOwner[ownerId] || {};
-    });
-  }
+  // Use the variablePopulationPlugin's efficient batch population so `toObject()`
+  // includes `variables` (valueMap).
+  await this.populateVariablesForMany(storeTypes);
 
   return storeTypes.map((storeType) => storeType.toObject());
 };

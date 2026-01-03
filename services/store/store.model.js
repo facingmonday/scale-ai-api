@@ -432,6 +432,7 @@ storeSchema.statics.updateStore = async function (
 
     // Validate storeType exists and belongs to organization
     const storeTypeDoc = await StoreType.getStoreTypeById(
+      classroomId,
       organizationId,
       storeType
     );

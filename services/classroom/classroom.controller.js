@@ -265,6 +265,90 @@ exports.getAllClassrooms = async function (req, res) {
 };
 
 /**
+ * Admin: delete all VariableDefinitions (and VariableValues) for a classroom
+ * DELETE /api/admin/class/:classroomId/variables
+ */
+exports.deleteClassroomVariables = async function (req, res) {
+  try {
+    const { classroomId } = req.params;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId
+    );
+
+    const result =
+      await Classroom.adminDeleteAllVariableDefinitionsForClassroom(
+        classroomId,
+        organizationId,
+        { deleteValues: true }
+      );
+
+    return res.json({
+      success: true,
+      message: "Classroom variables cleared",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error deleting classroom variables:", error);
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Admin: restore classroom from template, wiping defs + values
+ * POST /api/admin/class/:classroomId/restore-template
+ */
+exports.restoreClassroomTemplate = async function (req, res) {
+  try {
+    const { classroomId } = req.params;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+    const { templateId, templateKey } = req.body || {};
+
+    await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId
+    );
+
+    const result = await Classroom.adminRestoreTemplateForClassroom(
+      classroomId,
+      organizationId,
+      clerkUserId,
+      { templateId, templateKey }
+    );
+
+    return res.json({
+      success: true,
+      message: "Classroom restored from template",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error restoring classroom template:", error);
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    if (error.message === "Template not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+/**
  * Invite student to class
  * POST /api/admin/class/:classroomId/invite
  */

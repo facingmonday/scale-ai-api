@@ -117,6 +117,23 @@ async function main() {
   try {
     const ClassroomTemplate = require("../../services/classroomTemplate/classroomTemplate.model");
     await ClassroomTemplate.ensureGlobalDefaultTemplate();
+
+    // Ensure every organization has the default template copied locally.
+    // This is safe to run on every startup (idempotent).
+    const Organization = require("../../services/organizations/organization.model");
+    const organizations = await Organization.find({}).select("_id").lean();
+    const systemUserId = "system_startup";
+
+    for (const org of organizations) {
+      try {
+        await ClassroomTemplate.copyGlobalToOrganization(org._id, systemUserId);
+      } catch (e) {
+        console.error(
+          `⚠️  Failed ensuring default classroom template for org ${org._id}:`,
+          e?.message || e
+        );
+      }
+    }
   } catch (e) {
     console.error(
       "⚠️  Failed to ensure global ClassroomTemplate on startup:",

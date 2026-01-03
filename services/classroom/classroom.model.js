@@ -286,6 +286,47 @@ classroomSchema.statics.validateAdminAccess = async function (
 };
 
 /**
+ * Validate student (enrolled user) access to a class
+ * @param {string} classroomId - Class ID
+ * @param {string} clerkUserId - Clerk user ID
+ * @param {string} organizationId - Organization ID
+ * @returns {Promise<Object>} Class document if enrolled, throws error otherwise
+ */
+classroomSchema.statics.validateStudentAccess = async function (
+  classroomId,
+  clerkUserId,
+  organizationId
+) {
+  const classDoc = await this.findOne({
+    _id: classroomId,
+    organization: organizationId,
+  });
+
+  if (!classDoc) {
+    throw new Error("Class not found");
+  }
+
+  // Resolve Clerk user -> Member
+  const Member = require("../members/member.model");
+  const member = await Member.findOne({ clerkUserId }).select("_id");
+  if (!member) {
+    throw new Error("Member not found");
+  }
+
+  // Verify enrollment exists (member or admin role)
+  const Enrollment = require("../enrollment/enrollment.model");
+  const enrollment = await Enrollment.findByClassAndUser(
+    classroomId,
+    member._id
+  );
+  if (!enrollment) {
+    throw new Error("Not enrolled in this class");
+  }
+
+  return classDoc;
+};
+
+/**
  * Generate join link for a class
  * @param {string} classroomId - Class ID
  * @returns {string} Join link URL
@@ -463,6 +504,191 @@ classroomSchema.statics.seedSubmissionVariables = async function (
   }
 
   return stats;
+};
+
+/**
+ * Admin: delete all VariableDefinitions (and VariableValues) for a classroom.
+ * This is destructive and intended for classroom reset/debug tools.
+ * @param {string} classroomId
+ * @param {string} organizationId
+ * @param {Object} options
+ * @param {boolean} options.deleteValues - also delete VariableValues to avoid orphaned values (default true)
+ * @returns {Promise<Object>} counts
+ */
+classroomSchema.statics.adminDeleteAllVariableDefinitionsForClassroom =
+  async function (classroomId, organizationId, options = {}) {
+    const { deleteValues = true } = options;
+
+    const VariableValue = require("../variableDefinition/variableValue.model");
+
+    const defsRes = await VariableDefinition.deleteMany({
+      organization: organizationId,
+      classroomId,
+    });
+
+    let valuesRes = null;
+    if (deleteValues) {
+      valuesRes = await VariableValue.deleteMany({
+        organization: organizationId,
+        classroomId,
+      });
+    }
+
+    return {
+      variableDefinitionsDeleted: defsRes?.deletedCount || 0,
+      variableValuesDeleted: valuesRes?.deletedCount || 0,
+    };
+  };
+
+/**
+ * Admin: restore a classroom from a template by wiping definitions + values and reapplying.
+ * This resets store/scenario/submission values to template defaultValue (if provided).
+ *
+ * @param {string} classroomId
+ * @param {string} organizationId
+ * @param {string} clerkUserId
+ * @param {Object} options
+ * @param {string} [options.templateId] - org template id to restore from
+ * @param {string} [options.templateKey] - org template key (defaults to GLOBAL_DEFAULT_KEY)
+ * @returns {Promise<Object>} stats
+ */
+classroomSchema.statics.adminRestoreTemplateForClassroom = async function (
+  classroomId,
+  organizationId,
+  clerkUserId,
+  options = {}
+) {
+  const { templateId, templateKey } = options;
+
+  const VariableValue = require("../variableDefinition/variableValue.model");
+  const Store = require("../store/store.model");
+  const Scenario = require("../scenario/scenario.model");
+  const Submission = require("../submission/submission.model");
+
+  const key = templateKey || ClassroomTemplate.GLOBAL_DEFAULT_KEY;
+
+  let template = null;
+  if (templateId) {
+    template = await ClassroomTemplate.findOne({
+      _id: templateId,
+      organization: organizationId,
+      isActive: true,
+    });
+  } else {
+    template = await ClassroomTemplate.findOne({
+      organization: organizationId,
+      key,
+      isActive: true,
+    });
+  }
+
+  if (!template && key === ClassroomTemplate.GLOBAL_DEFAULT_KEY) {
+    await ClassroomTemplate.copyGlobalToOrganization(
+      organizationId,
+      clerkUserId
+    );
+    template = await ClassroomTemplate.findOne({
+      organization: organizationId,
+      key,
+      isActive: true,
+    });
+  }
+
+  if (!template) {
+    throw new Error("Template not found");
+  }
+
+  // 1) Delete all values first (to avoid unique conflicts), then definitions.
+  const valuesRes = await VariableValue.deleteMany({
+    organization: organizationId,
+    classroomId,
+  });
+  const defsRes = await VariableDefinition.deleteMany({
+    organization: organizationId,
+    classroomId,
+  });
+
+  // 2) Apply template (recreates StoreType defs + StoreType values; creates other defs too)
+  const templateApply = await template.applyToClassroom({
+    classroomId,
+    organizationId,
+    clerkUserId,
+  });
+
+  // 3) Reset store/scenario/submission values to defaults (if template provides defs with defaultValue)
+  const defsBy = template.payload?.variableDefinitionsByAppliesTo || {};
+  const storeDefs = Array.isArray(defsBy.store) ? defsBy.store : [];
+  const scenarioDefs = Array.isArray(defsBy.scenario) ? defsBy.scenario : [];
+  const submissionDefs = Array.isArray(defsBy.submission)
+    ? defsBy.submission
+    : [];
+
+  const reseed = async (appliesTo, owners, defs) => {
+    const usableDefs = (defs || []).filter(
+      (d) =>
+        d && d.key && d.defaultValue !== undefined && d.defaultValue !== null
+    );
+    if (owners.length === 0 || usableDefs.length === 0) return 0;
+
+    const ops = [];
+    for (const owner of owners) {
+      for (const def of usableDefs) {
+        ops.push({
+          insertOne: {
+            document: {
+              organization: organizationId,
+              classroomId,
+              appliesTo,
+              ownerId: owner._id,
+              variableKey: def.key,
+              value: def.defaultValue,
+              createdBy: clerkUserId,
+              updatedBy: clerkUserId,
+            },
+          },
+        });
+      }
+    }
+
+    if (ops.length === 0) return 0;
+    const res = await VariableValue.bulkWrite(ops, { ordered: false });
+    return res?.insertedCount || 0;
+  };
+
+  const [stores, scenarios, submissions] = await Promise.all([
+    Store.find({ organization: organizationId, classroomId })
+      .select("_id")
+      .lean(),
+    Scenario.find({ organization: organizationId, classroomId })
+      .select("_id")
+      .lean(),
+    Submission.find({ organization: organizationId, classroomId })
+      .select("_id")
+      .lean(),
+  ]);
+
+  const storeValuesCreated = await reseed("store", stores, storeDefs);
+  const scenarioValuesCreated = await reseed(
+    "scenario",
+    scenarios,
+    scenarioDefs
+  );
+  const submissionValuesCreated = await reseed(
+    "submission",
+    submissions,
+    submissionDefs
+  );
+
+  return {
+    variableValuesDeleted: valuesRes?.deletedCount || 0,
+    variableDefinitionsDeleted: defsRes?.deletedCount || 0,
+    templateApply,
+    reseeded: {
+      storeValuesCreated,
+      scenarioValuesCreated,
+      submissionValuesCreated,
+    },
+  };
 };
 
 const Classroom = mongoose.model("Classroom", classroomSchema);

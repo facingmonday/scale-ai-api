@@ -64,28 +64,25 @@ exports.createStoreType = async function (req, res) {
 exports.updateStoreType = async function (req, res) {
   try {
     const { storeTypeId } = req.params;
-    const { classroomId } = req.query;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
-    if (!classroomId) {
-      return res
-        .status(400)
-        .json({ error: "classroomId query parameter is required" });
-    }
-
-    await Classroom.validateAdminAccess(classroomId, clerkUserId, organizationId);
-
     // Find store type
-    const storeType = await StoreType.getStoreTypeById(
-      classroomId,
-      organizationId,
-      storeTypeId
-    );
+    const storeType = await StoreType.findOne({
+      _id: storeTypeId,
+      organization: organizationId,
+      isActive: true,
+    });
 
     if (!storeType) {
       return res.status(404).json({ error: "Store type not found" });
     }
+
+    await Classroom.validateAdminAccess(
+      storeType.classroomId,
+      clerkUserId,
+      organizationId
+    );
 
     // Prevent changing key
     if (req.body.key && req.body.key !== storeType.key) {
@@ -105,7 +102,7 @@ exports.updateStoreType = async function (req, res) {
       // Update or create variable values
       for (const [variableKey, value] of variableEntries) {
         await VariableValue.setVariable(
-          classroomId,
+          storeType.classroomId,
           "storeType",
           storeType._id,
           variableKey,
@@ -117,7 +114,7 @@ exports.updateStoreType = async function (req, res) {
 
       // Delete variables that are not in the new set
       const existingVariables = await VariableValue.find({
-        classroomId,
+        classroomId: storeType.classroomId,
         appliesTo: "storeType",
         ownerId: storeType._id,
       });
@@ -201,30 +198,23 @@ exports.getStoreTypes = async function (req, res) {
 exports.getStoreType = async function (req, res) {
   try {
     const { storeTypeId } = req.params;
-    const { classroomId } = req.query;
     const organizationId = req.organization._id;
 
-    if (!classroomId) {
-      return res
-        .status(400)
-        .json({ error: "classroomId query parameter is required" });
-    }
-
-    await Classroom.validateAdminAccess(
-      classroomId,
-      req.clerkUser.id,
-      organizationId
-    );
-
-    const storeTypeDoc = await StoreType.getStoreTypeById(
-      classroomId,
-      organizationId,
-      storeTypeId
-    );
+    const storeTypeDoc = await StoreType.findOne({
+      _id: storeTypeId,
+      organization: organizationId,
+      isActive: true,
+    });
 
     if (!storeTypeDoc) {
       return res.status(404).json({ error: "Store type not found" });
     }
+
+    await Classroom.validateAdminAccess(
+      storeTypeDoc.classroomId,
+      req.clerkUser.id,
+      organizationId
+    );
 
     // Load variables before returning
     await storeTypeDoc._loadVariables();
@@ -247,30 +237,23 @@ exports.getStoreType = async function (req, res) {
 exports.deleteStoreType = async function (req, res) {
   try {
     const { storeTypeId } = req.params;
-    const { classroomId } = req.query;
     const organizationId = req.organization._id;
 
-    if (!classroomId) {
-      return res
-        .status(400)
-        .json({ error: "classroomId query parameter is required" });
-    }
-
-    await Classroom.validateAdminAccess(
-      classroomId,
-      req.clerkUser.id,
-      organizationId
-    );
-
-    const storeType = await StoreType.getStoreTypeById(
-      classroomId,
-      organizationId,
-      storeTypeId
-    );
+    const storeType = await StoreType.findOne({
+      _id: storeTypeId,
+      organization: organizationId,
+      isActive: true,
+    });
 
     if (!storeType) {
       return res.status(404).json({ error: "Store type not found" });
     }
+
+    await Classroom.validateAdminAccess(
+      storeType.classroomId,
+      req.clerkUser.id,
+      organizationId
+    );
 
     // Soft delete
     await storeType.softDelete();
@@ -291,7 +274,7 @@ exports.deleteStoreType = async function (req, res) {
  */
 exports.getStoreTypesForStudent = async function (req, res) {
   try {
-    const organizationId = req.organization;
+    const organizationId = req.organization?._id || req.organization;
     const { classroomId } = req.query;
     const clerkUserId = req.clerkUser.id;
 
@@ -303,12 +286,12 @@ exports.getStoreTypesForStudent = async function (req, res) {
 
     await Classroom.validateStudentAccess(classroomId, clerkUserId, organizationId);
 
-    // Get only active store types (students shouldn't see inactive ones)
-    const storeTypes = await StoreType.find({
-      organization: organizationId,
+    // Get only active store types (students shouldn't see inactive ones),
+    // with variables populated.
+    const storeTypes = await StoreType.getStoreTypesByClassroom(
       classroomId,
-      isActive: true,
-    });
+      organizationId
+    );
 
     res.json({
       success: true,

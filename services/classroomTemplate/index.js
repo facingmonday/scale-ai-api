@@ -32,6 +32,30 @@ router.post(
   controller.addVariableDefinition
 );
 
+// Create a new org-owned template from a classroom snapshot
+router.post(
+  "/admin/classroom-templates/from-classroom",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.createFromClassroom
+);
+
+// Overwrite an org template from a classroom snapshot (no templateId required; defaults to default_supply_chain_101)
+router.put(
+  "/admin/classroom-templates/from-classroom",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.overwriteFromClassroom
+);
+
+// Overwrite a specific template from a classroom snapshot (templateId required)
+router.put(
+  "/admin/classroom-templates/:templateId/from-classroom",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.importFromClass
+);
+
 router.post(
   "/admin/classroom-templates/:templateId/import-from-class",
   requireAuth(),
@@ -39,6 +63,12 @@ router.post(
   controller.importFromClass
 );
 
+// Backward-compatible alias (same behavior as POST import-from-class)
+router.put(
+  "/admin/classroom-templates/:templateId/import-from-class",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.importFromClass
+);
+
 module.exports = router;
-
-

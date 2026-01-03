@@ -288,7 +288,8 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
       {
         key: "capacity-units-refrigerated",
         label: "Capacity Units (Refrigerated)",
-        description: "Maximum cold storage capacity in abstract inventory units.",
+        description:
+          "Maximum cold storage capacity in abstract inventory units.",
         appliesTo: "storeType",
         dataType: "number",
         inputType: "number",
@@ -302,7 +303,8 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
       {
         key: "starting-units-refrigerated",
         label: "Starting Inventory Units (Refrigerated)",
-        description: "Initial refrigerated inventory units available at store start.",
+        description:
+          "Initial refrigerated inventory units available at store start.",
         appliesTo: "storeType",
         dataType: "number",
         inputType: "number",
@@ -374,7 +376,8 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
       {
         key: "starting-units-ambient",
         label: "Starting Inventory Units (Ambient)",
-        description: "Initial ambient inventory units available at store start.",
+        description:
+          "Initial ambient inventory units available at store start.",
         appliesTo: "storeType",
         dataType: "number",
         inputType: "number",
@@ -388,7 +391,8 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
       {
         key: "goods-per-unit-ambient",
         label: "Goods per Unit (Ambient)",
-        description: "Number of finished goods supported by one ambient inventory unit.",
+        description:
+          "Number of finished goods supported by one ambient inventory unit.",
         appliesTo: "storeType",
         dataType: "number",
         inputType: "number",
@@ -475,7 +479,8 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
       {
         key: "avg-unit-cost-operating-supply",
         label: "Avg Unit Cost (Operating Supplies)",
-        description: "Average dollar value of one operating supply inventory unit.",
+        description:
+          "Average dollar value of one operating supply inventory unit.",
         appliesTo: "storeType",
         dataType: "number",
         inputType: "number",
@@ -509,43 +514,241 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
 
 classroomTemplateSchema.statics.GLOBAL_DEFAULT_KEY = "default_supply_chain_101";
 
-classroomTemplateSchema.statics.ensureGlobalDefaultTemplate = async function () {
-  const key = this.GLOBAL_DEFAULT_KEY;
-  const existing = await this.findOne({ organization: null, key }).select("_id");
-  if (existing) return existing;
+function buildDefaultStoreTypeValuesByStoreTypeKey() {
+  // These values are intended to be small, classroom-friendly “abstract units”
+  // while still reflecting meaningful differences between store types.
+  const defaultsByKey = {
+    "capacity-units-refrigerated": 40,
+    "starting-units-refrigerated": 24,
+    "goods-per-unit-refrigerated": 2.5,
+    "avg-unit-cost-refrigerated": 9.5,
+    "holding-cost-per-unit-refrigerated": 0.75,
 
-  const payload = {
-    storeTypes: Object.keys(STORE_TYPE_PRESETS || {}).map((key) => ({
-      key,
-      label: STORE_TYPE_PRESETS[key]?.label || key,
-      description: STORE_TYPE_PRESETS[key]?.description || "",
-      isActive: true,
-    })),
-    variableDefinitionsByAppliesTo: {
-      storeType: this.getDefaultStoreTypeVariableDefinitions(),
-      store: [],
-      submission: this.getDefaultSubmissionVariableDefinitions(),
-      scenario: [],
-    },
-    storeTypeValuesByStoreTypeKey: {},
+    "capacity-units-ambient": 80,
+    "starting-units-ambient": 45,
+    "goods-per-unit-ambient": 5,
+    "avg-unit-cost-ambient": 4.25,
+    "holding-cost-per-unit-ambient": 0.25,
+
+    "capacity-units-operating-supply": 60,
+    "starting-units-operating-supply": 35,
+    "goods-per-unit-operating-supply": 12,
+    "avg-unit-cost-operating-supply": 1.75,
+    "holding-cost-per-unit-operating-supply": 0.15,
   };
 
-  const doc = new this({
-    organization: null,
-    key,
-    label: "Supply Chain 101 (Default)",
-    description:
-      "Default developer-managed template for SCALE.ai Supply Chain 101 simulation.",
-    isActive: true,
-    version: 1,
-    payload,
-    createdBy: "system_startup",
-    updatedBy: "system_startup",
+  // Hand-tuned adjustments using STORE_TYPE_PRESETS as qualitative guidance:
+  // - Fine dining: higher cost, higher cold-chain intensity, lower conversion efficiency
+  // - Street cart/festival: high throughput + packaging emphasis
+  // - Franchise: scale efficiencies lower cost, higher capacity
+  const overrides = {
+    food_truck: {
+      "capacity-units-refrigerated": 45,
+      "starting-units-refrigerated": 30,
+      "capacity-units-ambient": 60,
+      "starting-units-ambient": 25,
+      "capacity-units-operating-supply": 55,
+      "starting-units-operating-supply": 30,
+    },
+    cafe: {
+      // balanced defaults
+    },
+    bar_and_grill: {
+      "capacity-units-refrigerated": 55,
+      "starting-units-refrigerated": 35,
+      "capacity-units-ambient": 95,
+      "starting-units-ambient": 55,
+      "capacity-units-operating-supply": 70,
+      "starting-units-operating-supply": 40,
+    },
+    fine_dining: {
+      "capacity-units-refrigerated": 90,
+      "starting-units-refrigerated": 60,
+      "goods-per-unit-refrigerated": 1.8,
+      "avg-unit-cost-refrigerated": 18,
+      "holding-cost-per-unit-refrigerated": 1.5,
+
+      "capacity-units-ambient": 60,
+      "starting-units-ambient": 30,
+      "goods-per-unit-ambient": 4,
+      "avg-unit-cost-ambient": 6,
+      "holding-cost-per-unit-ambient": 0.35,
+
+      "capacity-units-operating-supply": 60,
+      "starting-units-operating-supply": 35,
+      "goods-per-unit-operating-supply": 10,
+      "avg-unit-cost-operating-supply": 2.2,
+      "holding-cost-per-unit-operating-supply": 0.18,
+    },
+    street_cart: {
+      "capacity-units-refrigerated": 20,
+      "starting-units-refrigerated": 12,
+      "goods-per-unit-refrigerated": 3.2,
+      "avg-unit-cost-refrigerated": 7,
+      "holding-cost-per-unit-refrigerated": 0.6,
+
+      "capacity-units-ambient": 70,
+      "starting-units-ambient": 40,
+      "goods-per-unit-ambient": 6.5,
+      "avg-unit-cost-ambient": 3.8,
+      "holding-cost-per-unit-ambient": 0.2,
+
+      "capacity-units-operating-supply": 90,
+      "starting-units-operating-supply": 60,
+      "goods-per-unit-operating-supply": 14,
+      "avg-unit-cost-operating-supply": 1.4,
+      "holding-cost-per-unit-operating-supply": 0.12,
+    },
+    late_night_window: {
+      "capacity-units-refrigerated": 50,
+      "starting-units-refrigerated": 30,
+      "capacity-units-ambient": 80,
+      "starting-units-ambient": 45,
+      "capacity-units-operating-supply": 75,
+      "starting-units-operating-supply": 45,
+    },
+    ghost_kitchen: {
+      "capacity-units-refrigerated": 65,
+      "starting-units-refrigerated": 40,
+      "avg-unit-cost-refrigerated": 10,
+      "holding-cost-per-unit-refrigerated": 0.9,
+
+      "capacity-units-ambient": 90,
+      "starting-units-ambient": 50,
+      "capacity-units-operating-supply": 80,
+      "starting-units-operating-supply": 50,
+    },
+    campus_kiosk: {
+      "capacity-units-refrigerated": 55,
+      "starting-units-refrigerated": 32,
+      "capacity-units-ambient": 100,
+      "starting-units-ambient": 60,
+      "capacity-units-operating-supply": 85,
+      "starting-units-operating-supply": 55,
+    },
+    upscale_bistro: {
+      "capacity-units-refrigerated": 70,
+      "starting-units-refrigerated": 45,
+      "goods-per-unit-refrigerated": 2.2,
+      "avg-unit-cost-refrigerated": 14,
+      "holding-cost-per-unit-refrigerated": 1.1,
+
+      "capacity-units-ambient": 85,
+      "starting-units-ambient": 45,
+      "avg-unit-cost-ambient": 5.5,
+      "holding-cost-per-unit-ambient": 0.3,
+
+      "capacity-units-operating-supply": 65,
+      "starting-units-operating-supply": 35,
+    },
+    festival_vendor: {
+      "capacity-units-refrigerated": 60,
+      "starting-units-refrigerated": 30,
+      "capacity-units-ambient": 120,
+      "starting-units-ambient": 70,
+      "capacity-units-operating-supply": 110,
+      "starting-units-operating-supply": 70,
+    },
+    franchise_location: {
+      "capacity-units-refrigerated": 80,
+      "starting-units-refrigerated": 50,
+      "avg-unit-cost-refrigerated": 8.5,
+      "holding-cost-per-unit-refrigerated": 0.7,
+
+      "capacity-units-ambient": 110,
+      "starting-units-ambient": 70,
+      "avg-unit-cost-ambient": 3.8,
+      "holding-cost-per-unit-ambient": 0.22,
+
+      "capacity-units-operating-supply": 80,
+      "starting-units-operating-supply": 45,
+      "avg-unit-cost-operating-supply": 1.5,
+      "holding-cost-per-unit-operating-supply": 0.14,
+    },
+  };
+
+  const result = {};
+  Object.keys(STORE_TYPE_PRESETS || {}).forEach((storeTypeKey) => {
+    result[storeTypeKey] = {
+      ...defaultsByKey,
+      ...(overrides[storeTypeKey] || {}),
+    };
   });
 
-  await doc.save();
-  return doc;
-};
+  return result;
+}
+
+classroomTemplateSchema.statics.ensureGlobalDefaultTemplate =
+  async function () {
+    const key = this.GLOBAL_DEFAULT_KEY;
+    const existing = await this.findOne({ organization: null, key });
+    if (existing) {
+      // Backfill missing payload sections for older globals (idempotent)
+      const payload =
+        existing.payload && typeof existing.payload === "object"
+          ? existing.payload
+          : {};
+
+      if (
+        !Array.isArray(payload.storeTypes) ||
+        payload.storeTypes.length === 0
+      ) {
+        payload.storeTypes = Object.keys(STORE_TYPE_PRESETS || {}).map((k) => ({
+          key: k,
+          label: STORE_TYPE_PRESETS[k]?.label || k,
+          description: STORE_TYPE_PRESETS[k]?.description || "",
+          isActive: true,
+        }));
+      }
+
+      if (
+        !payload.storeTypeValuesByStoreTypeKey ||
+        typeof payload.storeTypeValuesByStoreTypeKey !== "object" ||
+        Object.keys(payload.storeTypeValuesByStoreTypeKey).length === 0
+      ) {
+        payload.storeTypeValuesByStoreTypeKey =
+          buildDefaultStoreTypeValuesByStoreTypeKey();
+      }
+
+      existing.payload = payload;
+      existing.updatedBy = existing.updatedBy || "system_startup";
+      await existing.save();
+      return existing;
+    }
+
+    const payload = {
+      storeTypes: Object.keys(STORE_TYPE_PRESETS || {}).map((key) => ({
+        key,
+        label: STORE_TYPE_PRESETS[key]?.label || key,
+        description: STORE_TYPE_PRESETS[key]?.description || "",
+        isActive: true,
+      })),
+      variableDefinitionsByAppliesTo: {
+        storeType: this.getDefaultStoreTypeVariableDefinitions(),
+        store: [],
+        submission: this.getDefaultSubmissionVariableDefinitions(),
+        scenario: [],
+      },
+      storeTypeValuesByStoreTypeKey:
+        buildDefaultStoreTypeValuesByStoreTypeKey(),
+    };
+
+    const doc = new this({
+      organization: null,
+      key,
+      label: "Supply Chain 101 (Default)",
+      description:
+        "Default developer-managed template for SCALE.ai Supply Chain 101 simulation.",
+      isActive: true,
+      version: 1,
+      payload,
+      createdBy: "system_startup",
+      updatedBy: "system_startup",
+    });
+
+    await doc.save();
+    return doc;
+  };
 
 classroomTemplateSchema.statics.copyGlobalToOrganization = async function (
   organizationId,
@@ -555,8 +758,28 @@ classroomTemplateSchema.statics.copyGlobalToOrganization = async function (
   const existingOrgTemplate = await this.findOne({
     organization: organizationId,
     key: globalTemplate.key,
-  }).select("_id");
-  if (existingOrgTemplate) return existingOrgTemplate;
+  });
+  if (existingOrgTemplate) {
+    // Backfill missing values on org templates created before storeTypeValues existed
+    const payload =
+      existingOrgTemplate.payload &&
+      typeof existingOrgTemplate.payload === "object"
+        ? existingOrgTemplate.payload
+        : {};
+
+    if (
+      !payload.storeTypeValuesByStoreTypeKey ||
+      typeof payload.storeTypeValuesByStoreTypeKey !== "object" ||
+      Object.keys(payload.storeTypeValuesByStoreTypeKey).length === 0
+    ) {
+      payload.storeTypeValuesByStoreTypeKey =
+        globalTemplate.payload?.storeTypeValuesByStoreTypeKey || {};
+      existingOrgTemplate.payload = payload;
+      existingOrgTemplate.updatedBy = clerkUserId;
+      await existingOrgTemplate.save();
+    }
+    return existingOrgTemplate;
+  }
 
   const orgTemplate = new this({
     organization: organizationId,
@@ -608,7 +831,9 @@ classroomTemplateSchema.methods.applyToClassroom = async function ({
 
   const payload = this.payload || {};
   const defsByScope = normalizeVariableDefinitionsByAppliesTo(payload);
-  const storeTypesPayload = Array.isArray(payload.storeTypes) ? payload.storeTypes : [];
+  const storeTypesPayload = Array.isArray(payload.storeTypes)
+    ? payload.storeTypes
+    : [];
   const storeTypeValuesByKey =
     payload.storeTypeValuesByStoreTypeKey &&
     typeof payload.storeTypeValuesByStoreTypeKey === "object"
@@ -647,7 +872,11 @@ classroomTemplateSchema.methods.applyToClassroom = async function ({
   // If template didn't include store types, we still may want values/defs; store types are required for values.
   const allStoreTypesInClass = storeTypeDocs.length
     ? storeTypeDocs
-    : await StoreType.find({ organization: organizationId, classroomId, isActive: true });
+    : await StoreType.find({
+        organization: organizationId,
+        classroomId,
+        isActive: true,
+      });
 
   // 2) Create VariableDefinitions (classroom-scoped, create-only)
   const allDefs = [
@@ -671,7 +900,12 @@ classroomTemplateSchema.methods.applyToClassroom = async function ({
       continue;
     }
 
-    await VariableDefinition.createDefinition(classroomId, def, organizationId, clerkUserId);
+    await VariableDefinition.createDefinition(
+      classroomId,
+      def,
+      organizationId,
+      clerkUserId
+    );
     stats.variableDefinitionsCreated += 1;
   }
 
@@ -738,8 +972,9 @@ classroomTemplateSchema.methods.applyToClassroom = async function ({
   return stats;
 };
 
-const ClassroomTemplate = mongoose.model("ClassroomTemplate", classroomTemplateSchema);
+const ClassroomTemplate = mongoose.model(
+  "ClassroomTemplate",
+  classroomTemplateSchema
+);
 
 module.exports = ClassroomTemplate;
-
-
