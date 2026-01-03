@@ -45,7 +45,6 @@ exports.getLedgerHistory = async function (req, res) {
       });
     }
 
-    console.log("historyData", historyData);
     res.json({
       success: true,
       data: historyData,
