@@ -133,7 +133,6 @@ function buildStoreTypeVariableDefinitions() {
       min: 0,
       max: 200000,
       required: true,
-      affectsCalculation: true,
       isActive: true,
     },
     {
@@ -148,7 +147,6 @@ function buildStoreTypeVariableDefinitions() {
       min: 0,
       max: 200000,
       required: false,
-      affectsCalculation: true,
       isActive: true,
     },
     {
@@ -163,7 +161,6 @@ function buildStoreTypeVariableDefinitions() {
       min: 0,
       max: 20000,
       required: true,
-      affectsCalculation: true,
       isActive: true,
     },
     {
@@ -178,7 +175,6 @@ function buildStoreTypeVariableDefinitions() {
       min: 0,
       max: 20000,
       required: true,
-      affectsCalculation: true,
       isActive: true,
     },
     {
@@ -193,7 +189,6 @@ function buildStoreTypeVariableDefinitions() {
       min: 0,
       max: 20000,
       required: true,
-      affectsCalculation: true,
       isActive: true,
     },
     {
@@ -208,7 +203,6 @@ function buildStoreTypeVariableDefinitions() {
       min: 0,
       max: 1000,
       required: true,
-      affectsCalculation: true,
       isActive: true,
     },
     {
@@ -223,7 +217,6 @@ function buildStoreTypeVariableDefinitions() {
       min: 0,
       max: 50,
       required: true,
-      affectsCalculation: true,
       isActive: true,
     },
     {
@@ -239,7 +232,6 @@ function buildStoreTypeVariableDefinitions() {
         ? "medium"
         : weatherOptions[0] || "medium",
       required: true,
-      affectsCalculation: true,
       isActive: true,
     },
     {
@@ -255,7 +247,6 @@ function buildStoreTypeVariableDefinitions() {
         ? "none"
         : mobilityOptions[0] || "none",
       required: true,
-      affectsCalculation: true,
       isActive: true,
     },
     {
@@ -271,7 +262,6 @@ function buildStoreTypeVariableDefinitions() {
         ? "balanced"
         : riskProfileOptions[0] || "balanced",
       required: true,
-      affectsCalculation: true,
       isActive: true,
     },
     {
@@ -285,7 +275,6 @@ function buildStoreTypeVariableDefinitions() {
       options: commonIssuesOptions,
       defaultValue: [],
       required: false,
-      affectsCalculation: true,
       isActive: true,
     },
     {
@@ -297,7 +286,6 @@ function buildStoreTypeVariableDefinitions() {
       inputType: "text",
       defaultValue: "",
       required: false,
-      affectsCalculation: false,
       isActive: true,
     },
     {
@@ -309,7 +297,6 @@ function buildStoreTypeVariableDefinitions() {
       inputType: "text",
       defaultValue: "",
       required: false,
-      affectsCalculation: false,
       isActive: true,
     },
   ];
@@ -357,10 +344,6 @@ async function upsertStoreTypeDefinition(
     existing.max = def.max !== undefined ? def.max : existing.max;
     existing.required =
       def.required !== undefined ? def.required : existing.required;
-    existing.affectsCalculation =
-      def.affectsCalculation !== undefined
-        ? def.affectsCalculation
-        : existing.affectsCalculation;
     existing.isActive = true;
     existing.updatedBy = clerkUserId;
     await existing.save();

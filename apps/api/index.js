@@ -112,54 +112,34 @@ async function main() {
 
   await connectWithRetry();
 
-  // Seed store types and variable definitions for all existing organizations (runs once on startup)
-  setTimeout(async () => {
-    try {
-      const Organization = require("../../services/organizations/organization.model");
-      const StoreType = require("../../services/storeType/storeType.model");
-      const VariableDefinition = require("../../services/variableDefinition/variableDefinition.model");
+  // Ensure the global (developer-managed) classroom template exists.
+  // This is safe to run on every startup (idempotent).
+  try {
+    const ClassroomTemplate = require("../../services/classroomTemplate/classroomTemplate.model");
+    await ClassroomTemplate.ensureGlobalDefaultTemplate();
 
-      const organizations = await Organization.find({});
-      const systemUserId = "system_startup";
+    // Ensure every organization has the default template copied locally.
+    // This is safe to run on every startup (idempotent).
+    const Organization = require("../../services/organizations/organization.model");
+    const organizations = await Organization.find({}).select("_id").lean();
+    const systemUserId = "system_startup";
 
-      let totalSeeded = 0;
-      for (const org of organizations) {
-        // Check if store types exist
-        const storeTypes = await StoreType.getStoreTypesByOrganization(org._id);
-        // Check if variable definitions exist (for storeType)
-        const variableDefinitions =
-          await VariableDefinition.getStoreTypeDefinitions(org._id);
-
-        // Seed if either store types or variable definitions are missing
-        if (storeTypes.length === 0 || variableDefinitions.length === 0) {
-          const created = await StoreType.seedDefaultStoreTypes(
-            org._id,
-            systemUserId
-          );
-          totalSeeded += created.length;
-          console.log(
-            `Seeded ${created.length} store types for organization: ${org.name} (${org._id})`
-          );
-        }
-      }
-
-      if (totalSeeded > 0) {
-        console.log(
-          `✅ Seeded ${totalSeeded} store types across ${organizations.length} organizations`
-        );
-      } else {
-        console.log(
-          `✅ All organizations already have store types and variable definitions`
+    for (const org of organizations) {
+      try {
+        await ClassroomTemplate.copyGlobalToOrganization(org._id, systemUserId);
+      } catch (e) {
+        console.error(
+          `⚠️  Failed ensuring default classroom template for org ${org._id}:`,
+          e?.message || e
         );
       }
-    } catch (seedError) {
-      // Log but don't fail startup if seeding fails
-      console.error(
-        "⚠️  Error seeding store types on startup:",
-        seedError.message
-      );
     }
-  }, 2000); // Wait 2 seconds after connection to ensure DB is ready
+  } catch (e) {
+    console.error(
+      "⚠️  Failed to ensure global ClassroomTemplate on startup:",
+      e?.message || e
+    );
+  }
 
   const server = app.listen(PORT, () =>
     console.log(`Server running on port ${PORT}`)

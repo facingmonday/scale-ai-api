@@ -190,7 +190,6 @@ async function forwardPreviousSubmissionsForScenario({
             model: process.env.AUTO_SUBMISSION_MODEL || "gpt-4o-mini",
             absentPunishmentLevel, // Pass absence punishment level to AI
           });
-          console.log("aiVars", aiVars);
 
           // Create submission with AI-generated variables
           await Submission.createSubmission(
@@ -275,7 +274,6 @@ async function forwardPreviousSubmissionsForScenario({
         organizationId,
         clerkUserId
       );
-      console.log("created submission for user", userId);
 
       created += 1;
     } catch (error) {

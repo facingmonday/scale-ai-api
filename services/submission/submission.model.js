@@ -171,6 +171,7 @@ submissionSchema.statics.createSubmission = async function (
   if (variablesWithDefaults && Object.keys(variablesWithDefaults).length > 0) {
     const variableEntries = Object.entries(variablesWithDefaults);
     const variableDocs = variableEntries.map(([key, value]) => ({
+      classroomId,
       appliesTo: "submission",
       ownerId: submission._id,
       variableKey: key,
@@ -255,6 +256,7 @@ submissionSchema.statics.updateSubmission = async function (
 
   // Delete existing variable values
   await VariableValue.deleteMany({
+    classroomId,
     appliesTo: "submission",
     ownerId: submission._id,
   });
@@ -263,6 +265,7 @@ submissionSchema.statics.updateSubmission = async function (
   if (variablesWithDefaults && Object.keys(variablesWithDefaults).length > 0) {
     const variableEntries = Object.entries(variablesWithDefaults);
     const variableDocs = variableEntries.map(([key, value]) => ({
+      classroomId,
       appliesTo: "submission",
       ownerId: submission._id,
       variableKey: key,

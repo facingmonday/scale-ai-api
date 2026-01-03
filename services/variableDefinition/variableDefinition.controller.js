@@ -21,7 +21,6 @@ exports.createVariableDefinition = async function (req, res) {
       min,
       max,
       required,
-      affectsCalculation,
     } = req.body;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
@@ -38,6 +37,9 @@ exports.createVariableDefinition = async function (req, res) {
     if (!dataType) {
       return res.status(400).json({ error: "dataType is required" });
     }
+    if (!classroomId) {
+      return res.status(400).json({ error: "classroomId is required" });
+    }
 
     // Validate appliesTo enum
     if (!["store", "scenario", "submission", "storeType"].includes(appliesTo)) {
@@ -53,28 +55,16 @@ exports.createVariableDefinition = async function (req, res) {
       );
     }
 
-    // Handle storeType definitions (organization-scoped, not classroom-scoped)
-    const isStoreTypeDefinition = appliesTo === "storeType";
-    const finalClassroomId = isStoreTypeDefinition ? null : classroomId;
-
-    // Verify admin access to class (only for classroom-scoped definitions)
-    if (!isStoreTypeDefinition) {
-      if (!classroomId) {
-        return res.status(400).json({
-          error:
-            "classroomId is required for store, scenario, and submission definitions",
-        });
-      }
-      await Classroom.validateAdminAccess(
-        classroomId,
-        clerkUserId,
-        organizationId
-      );
-    }
+    // Verify admin access to class (all definitions are classroom-scoped)
+    await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId
+    );
 
     // Create definition using static method
     const definition = await VariableDefinition.createDefinition(
-      finalClassroomId,
+      classroomId,
       {
         key,
         label,
@@ -87,7 +77,6 @@ exports.createVariableDefinition = async function (req, res) {
         min,
         max,
         required,
-        affectsCalculation,
       },
       organizationId,
       clerkUserId
@@ -182,7 +171,6 @@ exports.updateVariableDefinition = async function (req, res) {
       "min",
       "max",
       "required",
-      "affectsCalculation",
     ];
 
     allowedFields.forEach((field) => {
@@ -257,21 +245,10 @@ exports.getVariableDefinitions = async function (req, res) {
 
     const query = {
       organization: organizationId,
+      classroomId,
     };
     if (appliesTo) {
       query.appliesTo = appliesTo;
-    }
-    if (classroomId) {
-      // Find definitions where classroomId matches the provided value OR is null
-      // This allows returning both classroom-scoped and organization-scoped definitions
-      query.$or = [
-        { classroomId: classroomId },
-        { classroomId: null },
-        { classroomId: { $exists: false } },
-      ];
-    } else {
-      // If no classroomId provided, only return organization-scoped (null) definitions
-      query.classroomId = null;
     }
     const definitions = await VariableDefinition.find(query).sort({ label: 1 });
 

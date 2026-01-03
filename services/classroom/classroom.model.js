@@ -6,6 +6,7 @@ const Submission = require("../submission/submission.model");
 const LedgerEntry = require("../ledger/ledger.model");
 const ScenarioOutcome = require("../scenarioOutcome/scenarioOutcome.model");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
+const ClassroomTemplate = require("../classroomTemplate/classroomTemplate.model");
 
 const classroomSchema = new mongoose.Schema({
   name: {
@@ -15,6 +16,11 @@ const classroomSchema = new mongoose.Schema({
   description: {
     type: String,
     default: "",
+  },
+  // Starting cash used to seed the initial ledger entry (week 0) for newly created stores
+  startingBalance: {
+    type: Number,
+    default: 0,
   },
   isActive: {
     type: Boolean,
@@ -280,6 +286,47 @@ classroomSchema.statics.validateAdminAccess = async function (
 };
 
 /**
+ * Validate student (enrolled user) access to a class
+ * @param {string} classroomId - Class ID
+ * @param {string} clerkUserId - Clerk user ID
+ * @param {string} organizationId - Organization ID
+ * @returns {Promise<Object>} Class document if enrolled, throws error otherwise
+ */
+classroomSchema.statics.validateStudentAccess = async function (
+  classroomId,
+  clerkUserId,
+  organizationId
+) {
+  const classDoc = await this.findOne({
+    _id: classroomId,
+    organization: organizationId,
+  });
+
+  if (!classDoc) {
+    throw new Error("Class not found");
+  }
+
+  // Resolve Clerk user -> Member
+  const Member = require("../members/member.model");
+  const member = await Member.findOne({ clerkUserId }).select("_id");
+  if (!member) {
+    throw new Error("Member not found");
+  }
+
+  // Verify enrollment exists (member or admin role)
+  const Enrollment = require("../enrollment/enrollment.model");
+  const enrollment = await Enrollment.findByClassAndUser(
+    classroomId,
+    member._id
+  );
+  if (!enrollment) {
+    throw new Error("Not enrolled in this class");
+  }
+
+  return classDoc;
+};
+
+/**
  * Generate join link for a class
  * @param {string} classroomId - Class ID
  * @returns {string} Join link URL
@@ -291,8 +338,7 @@ classroomSchema.statics.generateJoinLink = function (classroomId) {
 
 /**
  * Get all variable definitions for a classroom, grouped by appliesTo type
- * Includes both classroom-scoped definitions (store, scenario, submission) and
- * organization-scoped storeType definitions
+ * Includes classroom-scoped definitions (store, scenario, submission, storeType)
  * @param {string} classroomId - Class ID
  * @param {Object} options - Options (includeInactive)
  * @returns {Promise<Object>} Object with variableDefinitions grouped by type: { store: [], scenario: [], submission: [], storeType: [] }
@@ -301,21 +347,14 @@ classroomSchema.statics.getAllVariableDefinitionsForClassroom = async function (
   classroomId,
   options = {}
 ) {
-  // Get classroom to retrieve organization ID
-  const classroom = await this.findById(classroomId);
-  if (!classroom) {
-    throw new Error("Classroom not found");
-  }
-
-  const organizationId = classroom.organization;
-
   // Fetch all classroom-scoped variableDefinitions (store, scenario, submission)
   const classroomVariableDefinitions =
     await VariableDefinition.getDefinitionsByClass(classroomId, options);
 
-  // Fetch organization-scoped storeType variableDefinitions
-  const storeTypeDefinitions = await VariableDefinition.getStoreTypeDefinitions(
-    organizationId,
+  // Fetch classroom-scoped storeType variableDefinitions
+  const storeTypeDefinitions = await VariableDefinition.getDefinitionsForScope(
+    classroomId,
+    "storeType",
     options
   );
 
@@ -334,7 +373,7 @@ classroomSchema.statics.getAllVariableDefinitionsForClassroom = async function (
     }
   });
 
-  // Add organization-scoped storeType definitions
+  // Add classroom-scoped storeType definitions
   variableDefinitionsByType.storeType = storeTypeDefinitions;
 
   return variableDefinitionsByType;
@@ -345,193 +384,72 @@ classroomSchema.statics.getAllVariableDefinitionsForClassroom = async function (
  * @returns {Array} Array of submission variable definition objects
  */
 classroomSchema.statics.getDefaultSubmissionVariableDefinitions = function () {
-  return [
-    {
-      key: "demandForecastOverride",
-      label: "Demand Forecast Adjustment",
-      description:
-        "Adjust expected demand relative to the baseline forecast. Positive values assume higher demand. Negative values assume lower demand.",
-      appliesTo: "submission",
-      dataType: "number",
-      inputType: "slider",
-      min: -30,
-      max: 30,
-      defaultValue: 0,
-      required: true,
-    },
-    {
-      key: "demandCommitmentLevel",
-      label: "Demand Commitment Level",
-      description:
-        "How strongly you commit inventory decisions to forecasted demand. Aggressive commitments increase stockout risk if demand misses.",
-      appliesTo: "submission",
-      dataType: "string",
-      inputType: "dropdown",
-      options: ["CONSERVATIVE", "EXPECTED", "AGGRESSIVE"],
-      defaultValue: "EXPECTED",
-      required: true,
-    },
-    {
-      key: "reorderPolicy",
-      label: "Reorder Policy",
-      description:
-        "Defines when inventory is reordered. Different policies trade holding cost for stockout risk.",
-      appliesTo: "submission",
-      dataType: "string",
-      inputType: "dropdown",
-      options: ["FIXED_INTERVAL", "REORDER_POINT", "DEMAND_TRIGGERED"],
-      defaultValue: "REORDER_POINT",
-      required: true,
-    },
-    {
-      key: "reorderPointRefrigeratedPercent",
-      label: "Cold Storage Reorder Point (%)",
-      description:
-        "Triggers a refrigerated inventory reorder when stock falls below this percentage of capacity. Higher values reduce stockouts but increase holding cost.",
-      appliesTo: "submission",
-      dataType: "number",
-      inputType: "slider",
-      min: 0,
-      max: 50,
-      defaultValue: 20,
-      required: true,
-    },
-    {
-      key: "reorderPointAmbientPercent",
-      label: "Ambient Inventory Reorder Point (%)",
-      description:
-        "Triggers an ambient inventory reorder when stock falls below this percentage of capacity. Lower values save cost but increase risk of stockouts.",
-      appliesTo: "submission",
-      dataType: "number",
-      inputType: "slider",
-      min: 0,
-      max: 50,
-      defaultValue: 15,
-      required: true,
-    },
-    {
-      key: "reorderPointNotForResalePercent",
-      label: "Ops Supply Reorder Point (%)",
-      description:
-        "Triggers a reorder for non-resale operating supplies. Running out of ops supplies can limit production capacity.",
-      appliesTo: "submission",
-      dataType: "number",
-      inputType: "slider",
-      min: 0,
-      max: 50,
-      defaultValue: 10,
-      required: true,
-    },
-    {
-      key: "safetyStockByBucketStrategy",
-      label: "Safety Stock Strategy",
-      description:
-        "Controls how much buffer inventory is carried across all buckets. Higher safety stock improves service level but raises holding cost.",
-      appliesTo: "submission",
-      dataType: "string",
-      inputType: "dropdown",
-      options: ["LOW", "BALANCED", "HIGH"],
-      defaultValue: "BALANCED",
-      required: true,
-    },
-    {
-      key: "inventoryProtectionPriority",
-      label: "Inventory Protection Priority",
-      description:
-        "Determines which inventory bucket is prioritized when capacity, cash, or supply is constrained. Affects which inventory is replenished or sacrificed first.",
-      appliesTo: "submission",
-      dataType: "string",
-      inputType: "dropdown",
-      options: ["REFRIGERATED_FIRST", "AMBIENT_FIRST", "BALANCED"],
-      defaultValue: "BALANCED",
-      required: true,
-    },
-    {
-      key: "allowExpediteOrders",
-      label: "Allow Expedited Orders",
-      description:
-        "Allows emergency replenishment at a higher cost. Expediting avoids stockouts but significantly increases costs.",
-      appliesTo: "submission",
-      dataType: "boolean",
-      inputType: "switch",
-      defaultValue: false,
-      required: false,
-    },
-    {
-      key: "plannedProductionUnits",
-      label: "Planned Production Units",
-      description:
-        "Target number of units to produce this period. Production is limited by inventory, labor, and capacity.",
-      appliesTo: "submission",
-      dataType: "number",
-      inputType: "slider",
-      min: 0,
-      max: 1000,
-      defaultValue: 0,
-      required: true,
-    },
-    {
-      key: "staffingLevel",
-      label: "Staffing Level",
-      description:
-        "Adjust staffing relative to baseline requirements. Higher staffing increases cost but improves throughput.",
-      appliesTo: "submission",
-      dataType: "string",
-      inputType: "dropdown",
-      options: ["BELOW_AVERAGE", "AVERAGE", "ABOVE_AVERAGE"],
-      defaultValue: "AVERAGE",
-      required: true,
-    },
-    {
-      key: "inventoryConsumptionDiscipline",
-      label: "Inventory Consumption Discipline",
-      description:
-        "Controls how strictly inventory rotation rules are followed. Loose discipline can increase waste, especially in cold storage.",
-      appliesTo: "submission",
-      dataType: "string",
-      inputType: "dropdown",
-      options: ["FIFO_STRICT", "FIFO_LOOSE", "OPPORTUNISTIC"],
-      defaultValue: "FIFO_STRICT",
-      required: true,
-    },
-    {
-      key: "unitSalePrice",
-      label: "Unit Sale Price",
-      description:
-        "Price charged per unit sold. Higher prices increase margin but may reduce demand.",
-      appliesTo: "submission",
-      dataType: "number",
-      inputType: "number",
-      min: 0,
-      defaultValue: 0,
-      required: true,
-    },
-    {
-      key: "discountIntensity",
-      label: "Discount Intensity (%)",
-      description:
-        "Percentage discount applied to unit price. Discounts increase volume but reduce margin.",
-      appliesTo: "submission",
-      dataType: "number",
-      inputType: "slider",
-      min: 0,
-      max: 50,
-      defaultValue: 0,
-      required: false,
-    },
-    {
-      key: "priceElasticitySensitivity",
-      label: "Price Sensitivity",
-      description:
-        "How strongly demand responds to price changes. High sensitivity means price increases quickly reduce demand.",
-      appliesTo: "submission",
-      dataType: "string",
-      inputType: "dropdown",
-      options: ["LOW", "MEDIUM", "HIGH"],
-      defaultValue: "MEDIUM",
-      required: true,
-    },
-  ];
+  // Backward-compat wrapper: canonical defaults live on ClassroomTemplate
+  return ClassroomTemplate.getDefaultSubmissionVariableDefinitions();
+};
+
+/**
+ * Canonical classroom-scoped storeType variable definitions.
+ * @returns {Array} Array of storeType variable definition objects
+ */
+classroomSchema.statics.getDefaultStoreTypeVariableDefinitions = function () {
+  // Backward-compat wrapper: canonical defaults live on ClassroomTemplate
+  return ClassroomTemplate.getDefaultStoreTypeVariableDefinitions();
+};
+
+/**
+ * Seed classroom-scoped storeType VariableDefinitions + StoreTypes + VariableValues.
+ *
+ * - Definitions are classroom-scoped and apply only within this class.
+ * - StoreTypes are classroom-scoped and sourced from STORE_TYPE_PRESETS (key/label/description only).
+ * - VariableValues are created for each StoreType × Definition using definition.defaultValue.
+ *   Idempotent: does NOT overwrite existing VariableValues.
+ *
+ * @param {string} classroomId - Class ID
+ * @param {string} organizationId - Organization ID
+ * @param {string} clerkUserId - Clerk user ID for createdBy/updatedBy
+ * @returns {Promise<Object>} Stats
+ */
+classroomSchema.statics.seedStoreTypesAndVariables = async function (
+  classroomId,
+  organizationId,
+  clerkUserId
+) {
+  // Deprecated: seeding is now handled by ClassroomTemplate application.
+  const defaultKey = ClassroomTemplate.GLOBAL_DEFAULT_KEY;
+  let template = await ClassroomTemplate.findOne({
+    organization: organizationId,
+    key: defaultKey,
+    isActive: true,
+  });
+  if (!template) {
+    await ClassroomTemplate.copyGlobalToOrganization(
+      organizationId,
+      clerkUserId
+    );
+    template = await ClassroomTemplate.findOne({
+      organization: organizationId,
+      key: defaultKey,
+      isActive: true,
+    });
+  }
+
+  if (!template) {
+    return {
+      storeTypesCreated: 0,
+      storeTypesSkipped: 0,
+      variableDefinitionsCreated: 0,
+      variableDefinitionsSkipped: 0,
+      variableValuesCreated: 0,
+      variableValuesSkipped: 0,
+    };
+  }
+
+  return await template.applyToClassroom({
+    classroomId,
+    organizationId,
+    clerkUserId,
+  });
 };
 
 /**
@@ -547,7 +465,8 @@ classroomSchema.statics.seedSubmissionVariables = async function (
   organizationId,
   clerkUserId
 ) {
-  const variableDefinitions = this.getDefaultSubmissionVariableDefinitions();
+  const variableDefinitions =
+    ClassroomTemplate.getDefaultSubmissionVariableDefinitions();
   const stats = {
     created: 0,
     skipped: 0,
@@ -585,6 +504,191 @@ classroomSchema.statics.seedSubmissionVariables = async function (
   }
 
   return stats;
+};
+
+/**
+ * Admin: delete all VariableDefinitions (and VariableValues) for a classroom.
+ * This is destructive and intended for classroom reset/debug tools.
+ * @param {string} classroomId
+ * @param {string} organizationId
+ * @param {Object} options
+ * @param {boolean} options.deleteValues - also delete VariableValues to avoid orphaned values (default true)
+ * @returns {Promise<Object>} counts
+ */
+classroomSchema.statics.adminDeleteAllVariableDefinitionsForClassroom =
+  async function (classroomId, organizationId, options = {}) {
+    const { deleteValues = true } = options;
+
+    const VariableValue = require("../variableDefinition/variableValue.model");
+
+    const defsRes = await VariableDefinition.deleteMany({
+      organization: organizationId,
+      classroomId,
+    });
+
+    let valuesRes = null;
+    if (deleteValues) {
+      valuesRes = await VariableValue.deleteMany({
+        organization: organizationId,
+        classroomId,
+      });
+    }
+
+    return {
+      variableDefinitionsDeleted: defsRes?.deletedCount || 0,
+      variableValuesDeleted: valuesRes?.deletedCount || 0,
+    };
+  };
+
+/**
+ * Admin: restore a classroom from a template by wiping definitions + values and reapplying.
+ * This resets store/scenario/submission values to template defaultValue (if provided).
+ *
+ * @param {string} classroomId
+ * @param {string} organizationId
+ * @param {string} clerkUserId
+ * @param {Object} options
+ * @param {string} [options.templateId] - org template id to restore from
+ * @param {string} [options.templateKey] - org template key (defaults to GLOBAL_DEFAULT_KEY)
+ * @returns {Promise<Object>} stats
+ */
+classroomSchema.statics.adminRestoreTemplateForClassroom = async function (
+  classroomId,
+  organizationId,
+  clerkUserId,
+  options = {}
+) {
+  const { templateId, templateKey } = options;
+
+  const VariableValue = require("../variableDefinition/variableValue.model");
+  const Store = require("../store/store.model");
+  const Scenario = require("../scenario/scenario.model");
+  const Submission = require("../submission/submission.model");
+
+  const key = templateKey || ClassroomTemplate.GLOBAL_DEFAULT_KEY;
+
+  let template = null;
+  if (templateId) {
+    template = await ClassroomTemplate.findOne({
+      _id: templateId,
+      organization: organizationId,
+      isActive: true,
+    });
+  } else {
+    template = await ClassroomTemplate.findOne({
+      organization: organizationId,
+      key,
+      isActive: true,
+    });
+  }
+
+  if (!template && key === ClassroomTemplate.GLOBAL_DEFAULT_KEY) {
+    await ClassroomTemplate.copyGlobalToOrganization(
+      organizationId,
+      clerkUserId
+    );
+    template = await ClassroomTemplate.findOne({
+      organization: organizationId,
+      key,
+      isActive: true,
+    });
+  }
+
+  if (!template) {
+    throw new Error("Template not found");
+  }
+
+  // 1) Delete all values first (to avoid unique conflicts), then definitions.
+  const valuesRes = await VariableValue.deleteMany({
+    organization: organizationId,
+    classroomId,
+  });
+  const defsRes = await VariableDefinition.deleteMany({
+    organization: organizationId,
+    classroomId,
+  });
+
+  // 2) Apply template (recreates StoreType defs + StoreType values; creates other defs too)
+  const templateApply = await template.applyToClassroom({
+    classroomId,
+    organizationId,
+    clerkUserId,
+  });
+
+  // 3) Reset store/scenario/submission values to defaults (if template provides defs with defaultValue)
+  const defsBy = template.payload?.variableDefinitionsByAppliesTo || {};
+  const storeDefs = Array.isArray(defsBy.store) ? defsBy.store : [];
+  const scenarioDefs = Array.isArray(defsBy.scenario) ? defsBy.scenario : [];
+  const submissionDefs = Array.isArray(defsBy.submission)
+    ? defsBy.submission
+    : [];
+
+  const reseed = async (appliesTo, owners, defs) => {
+    const usableDefs = (defs || []).filter(
+      (d) =>
+        d && d.key && d.defaultValue !== undefined && d.defaultValue !== null
+    );
+    if (owners.length === 0 || usableDefs.length === 0) return 0;
+
+    const ops = [];
+    for (const owner of owners) {
+      for (const def of usableDefs) {
+        ops.push({
+          insertOne: {
+            document: {
+              organization: organizationId,
+              classroomId,
+              appliesTo,
+              ownerId: owner._id,
+              variableKey: def.key,
+              value: def.defaultValue,
+              createdBy: clerkUserId,
+              updatedBy: clerkUserId,
+            },
+          },
+        });
+      }
+    }
+
+    if (ops.length === 0) return 0;
+    const res = await VariableValue.bulkWrite(ops, { ordered: false });
+    return res?.insertedCount || 0;
+  };
+
+  const [stores, scenarios, submissions] = await Promise.all([
+    Store.find({ organization: organizationId, classroomId })
+      .select("_id")
+      .lean(),
+    Scenario.find({ organization: organizationId, classroomId })
+      .select("_id")
+      .lean(),
+    Submission.find({ organization: organizationId, classroomId })
+      .select("_id")
+      .lean(),
+  ]);
+
+  const storeValuesCreated = await reseed("store", stores, storeDefs);
+  const scenarioValuesCreated = await reseed(
+    "scenario",
+    scenarios,
+    scenarioDefs
+  );
+  const submissionValuesCreated = await reseed(
+    "submission",
+    submissions,
+    submissionDefs
+  );
+
+  return {
+    variableValuesDeleted: valuesRes?.deletedCount || 0,
+    variableDefinitionsDeleted: defsRes?.deletedCount || 0,
+    templateApply,
+    reseeded: {
+      storeValuesCreated,
+      scenarioValuesCreated,
+      submissionValuesCreated,
+    },
+  };
 };
 
 const Classroom = mongoose.model("Classroom", classroomSchema);

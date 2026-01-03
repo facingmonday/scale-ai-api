@@ -31,6 +31,9 @@ router.use("/", require("./variableDefinition"));
 // StoreType routes
 router.use("/", require("./storeType"));
 
+// ClassroomTemplate routes
+router.use("/", require("./classroomTemplate"));
+
 // Scenario routes
 router.use("/", require("./scenario"));
 
