@@ -76,6 +76,10 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors());
 
+// Public join endpoint alias for backwards/contract compatibility.
+// This mounts ONLY the join route at /api/join (without exposing the entire /v1 surface under /api).
+app.use("/api/join", require("../../services/join"));
+
 app.use("/v1", require("../../services"));
 
 // Health check endpoints

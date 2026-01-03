@@ -16,6 +16,9 @@ router.use("/notifications", require("./notifications"));
 router.use("/openai", require("./openai")); // Remove direct access to openai
 //router.use("/workers", require("./workers"));
 
+// Public join route (idempotent)
+router.use("/join", require("./join"));
+
 // Classroom routes
 router.use("/admin/class", require("./classroom"));
 
