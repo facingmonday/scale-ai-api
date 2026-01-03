@@ -218,10 +218,7 @@ async function createLedgerCreatedNotification(ledgerEntry) {
     return;
   }
 
-  const host =
-    process.env.SCALE_COM_HOST ||
-    process.env.SCALE_API_HOST ||
-    "https://scale.ai";
+  const host = process.env.SCALE_ADMIN_HOST || "https://scale.ai";
   const ledgerLink = `${host}/class/${ledgerEntry.classroomId}/scenario/${ledgerEntry.scenarioId}`;
 
   // Format profit/loss for email
@@ -229,6 +226,9 @@ async function createLedgerCreatedNotification(ledgerEntry) {
     ledgerEntry.netProfit >= 0
       ? `+$${ledgerEntry.netProfit.toFixed(2)}`
       : `-$${Math.abs(ledgerEntry.netProfit).toFixed(2)}`;
+
+  // Get clerkUserId from ledger entry (createdBy is the clerk user ID)
+  const clerkUserId = ledgerEntry.createdBy || ledgerEntry.updatedBy;
 
   await Notification.create({
     type: "email",
@@ -244,7 +244,7 @@ async function createLedgerCreatedNotification(ledgerEntry) {
       link: ledgerLink,
       profitLoss,
       env: {
-        SCALE_COM_HOST: host,
+        SCALE_ADMIN_HOST: host,
         SCALE_API_HOST: process.env.SCALE_API_HOST || host,
       },
     },
@@ -255,6 +255,8 @@ async function createLedgerCreatedNotification(ledgerEntry) {
       classroom: ledgerEntry.classroomId,
     },
     organization: ledgerEntry.organization,
+    createdBy: clerkUserId,
+    updatedBy: clerkUserId,
   });
 }
 

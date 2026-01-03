@@ -77,7 +77,6 @@ NotificationSchema.statics.getReceiver = async function (
       email: templateData.email,
       phoneNumber: templateData.phoneNumber,
       preferences: { email: true, sms: true, push: true }, // Assume guests want all notifications
-      deviceTokens: templateData.deviceTokens || [], // Get device tokens from template data if available
     };
   } else if (recipient.type === "Member") {
     // Handle Members using local database
@@ -93,7 +92,6 @@ NotificationSchema.statics.getReceiver = async function (
         modelData?.member;
 
       if (!memberId) {
-        console.log("No member ID provided for Member recipient");
         return null;
       }
 
@@ -101,7 +99,6 @@ NotificationSchema.statics.getReceiver = async function (
       const member = await Member.findById(memberId);
 
       if (!member) {
-        console.log(`Member ${memberId} not found in database`);
         return null;
       }
 
@@ -111,33 +108,18 @@ NotificationSchema.statics.getReceiver = async function (
         const organization = await Organization.findById(organizationId);
 
         if (!organization) {
-          console.log(`Organization ${organizationId} not found`);
           return null;
         }
 
         // Check if member is in the organization
         const orgMembership = member.getOrganizationMembership(organization);
         if (!orgMembership) {
-          console.log(
-            `Member ${memberId} not found in organization ${organizationId}`
-          );
           return null;
         }
       }
 
       // Get email and phone from Clerk since they're no longer stored locally
       const email = await member.getEmailFromClerk();
-
-      // Get device tokens from member's devices array
-      const memberWithDevices = await Member.findById(member._id).populate(
-        "devices"
-      );
-      const activeDeviceTokens =
-        memberWithDevices?.devices
-          ?.filter(
-            (device) => device.status === "active" && device.expoPushToken
-          )
-          ?.map((device) => device.expoPushToken) || [];
 
       return {
         email: email,
@@ -147,7 +129,6 @@ NotificationSchema.statics.getReceiver = async function (
           sms: true,
           push: true,
         },
-        deviceTokens: activeDeviceTokens,
       };
     } catch (error) {
       console.error("Error fetching member from database:", error);
@@ -172,7 +153,6 @@ NotificationSchema.statics.getReceiver = async function (
       });
 
       if (!organization) {
-        console.log(`Organization ${orgId} not found in Clerk`);
         return null;
       }
 
@@ -183,7 +163,6 @@ NotificationSchema.statics.getReceiver = async function (
         name: organization.name,
         phoneNumber: organization.publicMetadata?.contactPhone || null,
         preferences: { email: true, sms: true, push: true },
-        deviceTokens: organization.publicMetadata?.deviceTokens || [],
       };
     } catch (error) {
       console.error("Error fetching organization from Clerk:", error);
@@ -194,10 +173,6 @@ NotificationSchema.statics.getReceiver = async function (
     try {
       // Check if the model exists before trying to use it
       if (!mongoose.models[recipient.ref]) {
-        console.log(
-          `Model "${recipient.ref}" is not registered. Available models:`,
-          Object.keys(mongoose.models)
-        );
         return null;
       }
 
@@ -224,9 +199,9 @@ NotificationSchema.statics.getOrganization = async function (organizationId) {
 
     return organization;
   } catch (error) {
-    console.log(
+    console.error(
       `Failed to send notification. Organization ${organizationId} not found:`,
-      error
+      error.message
     );
     return null;
   }
@@ -238,11 +213,6 @@ NotificationSchema.statics.checkRecipientPreferences = function (
   notificationType
 ) {
   if (receiver?.preferences && !receiver.preferences[notificationType]) {
-    console.log(
-      `${
-        receiver.email || receiver.phoneNumber
-      } does not want to receive ${notificationType} notifications`
-    );
     return false;
   }
   return true;
@@ -255,24 +225,17 @@ NotificationSchema.statics.sendEmailNotification = async function (
 ) {
   try {
     // Check if email has already been sent or is already queued
-    if (notification.metadata?.emailSent) {
-      console.log(
-        `📧 Email already sent for notification ${notification._id}, skipping`
-      );
-      return true;
-    }
-
-    if (notification.metadata?.emailQueued) {
-      console.log(
-        `📧 Email already queued for notification ${notification._id}, skipping`
-      );
+    if (
+      notification.metadata?.emailSent ||
+      notification.metadata?.emailQueued
+    ) {
       return true;
     }
 
     const { enqueueEmailSending } = require("../../lib/queues/email-worker");
 
     // Enqueue email sending job
-    const job = await enqueueEmailSending({
+    await enqueueEmailSending({
       notificationId: notification._id.toString(),
       recipient: receiver,
       templateData: notification.templateData,
@@ -282,10 +245,6 @@ NotificationSchema.statics.sendEmailNotification = async function (
       title: notification.title,
       message: notification.message,
     });
-
-    console.log(
-      `📧 Email notification job enqueued for notification ${notification._id}: ${job.id}`
-    );
 
     // Set status to indicate job is queued (don't mark as sent yet)
     await notification.constructor.findByIdAndUpdate(notification._id, {
@@ -312,9 +271,6 @@ NotificationSchema.statics.sendSmsNotification = async function (
   try {
     // Check if SMS has already been sent or is already queued
     if (notification.metadata?.smsSent) {
-      console.log(
-        `📱 SMS already sent for notification ${notification._id}, skipping`
-      );
       return true;
     }
 
@@ -337,10 +293,6 @@ NotificationSchema.statics.sendSmsNotification = async function (
       title: notification.title,
       message: notification.message,
     });
-
-    console.log(
-      `📱 SMS notification job enqueued for notification ${notification._id}: ${job.id}`
-    );
 
     // Set status to indicate job is queued (don't mark as sent yet)
     await notification.constructor.findByIdAndUpdate(notification._id, {
@@ -366,17 +318,7 @@ NotificationSchema.statics.sendPushNotification = async function (
 ) {
   try {
     // Check if push notification has already been sent or is already queued
-    if (notification.metadata?.pushSent) {
-      console.log(
-        `📲 Push notification already sent for notification ${notification._id}, skipping`
-      );
-      return true;
-    }
-
-    if (notification.metadata?.pushQueued) {
-      console.log(
-        `📲 Push notification already queued for notification ${notification._id}, skipping`
-      );
+    if (notification.metadata?.pushSent || notification.metadata?.pushQueued) {
       return true;
     }
 
@@ -416,17 +358,21 @@ NotificationSchema.statics.sendPushNotification = async function (
 NotificationSchema.post("save", async function () {
   try {
     // For email notifications that haven't been sent yet
-    if (this.type === "email" && !this.metadata.emailSent) {
+    if (this.type === "email" && !this.metadata?.emailSent) {
       const receiver = await this.constructor.getReceiver(
         this.recipient,
         this.templateData,
         this.modelData,
         this.organization
       );
-      if (!receiver) return;
 
-      if (!this.constructor.checkRecipientPreferences(receiver, "email"))
+      if (!receiver) {
         return;
+      }
+
+      if (!this.constructor.checkRecipientPreferences(receiver, "email")) {
+        return;
+      }
 
       await this.constructor.sendEmailNotification(this, receiver);
     } else if (this.type === "sms" && !this.metadata.smsSent) {
@@ -468,10 +414,10 @@ NotificationSchema.post("save", async function () {
       );
       if (!receiver) return;
 
-      // Check if receiver has device tokens or can get them
-      if (!receiver.deviceTokens && !receiver.id && !receiver.userId) {
+      // Check if receiver has user ID for push notifications
+      if (!receiver.id && !receiver.userId) {
         console.log(
-          `Cannot send push notification to ${this.recipient.type} ${this.recipient.id}: no device tokens or user ID provided`
+          `Cannot send push notification to ${this.recipient.type} ${this.recipient.id}: no user ID provided`
         );
         return;
       }
@@ -491,7 +437,11 @@ NotificationSchema.post("save", async function () {
       await this.constructor.sendPushNotification(this, receiver, organization);
     }
   } catch (error) {
-    console.error("Error in notification post-save hook:", error);
+    console.error(
+      `❌ Error in notification post-save hook for notification ${this._id}:`,
+      error.message,
+      error.stack
+    );
   }
 });
 

@@ -72,6 +72,7 @@ class JobService {
     }
 
     // Enqueue for Bull processing (one-at-a-time processor handles ordering)
+    // Always enqueue, even if job already existed (it may have been reset)
     try {
       await ensureQueueReady(queues.simulation, "simulation");
       await queues.simulation.add(
@@ -84,7 +85,7 @@ class JobService {
         }
       );
     } catch (err) {
-      console.error("Failed to enqueue simulation job:", err);
+      console.error("Failed to enqueue simulation job:", err.message);
       // Surface the error so the caller knows the job was not enqueued
       throw err;
     }
@@ -165,6 +166,48 @@ class JobService {
    */
   static async getJobById(jobId) {
     return await SimulationJob.getJobById(jobId);
+  }
+
+  /**
+   * Enqueue pending jobs that weren't enqueued to Bull
+   * Useful for recovering jobs that were created but not enqueued
+   * @param {string} [scenarioId] - Optional scenario ID to filter by
+   * @returns {Promise<Object>} Result with enqueued count
+   */
+  static async enqueuePendingJobs(scenarioId = null) {
+    const { queues, ensureQueueReady } = require("../../../lib/queues");
+    const {
+      enqueueSimulationJob,
+    } = require("../../../lib/queues/simulation-worker");
+
+    const query = { status: "pending" };
+    if (scenarioId) {
+      query.scenarioId = scenarioId;
+    }
+
+    const pendingJobs = await SimulationJob.find(query);
+    let enqueued = 0;
+    let failed = 0;
+    const errors = [];
+
+    for (const job of pendingJobs) {
+      try {
+        await ensureQueueReady(queues.simulation, "simulation");
+        await enqueueSimulationJob(job._id);
+        enqueued++;
+      } catch (err) {
+        console.error(`Failed to enqueue pending job ${job._id}:`, err.message);
+        failed++;
+        errors.push({ jobId: job._id, error: err.message });
+      }
+    }
+
+    return {
+      total: pendingJobs.length,
+      enqueued,
+      failed,
+      errors: errors.length > 0 ? errors : undefined,
+    };
   }
 
   /**

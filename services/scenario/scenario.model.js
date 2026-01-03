@@ -422,31 +422,49 @@ scenarioSchema.methods.canPublish = async function () {
 // Track creation state for post-save hooks
 scenarioSchema.pre("save", function (next) {
   this._wasNew = this.isNew;
+  // Track if isPublished is being changed from false to true
+  if (!this.isNew && this.isModified("isPublished") && this.isPublished) {
+    this._isPublishedJustSet = true;
+  } else if (this.isNew && this.isPublished) {
+    this._isPublishedJustSet = true;
+  } else {
+    this._isPublishedJustSet = false;
+  }
+  // Track if isClosed is being modified (to skip published email check when closing)
+  this._isClosedJustSet =
+    !this.isNew && this.isModified("isClosed") && this.isClosed;
   next();
 });
 
 // Post-save hook to send emails when scenario is published
+// Note: This checks for the "scenario-created" (published) email, NOT the "scenario-closed" (results) email
+// Results emails are sent from the ledger model when ledger entries are created
 scenarioSchema.post("save", async function (doc, next) {
   try {
-    // Only send emails when scenario is published
-    // Check if this is a new document that's published, or if isPublished was just set to true
-    if (doc.isPublished) {
-      // For new documents, check if it's published
-      // For existing documents, check if isPublished field was modified (it means it changed)
-      if (doc._wasNew || doc.isModified("isPublished")) {
-        // Double-check: fetch the document to see if notifications were already sent
-        // This prevents duplicate notifications on document updates
-        const Notification = require("../notifications/notifications.model");
-        const existingNotification = await Notification.findOne({
-          "modelData.scenario": doc._id,
-          templateSlug: "scenario-created",
-          type: "email",
-        }).lean();
+    // Skip published email check if scenario is being closed (results email will be sent when ledger entries are created)
+    if (doc._isClosedJustSet) {
+      return next();
+    }
 
-        // Only send if no notification exists yet (prevents duplicates)
-        if (!existingNotification) {
-          await queueScenarioPublishedEmails(doc);
-        }
+    // Only check for published email if scenario is published
+    if (doc.isPublished) {
+      // Double-check: fetch the document to see if notifications were already sent
+      // This prevents duplicate notifications on document updates
+      const Notification = require("../notifications/notifications.model");
+      const existingNotification = await Notification.findOne({
+        "modelData.scenario": doc._id,
+        templateSlug: "scenario-created",
+        type: "email",
+      }).lean();
+
+      // Send email if:
+      // 1. isPublished was just set to true (new publish), OR
+      // 2. Scenario is published but no notification exists (handles cases where email wasn't sent initially)
+      const shouldSendEmail =
+        doc._isPublishedJustSet || (!existingNotification && doc.isPublished);
+
+      if (shouldSendEmail) {
+        await queueScenarioPublishedEmails(doc);
       }
     }
     return next();
@@ -457,7 +475,6 @@ scenarioSchema.post("save", async function (doc, next) {
 });
 
 async function queueScenarioPublishedEmails(scenario) {
-  // Lazy load to avoid circular dependency
   const Classroom = require("../classroom/classroom.model");
   const Enrollment = require("../enrollment/enrollment.model");
   const Notification = require("../notifications/notifications.model");
@@ -484,17 +501,38 @@ async function queueScenarioPublishedEmails(scenario) {
     return;
   }
 
-  const host =
-    process.env.SCALE_COM_HOST ||
-    process.env.SCALE_API_HOST ||
-    "https://scale.ai";
+  const host = process.env.SCALE_ADMIN_HOST || "https://localhost:5173";
   const scenarioLink = `${host}/class/${classroomId}/scenario/${scenario._id}`;
+
+  // Get the clerkUserId from the scenario (updatedBy is set when published)
+  // The scenario should be a Mongoose document with updatedBy set from the publish() call
+  let clerkUserId = scenario.updatedBy || scenario.createdBy;
+
+  // If scenario is a plain object (from toObject()), try to get updatedBy from it
+  // Otherwise, if we have an ID, fetch the document
+  if (!clerkUserId && scenario._id) {
+    const ScenarioModel = require("./scenario.model");
+    const scenarioDoc = await ScenarioModel.findById(scenario._id).select(
+      "updatedBy createdBy"
+    );
+    if (scenarioDoc) {
+      clerkUserId = scenarioDoc.updatedBy || scenarioDoc.createdBy;
+    }
+  }
+
+  // Fallback to a system user if we still don't have a clerkUserId
+  if (!clerkUserId) {
+    clerkUserId = "system";
+    console.warn(
+      "No clerkUserId found on scenario, using 'system' for notification createdBy/updatedBy"
+    );
+  }
 
   // Create notifications for all enrolled students
   const notifications = await Promise.allSettled(
     memberEnrollments.map(async (enrollment) => {
       try {
-        return await Notification.create({
+        const notification = await Notification.create({
           type: "email",
           recipient: {
             id: enrollment.userId,
@@ -507,7 +545,7 @@ async function queueScenarioPublishedEmails(scenario) {
           templateData: {
             link: scenarioLink,
             env: {
-              SCALE_COM_HOST: host,
+              SCALE_ADMIN_HOST: host,
               SCALE_API_HOST: process.env.SCALE_API_HOST || host,
             },
           },
@@ -518,7 +556,10 @@ async function queueScenarioPublishedEmails(scenario) {
             organization: organizationId,
           },
           organization: organizationId,
+          createdBy: clerkUserId,
+          updatedBy: clerkUserId,
         });
+        return notification;
       } catch (error) {
         console.error(
           `Error creating notification for enrollment ${enrollment._id}:`,
@@ -532,9 +573,19 @@ async function queueScenarioPublishedEmails(scenario) {
   const successful = notifications.filter(
     (n) => n.status === "fulfilled"
   ).length;
-  console.log(
-    `✅ Created ${successful} notification(s) for scenario publication: ${scenario._id}`
-  );
+  const failed = notifications.filter((n) => n.status === "rejected").length;
+
+  if (successful > 0) {
+    console.log(
+      `Created ${successful} notification(s) for scenario publication: ${scenario._id}`
+    );
+  }
+
+  if (failed > 0) {
+    console.error(
+      `Failed to create ${failed} notification(s) for scenario: ${scenario._id}`
+    );
+  }
 }
 
 /**

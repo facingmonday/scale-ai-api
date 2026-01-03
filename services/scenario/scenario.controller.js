@@ -538,10 +538,14 @@ exports.getCurrentScenario = async function (req, res) {
       });
     }
 
-    // Get active scenario
     const scenario = await Scenario.getActiveScenario(classroomId);
 
     if (!scenario) {
+      return res.status(404).json({ error: "No active scenario found" });
+    }
+
+    // Ensure scenario is published (additional safety check)
+    if (!scenario.isPublished) {
       return res.status(404).json({ error: "No active scenario found" });
     }
 
@@ -662,9 +666,14 @@ exports.getStudentScenariosByClassroom = async function (req, res) {
       includeClosed: true,
     });
 
+    // Filter to only include published scenarios
+    const publishedScenarios = scenarios.filter(
+      (scenario) => scenario.isPublished === true
+    );
+
     // For each scenario, fetch submission, outcome, and ledger entry
     const scenariosWithData = await Promise.all(
-      scenarios.map(async (scenario) => {
+      publishedScenarios.map(async (scenario) => {
         // Get member submission with variables for this scenario
         const submission = await Submission.getSubmission(
           classroomId,
@@ -718,6 +727,11 @@ exports.getScenarioByIdForStudent = async function (req, res) {
     const scenario = await Scenario.getScenarioById(id);
 
     if (!scenario) {
+      return res.status(404).json({ error: "Scenario not found" });
+    }
+
+    // Only return published scenarios for students
+    if (!scenario.isPublished) {
       return res.status(404).json({ error: "Scenario not found" });
     }
 
