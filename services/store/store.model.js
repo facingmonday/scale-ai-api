@@ -6,6 +6,43 @@ const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
 const StoreType = require("../storeType/storeType.model");
 const LedgerEntry = require("../ledger/ledger.model");
 
+async function ensureClassroomPromptsInitialized(
+  classroomId,
+  organizationId,
+  clerkUserId
+) {
+  const Classroom = require("../classroom/classroom.model");
+  const ClassroomTemplate = require("../classroomTemplate/classroomTemplate.model");
+
+  const classDoc = await Classroom.findOne({
+    _id: classroomId,
+    organization: organizationId,
+  }).select("prompts updatedBy");
+
+  if (!classDoc) return false;
+  if (Array.isArray(classDoc.prompts) && classDoc.prompts.length > 0) return false;
+
+  // Ensure org has the default template, then use its prompts.
+  await ClassroomTemplate.copyGlobalToOrganization(organizationId, clerkUserId);
+  const template = await ClassroomTemplate.findOne({
+    organization: organizationId,
+    key: ClassroomTemplate.GLOBAL_DEFAULT_KEY,
+    isActive: true,
+  });
+
+  const prompts =
+    template?.payload?.prompts || ClassroomTemplate.getDefaultClassroomPrompts();
+
+  if (Array.isArray(prompts) && prompts.length > 0) {
+    classDoc.prompts = prompts;
+    classDoc.updatedBy = clerkUserId;
+    await classDoc.save();
+    return true;
+  }
+
+  return false;
+}
+
 const storeSchema = new mongoose.Schema({
   classroomId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -106,6 +143,9 @@ storeSchema.statics.createStore = async function (
     providedVariables && typeof providedVariables === "object"
       ? providedVariables
       : {};
+
+  // Ensure classroom prompts exist (older classrooms may predate prompt templates).
+  await ensureClassroomPromptsInitialized(classroomId, organizationId, clerkUserId);
 
   // Create store document
   const store = new this({
@@ -420,6 +460,13 @@ storeSchema.statics.updateStore = async function (
     if (!storeType) {
       throw new Error("storeType is required when creating a new store");
     }
+
+    // Ensure classroom prompts exist (older classrooms may predate prompt templates).
+    await ensureClassroomPromptsInitialized(
+      classroomId,
+      organizationId,
+      clerkUserId
+    );
 
     // Validate storeType exists and belongs to organization
     const storeTypeDoc = await StoreType.getStoreTypeById(

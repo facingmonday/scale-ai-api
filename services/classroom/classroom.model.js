@@ -40,6 +40,26 @@ const classroomSchema = new mongoose.Schema({
     type: String,
     required: false,
   },
+  // AI prompt building blocks that do NOT depend on scenario/submission/store data.
+  // These are prepended to OpenAI messages for simulations.
+  // Example:
+  // [{ role: "system", content: "..." }, { role: "user", content: "..." }]
+  prompts: {
+    type: [
+      {
+        role: {
+          type: String,
+          required: true,
+          enum: ["system", "user", "assistant", "developer"],
+        },
+        content: {
+          type: String,
+          required: true,
+        },
+      },
+    ],
+    default: [],
+  },
 }).add(baseSchema);
 
 // Indexes for performance
@@ -614,6 +634,15 @@ classroomSchema.statics.adminRestoreTemplateForClassroom = async function (
     organizationId,
     clerkUserId,
   });
+
+  // 2b) Reset classroom-level prompts to the template prompts (since this is a restore/reset).
+  const prompts = template.payload?.prompts;
+  if (Array.isArray(prompts) && prompts.length > 0) {
+    await this.updateOne(
+      { _id: classroomId, organization: organizationId },
+      { $set: { prompts, updatedBy: clerkUserId, updatedDate: new Date() } }
+    );
+  }
 
   // 3) Reset store/scenario/submission values to defaults (if template provides defs with defaultValue)
   const defsBy = template.payload?.variableDefinitionsByAppliesTo || {};

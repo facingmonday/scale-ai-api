@@ -329,8 +329,18 @@ ledgerEntrySchema.statics.getAISimulationResponseJsonSchema = function () {
           backorderUnits: { type: "number" },
           materialFlowByBucket: {
             type: "object",
-            required: ["refrigerated", "ambient", "notForResaleDry"],
+            required: [
+              "refrigerated",
+              "ambient",
+              "notForResaleDry",
+              "explanation",
+            ],
             properties: {
+              explanation: {
+                type: "string",
+                description:
+                  "Explain in detail using an example based off the store description what the inventory state is and why. Explain what a unit is and how it is used in the store.",
+              },
               refrigerated: {
                 type: "object",
                 required: [
@@ -396,8 +406,14 @@ ledgerEntrySchema.statics.getAISimulationResponseJsonSchema = function () {
               "expediteCost",
               "wasteDisposalCost",
               "otherCost",
+              "explanation",
             ],
             properties: {
+              explanation: {
+                type: "string",
+                description:
+                  "Explain in detail using an example based off the store description what the cost breakdown is and why. Explain what a unit is and how it is used in the store.",
+              },
               ingredientCost: { type: "number" },
               laborCost: { type: "number" },
               logisticsCost: { type: "number" },
@@ -417,179 +433,29 @@ ledgerEntrySchema.statics.getAISimulationResponseJsonSchema = function () {
 };
 
 /**
- * Build warehouse rules message for AI prompt
- * @param {Object} inventoryState - Current inventory state
- * @returns {Object} Message object with warehouse rules
+ * Get classroom-level base prompts (system/user) that do NOT depend on scenario/submission/store data.
+ * These are stored on the Classroom document and prepended to OpenAI messages.
+ *
+ * Falls back to developer defaults if the classroom has no prompts (older classrooms).
  */
-ledgerEntrySchema.statics.buildWarehouseRulesMessage = function (
-  inventoryState
+ledgerEntrySchema.statics.getClassroomBasePrompts = async function (
+  classroomId
 ) {
-  const currentInventoryState = inventoryState || {
-    refrigeratedUnits: 0,
-    ambientUnits: 0,
-    notForResaleUnits: 0,
-  };
+  const Classroom = require("../classroom/classroom.model");
+  const ClassroomTemplate = require("../classroomTemplate/classroomTemplate.model");
 
-  const warehouseRules = `
-WAREHOUSE RULES - YOU MUST OBEY THESE RULES. Outputs that violate these rules are invalid.
+  if (!classroomId) {
+    return ClassroomTemplate.getDefaultClassroomPrompts();
+  }
 
-1. INVENTORY BUCKETS
-Inventory exists ONLY in these buckets:
-- refrigerated
-- ambient
-- notForResaleDry
+  const classDoc = await Classroom.findById(classroomId).select("prompts");
+  const prompts = classDoc?.prompts;
 
-All units belong to exactly one bucket.
+  if (Array.isArray(prompts) && prompts.length > 0) {
+    return prompts;
+  }
 
-2. CAPACITY (HARD LIMITS)
-Each bucket has a fixed capacity:
-- refrigeratedCapacityUnits
-- ambientCapacityUnits
-- notForResaleCapacityUnits
-
-Rule:
-endUnits(bucket) ≤ capacityUnits(bucket)
-
-3. INVENTORY RECONCILIATION (REQUIRED)
-For EACH bucket track:
-beginUnits, receivedUnits, usedUnits, wasteUnits, endUnits
-
-This equation MUST hold:
-endUnits = beginUnits + receivedUnits - usedUnits - wasteUnits
-
-4. RECEIPTS & OVERFLOW
-If beginUnits + receivedUnits > capacityUnits, you MUST apply overflowStoragePolicy.
-
-PAY_FOR_OVERFLOW:
-- Excess units incur overflowStorageCost
-- Excess units do NOT increase endUnits
-- Excess units are not usable
-
-DISCARD_EXCESS:
-- Excess units become wasteUnits
-- Waste disposal cost applies
-
-EMERGENCY_REPLENISHMENT:
-- Excess units rejected
-- Emergency units incur expediteCost
-- Capacity rules still apply
-
-Overflow inventory may NEVER be carried forward as normal inventory.
-
-5. USAGE (MAKE)
-Inventory may only be used if it exists:
-usedUnits ≤ beginUnits + receivedUnits
-
-Default consumption order:
-refrigerated → ambient → notForResaleDry
-
-6. WASTE
-wasteUnits ≥ 0
-wasteUnits ≤ beginUnits + receivedUnits - usedUnits
-Waste must be explicitly recorded per bucket.
-
-7. HOLDING COST
-After inventory movement:
-holdingCost(bucket) = endUnits(bucket) × holdingCostPerUnit(bucket)
-
-Total holding cost = sum across all buckets.
-
-8. PROHIBITED
-You MUST NEVER:
-- Create inventory without receipt
-- Use inventory that does not exist
-- Store inventory outside buckets
-- Exceed capacity without overflow handling
-- Adjust inventory to force profitability
-
-9. LEDGER REQUIREMENTS
-If inventory exists, ledger MUST include:
-- education.materialFlowByBucket
-- holdingCost
-- overflowStorageCost (if any)
-- wasteDisposalCost (if any)
-
-10. CAUSAL EXPLANATIONS
-Narratives must follow physical causality:
-overstock → overflow/waste → higher cost
-understock → stockout → lost sales
-cold inventory → higher holding cost
-
-Narratives may NOT contradict inventory math.
-
-11. INVENTORY ORDERING (REQUIRED)
-You MUST calculate receivedUnits for each bucket based on the student's reorder policy and submission decisions:
-
-REORDER_POINT:
-- Order when: beginUnits < (capacityUnits × reorderPointPercent / 100) for that bucket
-- Order quantity: typically replenish to 80-90% of capacity (higher for BALANCED/HIGH safetyStockByBucketStrategy, lower for LOW)
-- Apply inventoryProtectionPriority to determine bucket ordering sequence
-- Example: If refrigeratedCapacityUnits=500, reorderPointRefrigeratedPercent=20, and beginUnits=80, then 80 < 100, so ORDER
-
-FIXED_INTERVAL:
-- Order every week/interval regardless of current stock level
-- Order quantity: typically 60-80% of capacity (adjust based on demandCommitmentLevel: AGGRESSIVE=higher, CONSERVATIVE=lower)
-- Consider safetyStockByBucketStrategy: HIGH=more, LOW=less
-- Example: If refrigeratedCapacityUnits=500 and demandCommitmentLevel=AGGRESSIVE, order ~350-400 units
-
-DEMAND_TRIGGERED:
-- Order based on plannedProductionUnits, expected demand, and current inventory
-- Order quantity: sufficient to support plannedProductionUnits plus safety stock (based on safetyStockByBucketStrategy)
-- Factor in supplierLeadTime: SHORT=less buffer needed, LONG=more buffer needed
-
-ORDER DISTRIBUTION:
-- receivedUnits must be allocated across buckets based on:
-  - inventoryProtectionPriority (REFRIGERATED_FIRST prioritizes cold storage, etc.)
-  - The bucket's capacity limits
-  - The bucket's reorderPointPercent threshold (for REORDER_POINT policy)
-  
-- For each bucket, calculate:
-  - Should I order? (based on policy)
-  - How much should I order? (based on capacity, strategy, and demand)
-  - Add to receivedUnits for that bucket
-
-MULTI-BUCKET ORDERING REQUIREMENT:
-- You MUST order inventory for ALL buckets that are part of operations, not just refrigerated
-- Typical distribution for pizza operations:
-  - Refrigerated: 50-70% of total order (cheese, meat, produce - perishable items)
-  - Ambient: 20-35% of total order (flour, canned goods, dry ingredients)
-  - NotForResaleDry: 10-20% of total order (paper goods, cleaning supplies, packaging)
-- Adjust distribution based on inventoryProtectionPriority:
-  - REFRIGERATED_FIRST: 60-75% refrigerated, 20-30% ambient, 5-15% notForResaleDry
-  - AMBIENT_FIRST: 40-50% refrigerated, 40-50% ambient, 10-20% notForResaleDry
-  - BALANCED: 50-60% refrigerated, 30-40% ambient, 10-20% notForResaleDry
-
-SAFETY STOCK REQUIREMENT:
-- DO NOT use 100% of received inventory in the same period it was received
-- Maintain safety stock: endUnits should typically be 10-30% of capacity (higher for HIGH safetyStockByBucketStrategy)
-- If you receive 400 units, don't use all 400 - leave some as ending inventory for next period
-- Example: If capacity is 500 and you receive 400 units, use 300-350 for production, leaving 50-100 as safety stock
-- This prevents stockouts if there are delays in next period's deliveries
-
-CRITICAL: receivedUnits must be > 0 for buckets where ordering is triggered OR where beginUnits = 0. Do NOT set all receivedUnits to 0 unless the student explicitly chose to order nothing.
-
-12. FINAL CHECK
-Before returning output:
-- Buckets reconcile: endUnits = beginUnits + receivedUnits - usedUnits - wasteUnits for EACH bucket
-- No capacity violations: endUnits ≤ capacityUnits for each bucket
-- Costs match inventory state: holdingCost = sum of (endUnits × holdingCostPerUnit) for each bucket
-- No inventory appears or disappears
-- receivedUnits reflect ordering decisions based on reorder policy
-- MULTI-BUCKET: At least 2 buckets should have receivedUnits > 0 (refrigerated + at least one other)
-- SAFETY STOCK: endUnits should not be 0 for all buckets unless operations are ceasing
-- CONSISTENCY: inventoryState.refrigeratedUnits MUST equal education.materialFlowByBucket.refrigerated.endUnits
-- CONSISTENCY: inventoryState.ambientUnits MUST equal education.materialFlowByBucket.ambient.endUnits
-- CONSISTENCY: inventoryState.notForResaleUnits MUST equal education.materialFlowByBucket.notForResaleDry.endUnits
-`;
-
-  return {
-    role: "user",
-    content: `CURRENT INVENTORY STATE:\n${JSON.stringify(
-      currentInventoryState,
-      null,
-      2
-    )}${warehouseRules}\n\nCalculate the ending inventoryState based on production, sales, waste, and orders, strictly following these warehouse rules.`,
-  };
+  return ClassroomTemplate.getDefaultClassroomPrompts();
 };
 
 /**
@@ -603,6 +469,7 @@ Before returning output:
  * @returns {Array} Array of message objects
  */
 ledgerEntrySchema.statics.buildAISimulationPrompt = function (
+  basePrompts,
   store,
   scenario,
   scenarioOutcome,
@@ -620,12 +487,7 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
     Math.random() * 100 < chancePercent;
 
   const messages = [
-    {
-      role: "system",
-      content:
-        "You are the SCALE.ai simulation engine for a supply chain class using a pizza shop game. Calculate outcomes for one student based on store configuration, scenario context, global outcome, and the student's decisions. Apply realistic business logic and environmental effects.\n\n" +
-        "Return ONLY valid JSON matching the provided schema. You may invent reasonable intermediate numbers when needed. Also compute the required education metrics so instructors can explain results (service level, stockouts/lost sales, by-bucket material flow, and cost breakdown).",
-    },
+    ...(Array.isArray(basePrompts) ? basePrompts : []),
     {
       role: "user",
       content: `STORE CONFIGURATION:\n${JSON.stringify(
@@ -677,8 +539,14 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
     },
   ];
 
-  // Add current inventory state with warehouse rules
-  messages.push(this.buildWarehouseRulesMessage(inventoryState));
+  messages.push({
+    role: "user",
+    content: `CURRENT INVENTORY STATE:\n${JSON.stringify(
+      inventoryState,
+      null,
+      2
+    )}`,
+  });
 
   // Add ledger history if available
   if (ledgerHistory && ledgerHistory.length > 0) {
@@ -833,8 +701,17 @@ ledgerEntrySchema.statics.runAISimulation = async function (context) {
     inventoryState,
   } = context;
 
+  const classroomId =
+    scenario?.classroomId ||
+    submission?.classroomId ||
+    scenarioOutcome?.classroomId ||
+    null;
+
+  const basePrompts = await this.getClassroomBasePrompts(classroomId);
+
   // Build OpenAI prompt
   const messages = this.buildAISimulationPrompt(
+    basePrompts,
     store,
     scenario,
     scenarioOutcome,
