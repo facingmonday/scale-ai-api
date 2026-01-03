@@ -9,6 +9,13 @@ async function buildTemplatePayloadFromClassroom({
   classroomId,
   includeInactive,
 }) {
+  const classDoc = await Classroom.findOne({
+    _id: classroomId,
+    organization: organizationId,
+  })
+    .select("prompts")
+    .lean();
+
   const storeTypes = await StoreType.find({
     organization: organizationId,
     classroomId,
@@ -68,6 +75,10 @@ async function buildTemplatePayloadFromClassroom({
   }
 
   return {
+    prompts:
+      Array.isArray(classDoc?.prompts) && classDoc.prompts.length > 0
+        ? classDoc.prompts
+        : ClassroomTemplate.getDefaultClassroomPrompts(),
     storeTypes: storeTypes.map((st) => ({
       key: st.key,
       label: st.label,

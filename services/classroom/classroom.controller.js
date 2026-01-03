@@ -99,10 +99,54 @@ exports.createClass = async function (req, res) {
           organizationId,
           clerkUserId,
         });
+
+        // Persist template prompts onto the classroom (create-only).
+        // Prompts are used to build OpenAI messages and should exist even if no store/scenario exists yet.
+        const prompts = templateToApply.payload?.prompts;
+        if (
+          Array.isArray(prompts) &&
+          prompts.length > 0 &&
+          (!newClassroom.prompts || newClassroom.prompts.length === 0)
+        ) {
+          newClassroom.prompts = prompts;
+          newClassroom.updatedBy = clerkUserId;
+          await newClassroom.save();
+        }
       }
     } catch (seedError) {
       // Log error but don't fail the classroom creation
       console.error("Error applying template for new classroom:", seedError);
+    }
+
+    // Ensure prompts exist even if no templateId was provided (or template apply failed).
+    // This lets the frontend rely on classroom.prompts being present for AI simulations.
+    if (!newClassroom.prompts || newClassroom.prompts.length === 0) {
+      try {
+        const ClassroomTemplate = require("../classroomTemplate/classroomTemplate.model");
+
+        // Ensure org has a default template copy, then use its prompts.
+        await ClassroomTemplate.copyGlobalToOrganization(
+          organizationId,
+          clerkUserId
+        );
+        const defaultTemplate = await ClassroomTemplate.findOne({
+          organization: organizationId,
+          key: ClassroomTemplate.GLOBAL_DEFAULT_KEY,
+          isActive: true,
+        });
+
+        const prompts =
+          defaultTemplate?.payload?.prompts ||
+          ClassroomTemplate.getDefaultClassroomPrompts();
+
+        if (Array.isArray(prompts) && prompts.length > 0) {
+          newClassroom.prompts = prompts;
+          newClassroom.updatedBy = clerkUserId;
+          await newClassroom.save();
+        }
+      } catch (promptError) {
+        console.error("Error ensuring classroom prompts:", promptError);
+      }
     }
 
     res.status(201).json({
@@ -189,7 +233,8 @@ exports.getStudentDashboard = async function (req, res) {
 exports.updateClass = async function (req, res) {
   try {
     const { classroomId } = req.params;
-    const { name, description, imageUrl, isActive, startingBalance } = req.body;
+    const { name, description, imageUrl, isActive, startingBalance, prompts } =
+      req.body;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
@@ -216,6 +261,47 @@ exports.updateClass = async function (req, res) {
     if (startingBalance !== undefined) {
       classroom.startingBalance =
         startingBalance === null ? 0 : Number(startingBalance);
+    }
+
+    // Update classroom prompts (optional)
+    // - omit prompts => no change
+    // - prompts: null => clear prompts
+    // - prompts: [{ role, content }] => replace prompts
+    if (prompts !== undefined) {
+      if (prompts === null) {
+        classroom.prompts = [];
+      } else {
+        if (!Array.isArray(prompts)) {
+          return res.status(400).json({ error: "prompts must be an array" });
+        }
+
+        const allowedRoles = new Set([
+          "system",
+          "user",
+          "assistant",
+          "developer",
+        ]);
+        const normalized = prompts.map((p) => ({
+          role: typeof p?.role === "string" ? p.role.trim() : "",
+          content: typeof p?.content === "string" ? p.content : "",
+        }));
+
+        for (const p of normalized) {
+          if (!allowedRoles.has(p.role)) {
+            return res.status(400).json({
+              error:
+                "prompts[].role must be one of: system, user, assistant, developer",
+            });
+          }
+          if (!p.content) {
+            return res.status(400).json({
+              error: "prompts[].content is required",
+            });
+          }
+        }
+
+        classroom.prompts = normalized;
+      }
     }
 
     classroom.updatedBy = clerkUserId;
