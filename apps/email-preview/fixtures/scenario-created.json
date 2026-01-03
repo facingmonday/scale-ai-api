@@ -25,7 +25,7 @@
   },
   "link": "https://scale.ai/class/class_supply_chain_101_fall/scenario/scenario_week3_2025",
   "env": {
-    "SCALE_COM_HOST": "https://scale.ai",
+    "SCALE_ADMIN_HOST": "https://localhost:5173",
     "SCALE_API_HOST": "https://api.scale.ai"
   }
 }

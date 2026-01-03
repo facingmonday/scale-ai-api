@@ -180,6 +180,7 @@ ledgerEntrySchema.index({ submissionId: 1 });
 
 // Validation: cashAfter must equal cashBefore + netProfit
 ledgerEntrySchema.pre("save", function (next) {
+  this._wasNew = this.isNew;
   const expectedCashAfter = this.cashBefore + this.netProfit;
   if (Math.abs(this.cashAfter - expectedCashAfter) > 0.01) {
     return next(
@@ -190,6 +191,74 @@ ledgerEntrySchema.pre("save", function (next) {
   }
   next();
 });
+
+// Post-save hook to create notifications when ledger entries are created
+ledgerEntrySchema.post("save", async function (doc) {
+  try {
+    // Only create notifications for new scenario-based ledger entries
+    if (doc._wasNew && doc.scenarioId) {
+      await createLedgerCreatedNotification(doc);
+    }
+  } catch (error) {
+    // Don't throw - ledger entry creation succeeded, notification failure shouldn't break the flow
+    console.error("Error creating ledger notification:", error);
+  }
+});
+
+async function createLedgerCreatedNotification(ledgerEntry) {
+  // Lazy load to avoid circular dependency
+  const Notification = require("../notifications/notifications.model");
+  const Scenario = require("../scenario/scenario.model");
+
+  const scenario = await Scenario.findById(ledgerEntry.scenarioId).lean();
+  if (!scenario) {
+    console.warn(
+      `Scenario not found for ledger ${ledgerEntry._id}, skipping notification`
+    );
+    return;
+  }
+
+  const host = process.env.SCALE_ADMIN_HOST || "https://scale.ai";
+  const ledgerLink = `${host}/class/${ledgerEntry.classroomId}/scenario/${ledgerEntry.scenarioId}`;
+
+  // Format profit/loss for email
+  const profitLoss =
+    ledgerEntry.netProfit >= 0
+      ? `+$${ledgerEntry.netProfit.toFixed(2)}`
+      : `-$${Math.abs(ledgerEntry.netProfit).toFixed(2)}`;
+
+  // Get clerkUserId from ledger entry (createdBy is the clerk user ID)
+  const clerkUserId = ledgerEntry.createdBy || ledgerEntry.updatedBy;
+
+  await Notification.create({
+    type: "email",
+    recipient: {
+      id: ledgerEntry.userId,
+      type: "Member",
+      ref: "Member",
+    },
+    title: `Scenario Results: ${scenario.title}`,
+    message: `Your results for "${scenario.title}" are now available. ${profitLoss} profit.`,
+    templateSlug: "scenario-closed",
+    templateData: {
+      link: ledgerLink,
+      profitLoss,
+      env: {
+        SCALE_ADMIN_HOST: host,
+        SCALE_API_HOST: process.env.SCALE_API_HOST || host,
+      },
+    },
+    modelData: {
+      ledger: ledgerEntry._id,
+      scenario: ledgerEntry.scenarioId,
+      member: ledgerEntry.userId,
+      classroom: ledgerEntry.classroomId,
+    },
+    organization: ledgerEntry.organization,
+    createdBy: clerkUserId,
+    updatedBy: clerkUserId,
+  });
+}
 
 // Static methods
 

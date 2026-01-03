@@ -1,3 +1,6 @@
+// Load environment variables FIRST before any other imports that might use them
+require("dotenv").config();
+
 const express = require("express");
 const mongoose = require("mongoose");
 const morgan = require("morgan");
@@ -7,8 +10,6 @@ const path = require("path");
 const fs = require("fs");
 const { clerkMiddleware } = require("@clerk/express");
 const { verifyRedisConnectivity } = require("../../lib/queues");
-
-require("dotenv").config();
 // Import all models before any other imports that might use them
 require("../../models");
 
@@ -144,6 +145,19 @@ async function main() {
   const server = app.listen(PORT, () =>
     console.log(`Server running on port ${PORT}`)
   );
+
+  // Initialize email worker so emails can be processed from API service
+  try {
+    const { initEmailWorker } = require("../../lib/queues/email-worker");
+    initEmailWorker();
+    console.log("✅ Email worker initialized in API service");
+  } catch (error) {
+    console.error(
+      "❌ Failed to initialize email worker in API service:",
+      error.message
+    );
+    // Don't exit - API can still function without email processing
+  }
 
   // Run Redis connectivity verification in the background and log outcome
   setTimeout(async () => {

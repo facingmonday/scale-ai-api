@@ -12,7 +12,7 @@ const {
   Text,
 } = require("@react-email/components");
 
-function ScenarioCreatedEmail(props) {
+function ScenarioClosedEmail(props) {
   const {
     scenario = {},
     classroom = {},
@@ -22,12 +22,21 @@ function ScenarioCreatedEmail(props) {
     env = {},
   } = props || {};
 
-  const previewText = `New Scenario Available - ${scenario.title || "Scenario"}`;
-  const host = env.SCALE_ADMIN_HOST || "https://localhost:5173";
+  const host =
+    env?.SCALE_ADMIN_HOST || env?.SCALE_API_HOST || "https://scale.ai";
+  const scenarioId = scenario?._id || scenario?.id || "scenario";
+  const classroomId =
+    classroom?._id || classroom?.id || classroom?.slug || "classroom";
   const scenarioLink =
     link ||
     scenario?.link ||
-    `${host}/class/${classroom._id || ""}/scenario/${scenario._id || ""}`;
+    `${host}/class/${encodeURIComponent(classroomId)}/scenario/${encodeURIComponent(scenarioId)}`;
+
+  const scenarioTitle = scenario?.title || "Scenario results";
+  const classroomName = classroom?.name || "your class";
+  const memberName = member?.firstName || member?.name || "Student";
+  const organizationName = organization?.name;
+  const previewText = `Scenario Results Available - ${scenarioTitle}`;
 
   return (
     <Html>
@@ -107,7 +116,7 @@ function ScenarioCreatedEmail(props) {
                   color: "#fff",
                 }}
               >
-                New Scenario Available
+                Scenario Results Available
               </Heading>
             </Section>
 
@@ -115,7 +124,7 @@ function ScenarioCreatedEmail(props) {
             <Section style={{ padding: "30px" }}>
               {/* Greeting */}
               <Text style={{ fontSize: "16px", marginBottom: "20px" }}>
-                Hello {member?.firstName || "Student"},
+                Hello {memberName},
               </Text>
 
               {/* Main Message */}
@@ -126,8 +135,8 @@ function ScenarioCreatedEmail(props) {
                   marginBottom: "20px",
                 }}
               >
-                A new scenario has been added to{" "}
-                <strong>{classroom?.name || "your class"}</strong>:
+                Results are now available for a scenario in{" "}
+                <strong>{classroomName || "your class"}</strong>:
               </Text>
 
               {/* Scenario Card */}
@@ -149,10 +158,10 @@ function ScenarioCreatedEmail(props) {
                     marginBottom: "10px",
                   }}
                 >
-                  {scenario.title || "New Scenario"}
+                  {scenarioTitle}
                 </Heading>
 
-                {scenario.week ? (
+                {scenario?.week ? (
                   <Text
                     style={{ margin: "6px 0", fontSize: "14px", color: "#666" }}
                   >
@@ -161,7 +170,7 @@ function ScenarioCreatedEmail(props) {
                   </Text>
                 ) : null}
 
-                {scenario.description ? (
+                {scenario?.description ? (
                   <Text
                     style={{
                       margin: "12px 0 0 0",
@@ -206,7 +215,7 @@ function ScenarioCreatedEmail(props) {
                             fontSize: "14px",
                           }}
                         >
-                          View Scenario
+                          View Outcome
                         </Button>
                       </td>
                     </tr>
@@ -228,8 +237,8 @@ function ScenarioCreatedEmail(props) {
               >
                 <strong style={{ color: "#000" }}>Next Steps</strong>
                 <Text style={{ margin: "8px 0 0 0", fontSize: "14px" }}>
-                  Review the scenario details and prepare your submission.
-                  You'll need to submit your decisions before the deadline.
+                  Review your results and see how your decisions impacted your
+                  business performance.
                 </Text>
               </div>
             </Section>
@@ -246,11 +255,11 @@ function ScenarioCreatedEmail(props) {
               }}
             >
               <Text style={{ margin: "6px 0" }}>© SCALE.ai</Text>
-              {organization?.name ? (
-                <Text style={{ margin: "6px 0" }}>{organization.name}</Text>
+              {organizationName ? (
+                <Text style={{ margin: "6px 0" }}>{organizationName}</Text>
               ) : null}
-              {classroom?.name ? (
-                <Text style={{ margin: "6px 0" }}>{classroom.name}</Text>
+              {classroomName ? (
+                <Text style={{ margin: "6px 0" }}>{classroomName}</Text>
               ) : null}
               <Text style={{ margin: "6px 0" }}>
                 If you didn't expect this notification, you can safely ignore
@@ -265,6 +274,6 @@ function ScenarioCreatedEmail(props) {
 }
 
 module.exports = {
-  ScenarioCreatedEmail,
-  populatePaths: ["classroom", "scenario"],
+  ScenarioClosedEmail,
+  populatePaths: ["scenario", "classroom", "member", "ledger"],
 };

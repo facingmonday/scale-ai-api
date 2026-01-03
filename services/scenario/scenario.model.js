@@ -4,7 +4,6 @@ const VariableDefinition = require("../variableDefinition/variableDefinition.mod
 const VariableValue = require("../variableDefinition/variableValue.model");
 const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
 // Note: Classroom, Enrollment, and Member are required inside functions to avoid circular dependencies
-const { enqueueEmailSending } = require("../../lib/queues/email-worker");
 
 const scenarioSchema = new mongoose.Schema({
   classroomId: {
@@ -423,29 +422,62 @@ scenarioSchema.methods.canPublish = async function () {
 // Track creation state for post-save hooks
 scenarioSchema.pre("save", function (next) {
   this._wasNew = this.isNew;
+  // Track if isPublished is being changed from false to true
+  if (!this.isNew && this.isModified("isPublished") && this.isPublished) {
+    this._isPublishedJustSet = true;
+  } else if (this.isNew && this.isPublished) {
+    this._isPublishedJustSet = true;
+  } else {
+    this._isPublishedJustSet = false;
+  }
+  // Track if isClosed is being modified (to skip published email check when closing)
+  this._isClosedJustSet =
+    !this.isNew && this.isModified("isClosed") && this.isClosed;
   next();
 });
 
-// Post-save hook to queue scenario creation emails for students
+// Post-save hook to send emails when scenario is published
+// Note: This checks for the "scenario-created" (published) email, NOT the "scenario-closed" (results) email
+// Results emails are sent from the ledger model when ledger entries are created
 scenarioSchema.post("save", async function (doc, next) {
   try {
-    if (!doc._wasNew) {
+    // Skip published email check if scenario is being closed (results email will be sent when ledger entries are created)
+    if (doc._isClosedJustSet) {
       return next();
     }
 
-    await queueScenarioCreatedEmails(doc);
+    // Only check for published email if scenario is published
+    if (doc.isPublished) {
+      // Double-check: fetch the document to see if notifications were already sent
+      // This prevents duplicate notifications on document updates
+      const Notification = require("../notifications/notifications.model");
+      const existingNotification = await Notification.findOne({
+        "modelData.scenario": doc._id,
+        templateSlug: "scenario-created",
+        type: "email",
+      }).lean();
+
+      // Send email if:
+      // 1. isPublished was just set to true (new publish), OR
+      // 2. Scenario is published but no notification exists (handles cases where email wasn't sent initially)
+      const shouldSendEmail =
+        doc._isPublishedJustSet || (!existingNotification && doc.isPublished);
+
+      if (shouldSendEmail) {
+        await queueScenarioPublishedEmails(doc);
+      }
+    }
     return next();
   } catch (error) {
-    console.error("Error queueing scenario created emails:", error);
+    console.error("Error queueing scenario published emails:", error);
     return next();
   }
 });
 
-async function queueScenarioCreatedEmails(scenario) {
-  // Lazy load to avoid circular dependency
+async function queueScenarioPublishedEmails(scenario) {
   const Classroom = require("../classroom/classroom.model");
   const Enrollment = require("../enrollment/enrollment.model");
-  const Member = require("../members/member.model");
+  const Notification = require("../notifications/notifications.model");
 
   const classroomId = scenario.classroomId;
   const organizationId = scenario.organization;
@@ -469,77 +501,91 @@ async function queueScenarioCreatedEmails(scenario) {
     return;
   }
 
-  const host =
-    process.env.SCALE_COM_HOST ||
-    process.env.SCALE_API_HOST ||
-    "https://scale.ai";
+  const host = process.env.SCALE_ADMIN_HOST || "https://localhost:5173";
   const scenarioLink = `${host}/class/${classroomId}/scenario/${scenario._id}`;
 
-  await Promise.allSettled(
+  // Get the clerkUserId from the scenario (updatedBy is set when published)
+  // The scenario should be a Mongoose document with updatedBy set from the publish() call
+  let clerkUserId = scenario.updatedBy || scenario.createdBy;
+
+  // If scenario is a plain object (from toObject()), try to get updatedBy from it
+  // Otherwise, if we have an ID, fetch the document
+  if (!clerkUserId && scenario._id) {
+    const ScenarioModel = require("./scenario.model");
+    const scenarioDoc = await ScenarioModel.findById(scenario._id).select(
+      "updatedBy createdBy"
+    );
+    if (scenarioDoc) {
+      clerkUserId = scenarioDoc.updatedBy || scenarioDoc.createdBy;
+    }
+  }
+
+  // Fallback to a system user if we still don't have a clerkUserId
+  if (!clerkUserId) {
+    clerkUserId = "system";
+    console.warn(
+      "No clerkUserId found on scenario, using 'system' for notification createdBy/updatedBy"
+    );
+  }
+
+  // Create notifications for all enrolled students
+  const notifications = await Promise.allSettled(
     memberEnrollments.map(async (enrollment) => {
       try {
-        const member = await Member.findById(enrollment.userId);
-        if (!member) {
-          console.warn(`Member not found for enrollment ${enrollment._id}`);
-          return;
-        }
-
-        const email = await member.getEmailFromClerk();
-        if (!email) {
-          console.warn(`No email found for member ${member._id}`);
-          return;
-        }
-
-        await enqueueEmailSending({
+        const notification = await Notification.create({
+          type: "email",
           recipient: {
-            email,
-            name:
-              `${member.firstName || ""} ${member.lastName || ""}`.trim() ||
-              email,
-            memberId: member._id,
+            id: enrollment.userId,
+            type: "Member",
+            ref: "Member",
           },
-          title: `New Scenario: ${scenario.title}`,
-          message: `A new scenario "${scenario.title}" has been added to ${classroom.name}.`,
+          title: `New Scenario Published: ${scenario.title}`,
+          message: `A new scenario "${scenario.title}" has been published for ${classroom.name}. Review the details and submit your plan.`,
           templateSlug: "scenario-created",
           templateData: {
-            scenario: {
-              _id: scenario._id,
-              title: scenario.title,
-              description: scenario.description,
-              link: scenarioLink,
-            },
-            classroom: {
-              _id: classroom._id,
-              name: classroom.name,
-              description: classroom.description,
-            },
-            member: {
-              _id: member._id,
-              firstName: member.firstName,
-              lastName: member.lastName,
-              name: `${member.firstName || ""} ${member.lastName || ""}`.trim(),
-              email,
-              clerkUserId: member.clerkUserId,
-            },
-            organization: {
-              _id: organizationId,
-            },
             link: scenarioLink,
             env: {
-              SCALE_COM_HOST: host,
+              SCALE_ADMIN_HOST: host,
               SCALE_API_HOST: process.env.SCALE_API_HOST || host,
             },
           },
-          organizationId,
+          modelData: {
+            scenario: scenario._id,
+            classroom: classroomId,
+            member: enrollment.userId,
+            organization: organizationId,
+          },
+          organization: organizationId,
+          createdBy: clerkUserId,
+          updatedBy: clerkUserId,
         });
+        return notification;
       } catch (error) {
         console.error(
-          `Error queueing email for enrollment ${enrollment._id}:`,
+          `Error creating notification for enrollment ${enrollment._id}:`,
           error.message
         );
+        throw error;
       }
     })
   );
+
+  const successful = notifications.filter(
+    (n) => n.status === "fulfilled"
+  ).length;
+  const failed = notifications.filter((n) => n.status === "rejected").length;
+
+  if (successful > 0) {
+    console.log(
+      `Created ${successful} notification(s) for scenario publication: ${scenario._id}`
+    );
+  }
+
+  if (failed > 0) {
+    console.error(
+      `Failed to create ${failed} notification(s) for scenario: ${scenario._id}`
+    );
+  }
 }
 
 /**
