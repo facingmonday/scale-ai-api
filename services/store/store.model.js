@@ -188,12 +188,6 @@ storeSchema.statics.getStoreByUser = async function (classroomId, userId) {
     await store.storeType._loadVariables();
   }
 
-  // Get current ledger summary details
-  const currentDetails = await LedgerEntry.getLedgerSummary(
-    classroomId,
-    userId
-  );
-
   // Variables are automatically included via plugin's toObject() override
   const storeObj = store.toObject();
 
@@ -203,9 +197,6 @@ storeSchema.statics.getStoreByUser = async function (classroomId, userId) {
     storeObj.storeTypeLabel = storeObj.storeType.label;
     // storeType.variables should already be included via plugin's toObject()
   }
-
-  // Add currentDetails to the returned object (must be added after toObject() since it's not a schema field)
-  storeObj.currentDetails = currentDetails;
 
   // Add ledger entries to the returned object
   storeObj.ledgerEntries = await LedgerEntry.getLedgerEntriesByStore(store._id);
