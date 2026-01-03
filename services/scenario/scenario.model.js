@@ -4,7 +4,6 @@ const VariableDefinition = require("../variableDefinition/variableDefinition.mod
 const VariableValue = require("../variableDefinition/variableValue.model");
 const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
 // Note: Classroom, Enrollment, and Member are required inside functions to avoid circular dependencies
-const { enqueueEmailSending } = require("../../lib/queues/email-worker");
 
 const scenarioSchema = new mongoose.Schema({
   classroomId: {
@@ -426,26 +425,42 @@ scenarioSchema.pre("save", function (next) {
   next();
 });
 
-// Post-save hook to queue scenario creation emails for students
+// Post-save hook to send emails when scenario is published
 scenarioSchema.post("save", async function (doc, next) {
   try {
-    if (!doc._wasNew) {
-      return next();
-    }
+    // Only send emails when scenario is published
+    // Check if this is a new document that's published, or if isPublished was just set to true
+    if (doc.isPublished) {
+      // For new documents, check if it's published
+      // For existing documents, check if isPublished field was modified (it means it changed)
+      if (doc._wasNew || doc.isModified("isPublished")) {
+        // Double-check: fetch the document to see if notifications were already sent
+        // This prevents duplicate notifications on document updates
+        const Notification = require("../notifications/notifications.model");
+        const existingNotification = await Notification.findOne({
+          "modelData.scenario": doc._id,
+          templateSlug: "scenario-created",
+          type: "email",
+        }).lean();
 
-    await queueScenarioCreatedEmails(doc);
+        // Only send if no notification exists yet (prevents duplicates)
+        if (!existingNotification) {
+          await queueScenarioPublishedEmails(doc);
+        }
+      }
+    }
     return next();
   } catch (error) {
-    console.error("Error queueing scenario created emails:", error);
+    console.error("Error queueing scenario published emails:", error);
     return next();
   }
 });
 
-async function queueScenarioCreatedEmails(scenario) {
+async function queueScenarioPublishedEmails(scenario) {
   // Lazy load to avoid circular dependency
   const Classroom = require("../classroom/classroom.model");
   const Enrollment = require("../enrollment/enrollment.model");
-  const Member = require("../members/member.model");
+  const Notification = require("../notifications/notifications.model");
 
   const classroomId = scenario.classroomId;
   const organizationId = scenario.organization;
@@ -475,70 +490,50 @@ async function queueScenarioCreatedEmails(scenario) {
     "https://scale.ai";
   const scenarioLink = `${host}/class/${classroomId}/scenario/${scenario._id}`;
 
-  await Promise.allSettled(
+  // Create notifications for all enrolled students
+  const notifications = await Promise.allSettled(
     memberEnrollments.map(async (enrollment) => {
       try {
-        const member = await Member.findById(enrollment.userId);
-        if (!member) {
-          console.warn(`Member not found for enrollment ${enrollment._id}`);
-          return;
-        }
-
-        const email = await member.getEmailFromClerk();
-        if (!email) {
-          console.warn(`No email found for member ${member._id}`);
-          return;
-        }
-
-        await enqueueEmailSending({
+        return await Notification.create({
+          type: "email",
           recipient: {
-            email,
-            name:
-              `${member.firstName || ""} ${member.lastName || ""}`.trim() ||
-              email,
-            memberId: member._id,
+            id: enrollment.userId,
+            type: "Member",
+            ref: "Member",
           },
-          title: `New Scenario: ${scenario.title}`,
-          message: `A new scenario "${scenario.title}" has been added to ${classroom.name}.`,
+          title: `New Scenario Published: ${scenario.title}`,
+          message: `A new scenario "${scenario.title}" has been published for ${classroom.name}. Review the details and submit your plan.`,
           templateSlug: "scenario-created",
           templateData: {
-            scenario: {
-              _id: scenario._id,
-              title: scenario.title,
-              description: scenario.description,
-              link: scenarioLink,
-            },
-            classroom: {
-              _id: classroom._id,
-              name: classroom.name,
-              description: classroom.description,
-            },
-            member: {
-              _id: member._id,
-              firstName: member.firstName,
-              lastName: member.lastName,
-              name: `${member.firstName || ""} ${member.lastName || ""}`.trim(),
-              email,
-              clerkUserId: member.clerkUserId,
-            },
-            organization: {
-              _id: organizationId,
-            },
             link: scenarioLink,
             env: {
               SCALE_COM_HOST: host,
               SCALE_API_HOST: process.env.SCALE_API_HOST || host,
             },
           },
-          organizationId,
+          modelData: {
+            scenario: scenario._id,
+            classroom: classroomId,
+            member: enrollment.userId,
+            organization: organizationId,
+          },
+          organization: organizationId,
         });
       } catch (error) {
         console.error(
-          `Error queueing email for enrollment ${enrollment._id}:`,
+          `Error creating notification for enrollment ${enrollment._id}:`,
           error.message
         );
+        throw error;
       }
     })
+  );
+
+  const successful = notifications.filter(
+    (n) => n.status === "fulfilled"
+  ).length;
+  console.log(
+    `✅ Created ${successful} notification(s) for scenario publication: ${scenario._id}`
   );
 }
 
