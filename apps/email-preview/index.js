@@ -2,7 +2,6 @@ const express = require("express");
 const path = require("path");
 const fs = require("fs");
 const livereload = require("livereload");
-const connectLivereload = require("connect-livereload");
 
 // Support .jsx in node for email components
 try {
@@ -18,27 +17,42 @@ const app = express();
 const PORT = process.env.EMAIL_PREVIEW_PORT || 4001;
 
 // Live reload server watching email templates and fixtures
-const lrserver = livereload.createServer({
-  exts: ["js", "jsx", "tsx", "json"],
-  delay: 200,
-});
-lrserver.watch(path.join(__dirname, "../../lib/emails/templates"));
-lrserver.watch(path.join(__dirname, "./fixtures"));
+// This is best-effort: if the port is already taken (common in dev), we
+// disable livereload rather than crashing the preview server.
+let livereloadEnabled = process.env.EMAIL_PREVIEW_LIVERELOAD !== "false";
+const livereloadPort = Number(
+  process.env.EMAIL_PREVIEW_LIVERELOAD_PORT || 35729
+);
 
-app.use(connectLivereload());
+if (livereloadEnabled) {
+  const lrserver = livereload.createServer({
+    exts: ["js", "jsx", "tsx", "json"],
+    delay: 200,
+    port: livereloadPort,
+    noListen: true,
+  });
 
-// Known template slugs (mirror of reactRenderer mapping)
-const templateSlugs = [
-  "event-invitation",
-  "order-created",
-  "tickets-generated",
-  "order-cancelled",
-  "ticket-reminder",
-  "ticket-template",
-  "share-template",
-  "ticket-claimed",
-  "daily-stats",
-];
+  lrserver.on("error", (err) => {
+    if (err?.code === "EADDRINUSE") {
+      console.warn(
+        `⚠️  Livereload port ${livereloadPort} is already in use; continuing without livereload.`
+      );
+      livereloadEnabled = false;
+      return;
+    }
+    console.warn("⚠️  Livereload error; continuing without livereload:", err);
+    livereloadEnabled = false;
+  });
+
+  lrserver.listen(() => {
+    // Only watch if we successfully started listening.
+    lrserver.watch(path.join(__dirname, "../../lib/emails/templates"));
+    lrserver.watch(path.join(__dirname, "./fixtures"));
+  });
+}
+
+// Known template slugs (mirror of lib/emails/reactRenderer mapping)
+const templateSlugs = ["scenario-created", "scenario-closed"];
 
 // Load fixture if exists
 function loadFixture(slug) {
@@ -55,7 +69,10 @@ function loadFixture(slug) {
 }
 
 function page(html) {
-  return `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Email Preview</title></head><body style="margin:0;padding:0;">${html}<script src="http://localhost:35729/livereload.js?snipver=1"></script></body></html>`;
+  const livereloadScript = livereloadEnabled
+    ? `<script src="http://localhost:${livereloadPort}/livereload.js?snipver=1"></script>`
+    : "";
+  return `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Email Preview</title></head><body style="margin:0;padding:0;">${html}${livereloadScript}</body></html>`;
 }
 
 app.get("/", (req, res) => {
