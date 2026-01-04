@@ -21,15 +21,10 @@ exports.createVariableDefinition = async function (req, res) {
       min,
       max,
       required,
-      affectsCalculation,
     } = req.body;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
-    // Validate required fields
-    if (!classroomId) {
-      return res.status(400).json({ error: "classroomId is required" });
-    }
     if (!key) {
       return res.status(400).json({ error: "key is required" });
     }
@@ -42,22 +37,25 @@ exports.createVariableDefinition = async function (req, res) {
     if (!dataType) {
       return res.status(400).json({ error: "dataType is required" });
     }
+    if (!classroomId) {
+      return res.status(400).json({ error: "classroomId is required" });
+    }
 
     // Validate appliesTo enum
-    if (!["store", "scenario", "submission"].includes(appliesTo)) {
-      return res.status(400).json({
-        error: "appliesTo must be one of: store, scenario, submission",
-      });
+    if (!["store", "scenario", "submission", "storeType"].includes(appliesTo)) {
+      throw new Error(
+        "appliesTo must be one of: store, scenario, submission, storeType"
+      );
     }
 
     // Validate dataType enum
     if (!["number", "string", "boolean", "select"].includes(dataType)) {
-      return res.status(400).json({
-        error: "dataType must be one of: number, string, boolean, select",
-      });
+      throw new Error(
+        "dataType must be one of: number, string, boolean, select"
+      );
     }
 
-    // Verify admin access to class
+    // Verify admin access to class (all definitions are classroom-scoped)
     await Classroom.validateAdminAccess(
       classroomId,
       clerkUserId,
@@ -79,7 +77,6 @@ exports.createVariableDefinition = async function (req, res) {
         min,
         max,
         required,
-        affectsCalculation,
       },
       organizationId,
       clerkUserId
@@ -174,7 +171,6 @@ exports.updateVariableDefinition = async function (req, res) {
       "min",
       "max",
       "required",
-      "affectsCalculation",
     ];
 
     allowedFields.forEach((field) => {
@@ -247,18 +243,14 @@ exports.getVariableDefinitions = async function (req, res) {
       }
     }
 
-    let definitions;
-
+    const query = {
+      organization: organizationId,
+      classroomId,
+    };
     if (appliesTo) {
-      // Get definitions for specific scope
-      definitions = await VariableDefinition.getDefinitionsForScope(
-        classroomId,
-        appliesTo
-      );
-    } else {
-      // Get all definitions for class
-      definitions = await VariableDefinition.getDefinitionsByClass(classroomId);
+      query.appliesTo = appliesTo;
     }
+    const definitions = await VariableDefinition.find(query).sort({ label: 1 });
 
     res.json({
       success: true,

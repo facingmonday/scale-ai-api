@@ -1,5 +1,6 @@
 const Member = require("../../members/member.model");
 const Organization = require("../../organizations/organization.model");
+const ClassroomTemplate = require("../../classroomTemplate/classroomTemplate.model");
 
 // Helper function to convert Clerk user to Member data
 const convertClerkUserToMemberData = (clerkUser) => {
@@ -191,6 +192,19 @@ const organizationCreated = async (orgData) => {
         "Created new organization:",
         organization.clerkOrganizationId
       );
+      // Ensure this organization has at least one classroom template by copying the global default
+      try {
+        const createdBy = orgData.created_by || "system_webhook";
+        await ClassroomTemplate.copyGlobalToOrganization(
+          organization._id,
+          createdBy
+        );
+      } catch (e) {
+        console.error(
+          "⚠️  Failed to copy global ClassroomTemplate to new organization:",
+          e?.message || e
+        );
+      }
     } else {
       console.log(
         "Organization already exists:",

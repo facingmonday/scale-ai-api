@@ -5,104 +5,6 @@ const {
   Container,
   Head,
   Heading,
-  Hr,
-  Html,
-  Link,
-  Preview,
-  Section,
-  Tailwind,
-  Text,
-} = require("@react-email/components");
-
-function ScenarioCreatedEmail(props) {
-  const { scenario = {}, classroom = {}, member = {}, organization = {}, link, env = {} } =
-    props || {};
-
-  const host = env?.SCALE_COM_HOST || "https://scale.com";
-  const scenarioId = scenario?._id || scenario?.id || "scenario";
-  const classroomId = classroom?._id || classroom?.id || classroom?.slug || "classroom";
-  const scenarioLink =
-    link || `${host}/class/${encodeURIComponent(classroomId)}/scenario/${encodeURIComponent(scenarioId)}`;
-
-  const scenarioTitle = scenario?.title || "New scenario available";
-  const classroomName = classroom?.name || "your class";
-  const memberName = member?.firstName || member?.name || "there";
-  const organizationName = organization?.name;
-  const previewText = `New scenario ready: ${scenarioTitle}`;
-
-  return (
-    <Html>
-      <Head />
-      <Preview>{previewText}</Preview>
-      <Tailwind>
-        <Body className="bg-gray-50 text-[#0f172a] m-0 p-0">
-          <Container className="mx-auto my-0 p-6 max-w-[640px] bg-white shadow-sm rounded">
-            <Section>
-              <Heading className="text-2xl font-semibold mb-2 text-[#0f172a]">
-                New scenario is ready
-              </Heading>
-              <Text className="text-base text-[#334155]">
-                Hi {memberName},
-              </Text>
-              <Text className="text-base text-[#334155]">
-                Your instructor just published a new scenario for {classroomName}. Review the details and submit your plan to keep your store running smoothly.
-              </Text>
-            </Section>
-
-            <Section className="mt-4">
-              <Text className="text-sm text-[#0f172a]">
-                <strong>Scenario:</strong> {scenarioTitle}
-              </Text>
-              {scenario?.week ? (
-                <Text className="text-sm text-[#0f172a]">
-                  <strong>Week:</strong> {scenario.week}
-                </Text>
-              ) : null}
-              {scenario?.description ? (
-                <Text className="text-sm text-[#475569] leading-relaxed">
-                  {scenario.description}
-                </Text>
-              ) : null}
-            </Section>
-
-            <Section className="mt-5 mb-2">
-              <Button
-                href={scenarioLink}
-                className="bg-[#2563eb] text-white px-5 py-3 rounded font-medium text-base no-underline"
-              >
-                View scenario & submit plan
-              </Button>
-            </Section>
-            <Text className="text-xs text-[#475569] mb-4">
-              If the button does not work, copy and paste this link into your browser:{" "}
-              <Link href={scenarioLink} className="text-[#2563eb]">
-                {scenarioLink}
-              </Link>
-            </Text>
-
-            <Hr className="border border-solid border-gray-200 my-6" />
-            <Text className="text-xs text-[#94a3b8]">
-              {organizationName ? `${organizationName} • ` : ""}
-              {classroomName}
-            </Text>
-          </Container>
-        </Body>
-      </Tailwind>
-    </Html>
-  );
-}
-
-module.exports = {
-  ScenarioCreatedEmail,
-  populatePaths: [],
-};
-const React = require("react");
-const {
-  Body,
-  Button,
-  Container,
-  Head,
-  Heading,
   Html,
   Preview,
   Section,
@@ -121,7 +23,7 @@ function ScenarioCreatedEmail(props) {
   } = props || {};
 
   const previewText = `New Scenario Available - ${scenario.title || "Scenario"}`;
-  const host = env.SCALE_COM_HOST || env.SCALE_API_HOST || "https://scale.ai";
+  const host = env.SCALE_ADMIN_HOST || "https://localhost:5173";
   const scenarioLink =
     link ||
     scenario?.link ||
@@ -217,7 +119,13 @@ function ScenarioCreatedEmail(props) {
               </Text>
 
               {/* Main Message */}
-              <Text style={{ fontSize: "15px", color: "#333", marginBottom: "20px" }}>
+              <Text
+                style={{
+                  fontSize: "15px",
+                  color: "#333",
+                  marginBottom: "20px",
+                }}
+              >
                 A new scenario has been added to{" "}
                 <strong>{classroom?.name || "your class"}</strong>:
               </Text>
@@ -245,8 +153,11 @@ function ScenarioCreatedEmail(props) {
                 </Heading>
 
                 {scenario.week ? (
-                  <Text style={{ margin: "6px 0", fontSize: "14px", color: "#666" }}>
-                    <strong style={{ color: "#000" }}>Week:</strong> {scenario.week}
+                  <Text
+                    style={{ margin: "6px 0", fontSize: "14px", color: "#666" }}
+                  >
+                    <strong style={{ color: "#000" }}>Week:</strong>{" "}
+                    {scenario.week}
                   </Text>
                 ) : null}
 
@@ -317,8 +228,8 @@ function ScenarioCreatedEmail(props) {
               >
                 <strong style={{ color: "#000" }}>Next Steps</strong>
                 <Text style={{ margin: "8px 0 0 0", fontSize: "14px" }}>
-                  Review the scenario details and prepare your submission. You'll
-                  need to submit your decisions before the deadline.
+                  Review the scenario details and prepare your submission.
+                  You'll need to submit your decisions before the deadline.
                 </Text>
               </div>
             </Section>
@@ -342,8 +253,8 @@ function ScenarioCreatedEmail(props) {
                 <Text style={{ margin: "6px 0" }}>{classroom.name}</Text>
               ) : null}
               <Text style={{ margin: "6px 0" }}>
-                If you didn't expect this notification, you can safely ignore this
-                email.
+                If you didn't expect this notification, you can safely ignore
+                this email.
               </Text>
             </Section>
           </Container>
@@ -357,4 +268,3 @@ module.exports = {
   ScenarioCreatedEmail,
   populatePaths: ["classroom", "scenario"],
 };
-

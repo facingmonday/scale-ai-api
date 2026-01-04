@@ -339,6 +339,15 @@ const requireMemberAuth = (options = {}) => {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
+      if (auth.orgId) {
+        const organization = await Organization.findOne({
+          clerkOrganizationId: auth.orgId,
+        });
+        if (organization) {
+          req.organization = organization;
+        }
+      }
+
       // Get the Clerk user with their metadata
       const clerkUser = await clerkClient.users.getUser(auth.userId);
 

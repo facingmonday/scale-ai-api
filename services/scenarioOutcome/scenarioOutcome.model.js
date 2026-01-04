@@ -13,9 +13,31 @@ const scenarioOutcomeSchema = new mongoose.Schema({
     type: String,
     default: "",
   },
-  randomEventsEnabled: {
-    type: Boolean,
-    default: false,
+  hiddenNotes: {
+    type: String,
+    default: "",
+  },
+  // Probability (0-100) that a random event will occur for this scenario outcome.
+  // Default 0 means random events are disabled.
+  randomEventChancePercent: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 100,
+  },
+  // Auto-generate submissions for missing students when outcome is set
+  // Options: "USE_AI", "FORWARD_PREVIOUS", or undefined/null (no auto-generation)
+  autoGenerateSubmissionsOnOutcome: {
+    type: String,
+    enum: ["USE_AI", "FORWARD_PREVIOUS"],
+    default: null,
+  },
+  // Punishment level for absent students when using FORWARD_PREVIOUS
+  // Options: "high", "medium", "low", "none", or undefined/null (no punishment)
+  punishAbsentStudents: {
+    type: String,
+    enum: ["high", "medium", "low", "none"],
+    default: null,
   },
 }).add(baseSchema);
 
@@ -41,13 +63,36 @@ scenarioOutcomeSchema.statics.createOrUpdateOutcome = async function (
 ) {
   let outcome = await this.findOne({ scenarioId });
 
+  const normalizedChancePercent =
+    outcomeData.randomEventChancePercent !== undefined
+      ? outcomeData.randomEventChancePercent
+      : undefined;
+
+  // Normalize autoGenerateSubmissionsOnOutcome (allow null/undefined to clear)
+  const normalizedAutoGenerate =
+    outcomeData.autoGenerateSubmissionsOnOutcome !== undefined
+      ? outcomeData.autoGenerateSubmissionsOnOutcome || null
+      : undefined;
+
+  // Normalize punishAbsentStudents (allow null/undefined to clear)
+  const normalizedPunishAbsent =
+    outcomeData.punishAbsentStudents !== undefined
+      ? outcomeData.punishAbsentStudents || "none"
+      : "none";
+
   if (outcome) {
     // Update existing outcome
-    outcome.notes = outcomeData.notes || outcome.notes;
-    outcome.randomEventsEnabled =
-      outcomeData.randomEventsEnabled !== undefined
-        ? outcomeData.randomEventsEnabled
-        : outcome.randomEventsEnabled;
+    outcome.notes =
+      outcomeData.notes !== undefined ? outcomeData.notes : outcome.notes;
+    if (normalizedChancePercent !== undefined) {
+      outcome.randomEventChancePercent = normalizedChancePercent;
+    }
+    if (normalizedAutoGenerate !== undefined) {
+      outcome.autoGenerateSubmissionsOnOutcome = normalizedAutoGenerate;
+    }
+    if (normalizedPunishAbsent !== undefined) {
+      outcome.punishAbsentStudents = normalizedPunishAbsent;
+    }
     outcome.updatedBy = clerkUserId;
     await outcome.save();
   } else {
@@ -55,10 +100,10 @@ scenarioOutcomeSchema.statics.createOrUpdateOutcome = async function (
     outcome = new this({
       scenarioId,
       notes: outcomeData.notes || "",
-      randomEventsEnabled:
-        outcomeData.randomEventsEnabled !== undefined
-          ? outcomeData.randomEventsEnabled
-          : false,
+      randomEventChancePercent:
+        normalizedChancePercent !== undefined ? normalizedChancePercent : 0,
+      autoGenerateSubmissionsOnOutcome: normalizedAutoGenerate || null,
+      punishAbsentStudents: normalizedPunishAbsent || null,
       organization: organizationId,
       createdBy: clerkUserId,
       updatedBy: clerkUserId,

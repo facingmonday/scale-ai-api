@@ -23,14 +23,8 @@ const variableDefinitionSchema = new mongoose.Schema({
   },
   appliesTo: {
     type: String,
-    enum: ["store", "scenario", "submission"],
+    enum: ["store", "scenario", "submission", "storeType"],
     required: true,
-    index: true,
-  },
-  classroomId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Classroom",
-    default: null,
     index: true,
   },
   dataType: {
@@ -49,11 +43,12 @@ const variableDefinitionSchema = new mongoose.Schema({
       "knob",
       "selectbutton",
       "switch",
+      "multiple-choice",
     ],
     default: "text",
   },
   options: {
-    type: [String],
+    type: [mongoose.Schema.Types.Mixed],
     default: [],
   },
   defaultValue: {
@@ -72,10 +67,6 @@ const variableDefinitionSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
-  affectsCalculation: {
-    type: Boolean,
-    default: true,
-  },
   // Soft delete flag
   isActive: {
     type: Boolean,
@@ -84,10 +75,18 @@ const variableDefinitionSchema = new mongoose.Schema({
 }).add(baseSchema);
 
 // Compound indexes for performance
-variableDefinitionSchema.index({ classroomId: 1, key: 1 }, { unique: true });
+// All definitions are classroom-scoped: unique on organization + classroomId + appliesTo + key
+variableDefinitionSchema.index(
+  { organization: 1, classroomId: 1, appliesTo: 1, key: 1 },
+  {
+    unique: true,
+    sparse: true, // keep sparse to avoid impacting older docs during transition
+  }
+);
 variableDefinitionSchema.index({ classroomId: 1, appliesTo: 1 });
 variableDefinitionSchema.index({ classroomId: 1, isActive: 1 });
 variableDefinitionSchema.index({ organization: 1, classroomId: 1 });
+variableDefinitionSchema.index({ organization: 1, appliesTo: 1 });
 
 // Static methods - Shared utilities for variable definition operations
 
@@ -105,8 +104,18 @@ variableDefinitionSchema.statics.createDefinition = async function (
   organizationId,
   clerkUserId
 ) {
-  // Check if key already exists for this class
-  const existing = await this.findOne({ classroomId, key: payload.key });
+  if (!classroomId) {
+    throw new Error("classroomId is required");
+  }
+
+  // Check uniqueness within org + classroom + appliesTo
+  const existing = await this.findOne({
+    organization: organizationId,
+    classroomId,
+    appliesTo: payload.appliesTo,
+    key: payload.key,
+  });
+
   if (existing) {
     throw new Error(
       `Variable definition with key "${payload.key}" already exists for this class`
@@ -115,8 +124,8 @@ variableDefinitionSchema.statics.createDefinition = async function (
 
   // Validate dataType and inputType compatibility
   const validCombinations = {
-    number: ["number", "slider"],
-    string: ["text", "dropdown"],
+    number: ["number", "slider", "knob"],
+    string: ["text", "dropdown", "selectbutton", "multiple-choice"],
     boolean: ["checkbox"],
     select: ["dropdown"],
   };
@@ -170,10 +179,6 @@ variableDefinitionSchema.statics.createDefinition = async function (
     min: payload.min !== undefined ? payload.min : null,
     max: payload.max !== undefined ? payload.max : null,
     required: payload.required !== undefined ? payload.required : false,
-    affectsCalculation:
-      payload.affectsCalculation !== undefined
-        ? payload.affectsCalculation
-        : true,
     isActive: true,
     organization: organizationId,
     createdBy: clerkUserId,
@@ -187,7 +192,7 @@ variableDefinitionSchema.statics.createDefinition = async function (
 /**
  * Get variable definitions for a specific scope
  * @param {string} classroomId - Class ID
- * @param {string} appliesTo - Scope ("store", "scenario", "submission")
+ * @param {string} appliesTo - Scope ("store", "scenario", "submission", "storeType")
  * @param {Object} options - Options (includeInactive)
  * @returns {Promise<Array>} Array of variable definitions
  */
@@ -196,7 +201,12 @@ variableDefinitionSchema.statics.getDefinitionsForScope = async function (
   appliesTo,
   options = {}
 ) {
-  const query = { classroomId, appliesTo, isActive: true };
+  const query = { appliesTo, isActive: true };
+  if (!classroomId) {
+    throw new Error("classroomId is required");
+  }
+  query.classroomId = classroomId;
+
   if (options.includeInactive) {
     delete query.isActive;
   }
@@ -226,8 +236,8 @@ variableDefinitionSchema.statics.getDefinitionsByClass = async function (
 
 /**
  * Validate values against definitions
- * @param {string} classroomId - Class ID
- * @param {string} appliesTo - Scope ("store", "scenario", "submission")
+ * @param {string} classroomId - Class ID (required for store/scenario/submission)
+ * @param {string} appliesTo - Scope ("store", "scenario", "submission", "storeType")
  * @param {Object} valuesObject - Values to validate
  * @returns {Promise<Object>} Validation result with errors array
  */
@@ -294,11 +304,28 @@ variableDefinitionSchema.statics.validateValues = async function (
         break;
 
       case "select":
-        if (!definition.options.includes(value)) {
-          errors.push({
-            key: definition.key,
-            message: `${definition.label} must be one of: ${definition.options.join(", ")}`,
-          });
+        // Support both primitive options (["a","b"]) and structured options ([{label,value}])
+        // because UI layers often store select options as objects.
+        {
+          const rawOptions = Array.isArray(definition.options)
+            ? definition.options
+            : [];
+          const allowedValues = rawOptions
+            .map((opt) => {
+              if (opt && typeof opt === "object") {
+                // Prefer value, fall back to label
+                return opt.value !== undefined ? opt.value : opt.label;
+              }
+              return opt;
+            })
+            .filter((v) => v !== undefined && v !== null);
+
+          if (!allowedValues.includes(value)) {
+            errors.push({
+              key: definition.key,
+              message: `${definition.label} must be one of: ${allowedValues.join(", ")}`,
+            });
+          }
         }
         break;
 
@@ -321,8 +348,8 @@ variableDefinitionSchema.statics.validateValues = async function (
 
 /**
  * Apply default values to an object based on definitions
- * @param {string} classroomId - Class ID
- * @param {string} appliesTo - Scope ("store", "scenario", "submission")
+ * @param {string} classroomId - Class ID (required for store/scenario/submission)
+ * @param {string} appliesTo - Scope ("store", "scenario", "submission", "storeType")
  * @param {Object} valuesObject - Values object to apply defaults to
  * @returns {Promise<Object>} Values object with defaults applied
  */
@@ -357,13 +384,24 @@ variableDefinitionSchema.statics.applyDefaults = async function (
  * Get variable definition by key
  * @param {string} classroomId - Class ID
  * @param {string} key - Variable key
+ * @param {Object} options - Options (appliesTo)
  * @returns {Promise<Object|null>} Variable definition or null
  */
 variableDefinitionSchema.statics.getDefinitionByKey = async function (
   classroomId,
-  key
+  key,
+  options = {}
 ) {
-  return await this.findOne({ classroomId, key, isActive: true });
+  const query = { key, isActive: true };
+  if (!classroomId) {
+    throw new Error("classroomId is required");
+  }
+  query.classroomId = classroomId;
+  if (options.appliesTo) {
+    query.appliesTo = options.appliesTo;
+  }
+
+  return await this.findOne(query);
 };
 
 // Instance methods

@@ -65,23 +65,24 @@ const readOnlyMode = false; // process.env.NODE_ENV === "production"
 console.log(
   `Starting Bull Board in ${readOnlyMode ? "read only" : "read write"} mode`
 );
-const pdfAdapter = new BullAdapter(queues.pdfGeneration, {
-  readOnlyMode,
-  allowRetries: !readOnlyMode,
-  description: "PDF generation jobs",
-});
+// Note: PDF generation queue is not used in Scale AI (disabled in workers.helpers.js)
 const emailAdapter = new BullAdapter(queues.emailSending, {
   readOnlyMode,
   allowRetries: !readOnlyMode,
   description: "Email sending jobs",
 });
+const simulationAdapter = new BullAdapter(queues.simulation, {
+  readOnlyMode,
+  allowRetries: !readOnlyMode,
+  description: "Simulation jobs",
+});
 
 createBullBoard({
-  queues: [pdfAdapter, emailAdapter],
+  queues: [emailAdapter, simulationAdapter],
   serverAdapter: serverAdapter,
   options: {
     uiConfig: {
-      boardTitle: "Kikits Queues",
+      boardTitle: "ScaleAI Queues",
     },
   },
 });
@@ -144,7 +145,7 @@ app.use("/", require("../../services/workers"));
 
 async function main() {
   try {
-    console.log("🚀 Starting Kikits Workers Service...");
+    console.log("🚀 Starting ScaleAI Workers Service...");
     console.log(`⏰ Started at: ${new Date().toISOString()}`);
     console.log(`🌍 Environment: ${process.env.NODE_ENV || "development"}`);
 

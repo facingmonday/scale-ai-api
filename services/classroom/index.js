@@ -15,6 +15,21 @@ const { requireAuth, checkRole } = require("../../middleware/auth");
 // These will be mounted at /v1/admin/class when registered
 router.post("/", requireAuth(), checkRole("org:admin"), controller.createClass);
 
+// Admin maintenance utilities
+router.delete(
+  "/:classroomId/variables",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.deleteClassroomVariables
+);
+
+router.post(
+  "/:classroomId/restore-template",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.restoreClassroomTemplate
+);
+
 router.get(
   "/:classroomId/dashboard",
   requireAuth(),
@@ -34,6 +49,13 @@ router.post(
   requireAuth(),
   checkRole("org:admin"),
   controller.inviteStudent
+);
+
+router.put(
+  "/:classroomId",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.updateClass
 );
 
 router.get("/", requireAuth(), controller.getAllClassrooms);

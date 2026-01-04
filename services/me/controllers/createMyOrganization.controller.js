@@ -1,5 +1,5 @@
 const { clerkClient } = require("@clerk/express");
-const { slugify } = require("../../utils/utils.controller");
+const slugify = require("slugify");
 
 module.exports = async function createOrg(req, res) {
   try {
@@ -12,7 +12,11 @@ module.exports = async function createOrg(req, res) {
     if (!organizationName)
       return res.status(400).json({ error: "Organization name is required" });
 
-    const organizationSlug = slugify(organizationName);
+    const organizationSlug = slugify(organizationName, {
+      lower: true,
+      strict: true,
+      trim: true,
+    });
 
     const org = await clerkClient.organizations.createOrganization({
       name: organizationName,

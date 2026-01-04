@@ -1,7 +1,9 @@
+const mongoose = require("mongoose");
 const LedgerEntry = require("./ledger.model");
 const Classroom = require("../classroom/classroom.model");
 const Scenario = require("../scenario/scenario.model");
 const Member = require("../members/member.model");
+const Submission = require("../submission/submission.model");
 
 /**
  * Get ledger history for a user
@@ -11,9 +13,6 @@ const Member = require("../members/member.model");
 exports.getLedgerHistory = async function (req, res) {
   try {
     const { classroomId, userId: clerkUserId } = req.params;
-    console.log("clerkUserId", clerkUserId);
-    const adminClerkUserId = req.clerkUser.id;
-    const organizationId = req.organization._id;
 
     // Convert Clerk user ID to Member ID
     const member = await Member.findByClerkUserId(clerkUserId);
@@ -23,9 +22,32 @@ exports.getLedgerHistory = async function (req, res) {
 
     const history = await LedgerEntry.getLedgerHistory(classroomId, member._id);
 
+    // Check if calculation details are requested (optional query parameter)
+    const includeCalculationDetails =
+      req.query.includeCalculationDetails === "true";
+
+    let historyData = history.map((entry) => entry.toObject());
+
+    // If calculation details are requested, fetch them for each entry
+    if (includeCalculationDetails) {
+      const detailsPromises = history.map((entry) =>
+        LedgerEntry.getCalculationDetails(entry._id)
+      );
+      const detailsResults = await Promise.all(detailsPromises);
+
+      historyData = historyData.map((entry, index) => {
+        const details = detailsResults[index];
+        if (details) {
+          entry.calculationDetails = details.calculationContext;
+          entry.variableDefinitions = details.variableDefinitions;
+        }
+        return entry;
+      });
+    }
+
     res.json({
       success: true,
-      data: history,
+      data: historyData,
     });
   } catch (error) {
     console.error("Error getting ledger history:", error);
@@ -65,9 +87,32 @@ exports.getLedgerEntriesByScenario = async function (req, res) {
 
     const entries = await LedgerEntry.getLedgerEntriesByScenario(scenarioId);
 
+    // Check if calculation details are requested (optional query parameter)
+    const includeCalculationDetails =
+      req.query.includeCalculationDetails === "true";
+
+    let entriesData = entries.map((entry) => entry.toObject());
+
+    // If calculation details are requested, fetch them for each entry
+    if (includeCalculationDetails) {
+      const detailsPromises = entries.map((entry) =>
+        LedgerEntry.getCalculationDetails(entry._id)
+      );
+      const detailsResults = await Promise.all(detailsPromises);
+
+      entriesData = entriesData.map((entry, index) => {
+        const details = detailsResults[index];
+        if (details) {
+          entry.calculationDetails = details.calculationContext;
+          entry.variableDefinitions = details.variableDefinitions;
+        }
+        return entry;
+      });
+    }
+
     res.json({
       success: true,
-      data: entries,
+      data: entriesData,
     });
   } catch (error) {
     console.error("Error getting ledger entries:", error);
@@ -159,9 +204,19 @@ exports.getLedgerEntry = async function (req, res) {
       return res.status(404).json({ error: "Ledger entry not found" });
     }
 
+    // Get calculation details for the entry
+    const details = await LedgerEntry.getCalculationDetails(entry._id);
+    const entryData = entry.toObject();
+
+    // Attach calculation details if available
+    if (details) {
+      entryData.calculationDetails = details.calculationContext;
+      entryData.variableDefinitions = details.variableDefinitions;
+    }
+
     res.json({
       success: true,
-      data: entry,
+      data: entryData,
     });
   } catch (error) {
     console.error("Error getting ledger entry:", error);

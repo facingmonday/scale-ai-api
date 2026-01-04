@@ -10,6 +10,7 @@ A classroom-based supply chain simulation platform built with Node.js, Express, 
 - [Project Structure](#project-structure)
 - [Services & Models](#services--models)
 - [API Routes](#api-routes)
+- [Store Types & Stores](#store-types--stores)
 - [Authentication](#authentication)
 - [Setup & Development](#setup--development)
 - [Deployment](#deployment)
@@ -104,8 +105,10 @@ scale-ai-api/
 
 #### Store Service
 
-- **Models**: `Store`, `StoreVariableValue`
+- **Models**: `Store`, `StoreType`, `VariableValue`
 - **Purpose**: Manages student business setup (one store per student per class)
+- **Store Types**: Organization-scoped templates that define default variable values
+- **Stores**: Classroom-scoped student instances created from store types
 
 #### VariableDefinition Service
 
@@ -280,27 +283,6 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 - **Description**: Transcribe audio using OpenAI Whisper API (file upload required)
 - **Body**: Multipart form data with `file` field
 
-### Utils Routes (`/v1/utils`)
-
-All routes require `requireAuth()` and `checkRole('org:admin')`.
-
-#### `GET /v1/utils/transcribe-video`
-
-- **Description**: Transcribe video (extracts audio and transcribes)
-
-#### `POST /v1/utils/event-objects-from-json`
-
-- **Description**: Create event objects from JSON data
-
-#### `POST /v1/utils/event-objects-from-text`
-
-- **Description**: Create event objects from text input
-
-#### `POST /v1/utils/event-objects-from-image`
-
-- **Description**: Create event objects from image analysis (file upload required)
-- **Body**: Multipart form data with `file` field
-
 ### Classroom Routes (`/v1/admin/class`)
 
 #### `POST /v1/admin/class`
@@ -365,13 +347,15 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 
 - **Auth**: `requireMemberAuth()`
 - **Description**: Create store for authenticated student
-- **Body**: `{ classroomId, shopName, storeType, dailyCapacity, deliveryRatio, startingBalance?, variables? }`
+- **Body**: `{ classroomId, shopName, storeDescription, storeLocation, storeType (ObjectId), variables? }`
+- **See**: [Store Types & Stores](#store-types--stores) section for detailed documentation
 
 ##### `PUT /v1/student/store`
 
 - **Auth**: `requireMemberAuth()`
-- **Description**: Update student's store
-- **Query Params**: `classroomId` (required)
+- **Description**: Update or create (upsert) student's store
+- **Body**: `{ classroomId, shopName?, storeDescription?, storeLocation?, storeType? (ObjectId), variables? }`
+- **See**: [Store Types & Stores](#store-types--stores) section for detailed documentation
 
 ##### `GET /v1/student/store`
 
@@ -386,13 +370,603 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Get student's store (admin view)
 
+### StoreType Routes (`/v1/admin/store-types`)
+
+All routes require `requireAuth()` and `checkRole('org:admin')`.
+
+#### `GET /v1/admin/store-types`
+
+- **Description**: Get all store types for the organization
+
+#### `GET /v1/admin/store-types/:storeTypeId`
+
+- **Description**: Get a specific store type by ID
+
+#### `POST /v1/admin/store-types`
+
+- **Description**: Create a new store type
+- **Body**: `{ key, label, description?, variables? }`
+
+#### `PUT /v1/admin/store-types/:storeTypeId`
+
+- **Description**: Update a store type
+- **Body**: `{ label?, description?, variables? }`
+
+#### `DELETE /v1/admin/store-types/:storeTypeId`
+
+- **Description**: Soft delete a store type
+
+#### `POST /v1/admin/store-types/seed`
+
+- **Description**: Seed default store types for the organization
+
+**See**: [Store Types & Stores](#store-types--stores) section for detailed documentation.
+
+### StoreType Student Routes (`/v1/student/store-types`)
+
+#### `GET /v1/student/store-types`
+
+- **Auth**: `requireMemberAuth()`
+- **Description**: Get all active store types for a classroom (for students to select when creating a store)
+- **Query Params**: `classroomId` (required)
+- **Response**: Returns array of store types with their variables populated
+- **Note**: Only returns active store types (inactive ones are hidden from students)
+
+## Store Types & Stores
+
+This section explains how store types and stores work, how to define variables, and how to set values. This is essential for building the frontend UI for store configuration.
+
+### Overview
+
+**Store Types** are organization-scoped templates that define default variable values for different types of stores (e.g., "Food Truck", "Café", "Fine Dining"). Each organization can have its own set of store types with customizable default values.
+
+**Stores** are student-specific business instances created from store types. Each student can have one store per classroom, and stores inherit default values from their store type but can be customized.
+
+### Store Types (Organization-Level)
+
+Store types are **organization-scoped** templates that define:
+
+- **Basic Info**: `key` (unique identifier), `label` (display name), `description`
+- **Default Variables**: All variable values stored in the `VariableValue` collection with `appliesTo: "storeType"`
+
+#### Store Type API Endpoints
+
+##### Student Routes
+
+##### `GET /v1/student/store-types`
+
+Get all active store types for a classroom. Students use this to see available store types when creating their store.
+
+**Query Parameters:**
+
+- `classroomId` (required) - The classroom ID
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "_id": "storeTypeId",
+      "key": "food_truck",
+      "label": "Food Truck",
+      "description": "A scrappy, mobile kitchen...",
+      "variables": {
+        "startingBalance": 5000,
+        "startingInventory": 1000,
+        "weeklyRent": 200,
+        "maxDailyCapacity": 80,
+        "staffRequired": 2,
+        "weatherSensitivity": "high"
+        // ... other variables
+      },
+      "isActive": true,
+      "organization": "orgId",
+      "createdDate": "2024-01-01T00:00:00.000Z",
+      "updatedDate": "2024-01-01T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+**Note**: Only returns active store types (inactive ones are hidden from students).
+
+##### Admin Routes
+
+All admin routes require `requireAuth()` and `checkRole("org:admin")`.
+
+##### `GET /v1/admin/store-types`
+
+Get all store types for the organization.
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "_id": "storeTypeId",
+      "key": "food_truck",
+      "label": "Food Truck",
+      "description": "A scrappy, mobile kitchen...",
+      "variables": {
+        "startingBalance": 5000,
+        "startingInventory": 1000,
+        "weeklyRent": 200,
+        "maxDailyCapacity": 80,
+        "staffRequired": 2,
+        "weatherSensitivity": "high"
+        // ... other variables
+      },
+      "isActive": true,
+      "organization": "orgId",
+      "createdDate": "2024-01-01T00:00:00.000Z",
+      "updatedDate": "2024-01-01T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+##### `GET /v1/admin/store-types/:storeTypeId`
+
+Get a specific store type by ID.
+
+##### `POST /v1/admin/store-types`
+
+Create a new store type.
+
+**Request Body:**
+
+```json
+{
+  "key": "food_truck",
+  "label": "Food Truck",
+  "description": "A scrappy, mobile kitchen...",
+  "variables": {
+    "startingBalance": 5000,
+    "startingInventory": 1000,
+    "weeklyRent": 200,
+    "maxDailyCapacity": 80,
+    "staffRequired": 2,
+    "weatherSensitivity": "high"
+    // ... any other variables
+  }
+}
+```
+
+**Note**: The `variables` object can contain any key-value pairs. These are stored as `VariableValue` documents with `appliesTo: "storeType"`.
+
+##### `PUT /v1/admin/store-types/:storeTypeId`
+
+Update a store type. You can update `label`, `description`, and `variables`.
+
+**Request Body:**
+
+```json
+{
+  "label": "Updated Food Truck",
+  "description": "Updated description",
+  "variables": {
+    "startingBalance": 6000, // Updated value
+    "newVariable": "newValue" // New variable added
+    // Variables not included will be deleted
+  }
+}
+```
+
+**Important**: When updating `variables`, the entire object replaces the existing variables. Variables not included in the request will be deleted.
+
+##### `DELETE /v1/admin/store-types/:storeTypeId`
+
+Soft delete a store type (sets `isActive: false`).
+
+##### `POST /v1/admin/store-types/seed`
+
+**Deprecated / removed**: store type preset seeding is no longer supported. Create StoreTypes (and their variables) via the StoreType API/UI.
+
+#### Store Type Variables
+
+Store type variables are stored in the `VariableValue` collection with:
+
+- `appliesTo: "storeType"`
+- `ownerId: storeType._id`
+- `variableKey: "startingBalance"` (or any key)
+- `value: 5000` (the actual value)
+
+Variables are automatically included in the response via the `variablePopulationPlugin`, which adds a `variables` object to the store type when calling `toObject()` or `toJSON()`.
+
+### Stores (Student-Level)
+
+Stores are **classroom-scoped** and represent a student's business instance. Each student can have **one store per classroom**.
+
+#### Store Structure
+
+A store contains:
+
+- **Basic Info**: `shopName`, `storeDescription`, `storeLocation`
+- **Store Type Reference**: `storeType` (ObjectId reference to a `StoreType`)
+- **Variables**: Stored in `VariableValue` collection with `appliesTo: "store"`
+
+#### Store Variable Value Precedence
+
+When a store is created, variable values are determined in this order (highest to lowest priority):
+
+1. **Provided Values** - Values explicitly passed when creating/updating the store
+2. **Store Type Values** - Default values stored on the selected StoreType (via `VariableValue` with `appliesTo: "storeType"`)
+3. **Variable Definition Defaults** - Default values from `VariableDefinition`
+
+#### Store API Endpoints
+
+##### Student Routes
+
+All student routes require `requireMemberAuth()`.
+
+##### `POST /v1/student/store`
+
+Create a store for the authenticated student.
+
+**Request Body:**
+
+```json
+{
+  "classroomId": "classroomId",
+  "shopName": "Tony's Pizza",
+  "storeDescription": "Best pizza in town",
+  "storeLocation": "123 Main St",
+  "storeType": "storeTypeId", // ObjectId of the store type
+  "variables": {
+    "startingBalance": 6000, // Optional: override store type default
+    "customVariable": "value" // Optional: add custom variables
+  }
+}
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "message": "Store created successfully",
+  "data": {
+    "_id": "storeId",
+    "shopName": "Tony's Pizza",
+    "storeDescription": "Best pizza in town",
+    "storeLocation": "123 Main St",
+    "storeType": {
+      "_id": "storeTypeId",
+      "key": "food_truck",
+      "label": "Food Truck"
+    },
+    "storeTypeKey": "food_truck", // For backward compatibility
+    "storeTypeLabel": "Food Truck",
+    "variables": {
+      "startingBalance": 6000, // From provided values or store type
+      "startingInventory": 1000, // From store type
+      "weeklyRent": 200 // From store type
+      // ... all variables merged
+    },
+    "currentDetails": {
+      "cashAfter": 6000,
+      "inventoryAfter": 1000
+      // ... ledger summary
+    }
+  }
+}
+```
+
+##### `PUT /v1/student/store`
+
+Update or create (upsert) a store.
+
+**Request Body:** Same as `POST`, but `shopName`, `storeDescription`, `storeLocation`, and `storeType` are only required if creating a new store.
+
+**Note**: When updating `variables`, the entire object replaces existing variables. Variables not included will be deleted.
+
+##### `GET /v1/student/store?classroomId=classroomId`
+
+Get the authenticated student's store for a classroom.
+
+**Response:** Same format as `POST` response.
+
+##### Admin Routes
+
+All admin routes require `requireAuth()` and `checkRole("org:admin")`.
+
+##### `GET /v1/admin/class/:classroomId/store/:userId`
+
+Get a specific student's store (admin view).
+
+### Variable Definitions for Stores
+
+Variable definitions define the structure and validation rules for store variables. They are **classroom-scoped** and apply to all stores in that classroom.
+
+#### Creating Variable Definitions
+
+Use the VariableDefinition API to create definitions:
+
+##### `POST /v1/admin/variables`
+
+Create a variable definition for stores.
+
+**Request Body:**
+
+```json
+{
+  "classroomId": "classroomId",
+  "key": "startingBalance",
+  "label": "Starting Balance",
+  "description": "Initial cash available to the business",
+  "appliesTo": "store", // Must be "store" for store variables
+  "dataType": "number",
+  "inputType": "number", // or "slider"
+  "defaultValue": 5000,
+  "min": 0,
+  "max": 100000,
+  "required": true,
+}
+```
+
+**Field Descriptions:**
+
+- `key` - Unique identifier (used in `variables` object)
+- `label` - Display name for UI
+- `description` - Help text/tooltip
+- `appliesTo` - Must be `"store"` for store variables
+- `dataType` - `"number"`, `"string"`, `"boolean"`, or `"select"`
+- `inputType` - UI input type: `"text"`, `"number"`, `"slider"`, `"dropdown"`, `"checkbox"`, `"switch"`, etc.
+- `defaultValue` - Default value if not provided
+- `min`/`max` - Validation constraints (for numbers)
+- `required` - Whether field is required
+
+**Valid `dataType` and `inputType` combinations:**
+
+- `dataType: "number"` → `inputType: "number"` or `"slider"`
+- `dataType: "string"` → `inputType: "text"` or `"dropdown"`
+- `dataType: "boolean"` → `inputType: "checkbox"` or `"switch"`
+- `dataType: "select"` → `inputType: "dropdown"` (requires `options` array)
+
+##### `GET /v1/admin/variables?classroomId=classroomId&appliesTo=store`
+
+Get all variable definitions for stores in a classroom.
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "_id": "defId",
+      "key": "startingBalance",
+      "label": "Starting Balance",
+      "description": "Initial cash available",
+      "appliesTo": "store",
+      "dataType": "number",
+      "inputType": "number",
+      "defaultValue": 5000,
+      "min": 0,
+      "max": 100000,
+      "required": true,
+      "isActive": true
+    }
+  ]
+}
+```
+
+### Frontend Implementation Guide
+
+#### 1. Store Type Configuration UI (Admin)
+
+**Step 1: Fetch Store Types**
+
+```javascript
+GET / v1 / admin / store - types;
+// Returns list of all store types with their variables
+```
+
+**Step 2: Display Store Types List**
+
+- Show `label` and `description` for each store type
+- Display `variables` object (can be shown as key-value pairs or in a structured form)
+
+**Step 3: Create/Edit Store Type**
+
+- Form fields: `key`, `label`, `description`
+- Dynamic variables editor:
+  - Allow adding/editing/removing variable key-value pairs
+  - Variables can be any JSON-serializable values (numbers, strings, booleans, arrays, objects)
+  - Store as `variables` object in request body
+
+**Step 4: Delete Store Type**
+
+- Call `DELETE /v1/admin/store-types/:storeTypeId`
+- Note: This is a soft delete (`isActive: false`)
+
+#### 2. Store Creation UI (Student)
+
+**Step 1: Fetch Available Store Types**
+
+```javascript
+GET /v1/student/store-types?classroomId={classroomId}
+// Note: Students might need a different endpoint or filtered view
+```
+
+**Step 2: Fetch Variable Definitions**
+
+```javascript
+GET /v1/admin/variables?classroomId={classroomId}&appliesTo=store
+// Returns all variable definitions for stores in this classroom
+```
+
+**Step 3: Display Store Creation Form**
+
+1. **Basic Fields:**
+   - `shopName` (text input)
+   - `storeDescription` (textarea)
+   - `storeLocation` (text input)
+   - `storeType` (dropdown/select from available store types)
+
+2. **Dynamic Variables Form:**
+   - When a store type is selected, fetch its variables
+   - For each variable definition:
+     - If variable exists in store type's `variables`, use that as default
+     - Otherwise, use `defaultValue` from variable definition
+     - Render appropriate input based on `inputType`:
+       - `number` → number input with min/max
+       - `slider` → range slider
+       - `text` → text input
+       - `dropdown` → select dropdown (use `options` from definition)
+       - `checkbox`/`switch` → checkbox/switch
+   - Allow students to override defaults
+
+**Step 4: Submit Store Creation**
+
+```javascript
+POST /v1/student/store
+{
+  "classroomId": "...",
+  "shopName": "...",
+  "storeDescription": "...",
+  "storeLocation": "...",
+  "storeType": "storeTypeId",
+  "variables": {
+    "startingBalance": 6000,  // Override store type default
+    "customVar": "value"      // Custom variable
+  }
+}
+```
+
+#### 3. Store Edit UI (Student)
+
+**Step 1: Fetch Current Store**
+
+```javascript
+GET /v1/student/store?classroomId={classroomId}
+```
+
+**Step 2: Display Edit Form**
+
+- Pre-populate with current store values
+- Show store type info (read-only, can't change after creation)
+- Allow editing `shopName`, `storeDescription`, `storeLocation`
+- Allow editing `variables` (same dynamic form as creation)
+
+**Step 3: Submit Updates**
+
+```javascript
+PUT /v1/student/store
+{
+  "classroomId": "...",
+  "shopName": "Updated Name",
+  "variables": {
+    // Include ALL variables you want to keep
+    // Variables not included will be deleted
+  }
+}
+```
+
+#### 4. Variable Definition Management UI (Admin)
+
+**Step 1: Fetch Definitions**
+
+```javascript
+GET /v1/admin/variables?classroomId={classroomId}&appliesTo=store
+```
+
+**Step 2: Create Definition Form**
+
+- Fields: `key`, `label`, `description`, `dataType`, `inputType`, `defaultValue`, `min`, `max`, `required`
+- If `dataType: "select"` or `inputType: "dropdown"`, show `options` array editor
+- Validate `dataType`/`inputType` compatibility
+
+**Step 3: Update Definition**
+
+```javascript
+PUT /v1/admin/variables/:key?classroomId={classroomId}
+// Can update all fields except `key` (immutable)
+```
+
+**Step 4: Delete Definition**
+
+```javascript
+DELETE /v1/admin/variables/:key?classroomId={classroomId}
+// Soft delete (sets isActive: false)
+```
+
+### Key Concepts for Frontend Developers
+
+1. **Store Types are Organization-Scoped**: Each organization has its own set of store types. They're not shared across organizations.
+
+2. **Stores are Classroom-Scoped**: Each student has one store per classroom. Store variables are specific to that classroom's variable definitions.
+
+3. **Variable Value Merging**: When creating a store, values are merged from:
+   - Provided values (highest priority)
+   - Store type defaults
+   - Variable definition defaults (lowest priority)
+
+4. **Variables are Dynamic**: The `variables` object can contain any key-value pairs. The structure is defined by variable definitions, but values can be any JSON-serializable data.
+
+5. **Variable Updates Replace All**: When updating `variables` in a store or store type, the entire object replaces existing variables. Variables not included are deleted.
+
+6. **Store Type Variables vs Store Variables**:
+   - Store type variables (`appliesTo: "storeType"`) are defaults/templates
+   - Store variables (`appliesTo: "store"`) are actual values for a student's store
+   - Store variables inherit from store type variables when the store is created
+
+7. **Variable Definitions Define Structure**: Variable definitions (`appliesTo: "store"`) define what variables are available, their types, validation rules, and UI hints. They don't store values.
+
+### Example: Complete Store Creation Flow
+
+```javascript
+// 1. Fetch store types (for dropdown)
+const storeTypes = await fetch(
+  `/v1/student/store-types?classroomId=${classroomId}`
+);
+// Returns: [{ _id: "...", key: "food_truck", label: "Food Truck", variables: {...} }]
+// Note: Only returns active store types
+
+// 2. Fetch variable definitions (for form structure)
+const definitions = await fetch(
+  "/v1/admin/variables?classroomId=xxx&appliesTo=store"
+);
+// Returns: [{ key: "startingBalance", label: "Starting Balance", dataType: "number", ... }]
+
+// 3. User selects store type "food_truck"
+const selectedStoreType = storeTypes.find((st) => st.key === "food_truck");
+
+// 4. Build form with:
+//    - Basic fields (shopName, etc.)
+//    - For each definition, use:
+//      - selectedStoreType.variables[def.key] as default (if exists)
+//      - OR def.defaultValue
+//    - Render input based on def.inputType
+
+// 5. User fills form and submits
+await fetch("/v1/student/store", {
+  method: "POST",
+  body: JSON.stringify({
+    classroomId: "xxx",
+    shopName: "Tony's Pizza",
+    storeDescription: "...",
+    storeLocation: "...",
+    storeType: selectedStoreType._id,
+    variables: {
+      startingBalance: 6000, // User overrode default of 5000
+      // ... other variables from form
+    },
+  }),
+});
+```
+
 ### VariableDefinition Routes (`/v1/admin/variables`)
 
 #### `POST /v1/admin/variables`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Create variable definition
-- **Body**: `{ classroomId, key, label, description?, appliesTo, dataType, inputType?, options?, defaultValue?, min?, max?, required?, affectsCalculation? }`
+- **Body**: `{ classroomId, key, label, description?, appliesTo, dataType, inputType?, options?, defaultValue?, min?, max?, required? }`
 
 #### `PUT /v1/admin/variables/:key`
 
@@ -410,7 +984,7 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Delete variable definition (soft delete)
-- **Query Params**: `classroomId` (required)
+- **Query Params**: `classroomId` (required)`
 
 ### Scenario Routes (`/v1/admin/scenarios` and `/v1/student/scenarios`)
 
@@ -780,7 +1354,7 @@ SEND_EMAIL=true             # Set to 'true' to actually send emails
 - **Classroom** - Course instances
 - **Enrollment** - User-class relationships with roles
 - **Store** - Student business setup
-- **StoreVariableValue** - Dynamic store variables
+- **VariableValue** - Dynamic variable values (store/scenario/submission/etc.)
 - **VariableDefinition** - Dynamic variable definitions
 - **Scenario** - Weekly simulation contexts
 - **ScenarioOutcome** - Global scenario outcomes
@@ -994,26 +1568,363 @@ Each successful job creates a ledger entry that:
 - `summary` - Narrative summary of the week
 - `overridden` - Whether instructor manually adjusted values
 
-## Email Templates
+### Example Ledger Entry
+
+```
+{
+    "_id" : ObjectId("69533dd3a2d760069510c3c5"),
+    "classroomId" : ObjectId("694ecce9f4f7c85a1cac7a61"),
+    "scenarioId" : ObjectId("69533b5ca2d760069510c037"),
+    "submissionId" : ObjectId("69533bc7a2d760069510c199"),
+    "userId" : ObjectId("6947298125b16ceea4650339"),
+    "sales" : NumberInt(50),
+    "revenue" : NumberInt(950),
+    "costs" : NumberInt(800),
+    "waste" : NumberInt(10),
+    "cashBefore" : NumberInt(3500),
+    "cashAfter" : NumberInt(3650),
+    "inventoryBefore" : NumberInt(1000),
+    "inventoryAfter" : NumberInt(940),
+    "netProfit" : NumberInt(150),
+    "randomEvent" : null,
+    "summary" : "In a week marked by input cost volatility, Fat Boys Pizza managed to maintain operations by reducing staffing and inventory supply. Despite poor weather, the street cart achieved a reasonable sales volume by setting a higher unit sale price. The strategy resulted in a modest net profit, highlighting the importance of flexibility in cost management.",
+    "education" : {
+        "demandForecast" : NumberInt(60),
+        "demandActual" : NumberInt(50),
+        "serviceLevel" : 0.833,
+        "fillRate" : 0.833,
+        "stockoutUnits" : NumberInt(10),
+        "lostSalesUnits" : NumberInt(10),
+        "backorderUnits" : NumberInt(0),
+        "materialFlowByBucket" : {
+            "refrigerated" : {
+                "beginUnits" : NumberInt(500),
+                "receivedUnits" : NumberInt(0),
+                "usedUnits" : NumberInt(50),
+                "wasteUnits" : NumberInt(5),
+                "endUnits" : NumberInt(445)
+            },
+            "ambient" : {
+                "beginUnits" : NumberInt(300),
+                "receivedUnits" : NumberInt(0),
+                "usedUnits" : NumberInt(0),
+                "wasteUnits" : NumberInt(0),
+                "endUnits" : NumberInt(300)
+            },
+            "notForResaleDry" : {
+                "beginUnits" : NumberInt(200),
+                "receivedUnits" : NumberInt(0),
+                "usedUnits" : NumberInt(0),
+                "wasteUnits" : NumberInt(0),
+                "endUnits" : NumberInt(200)
+            }
+        },
+        "costBreakdown" : {
+            "ingredientCost" : NumberInt(500),
+            "laborCost" : NumberInt(200),
+            "logisticsCost" : NumberInt(50),
+            "tariffCost" : NumberInt(0),
+            "holdingCost" : NumberInt(20),
+            "overflowStorageCost" : NumberInt(0),
+            "expediteCost" : NumberInt(0),
+            "wasteDisposalCost" : NumberInt(30),
+            "otherCost" : NumberInt(0)
+        },
+        "teachingNotes" : "The student effectively managed cost volatility by adjusting staffing and inventory levels, which helped maintain profitability despite increased input costs. The decision to set a higher sale price was crucial in offsetting the cost increases, though it did result in some lost sales due to price sensitivity. This scenario underscores the need for dynamic pricing strategies and cost control in volatile environments."
+    },
+    "aiMetadata" : {
+        "model" : "gpt-4o",
+        "runId" : "bc790ce5-2b6c-4a9a-bd1d-62e05f392f86",
+        "generatedAt" : ISODate("2025-12-30T02:49:55.447+0000")
+    },
+    "calculationContext" : {
+        "storeVariables" : {
+            "label" : "Street Cart",
+            "description" : "Ultra-lean operation with massive foot traffic swings and razor-thin margins.",
+            "startingInventory" : NumberInt(1000),
+            "weeklyRent" : NumberInt(50),
+            "maxDailyCapacity" : NumberInt(60),
+            "staffRequired" : NumberInt(1),
+            "weatherSensitivity" : "very high",
+            "mobility" : "very high",
+            "vibe" : "gritty",
+            "riskProfile" : "survival",
+            "peakHours" : [
+                "11:00-14:00"
+            ],
+            "customerPatience" : "very low",
+            "marketingPower" : "location",
+            "commonIssues" : [
+                "weather shutdowns",
+                "permits",
+                "supply runouts"
+            ],
+            "growthCeiling" : "very low",
+            "aiFlavor" : "scrappy decisions, cash flow panic, opportunistic selling"
+        },
+        "scenarioVariables" : {
+            "weather" : "Poor",
+            "expected-demand" : "Average",
+            "scenario-theme" : "Input Cost Volatility"
+        },
+        "submissionVariables" : {
+            "staffing" : "Less than Average",
+            "inventory-supply" : "Less Than Usual",
+            "unit-sale-price" : NumberInt(19),
+            "discount-intensity" : NumberInt(0)
+        },
+        "outcomeVariables" : {
+            "randomEventChancePercent" : NumberInt(0),
+            "notes" : "Higher costs exposed weak margin structures and punished businesses that failed to adapt. Those that adjusted pricing, moderated production, or prioritized cash protection weathered the volatility more effectively. This week highlights the importance of flexibility in cost management."
+        },
+        "priorState" : {
+            "cashBefore" : NumberInt(3500),
+            "inventoryBefore" : NumberInt(1000),
+            "ledgerHistory" : [
+                {
+                    "scenarioId" : ObjectId("694ed000f4f7c85a1cac7f4b"),
+                    "scenarioTitle" : "Back to School Week",
+                    "netProfit" : NumberInt(400),
+                    "cashAfter" : NumberInt(2900),
+                    "_id" : ObjectId("69533dd3a2d760069510c3c6")
+                },
+                {
+                    "scenarioId" : ObjectId("69514a02ff5ba73716900561"),
+                    "scenarioTitle" : "Week 2 - Supply Crunch",
+                    "netProfit" : NumberInt(-100),
+                    "cashAfter" : NumberInt(2800),
+                    "_id" : ObjectId("69533dd3a2d760069510c3c7")
+                },
+                {
+                    "scenarioId" : ObjectId("6952a32137727834f81df2d9"),
+                    "scenarioTitle" : "Week 2 – Demand Forecasting Variability",
+                    "netProfit" : NumberInt(400),
+                    "cashAfter" : NumberInt(3200),
+                    "_id" : ObjectId("69533dd3a2d760069510c3c8")
+                },
+                {
+                    "scenarioId" : ObjectId("6952b2af37727834f81dfb9c"),
+                    "scenarioTitle" : "Week 4 - Labor Constraints",
+                    "netProfit" : NumberInt(300),
+                    "cashAfter" : NumberInt(3500),
+                    "_id" : ObjectId("69533dd3a2d760069510c3c9")
+                }
+            ]
+        },
+        "prompt" : "[\n  {\n    \"role\": \"system\",\n    \"content\": \"You are the SCALE.ai simulation engine for a supply chain class using a pizza shop game. Calculate outcomes for one student based on store configuration, scenario context, global outcome, and the student's decisions. Apply realistic business logic and environmental effects.\\n\\nReturn ONLY valid JSON matching the provided schema. You may invent reasonable intermediate numbers when needed. Also compute the required education metrics so instructors can explain results (service level, stockouts/lost sales, by-bucket material flow, and cost breakdown).\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"STORE CONFIGURATION:\\n{\\n  \\\"shopName\\\": \\\"Fat Boys Pizza\\\",\\n  \\\"storeType\\\": \\\"street_cart\\\",\\n  \\\"storeDescription\\\": \\\"Fat Boys Pizza is a high-volume street cart located on campus that specializes in selling pizza by the slice to students, staff, and late-night crowds. Operating with limited space and equipment, the business focuses on fast service, predictable demand peaks, and tight margins. Success depends on smart inventory planning, efficient labor scheduling, and pricing decisions that balance affordability with profitability. Fat Boys Pizza serves as an ideal real-world example of quick-service operations, where small changes in cost, demand, or waste can have an outsized impact on daily cash flow and overall performance.\\\",\\n  \\\"storeLocation\\\": \\\"All over campus and outside the bars late at night\\\",\\n  \\\"label\\\": \\\"Street Cart\\\",\\n  \\\"description\\\": \\\"Ultra-lean operation with massive foot traffic swings and razor-thin margins.\\\",\\n  \\\"startingBalance\\\": 2500,\\n  \\\"startingInventory\\\": 1000,\\n  \\\"weeklyRent\\\": 50,\\n  \\\"maxDailyCapacity\\\": 60,\\n  \\\"staffRequired\\\": 1,\\n  \\\"weatherSensitivity\\\": \\\"very high\\\",\\n  \\\"mobility\\\": \\\"very high\\\",\\n  \\\"vibe\\\": \\\"gritty\\\",\\n  \\\"riskProfile\\\": \\\"survival\\\",\\n  \\\"peakHours\\\": [\\n    \\\"11:00-14:00\\\"\\n  ],\\n  \\\"customerPatience\\\": \\\"very low\\\",\\n  \\\"marketingPower\\\": \\\"location\\\",\\n  \\\"commonIssues\\\": [\\n    \\\"weather shutdowns\\\",\\n    \\\"permits\\\",\\n    \\\"supply runouts\\\"\\n  ],\\n  \\\"growthCeiling\\\": \\\"very low\\\",\\n  \\\"aiFlavor\\\": \\\"scrappy decisions, cash flow panic, opportunistic selling\\\"\\n}\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"SCENARIO:\\n{\\n  \\\"title\\\": \\\"Week 6 - Input Cost Volatility\\\",\\n  \\\"description\\\": \\\"Costs that were once stable begin to fluctuate unexpectedly. Key inputs increase in price, sometimes with little warning, compressing margins and increasing financial risk. Inventory purchased this week may cost significantly more than inventory purchased last week, forcing businesses to rethink pricing, output, or volume strategies. Vendor invoices rise faster than anticipated, and cash outflows accelerate. Decisions now require balancing customer price sensitivity against the need to protect margins. This scenario highlights how cost volatility can destabilize even well-run operations.\\\",\\n  \\\"variables\\\": {\\n    \\\"weather\\\": \\\"Poor\\\",\\n    \\\"expected-demand\\\": \\\"Average\\\",\\n    \\\"scenario-theme\\\": \\\"Input Cost Volatility\\\"\\n  }\\n}\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"GLOBAL SCENARIO OUTCOME:\\n{\\n  \\\"notes\\\": \\\"Higher costs exposed weak margin structures and punished businesses that failed to adapt. Those that adjusted pricing, moderated production, or prioritized cash protection weathered the volatility more effectively. This week highlights the importance of flexibility in cost management.\\\",\\n  \\\"hiddenNotes\\\": \\\"\\\"\\n}\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"STUDENT DECISIONS:\\n{\\n  \\\"staffing\\\": \\\"Less than Average\\\",\\n  \\\"inventory-supply\\\": \\\"Less Than Usual\\\",\\n  \\\"unit-sale-price\\\": 19,\\n  \\\"discount-intensity\\\": 0\\n}\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"LEDGER HISTORY:\\n{\\n  \\\"entries\\\": [\\n    {\\n      \\\"scenarioId\\\": \\\"694ed000f4f7c85a1cac7f4b\\\",\\n      \\\"scenarioTitle\\\": \\\"Back to School Week\\\",\\n      \\\"netProfit\\\": 400,\\n      \\\"cashAfter\\\": 2900\\n    },\\n    {\\n      \\\"scenarioId\\\": \\\"69514a02ff5ba73716900561\\\",\\n      \\\"scenarioTitle\\\": \\\"Week 2 - Supply Crunch\\\",\\n      \\\"netProfit\\\": -100,\\n      \\\"cashAfter\\\": 2800\\n    },\\n    {\\n      \\\"scenarioId\\\": \\\"6952a32137727834f81df2d9\\\",\\n      \\\"scenarioTitle\\\": \\\"Week 2 – Demand Forecasting Variability\\\",\\n      \\\"netProfit\\\": 400,\\n      \\\"cashAfter\\\": 3200\\n    },\\n    {\\n      \\\"scenarioId\\\": \\\"6952b2af37727834f81dfb9c\\\",\\n      \\\"scenarioTitle\\\": \\\"Week 4 - Labor Constraints\\\",\\n      \\\"netProfit\\\": 300,\\n      \\\"cashAfter\\\": 3500\\n    }\\n  ]\\n}\"\n  }\n]"
+    },
+    "overridden" : false,
+    "overriddenBy" : null,
+    "overriddenAt" : null,
+    "organization" : ObjectId("694573704c5eaf60ca44c365"),
+    "createdBy" : "user_36u7M7ZRpCulCOpmaSLXYW4uKWr",
+    "updatedBy" : "user_36u7M7ZRpCulCOpmaSLXYW4uKWr",
+    "createdDate" : ISODate("2025-12-30T02:49:55.462+0000"),
+    "updatedDate" : ISODate("2025-12-30T02:49:55.462+0000"),
+    "__v" : NumberInt(0)
+}
+```
+
+## Email Sending & Notifications
+
+The system supports email notifications through two approaches: **direct email queuing** and **notification-based sending**. Both use React Email templates and SendGrid for delivery.
+
+### Email Architecture
+
+#### Components
+
+1. **React Email Templates** (`lib/emails/templates/`) - Server-side rendered email templates
+2. **Email Queue** (`lib/queues/email-worker.js`) - Bull/Redis queue for async email processing
+3. **SendGrid Integration** (`lib/sendGrid/sendEmail.js`) - Email delivery service
+4. **Notification Model** (`services/notifications/notifications.model.js`) - Structured notification system
+
+#### Email Flow
+
+```
+1. Email Request → 2. Queue Job → 3. Worker Processes → 4. Render Template → 5. Send via SendGrid
+```
+
+### Direct Email Queuing
+
+For simple, event-driven emails (e.g., scenario creation), emails are queued directly without creating notification records.
+
+**Example: Scenario Creation Emails**
+
+When a new scenario is created, the `Scenario` model's post-save hook automatically:
+
+1. Finds all enrolled students in the classroom
+2. Queues an email job for each student
+3. Uses the `scenario-created` template with scenario, classroom, and member data
+
+```javascript
+// In scenario.model.js post-save hook
+await enqueueEmailSending({
+  recipient: { email, name, memberId },
+  title: `New Scenario: ${scenario.title}`,
+  templateSlug: "scenario-created",
+  templateData: { scenario, classroom, member, organization, link },
+  organizationId,
+});
+```
+
+### Notification-Based Sending
+
+For more structured notifications that need tracking, status, and multiple channels (email, SMS, push), use the Notification model.
+
+**Notification Types:**
+
+- `email` - Email notifications
+- `sms` - SMS notifications (future)
+- `push` - Push notifications (future)
+- `web` - In-app notifications
+
+**Notification Lifecycle:**
+
+1. **Create Notification** - Create a Notification document with recipient, type, and template data
+2. **Post-Save Hook** - Automatically queues the appropriate channel (email/SMS/push)
+3. **Queue Processing** - Worker processes the job and sends the notification
+4. **Status Tracking** - Notification status updated to "Sent" or "Failed"
+
+**Example: Creating a Notification**
+
+```javascript
+const notification = new Notification({
+  type: "email",
+  recipient: {
+    id: memberId,
+    type: "Member",
+    ref: "Member",
+  },
+  title: "Welcome to SCALE.ai",
+  message: "You've been enrolled in a new class",
+  templateSlug: "scenario-created",
+  templateData: { scenario, classroom, member },
+  organization: organizationId,
+});
+
+await notification.save(); // Automatically queues email via post-save hook
+```
+
+### Email Templates
 
 Email templates are built with **React Email** and located in `lib/emails/templates/`.
 
-### Available Templates
+#### Available Templates
 
-- `ScenarioCreatedEmail` - Notifies students when a new scenario is created
-- `DailyStatsEmail` - Daily statistics report
-- `EventInvitationEmail` - Event invitations
-- `OrderCreatedEmail` - Order confirmation
-- `OrderCancelledEmail` - Order cancellation
-- `TicketClaimedEmail` - Ticket claim notification
-- `TicketReminderEmail` - Ticket reminder
-- `TicketsGeneratedEmail` - Tickets generated notification
-- `TicketTemplateEmail` - Ticket template
-- `ShareTemplateEmail` - Template sharing
+- `scenario-created` - Notifies students when a new scenario is created
 
-### Previewing Templates
+#### Template Structure
 
-Fixtures for email preview are in `apps/email-preview/fixtures/`. Run `npm run email:preview` to preview templates.
+Templates are React components that receive `templateData` as props:
+
+```jsx
+function ScenarioCreatedEmail(props) {
+  const { scenario, classroom, member, link } = props;
+  // ... render email
+}
+```
+
+#### Template Rendering
+
+Templates are rendered server-side using `@react-email/render`:
+
+- HTML version for email clients
+- Plain text version for accessibility
+- Both versions sent via SendGrid
+
+#### Previewing Templates
+
+Fixtures for email preview are in `apps/email-preview/fixtures/`. Run `npm run email:preview` to preview templates locally.
+
+## Seed Demo Data
+
+If your database already has **at least one org admin** (a `Member` with Clerk org role `org:admin`), you can generate a large demo dataset for load-testing:
+
+- **6 classrooms**
+- **6 completed scenarios per classroom**
+- **100 students per classroom**, each with a store (various store types)
+- Variable definitions (store/scenario/submission)
+- Submissions + completed simulation jobs + ledger entries
+
+Run:
+
+`npm run seed:demo`
+
+Options:
+
+- `npm run seed:demo -- --dry-run`
+- `npm run seed:demo -- --admin=<clerkUserId>`
+- `npm run seed:demo -- --force`
+
+## Auto-Generate Submissions on Scenario Publish (LLM)
+
+When an instructor publishes a scenario (`POST /v1/admin/scenarios/:scenarioId/publish`), the API can automatically create a **Submission for every enrolled student** by using a cheap OpenAI model with structured JSON output.
+
+**Environment Variables:**
+
+- `AUTO_GENERATE_SUBMISSIONS_ON_PUBLISH`: default `"true"`. Set to `"false"` to disable.
+- `AUTO_SUBMISSION_MODEL`: default `"gpt-4o-mini"` (cheap).
+- `AUTO_SUBMISSION_CONCURRENCY`: default `10` (parallel submission creation).
+
+If `OPENAI_API_KEY` is not set, auto-generation is skipped.
+
+### Email Queue Configuration
+
+**Queue Settings:**
+
+- **Concurrency**: 2 jobs processed simultaneously
+- **Priority**: Medium (priority: 3)
+- **Delay**: 100ms between jobs (prevents bursts)
+- **Retries**: Handled by Bull queue system
+
+**Queue Monitoring:**
+
+- Jobs tracked in Redis
+- Failed jobs can be inspected and retried
+- Status updates logged to console
+
+### Email Sending Configuration
+
+**Environment Variables:**
+
+- `SEND_EMAIL` - Set to `"true"` to actually send emails (default: disabled for safety)
+- `SENDGRID_API_KEY` - SendGrid API key
+- `SENDGRID_FROM_EMAIL` - Default sender email
+- `SENDGRID_FROM_NAME` - Default sender name
+- `SCALE_COM_HOST` - Base URL for email links
+- `SCALE_API_HOST` - API host for unsubscribe links
+
+**Safety Features:**
+
+- If `SEND_EMAIL !== "true"`, emails are logged but not sent
+- Unsubscribe links automatically included in emails
+- Batch sending supported (up to 1000 recipients per batch)
+
+### Recipient Resolution
+
+The system resolves recipients based on type:
+
+- **Member** - Looks up member in database, fetches email from Clerk
+- **Guest** - Uses email from `templateData` (for users not yet in system)
+- **Organization** - Uses organization contact info from Clerk
+
+Recipient preferences are checked before sending (email/SMS/push preferences).
+
+### Error Handling
+
+- Failed email jobs are logged with error details
+- Notification status updated to "Failed" with error message
+- Jobs can be retried manually
+- Errors don't block other email sends (Promise.allSettled used for batch sends)
+
+### Best Practices
+
+1. **Use Direct Queuing** for simple, event-driven emails (scenario creation, etc.)
+2. **Use Notifications** for emails that need tracking, status, or multiple channels
+3. **Always include unsubscribe links** (handled automatically)
+4. **Test with `SEND_EMAIL=false`** in development
+5. **Use React Email templates** for consistent, responsive email design
+6. **Handle errors gracefully** - email failures shouldn't break core functionality
 
 ## Service Patterns
 

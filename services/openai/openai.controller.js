@@ -50,26 +50,20 @@ exports.generateImage = async function (req, res) {
 
     console.log("Generating image from prompt");
     const newImageResponse = await openai.images.generate({
-      model: "dall-e-3",
+      model: "gpt-image-1-mini",
       prompt: prompt,
       n: 1,
       size: size,
     });
-    image_url = newImageResponse.data[0].url;
-    console.log("Finished generating image from prompt", image_url);
+    const image_b64_json = newImageResponse.data[0].b64_json;
+    console.log("Finished generating image from prompt", image_b64_json);
 
     // Upload the image to S3
-    const filedata = await axios.get(image_url, {
-      responseType: "arraybuffer",
-    });
-    const imageBuffer = await sharp(filedata.data)
-      .resize({ width: 1024 })
-      .jpeg({ quality: 50 })
-      .toBuffer();
+    const imageBuffer = Buffer.from(image_b64_json, "base64");
     const imageKey = `image/${uuidv4()}.jpg`;
 
     const uploadParams = {
-      Bucket: `kikits/${bucket}`,
+      Bucket: process.env.SPACES_BUCKET,
       Key: imageKey,
       Body: imageBuffer,
       ContentType: "image/jpeg",
@@ -137,7 +131,7 @@ exports.transcribeAudio = async function (req, res) {
 
     // Delete the audio file from storage
     try {
-      await deleteFile("kikits/garbage", file.key);
+      await deleteFile(process.env.SPACES_BUCKET, file.key);
     } catch (error) {
       console.error("Error deleting audio file", error);
     }

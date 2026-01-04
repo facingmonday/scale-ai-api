@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
 const Scenario = require("../scenario/scenario.model");
-const SubmissionVariableValue = require("./submissionVariableValue.model");
+const VariableValue = require("../variableDefinition/variableValue.model");
 const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
 
 const submissionSchema = new mongoose.Schema({
@@ -49,9 +49,9 @@ const submissionSchema = new mongoose.Schema({
 
 // Apply variable population plugin
 submissionSchema.plugin(variablePopulationPlugin, {
-  variableValueModel: SubmissionVariableValue,
-  foreignKeyField: "submissionId",
+  variableValueModel: VariableValue,
   appliesTo: "submission",
+  outputFormat: "valueMap",
 });
 
 // Compound indexes for performance
@@ -171,7 +171,9 @@ submissionSchema.statics.createSubmission = async function (
   if (variablesWithDefaults && Object.keys(variablesWithDefaults).length > 0) {
     const variableEntries = Object.entries(variablesWithDefaults);
     const variableDocs = variableEntries.map(([key, value]) => ({
-      submissionId: submission._id,
+      classroomId,
+      appliesTo: "submission",
+      ownerId: submission._id,
       variableKey: key,
       value: value,
       organization: organizationId,
@@ -180,7 +182,7 @@ submissionSchema.statics.createSubmission = async function (
     }));
 
     if (variableDocs.length > 0) {
-      await SubmissionVariableValue.insertMany(variableDocs);
+      await VariableValue.insertMany(variableDocs);
     }
   }
 
@@ -253,15 +255,19 @@ submissionSchema.statics.updateSubmission = async function (
   await submission.save();
 
   // Delete existing variable values
-  await SubmissionVariableValue.deleteMany({
-    submissionId: submission._id,
+  await VariableValue.deleteMany({
+    classroomId,
+    appliesTo: "submission",
+    ownerId: submission._id,
   });
 
   // Create new variable values if provided
   if (variablesWithDefaults && Object.keys(variablesWithDefaults).length > 0) {
     const variableEntries = Object.entries(variablesWithDefaults);
     const variableDocs = variableEntries.map(([key, value]) => ({
-      submissionId: submission._id,
+      classroomId,
+      appliesTo: "submission",
+      ownerId: submission._id,
       variableKey: key,
       value: value,
       organization: organizationId,
@@ -270,7 +276,7 @@ submissionSchema.statics.updateSubmission = async function (
     }));
 
     if (variableDocs.length > 0) {
-      await SubmissionVariableValue.insertMany(variableDocs);
+      await VariableValue.insertMany(variableDocs);
     }
   }
 
@@ -371,16 +377,26 @@ submissionSchema.statics.getMissingSubmissions = async function (
     return !!orgMembership;
   });
 
-  const enrolledUserIds = filteredEnrollments.map((e) => e.userId);
+  // Extract ObjectIds from enrolled users (userId is populated, so it's an object with _id)
+  const enrolledUserIds = filteredEnrollments
+    .map((e) => {
+      const userId = e.userId;
+      // userId is populated, so it's a document object - extract the _id
+      // If _id exists, use it; otherwise userId itself should be the ObjectId
+      if (!userId) return null;
+      return userId._id ? userId._id : userId;
+    })
+    .filter(Boolean); // Remove any null values
 
-  // Get all submissions for this scenario
-  const submissions = await this.find({ scenarioId });
-  const submittedUserIds = submissions.map((s) => s.userId.toString());
+  // Get all submissions for this scenario (use lean to avoid population issues)
+  const submissions = await this.find({ scenarioId }).lean();
+  const submittedUserIds = new Set(submissions.map((s) => s.userId.toString()));
 
-  // Find missing user IDs
-  const missingUserIds = enrolledUserIds.filter(
-    (userId) => !submittedUserIds.includes(userId.toString())
-  );
+  // Find missing user IDs (convert to string for comparison)
+  const missingUserIds = enrolledUserIds.filter((userId) => {
+    const userIdStr = userId.toString();
+    return !submittedUserIds.has(userIdStr);
+  });
 
   return missingUserIds;
 };

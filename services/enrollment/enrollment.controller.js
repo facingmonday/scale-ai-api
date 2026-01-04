@@ -1,6 +1,8 @@
 const Classroom = require("../classroom/classroom.model");
 const Member = require("../members/member.model");
 const Enrollment = require("./enrollment.model");
+const Organization = require("../organizations/organization.model");
+const { ensureJoin } = require("../join/join.service");
 
 /**
  * Student joins class
@@ -18,8 +20,6 @@ exports.joinClass = async function (req, res) {
       return res.status(404).json({ error: "Class not found" });
     }
 
-    const organizationId = classDoc.organization;
-
     if (!classDoc.isActive) {
       return res.status(400).json({ error: "Class is not active" });
     }
@@ -30,36 +30,37 @@ exports.joinClass = async function (req, res) {
       return res.status(404).json({ error: "Member not found" });
     }
 
-    // Determine role (admin if in adminIds, otherwise member)
-    const role = classDoc.isAdmin(clerkUserId) ? "admin" : "member";
+    // Translate classroom.organization (DB id) -> Clerk org id, then reuse the single join flow.
+    const organization = await Organization.findById(classDoc.organization);
+    if (!organization) {
+      return res.status(404).json({ error: "Organization not found" });
+    }
 
-    // Enroll user using Enrollment model
-    const enrollment = await Enrollment.enrollUser(
+    const { enrollment } = await ensureJoin({
+      orgId: organization.clerkOrganizationId,
       classroomId,
-      member._id,
-      role,
-      organizationId,
-      clerkUserId
-    );
+      clerkUserId,
+      member,
+    });
 
     // TODO: Trigger downstream initialization (store, variables)
     // This will be implemented when Store service exists
 
-    res.status(201).json({
+    res.status(200).json({
       success: true,
       message: "Joined class successfully",
       data: enrollment,
     });
   } catch (error) {
     console.error("Error joining class:", error);
-    if (error.message === "User is already enrolled in this class") {
-      return res.status(400).json({ error: error.message });
-    }
     if (error.name === "ValidationError") {
       return res.status(400).json({ error: error.message });
     }
     if (error.name === "MongoServerError" && error.code === 11000) {
       return res.status(400).json({ error: "Already enrolled in this class" });
+    }
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
     }
     res.status(500).json({ error: error.message });
   }

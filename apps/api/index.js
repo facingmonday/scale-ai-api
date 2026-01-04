@@ -1,3 +1,6 @@
+// Load environment variables FIRST before any other imports that might use them
+require("dotenv").config();
+
 const express = require("express");
 const mongoose = require("mongoose");
 const morgan = require("morgan");
@@ -7,8 +10,6 @@ const path = require("path");
 const fs = require("fs");
 const { clerkMiddleware } = require("@clerk/express");
 const { verifyRedisConnectivity } = require("../../lib/queues");
-
-require("dotenv").config();
 // Import all models before any other imports that might use them
 require("../../models");
 
@@ -75,6 +76,10 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors());
 
+// Public join endpoint alias for backwards/contract compatibility.
+// This mounts ONLY the join route at /api/join (without exposing the entire /v1 surface under /api).
+app.use("/api/join", require("../../services/join"));
+
 app.use("/v1", require("../../services"));
 
 // Health check endpoints
@@ -112,9 +117,51 @@ async function main() {
 
   await connectWithRetry();
 
+  // Ensure the global (developer-managed) classroom template exists.
+  // This is safe to run on every startup (idempotent).
+  try {
+    const ClassroomTemplate = require("../../services/classroomTemplate/classroomTemplate.model");
+    await ClassroomTemplate.ensureGlobalDefaultTemplate();
+
+    // Ensure every organization has the default template copied locally.
+    // This is safe to run on every startup (idempotent).
+    const Organization = require("../../services/organizations/organization.model");
+    const organizations = await Organization.find({}).select("_id").lean();
+    const systemUserId = "system_startup";
+
+    for (const org of organizations) {
+      try {
+        await ClassroomTemplate.copyGlobalToOrganization(org._id, systemUserId);
+      } catch (e) {
+        console.error(
+          `⚠️  Failed ensuring default classroom template for org ${org._id}:`,
+          e?.message || e
+        );
+      }
+    }
+  } catch (e) {
+    console.error(
+      "⚠️  Failed to ensure global ClassroomTemplate on startup:",
+      e?.message || e
+    );
+  }
+
   const server = app.listen(PORT, () =>
     console.log(`Server running on port ${PORT}`)
   );
+
+  // Initialize email worker so emails can be processed from API service
+  try {
+    const { initEmailWorker } = require("../../lib/queues/email-worker");
+    initEmailWorker();
+    console.log("✅ Email worker initialized in API service");
+  } catch (error) {
+    console.error(
+      "❌ Failed to initialize email worker in API service:",
+      error.message
+    );
+    // Don't exit - API can still function without email processing
+  }
 
   // Run Redis connectivity verification in the background and log outcome
   setTimeout(async () => {

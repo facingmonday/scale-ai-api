@@ -14,8 +14,10 @@ router.use("/members", require("./members"));
 router.use("/organizations", require("./organizations"));
 router.use("/notifications", require("./notifications"));
 router.use("/openai", require("./openai")); // Remove direct access to openai
-router.use("/utils", require("./utils"));
 //router.use("/workers", require("./workers"));
+
+// Public join route (idempotent)
+router.use("/join", require("./join"));
 
 // Classroom routes
 router.use("/admin/class", require("./classroom"));
@@ -28,6 +30,12 @@ router.use("/", require("./store"));
 
 // VariableDefinition routes
 router.use("/", require("./variableDefinition"));
+
+// StoreType routes
+router.use("/", require("./storeType"));
+
+// ClassroomTemplate routes
+router.use("/", require("./classroomTemplate"));
 
 // Scenario routes
 router.use("/", require("./scenario"));
