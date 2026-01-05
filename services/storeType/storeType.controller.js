@@ -8,7 +8,6 @@ const Classroom = require("../classroom/classroom.model");
 exports.createStoreType = async function (req, res) {
   try {
     const {
-      classroomId,
       key,
       label,
       description,
@@ -19,6 +18,9 @@ exports.createStoreType = async function (req, res) {
     } = req.body;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
+
+    // Get classroomId from the auth active classroom
+    const classroomId = req?.activeClassroom?._id;
 
     if (!classroomId) {
       return res.status(400).json({ error: "classroomId is required" });
