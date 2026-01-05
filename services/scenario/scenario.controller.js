@@ -785,13 +785,41 @@ exports.getScenarioByIdForStudent = async function (req, res) {
 exports.deleteScenario = async function (req, res) {
   try {
     const { scenarioId } = req.params;
-    await Scenario.findByIdAndDelete(scenarioId);
+    const organizationId = req.organization?._id;
+    const clerkUserId = req.clerkUser.id;
+
+    // Find scenario to verify it exists and user has access
+    const scenario = await Scenario.findById(scenarioId);
+    if (!scenario) {
+      return res.status(404).json({ error: "Scenario not found" });
+    }
+
+    // Verify admin access
+    await Classroom.validateAdminAccess(
+      scenario.classroomId,
+      clerkUserId,
+      organizationId
+    );
+
+    // Delete scenario and all related data (cascade delete)
+    const deletedScenario = await Scenario.deleteScenario(scenarioId);
+
+    if (!deletedScenario) {
+      return res.status(404).json({ error: "Scenario not found" });
+    }
+
     res.json({
       success: true,
-      message: "Scenario deleted successfully",
+      message: "Scenario and all related data deleted successfully",
     });
   } catch (error) {
     console.error("Error deleting scenario:", error);
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
     res.status(500).json({ error: error.message });
   }
 };

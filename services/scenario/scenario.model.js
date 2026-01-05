@@ -886,6 +886,71 @@ scenarioSchema.statics.getStatsForScenario = async function (scenarioId) {
 };
 
 /**
+ * Delete a scenario and all related data (cascade delete)
+ * Deletes: scenarioOutcome, submissions, ledger entries, jobs, variable values, and notifications
+ * @param {string} scenarioId - Scenario ID
+ * @returns {Promise<Object|null>} Deleted scenario or null if not found
+ */
+scenarioSchema.statics.deleteScenario = async function (scenarioId) {
+  // Lazy load models to avoid circular dependencies
+  const ScenarioOutcome = require("../scenarioOutcome/scenarioOutcome.model");
+  const Submission = require("../submission/submission.model");
+  const LedgerEntry = require("../ledger/ledger.model");
+  const SimulationJob = require("../job/job.model");
+  const VariableValue = require("../variableDefinition/variableValue.model");
+  const Notification = require("../notifications/notifications.model");
+
+  // Find the scenario first
+  const scenario = await this.findById(scenarioId);
+  if (!scenario) {
+    return null;
+  }
+
+  // Delete in order to avoid foreign key issues:
+  // 1. Delete scenario outcome
+  await ScenarioOutcome.deleteOne({ scenarioId });
+
+  // 2. Delete ledger entries (these reference scenarioId)
+  await LedgerEntry.deleteMany({ scenarioId });
+
+  // 3. Delete simulation jobs (these reference scenarioId)
+  await SimulationJob.deleteMany({ scenarioId });
+
+  // 4. Get all submission IDs before deleting (needed for variable value cleanup)
+  const submissions = await Submission.find({ scenarioId })
+    .select("_id")
+    .lean();
+  const submissionIds = submissions.map((s) => s._id);
+
+  // 5. Delete submissions (these reference scenarioId)
+  await Submission.deleteMany({ scenarioId });
+
+  // 6. Delete variable values for submissions (appliesTo: "submission", ownerId in submissionIds)
+  if (submissionIds.length > 0) {
+    await VariableValue.deleteMany({
+      appliesTo: "submission",
+      ownerId: { $in: submissionIds },
+    });
+  }
+
+  // 7. Delete variable values for this scenario (appliesTo: "scenario", ownerId: scenarioId)
+  await VariableValue.deleteMany({
+    appliesTo: "scenario",
+    ownerId: scenarioId,
+  });
+
+  // 8. Delete notifications that reference this scenario in modelData
+  await Notification.deleteMany({
+    "modelData.scenario": scenarioId,
+  });
+
+  // 9. Finally, delete the scenario itself
+  await this.findByIdAndDelete(scenarioId);
+
+  return scenario;
+};
+
+/**
  * Process scenario export - generates CSV with all submissions and uploads to S3
  * @param {string} scenarioId - Scenario ID
  * @param {string} organizationId - Organization ID
