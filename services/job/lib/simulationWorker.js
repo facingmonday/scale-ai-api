@@ -333,6 +333,7 @@ class SimulationWorker {
 
     // Prepare ledger entry input
     const ledgerInput = {
+      storeId: store.storeId || null,
       classroomId: job.classroomId,
       scenarioId: job.scenarioId,
       submissionId: job.submissionId || null,
