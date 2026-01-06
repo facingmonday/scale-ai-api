@@ -816,8 +816,29 @@ classroomTemplateSchema.statics.ensureGlobalDefaultTemplate =
           key: k,
           label: STORE_TYPE_PRESETS[k]?.label || k,
           description: STORE_TYPE_PRESETS[k]?.description || "",
+          startingBalance: Number(STORE_TYPE_PRESETS[k]?.startingBalance) || 0,
+          initialStartupCost:
+            Number(STORE_TYPE_PRESETS[k]?.initialStartupCost) || 0,
           isActive: true,
         }));
+      } else {
+        // Backfill startingBalance / initialStartupCost for older templates
+        payload.storeTypes = payload.storeTypes.map((st) => {
+          if (!st || !st.key) return st;
+          const preset = STORE_TYPE_PRESETS?.[st.key] || {};
+          return {
+            ...st,
+            startingBalance:
+              st.startingBalance !== undefined && st.startingBalance !== null
+                ? Number(st.startingBalance)
+                : Number(preset.startingBalance) || 0,
+            initialStartupCost:
+              st.initialStartupCost !== undefined &&
+              st.initialStartupCost !== null
+                ? Number(st.initialStartupCost)
+                : Number(preset.initialStartupCost) || 0,
+          };
+        });
       }
 
       if (
@@ -844,6 +865,9 @@ classroomTemplateSchema.statics.ensureGlobalDefaultTemplate =
         key,
         label: STORE_TYPE_PRESETS[key]?.label || key,
         description: STORE_TYPE_PRESETS[key]?.description || "",
+        startingBalance: Number(STORE_TYPE_PRESETS[key]?.startingBalance) || 0,
+        initialStartupCost:
+          Number(STORE_TYPE_PRESETS[key]?.initialStartupCost) || 0,
         isActive: true,
       })),
       variableDefinitionsByAppliesTo: {
@@ -907,6 +931,33 @@ classroomTemplateSchema.statics.copyGlobalToOrganization = async function (
     if (!Array.isArray(payload.prompts) || payload.prompts.length === 0) {
       payload.prompts =
         globalTemplate.payload?.prompts || this.getDefaultClassroomPrompts();
+      existingOrgTemplate.payload = payload;
+      existingOrgTemplate.updatedBy = clerkUserId;
+      await existingOrgTemplate.save();
+    }
+
+    // Backfill storeTypes financial fields (startingBalance, initialStartupCost) if missing
+    if (Array.isArray(payload.storeTypes) && payload.storeTypes.length > 0) {
+      const byKey = new Map(
+        (globalTemplate.payload?.storeTypes || []).map((st) => [st.key, st])
+      );
+      const patched = payload.storeTypes.map((st) => {
+        if (!st || !st.key) return st;
+        const globalSt = byKey.get(st.key) || {};
+        return {
+          ...st,
+          startingBalance:
+            st.startingBalance !== undefined && st.startingBalance !== null
+              ? Number(st.startingBalance)
+              : Number(globalSt.startingBalance) || 0,
+          initialStartupCost:
+            st.initialStartupCost !== undefined &&
+            st.initialStartupCost !== null
+              ? Number(st.initialStartupCost)
+              : Number(globalSt.initialStartupCost) || 0,
+        };
+      });
+      payload.storeTypes = patched;
       existingOrgTemplate.payload = payload;
       existingOrgTemplate.updatedBy = clerkUserId;
       await existingOrgTemplate.save();
@@ -993,6 +1044,14 @@ classroomTemplateSchema.methods.applyToClassroom = async function ({
       key: st.key,
       label: st.label || st.key,
       description: st.description || "",
+      startingBalance:
+        st.startingBalance !== undefined && st.startingBalance !== null
+          ? Number(st.startingBalance)
+          : 0,
+      initialStartupCost:
+        st.initialStartupCost !== undefined && st.initialStartupCost !== null
+          ? Number(st.initialStartupCost)
+          : 0,
       isActive: st.isActive !== false,
       createdBy: clerkUserId,
       updatedBy: clerkUserId,

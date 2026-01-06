@@ -9,8 +9,7 @@ const { sendEmail } = require("../../lib/sendGrid/sendEmail");
  */
 exports.createClass = async function (req, res) {
   try {
-    const { name, description, imageUrl, startingBalance, templateId } =
-      req.body;
+    const { name, description, imageUrl, templateId } = req.body;
     const memberId = req.user._id;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
@@ -42,10 +41,6 @@ exports.createClass = async function (req, res) {
       name,
       description: description || "",
       imageUrl: imageUrl || null,
-      startingBalance:
-        startingBalance !== undefined && startingBalance !== null
-          ? Number(startingBalance)
-          : 0,
       isActive: true,
       adminIds: [clerkUserId], // Auto-enroll creator as admin
       ownership: memberId, // Set ownership to the creator
@@ -233,8 +228,7 @@ exports.getStudentDashboard = async function (req, res) {
 exports.updateClass = async function (req, res) {
   try {
     const { classroomId } = req.params;
-    const { name, description, imageUrl, isActive, startingBalance, prompts } =
-      req.body;
+    const { name, description, imageUrl, isActive, prompts } = req.body;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
@@ -257,10 +251,6 @@ exports.updateClass = async function (req, res) {
     }
     if (isActive !== undefined) {
       classroom.isActive = isActive;
-    }
-    if (startingBalance !== undefined) {
-      classroom.startingBalance =
-        startingBalance === null ? 0 : Number(startingBalance);
     }
 
     // Update classroom prompts (optional)
