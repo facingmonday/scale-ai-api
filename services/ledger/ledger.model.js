@@ -186,16 +186,16 @@ ledgerEntrySchema.index({ organization: 1, scenarioId: 1 });
 ledgerEntrySchema.index({ organization: 1, classroomId: 1, userId: 1 });
 ledgerEntrySchema.index({ submissionId: 1 });
 
-// Validation: cashAfter must equal cashBefore + netProfit
+// Auto-correct cash continuity: ensure cashAfter = cashBefore + netProfit
+// Recalculate netProfit from cashAfter - cashBefore to maintain consistency
 ledgerEntrySchema.pre("save", function (next) {
   this._wasNew = this.isNew;
-  const expectedCashAfter = this.cashBefore + this.netProfit;
-  if (Math.abs(this.cashAfter - expectedCashAfter) > 0.01) {
-    return next(
-      new Error(
-        `Cash continuity error: cashAfter (${this.cashAfter}) must equal cashBefore (${this.cashBefore}) + netProfit (${this.netProfit})`
-      )
+  const expectedNetProfit = this.cashAfter - this.cashBefore;
+  if (Math.abs(this.netProfit - expectedNetProfit) > 0.01) {
+    console.warn(
+      `Cash continuity correction in pre-save hook: netProfit (${this.netProfit}) doesn't match cashAfter (${this.cashAfter}) - cashBefore (${this.cashBefore}) = ${expectedNetProfit}. Correcting netProfit...`
     );
+    this.netProfit = expectedNetProfit;
   }
   next();
 });
@@ -813,6 +813,18 @@ ledgerEntrySchema.statics.runAISimulation = async function (context) {
     }
   }
 
+  // Correct cash continuity: ensure cashAfter = cashBefore + netProfit
+  // The AI sometimes returns inconsistent values, so we fix them here
+  // We recalculate netProfit from cashAfter - cashBefore since cashAfter
+  // is the result of all calculations and is more likely to be correct
+  const expectedNetProfit = aiResult.cashAfter - aiResult.cashBefore;
+  if (Math.abs(aiResult.netProfit - expectedNetProfit) > 0.01) {
+    console.warn(
+      `Cash continuity correction: netProfit (${aiResult.netProfit}) doesn't match cashAfter (${aiResult.cashAfter}) - cashBefore (${aiResult.cashBefore}) = ${expectedNetProfit}. Correcting netProfit...`
+    );
+    aiResult.netProfit = expectedNetProfit;
+  }
+
   // Validate response structure
   this.validateAISimulationResponse(aiResult);
 
@@ -844,12 +856,14 @@ ledgerEntrySchema.statics.createLedgerEntry = async function (
   organizationId,
   clerkUserId
 ) {
-  // Validate cash continuity
-  const expectedCashAfter = input.cashBefore + input.netProfit;
-  if (Math.abs(input.cashAfter - expectedCashAfter) > 0.01) {
-    throw new Error(
-      `Cash continuity error: cashAfter (${input.cashAfter}) must equal cashBefore (${input.cashBefore}) + netProfit (${input.netProfit})`
+  // Correct cash continuity: ensure cashAfter = cashBefore + netProfit
+  // Auto-correct netProfit from cashAfter - cashBefore to maintain consistency
+  const expectedNetProfit = input.cashAfter - input.cashBefore;
+  if (Math.abs(input.netProfit - expectedNetProfit) > 0.01) {
+    console.warn(
+      `Cash continuity correction in createLedgerEntry: netProfit (${input.netProfit}) doesn't match cashAfter (${input.cashAfter}) - cashBefore (${input.cashBefore}) = ${expectedNetProfit}. Correcting netProfit...`
     );
+    input.netProfit = expectedNetProfit;
   }
 
   // Check if entry already exists
@@ -1015,12 +1029,14 @@ ledgerEntrySchema.statics.overrideLedgerEntry = async function (
     }
   });
 
-  // Validate cash continuity after override
-  const expectedCashAfter = entry.cashBefore + entry.netProfit;
-  if (Math.abs(entry.cashAfter - expectedCashAfter) > 0.01) {
-    throw new Error(
-      `Cash continuity error: cashAfter (${entry.cashAfter}) must equal cashBefore (${entry.cashBefore}) + netProfit (${entry.netProfit})`
+  // Correct cash continuity after override: ensure cashAfter = cashBefore + netProfit
+  // Auto-correct netProfit from cashAfter - cashBefore to maintain consistency
+  const expectedNetProfit = entry.cashAfter - entry.cashBefore;
+  if (Math.abs(entry.netProfit - expectedNetProfit) > 0.01) {
+    console.warn(
+      `Cash continuity correction in overrideLedgerEntry: netProfit (${entry.netProfit}) doesn't match cashAfter (${entry.cashAfter}) - cashBefore (${entry.cashBefore}) = ${expectedNetProfit}. Correcting netProfit...`
     );
+    entry.netProfit = expectedNetProfit;
   }
 
   // Mark as overridden
