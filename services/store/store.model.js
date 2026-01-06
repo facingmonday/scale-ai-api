@@ -5,6 +5,7 @@ const VariableDefinition = require("../variableDefinition/variableDefinition.mod
 const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
 const StoreType = require("../storeType/storeType.model");
 const LedgerEntry = require("../ledger/ledger.model");
+const { v4: uuidv4 } = require("uuid");
 
 async function ensureClassroomPromptsInitialized(
   classroomId,
@@ -20,7 +21,8 @@ async function ensureClassroomPromptsInitialized(
   }).select("prompts updatedBy");
 
   if (!classDoc) return false;
-  if (Array.isArray(classDoc.prompts) && classDoc.prompts.length > 0) return false;
+  if (Array.isArray(classDoc.prompts) && classDoc.prompts.length > 0)
+    return false;
 
   // Ensure org has the default template, then use its prompts.
   await ClassroomTemplate.copyGlobalToOrganization(organizationId, clerkUserId);
@@ -31,7 +33,8 @@ async function ensureClassroomPromptsInitialized(
   });
 
   const prompts =
-    template?.payload?.prompts || ClassroomTemplate.getDefaultClassroomPrompts();
+    template?.payload?.prompts ||
+    ClassroomTemplate.getDefaultClassroomPrompts();
 
   if (Array.isArray(prompts) && prompts.length > 0) {
     classDoc.prompts = prompts;
@@ -145,7 +148,11 @@ storeSchema.statics.createStore = async function (
       : {};
 
   // Ensure classroom prompts exist (older classrooms may predate prompt templates).
-  await ensureClassroomPromptsInitialized(classroomId, organizationId, clerkUserId);
+  await ensureClassroomPromptsInitialized(
+    classroomId,
+    organizationId,
+    clerkUserId
+  );
 
   // Create store document
   const store = new this({
@@ -195,6 +202,67 @@ storeSchema.statics.createStore = async function (
 
   if (variableDocs.length > 0) {
     await VariableValue.insertMany(variableDocs);
+  }
+
+  // Seed initial ledger entry (week 0)
+  // cashBefore: 0
+  // cashAfter: startingBalance - initialStartupCost (from StoreType fields)
+  // Also seed initial inventoryState from storeType preset so subsequent simulations
+  // start from the correct inventory instead of zeros.
+  const existingInitial = await LedgerEntry.findOne({
+    classroomId,
+    userId,
+    scenarioId: null,
+  }).select("_id");
+
+  if (!existingInitial) {
+    const startingBalance = Number(storeTypeDoc.startingBalance) || 0;
+    const initialStartupCost = Number(storeTypeDoc.initialStartupCost) || 0;
+    const cashBefore = 0;
+    const cashAfter = startingBalance - initialStartupCost;
+
+    let inventoryState = {
+      refrigeratedUnits: 0,
+      ambientUnits: 0,
+      notForResaleUnits: 0,
+    };
+
+    await LedgerEntry.createLedgerEntry(
+      {
+        storeId: store._id,
+        classroomId,
+        scenarioId: null,
+        submissionId: null,
+        userId,
+        sales: 0,
+        revenue: startingBalance,
+        costs: initialStartupCost,
+        waste: 0,
+        cashBefore,
+        cashAfter,
+        inventoryState,
+        netProfit: cashAfter, // continuity: cashAfter = cashBefore + netProfit
+        randomEvent: null,
+        summary:
+          "Week 0: Store setup — initial funding and startup costs applied.",
+        education: null,
+        aiMetadata: {
+          model: "system_seed",
+          runId: uuidv4(),
+          generatedAt: new Date(),
+        },
+        calculationContext: {
+          storeVariables: {},
+          scenarioVariables: {},
+          submissionVariables: {},
+          outcomeVariables: {},
+          priorState: {},
+          prompt: null,
+        },
+      },
+      organizationId,
+      clerkUserId
+    );
   }
 
   // Return store with variables populated via plugin
@@ -286,9 +354,35 @@ storeSchema.statics.getStoreForSimulation = async function (
       ? store.storeType.variables
       : {};
 
+  // Some storeType signals now live on the StoreType document (not variables).
+  // Use them as fallback if not present in variable values.
+  const storeTypeDocFields = {};
+  if (
+    store.storeType &&
+    typeof store.storeType === "object" &&
+    store.storeType._id
+  ) {
+    if (
+      storeTypeVariables.startingBalance === undefined &&
+      store.storeType.startingBalance !== undefined &&
+      store.storeType.startingBalance !== null
+    ) {
+      storeTypeDocFields.startingBalance = store.storeType.startingBalance;
+    }
+    if (
+      storeTypeVariables.initialStartupCost === undefined &&
+      store.storeType.initialStartupCost !== undefined &&
+      store.storeType.initialStartupCost !== null
+    ) {
+      storeTypeDocFields.initialStartupCost =
+        store.storeType.initialStartupCost;
+    }
+  }
+
   // Merge storeType defaults with store overrides (store wins)
   const mergedVariableValues = {
     ...storeTypeVariables,
+    ...storeTypeDocFields,
     ...variablesObj,
   };
 
@@ -361,6 +455,7 @@ storeSchema.statics.getStoreForSimulation = async function (
   // Return normalized object for AI simulation
   // Flatten store data: include storeType key and variables directly
   return {
+    storeId: store._id?.toString?.() || null,
     shopName: store.shopName,
     storeType: storeTypeKey, // Return key for compatibility
     storeTypeId: storeTypeId, // Also include ID
@@ -532,6 +627,63 @@ storeSchema.statics.updateStore = async function (
 
     if (variableDocs.length > 0) {
       await VariableValue.insertMany(variableDocs);
+    }
+
+    // Seed initial ledger entry (week 0) for stores created via upsert path
+    const existingInitial = await LedgerEntry.findOne({
+      classroomId,
+      userId,
+      scenarioId: null,
+    }).select("_id");
+
+    if (!existingInitial) {
+      const startingBalance = Number(storeTypeDoc.startingBalance) || 0;
+      const initialStartupCost = Number(storeTypeDoc.initialStartupCost) || 0;
+      const cashBefore = 0;
+      const cashAfter = startingBalance - initialStartupCost;
+
+      let inventoryState = {
+        refrigeratedUnits: 0,
+        ambientUnits: 0,
+        notForResaleUnits: 0,
+      };
+
+      await LedgerEntry.createLedgerEntry(
+        {
+          storeId: store._id,
+          classroomId,
+          scenarioId: null,
+          submissionId: null,
+          userId,
+          sales: 0,
+          revenue: startingBalance,
+          costs: initialStartupCost,
+          waste: 0,
+          cashBefore,
+          cashAfter,
+          inventoryState,
+          netProfit: cashAfter,
+          randomEvent: null,
+          summary:
+            "Week 0: Store setup — initial funding and startup costs applied.",
+          education: null,
+          aiMetadata: {
+            model: "system_seed",
+            runId: uuidv4(),
+            generatedAt: new Date(),
+          },
+          calculationContext: {
+            storeVariables: {},
+            scenarioVariables: {},
+            submissionVariables: {},
+            outcomeVariables: {},
+            priorState: {},
+            prompt: null,
+          },
+        },
+        organizationId,
+        clerkUserId
+      );
     }
   } else {
     // Update existing store fields

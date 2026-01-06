@@ -17,11 +17,6 @@ const classroomSchema = new mongoose.Schema({
     type: String,
     default: "",
   },
-  // Starting cash used to seed the initial ledger entry (week 0) for newly created stores
-  startingBalance: {
-    type: Number,
-    default: 0,
-  },
   isActive: {
     type: Boolean,
     default: true,

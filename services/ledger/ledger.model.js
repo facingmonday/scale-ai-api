@@ -5,6 +5,14 @@ const { v4: uuidv4 } = require("uuid");
 const AI_MODEL = process.env.AI_MODEL || "gpt-5-mini-2025-08-07";
 
 const ledgerEntrySchema = new mongoose.Schema({
+  // Store this entry belongs to (useful for store-centric views)
+  storeId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Store",
+    required: false,
+    default: null,
+    index: true,
+  },
   classroomId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Classroom",
@@ -453,11 +461,23 @@ ledgerEntrySchema.statics.getClassroomBasePrompts = async function (
   const classDoc = await Classroom.findById(classroomId).select("prompts");
   const prompts = classDoc?.prompts;
 
+  let finalPrompts = [];
   if (Array.isArray(prompts) && prompts.length > 0) {
-    return prompts;
+    finalPrompts = prompts;
+  } else {
+    finalPrompts = ClassroomTemplate.getDefaultClassroomPrompts();
   }
 
-  return ClassroomTemplate.getDefaultClassroomPrompts();
+  const classroomData = await Classroom.findById(classroomId)
+    .select("name description")
+    .lean();
+  return [
+    ...finalPrompts,
+    {
+      role: "user",
+      content: `CLASSROOM DATA:\n${JSON.stringify(classroomData, null, 2)}`,
+    },
+  ];
 };
 
 /**
@@ -858,6 +878,7 @@ ledgerEntrySchema.statics.createLedgerEntry = async function (
   }
 
   const entry = new this({
+    storeId: input.storeId || null,
     classroomId: input.classroomId,
     scenarioId: input.scenarioId || null, // Explicitly set to null if not provided
     submissionId: input.submissionId || null,

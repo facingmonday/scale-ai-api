@@ -24,7 +24,16 @@ const storeTypeSchema = new mongoose.Schema({
     type: String,
     default: "",
   },
-  // Soft delete flag
+  // Financial starting point (used for initial cash before the first scenario)
+  startingBalance: {
+    type: Number,
+    default: 0,
+  },
+  // Up-front cost to start this store type (used as a seed signal for simulations/ledger)
+  initialStartupCost: {
+    type: Number,
+    default: 0,
+  },
   isActive: {
     type: Boolean,
     default: true,
@@ -85,6 +94,16 @@ storeTypeSchema.statics.createStoreType = async function (
     key: storeTypeFields.key,
     label: storeTypeFields.label,
     description: storeTypeFields.description || "",
+    startingBalance:
+      storeTypeFields.startingBalance !== undefined &&
+      storeTypeFields.startingBalance !== null
+        ? Number(storeTypeFields.startingBalance)
+        : 0,
+    initialStartupCost:
+      storeTypeFields.initialStartupCost !== undefined &&
+      storeTypeFields.initialStartupCost !== null
+        ? Number(storeTypeFields.initialStartupCost)
+        : 0,
     isActive: true,
     createdBy: clerkUserId,
     updatedBy: clerkUserId,

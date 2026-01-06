@@ -97,7 +97,7 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
           "Your overall expectation of customer demand for the upcoming week.",
         appliesTo: "submission",
         dataType: "string",
-        inputType: "multiple-choice",
+        inputType: "dropdown",
         options: ["LOW", "AVERAGE", "HIGH"],
         defaultValue: "AVERAGE",
         min: null,
@@ -112,7 +112,7 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
           "Choose whether you are more concerned about running out of product or ending the week with leftovers.",
         appliesTo: "submission",
         dataType: "string",
-        inputType: "multiple-choice",
+        inputType: "selectbutton",
         options: ["STOCKOUT_AVERSION", "BALANCED", "OVERSTOCK_AVERSION"],
         defaultValue: "BALANCED",
         min: null,
@@ -124,29 +124,29 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
         key: "reorderIntensityRefrigerated",
         label: "How aggressively are you restocking cold ingredients?",
         description:
-          "Cold inventory is costly to store and prone to waste if over-ordered.",
+          "Cold inventory is costly to store and prone to waste if over-ordered. Scale: 0 = Very Conservative, 50 = Balanced, 100 = Very Aggressive.",
         appliesTo: "submission",
-        dataType: "string",
-        inputType: "multiple-choice",
-        options: ["CONSERVATIVE", "BALANCED", "AGGRESSIVE"],
-        defaultValue: "BALANCED",
-        min: null,
-        max: null,
+        dataType: "number",
+        inputType: "slider",
+        options: [],
+        defaultValue: 50,
+        min: 0,
+        max: 100,
         required: true,
         isActive: true,
       },
       {
         key: "reorderIntensityAmbient",
-        label: "What’s your plan for shelf-stable supplies?",
+        label: "What's your plan for shelf-stable supplies?",
         description:
-          "Shelf-stable inventory is cheaper to hold but still ties up cash.",
+          "Shelf-stable inventory is cheaper to hold but still ties up cash. Scale: 0 = Very Conservative, 50 = Balanced, 100 = Very Aggressive.",
         appliesTo: "submission",
-        dataType: "string",
-        inputType: "multiple-choice",
-        options: ["CONSERVATIVE", "BALANCED", "AGGRESSIVE"],
-        defaultValue: "BALANCED",
-        min: null,
-        max: null,
+        dataType: "number",
+        inputType: "knob",
+        options: [],
+        defaultValue: 50,
+        min: 0,
+        max: 100,
         required: true,
         isActive: true,
       },
@@ -155,14 +155,14 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
         label:
           "How cautious are you about running out of everyday operating supplies?",
         description:
-          "Operating supplies don’t generate revenue but can limit production if they run out.",
+          "Operating supplies don't generate revenue but can limit production if they run out. Scale: 0 = Very Conservative, 50 = Balanced, 100 = Very Aggressive.",
         appliesTo: "submission",
-        dataType: "string",
-        inputType: "multiple-choice",
-        options: ["CONSERVATIVE", "BALANCED", "AGGRESSIVE"],
-        defaultValue: "BALANCED",
-        min: null,
-        max: null,
+        dataType: "number",
+        inputType: "knob",
+        options: [],
+        defaultValue: 50,
+        min: 0,
+        max: 100,
         required: true,
         isActive: true,
       },
@@ -170,14 +170,14 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
         key: "productionPush",
         label: "How hard are you pushing production this week?",
         description:
-          "Pushing production can increase sales or lead to waste if demand is lower than expected.",
+          "Pushing production can increase sales or lead to waste if demand is lower than expected. Scale: 0 = Limited, 50 = Normal, 100 = Maximize.",
         appliesTo: "submission",
-        dataType: "string",
-        inputType: "multiple-choice",
-        options: ["LIMITED", "NORMAL", "MAXIMIZE"],
-        defaultValue: "NORMAL",
-        min: null,
-        max: null,
+        dataType: "number",
+        inputType: "slider",
+        options: [],
+        defaultValue: 50,
+        min: 0,
+        max: 100,
         required: true,
         isActive: true,
       },
@@ -185,14 +185,14 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
         key: "wasteDiscipline",
         label: "How strict is your team about minimizing waste?",
         description:
-          "Stricter waste discipline reduces spoilage but may slow down operations.",
+          "Stricter waste discipline reduces spoilage but may slow down operations. Scale: 0 = Loose, 50 = Standard, 100 = Strict.",
         appliesTo: "submission",
-        dataType: "string",
-        inputType: "multiple-choice",
-        options: ["LOOSE", "STANDARD", "STRICT"],
-        defaultValue: "STANDARD",
-        min: null,
-        max: null,
+        dataType: "number",
+        inputType: "slider",
+        options: [],
+        defaultValue: 50,
+        min: 0,
+        max: 100,
         required: true,
         isActive: true,
       },
@@ -218,7 +218,7 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
           "Balancing cost control versus fulfilling every possible customer order.",
         appliesTo: "submission",
         dataType: "string",
-        inputType: "multiple-choice",
+        inputType: "dropdown",
         options: ["COST_FOCUSED", "BALANCED", "SERVICE_FOCUSED"],
         defaultValue: "BALANCED",
         min: null,
@@ -816,8 +816,29 @@ classroomTemplateSchema.statics.ensureGlobalDefaultTemplate =
           key: k,
           label: STORE_TYPE_PRESETS[k]?.label || k,
           description: STORE_TYPE_PRESETS[k]?.description || "",
+          startingBalance: Number(STORE_TYPE_PRESETS[k]?.startingBalance) || 0,
+          initialStartupCost:
+            Number(STORE_TYPE_PRESETS[k]?.initialStartupCost) || 0,
           isActive: true,
         }));
+      } else {
+        // Backfill startingBalance / initialStartupCost for older templates
+        payload.storeTypes = payload.storeTypes.map((st) => {
+          if (!st || !st.key) return st;
+          const preset = STORE_TYPE_PRESETS?.[st.key] || {};
+          return {
+            ...st,
+            startingBalance:
+              st.startingBalance !== undefined && st.startingBalance !== null
+                ? Number(st.startingBalance)
+                : Number(preset.startingBalance) || 0,
+            initialStartupCost:
+              st.initialStartupCost !== undefined &&
+              st.initialStartupCost !== null
+                ? Number(st.initialStartupCost)
+                : Number(preset.initialStartupCost) || 0,
+          };
+        });
       }
 
       if (
@@ -844,6 +865,9 @@ classroomTemplateSchema.statics.ensureGlobalDefaultTemplate =
         key,
         label: STORE_TYPE_PRESETS[key]?.label || key,
         description: STORE_TYPE_PRESETS[key]?.description || "",
+        startingBalance: Number(STORE_TYPE_PRESETS[key]?.startingBalance) || 0,
+        initialStartupCost:
+          Number(STORE_TYPE_PRESETS[key]?.initialStartupCost) || 0,
         isActive: true,
       })),
       variableDefinitionsByAppliesTo: {
@@ -907,6 +931,33 @@ classroomTemplateSchema.statics.copyGlobalToOrganization = async function (
     if (!Array.isArray(payload.prompts) || payload.prompts.length === 0) {
       payload.prompts =
         globalTemplate.payload?.prompts || this.getDefaultClassroomPrompts();
+      existingOrgTemplate.payload = payload;
+      existingOrgTemplate.updatedBy = clerkUserId;
+      await existingOrgTemplate.save();
+    }
+
+    // Backfill storeTypes financial fields (startingBalance, initialStartupCost) if missing
+    if (Array.isArray(payload.storeTypes) && payload.storeTypes.length > 0) {
+      const byKey = new Map(
+        (globalTemplate.payload?.storeTypes || []).map((st) => [st.key, st])
+      );
+      const patched = payload.storeTypes.map((st) => {
+        if (!st || !st.key) return st;
+        const globalSt = byKey.get(st.key) || {};
+        return {
+          ...st,
+          startingBalance:
+            st.startingBalance !== undefined && st.startingBalance !== null
+              ? Number(st.startingBalance)
+              : Number(globalSt.startingBalance) || 0,
+          initialStartupCost:
+            st.initialStartupCost !== undefined &&
+            st.initialStartupCost !== null
+              ? Number(st.initialStartupCost)
+              : Number(globalSt.initialStartupCost) || 0,
+        };
+      });
+      payload.storeTypes = patched;
       existingOrgTemplate.payload = payload;
       existingOrgTemplate.updatedBy = clerkUserId;
       await existingOrgTemplate.save();
@@ -993,6 +1044,14 @@ classroomTemplateSchema.methods.applyToClassroom = async function ({
       key: st.key,
       label: st.label || st.key,
       description: st.description || "",
+      startingBalance:
+        st.startingBalance !== undefined && st.startingBalance !== null
+          ? Number(st.startingBalance)
+          : 0,
+      initialStartupCost:
+        st.initialStartupCost !== undefined && st.initialStartupCost !== null
+          ? Number(st.initialStartupCost)
+          : 0,
       isActive: st.isActive !== false,
       createdBy: clerkUserId,
       updatedBy: clerkUserId,

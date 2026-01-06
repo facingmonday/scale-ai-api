@@ -7,10 +7,20 @@ const Classroom = require("../classroom/classroom.model");
  */
 exports.createStoreType = async function (req, res) {
   try {
-    const { classroomId, key, label, description, variables, presetVariables } =
-      req.body;
+    const {
+      key,
+      label,
+      description,
+      startingBalance,
+      initialStartupCost,
+      variables,
+      presetVariables,
+    } = req.body;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
+
+    // Get classroomId from the auth active classroom
+    const classroomId = req?.activeClassroom?._id;
 
     if (!classroomId) {
       return res.status(400).json({ error: "classroomId is required" });
@@ -24,7 +34,11 @@ exports.createStoreType = async function (req, res) {
       return res.status(400).json({ error: "label is required" });
     }
 
-    await Classroom.validateAdminAccess(classroomId, clerkUserId, organizationId);
+    await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId
+    );
 
     // Create store type using static method
     const storeType = await StoreType.createStoreType(
@@ -34,6 +48,8 @@ exports.createStoreType = async function (req, res) {
         key,
         label,
         description,
+        startingBalance,
+        initialStartupCost,
         // Backward compat: accept presetVariables, but canonical field is variables
         variables: variables || presetVariables || {},
       },
@@ -92,7 +108,12 @@ exports.updateStoreType = async function (req, res) {
     }
 
     // Update allowed fields
-    const allowedFields = ["label", "description"];
+    const allowedFields = [
+      "label",
+      "description",
+      "startingBalance",
+      "initialStartupCost",
+    ];
 
     // Handle variables separately
     if (req.body.variables !== undefined) {
@@ -284,7 +305,11 @@ exports.getStoreTypesForStudent = async function (req, res) {
         .json({ error: "classroomId query parameter is required" });
     }
 
-    await Classroom.validateStudentAccess(classroomId, clerkUserId, organizationId);
+    await Classroom.validateStudentAccess(
+      classroomId,
+      clerkUserId,
+      organizationId
+    );
 
     // Get only active store types (students shouldn't see inactive ones),
     // with variables populated.
