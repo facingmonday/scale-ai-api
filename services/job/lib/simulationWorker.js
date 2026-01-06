@@ -49,8 +49,17 @@ class SimulationWorker {
         const adjustment = expectedCashBefore - aiResult.cashBefore;
         aiResult.cashBefore = expectedCashBefore;
         aiResult.cashAfter = aiResult.cashAfter + adjustment;
-        // Recalculate netProfit to maintain cash continuity
-        aiResult.netProfit = aiResult.cashAfter - aiResult.cashBefore;
+      }
+
+      // Always recalculate netProfit to ensure cash continuity
+      // This fixes cases where AI returns inconsistent cashAfter/netProfit values
+      // even when cashBefore is correct
+      const expectedNetProfit = aiResult.cashAfter - aiResult.cashBefore;
+      if (Math.abs(aiResult.netProfit - expectedNetProfit) > 0.01) {
+        console.warn(
+          `AI netProfit (${aiResult.netProfit}) doesn't match cashAfter - cashBefore (${expectedNetProfit}). Correcting...`
+        );
+        aiResult.netProfit = expectedNetProfit;
       }
 
       // If not a dry run, write to ledger
@@ -270,7 +279,7 @@ class SimulationWorker {
       });
     }
 
-    const storeId = context.store._id.toString();
+    const storeId = context.store.storeId;
 
     // Scenario: variables are in .variables property (from plugin)
     const scenarioVariables =
