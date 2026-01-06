@@ -270,6 +270,8 @@ class SimulationWorker {
       });
     }
 
+    const storeId = context.store._id.toString();
+
     // Scenario: variables are in .variables property (from plugin)
     const scenarioVariables =
       context.scenario?.variables &&
@@ -333,7 +335,7 @@ class SimulationWorker {
 
     // Prepare ledger entry input
     const ledgerInput = {
-      storeId: store.storeId || null,
+      storeId: storeId,
       classroomId: job.classroomId,
       scenarioId: job.scenarioId,
       submissionId: job.submissionId || null,
