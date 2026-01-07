@@ -367,7 +367,7 @@ async function ensureVariableDefinitions({
 
     // Submission (4)
     {
-      key: "plannedProduction",
+      key: "planned-production",
       label: "Planned Production",
       description: "How many pizzas you plan to produce for the week.",
       appliesTo: "submission",
@@ -379,7 +379,7 @@ async function ensureVariableDefinitions({
       defaultValue: 1000,
     },
     {
-      key: "staffingLevel",
+      key: "staffing-level",
       label: "Staffing Level",
       description: "How many staff-hours to schedule (abstracted).",
       appliesTo: "submission",
@@ -391,7 +391,7 @@ async function ensureVariableDefinitions({
       defaultValue: 40,
     },
     {
-      key: "marketingSpend",
+      key: "marketing-spend",
       label: "Marketing Spend",
       description: "Weekly marketing spend ($).",
       appliesTo: "submission",
@@ -403,7 +403,7 @@ async function ensureVariableDefinitions({
       defaultValue: 0,
     },
     {
-      key: "inventoryOrder",
+      key: "inventory-order",
       label: "Inventory Order",
       description: "How many units of inventory you order for the week.",
       appliesTo: "submission",
@@ -520,11 +520,11 @@ function buildSubmissionVariables(rng, storePreset, scenarioVars) {
   const pricingMultiplier = clamp(0.85 + rng() * 0.3, 0.85, 1.15); // Random between 0.85 and 1.15
 
   return {
-    plannedProduction,
-    staffingLevel,
-    marketingSpend,
-    inventoryOrder,
-    pricingMultiplier,
+    "planned-production": plannedProduction,
+    "staffing-level": staffingLevel,
+    "marketing-spend": marketingSpend,
+    "inventory-order": inventoryOrder,
+    "pricing-multiplier": pricingMultiplier,
   };
 }
 
@@ -539,7 +539,7 @@ function computeLedgerFromVars({
 }) {
   // Calculate price from store type baseline and student multiplier
   const baselinePrice = storeTypeVars?.["avg-selling-price-per-unit"] || 16.0;
-  const pricingMultiplier = submissionVars.pricingMultiplier || 1.0;
+  const pricingMultiplier = submissionVars["pricing-multiplier"] || 1.0;
   const realizedUnitPrice = baselinePrice * pricingMultiplier;
 
   const unitCost = 6.25; // $ per pizza produced (demo)
@@ -552,9 +552,9 @@ function computeLedgerFromVars({
   const demandActual = Math.round(demandForecast * (0.85 + rng() * 0.4));
   const sales = Math.max(
     0,
-    Math.min(submissionVars.plannedProduction, demandActual)
+    Math.min(submissionVars["planned-production"], demandActual)
   );
-  const waste = Math.max(0, submissionVars.plannedProduction - sales);
+  const waste = Math.max(0, submissionVars["planned-production"] - sales);
 
   // Calculate stockouts/lost sales
   const stockoutUnits = Math.max(0, demandActual - sales);
@@ -569,10 +569,10 @@ function computeLedgerFromVars({
 
   // Cost breakdown
   const ingredientCost = roundMoney(
-    submissionVars.plannedProduction * unitCost
+    submissionVars["planned-production"] * unitCost
   );
-  const laborCost = roundMoney(submissionVars.staffingLevel * laborRate);
-  const logisticsCost = roundMoney(submissionVars.inventoryOrder * 0.1); // 10% of order value
+  const laborCost = roundMoney(submissionVars["staffing-level"] * laborRate);
+  const logisticsCost = roundMoney(submissionVars["inventory-order"] * 0.1); // 10% of order value
   const tariffCost = 0;
   // Calculate total inventory for holding cost
   const totalInventory =
@@ -583,7 +583,7 @@ function computeLedgerFromVars({
   const overflowStorageCost = 0;
   const expediteCost = 0;
   const wasteDisposalCost = roundMoney(waste * wasteUnitCost);
-  const otherCost = roundMoney(submissionVars.marketingSpend);
+  const otherCost = roundMoney(submissionVars["marketing-spend"]);
 
   const costs = roundMoney(
     ingredientCost +
@@ -606,7 +606,7 @@ function computeLedgerFromVars({
   const refrigeratedUsed = Math.round(sales * 0.5); // Rough estimate: 50% of sales uses refrigerated
   const refrigeratedWaste = Math.round(waste * 0.3); // 30% of waste is refrigerated
   const refrigeratedBegin = inventoryState?.refrigeratedUnits || 0;
-  const refrigeratedReceived = Math.round(submissionVars.inventoryOrder * 0.5);
+  const refrigeratedReceived = Math.round(submissionVars["inventory-order"] * 0.5);
   const refrigeratedEnd = Math.max(
     0,
     refrigeratedBegin +
@@ -616,12 +616,12 @@ function computeLedgerFromVars({
   );
 
   const ambientBegin = inventoryState?.ambientUnits || 0;
-  const ambientReceived = Math.round(submissionVars.inventoryOrder * 0.3);
+  const ambientReceived = Math.round(submissionVars["inventory-order"] * 0.3);
   const ambientEnd = ambientBegin + ambientReceived; // Ambient doesn't get used in simplified model
 
   const notForResaleDryBegin = inventoryState?.notForResaleUnits || 0;
   const notForResaleDryReceived = Math.round(
-    submissionVars.inventoryOrder * 0.2
+    submissionVars["inventory-order"] * 0.2
   );
   const notForResaleDryEnd = notForResaleDryBegin + notForResaleDryReceived; // Static inventory
 
@@ -633,13 +633,13 @@ function computeLedgerFromVars({
 
   // Teaching notes (brief summary)
   const teachingNotes =
-    `Seeded simulation: ${sales} pizzas sold from ${submissionVars.plannedProduction} produced. ` +
+    `Seeded simulation: ${sales} pizzas sold from ${submissionVars["planned-production"]} produced. ` +
     `Service level: ${(serviceLevel * 100).toFixed(1)}%. ` +
     `Net profit: $${netProfit.toFixed(2)}. ` +
     (stockoutUnits > 0 ? `${stockoutUnits} units lost due to stockout. ` : "") +
     (waste > 0 ? `${waste} units wasted. ` : "") +
     `Key factors: ${scenarioVars.forecastedWeather || "normal"} weather, ` +
-    `${submissionVars.staffingLevel} staff-hours, $${submissionVars.marketingSpend} marketing spend.`;
+    `${submissionVars["staffing-level"]} staff-hours, $${submissionVars["marketing-spend"]} marketing spend.`;
 
   return {
     sales,

@@ -91,7 +91,7 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
   function () {
     return [
       {
-        key: "demandOutlook",
+        key: "demand-outlook",
         label: "How busy do you expect this week to be?",
         description:
           "Your overall expectation of customer demand for the upcoming week.",
@@ -106,7 +106,7 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
         isActive: true,
       },
       {
-        key: "inventoryRiskTolerance",
+        key: "inventory-risk-tolerance",
         label: "Which outcome worries you more this week?",
         description:
           "Choose whether you are more concerned about running out of product or ending the week with leftovers.",
@@ -121,7 +121,7 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
         isActive: true,
       },
       {
-        key: "reorderIntensityRefrigerated",
+        key: "reorder-intensity-refrigerated",
         label: "How aggressively are you restocking cold ingredients?",
         description:
           "Cold inventory is costly to store and prone to waste if over-ordered. Scale: 0 = Very Conservative, 50 = Balanced, 100 = Very Aggressive.",
@@ -136,7 +136,7 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
         isActive: true,
       },
       {
-        key: "reorderIntensityAmbient",
+        key: "reorder-intensity-ambient",
         label: "What's your plan for shelf-stable supplies?",
         description:
           "Shelf-stable inventory is cheaper to hold but still ties up cash. Scale: 0 = Very Conservative, 50 = Balanced, 100 = Very Aggressive.",
@@ -151,7 +151,7 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
         isActive: true,
       },
       {
-        key: "reorderIntensityOps",
+        key: "reorder-intensity-ops",
         label:
           "How cautious are you about running out of everyday operating supplies?",
         description:
@@ -167,7 +167,7 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
         isActive: true,
       },
       {
-        key: "productionPush",
+        key: "production-push",
         label: "How hard are you pushing production this week?",
         description:
           "Pushing production can increase sales or lead to waste if demand is lower than expected. Scale: 0 = Limited, 50 = Normal, 100 = Maximize.",
@@ -182,7 +182,7 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
         isActive: true,
       },
       {
-        key: "wasteDiscipline",
+        key: "waste-discipline",
         label: "How strict is your team about minimizing waste?",
         description:
           "Stricter waste discipline reduces spoilage but may slow down operations. Scale: 0 = Loose, 50 = Standard, 100 = Strict.",
@@ -197,7 +197,7 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
         isActive: true,
       },
       {
-        key: "pricingMultiplier",
+        key: "pricing-multiplier",
         label: "Pricing Adjustment",
         description:
           "Adjust your pricing relative to your store's baseline price. 0.90 = 10% discount, 1.05 = 5% premium, 1.15 = aggressive pricing. This affects demand and revenue.",
@@ -212,7 +212,7 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
         isActive: true,
       },
       {
-        key: "serviceLevelFocus",
+        key: "service-level-focus",
         label: "What matters more to you this week?",
         description:
           "Balancing cost control versus fulfilling every possible customer order.",
@@ -588,8 +588,8 @@ FIXED_INTERVAL:
 - Example: If refrigeratedCapacityUnits=500 and demandCommitmentLevel=AGGRESSIVE, order ~350-400 units
 
 DEMAND_TRIGGERED:
-- Order based on plannedProductionUnits, expected demand, and current inventory
-- Order quantity: sufficient to support plannedProductionUnits plus safety stock (based on safetyStockByBucketStrategy)
+- Order based on planned-production-units, expected demand, and current inventory
+- Order quantity: sufficient to support planned-production-units plus safety stock (based on safetyStockByBucketStrategy)
 - Factor in supplierLeadTime: SHORT=less buffer needed, LONG=more buffer needed
 
 ORDER DISTRIBUTION:
@@ -632,12 +632,12 @@ BASELINE PRICE:
 - Examples: campus kiosk ~$10.50, casual dine-in ~$16, fine dining ~$28
 
 STUDENT PRICING DECISION:
-- Student provides: pricingMultiplier (range: 0.85 to 1.15)
+- Student provides: pricing-multiplier (range: 0.85 to 1.15)
 - This adjusts price relative to baseline
 - 0.90 = 10% discount, 1.05 = 5% premium, 1.15 = aggressive pricing
 
 CALCULATION:
-realizedUnitPrice = avgSellingPricePerUnit × pricingMultiplier
+realizedUnitPrice = avgSellingPricePerUnit × pricing-multiplier
 
 SCENARIO EFFECTS:
 - Apply scenario context (cost volatility, market sensitivity, competitive pressure) to adjust demand elasticity
