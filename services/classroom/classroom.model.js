@@ -715,6 +715,113 @@ classroomSchema.statics.adminRestoreTemplateForClassroom = async function (
   };
 };
 
+/**
+ * Delete a classroom and all associated data (cascade delete)
+ * Deletes: enrollments, scenarios, submissions, scenarioOutcomes, ledgerEntries,
+ *          stores, storeTypes, variableDefinitions, variableValues, simulationJobs, notifications
+ *
+ * @param {string} classroomId - Classroom ID
+ * @param {string} organizationId - Organization ID for validation
+ * @returns {Promise<Object>} Deletion stats
+ */
+classroomSchema.statics.deleteClassroom = async function (
+  classroomId,
+  organizationId
+) {
+  // Lazy load models to avoid circular dependencies
+  const Store = require("../store/store.model");
+  const StoreType = require("../storeType/storeType.model");
+  const SimulationJob = require("../job/job.model");
+  const VariableValue = require("../variableDefinition/variableValue.model");
+  const Notification = require("../notifications/notifications.model");
+
+  // Verify classroom exists and belongs to organization
+  const classroom = await this.findOne({
+    _id: classroomId,
+    organization: organizationId,
+  });
+
+  if (!classroom) {
+    throw new Error("Classroom not found");
+  }
+
+  const stats = {
+    classroomDeleted: false,
+    enrollmentsDeleted: 0,
+    scenariosDeleted: 0,
+    submissionsDeleted: 0,
+    scenarioOutcomesDeleted: 0,
+    ledgerEntriesDeleted: 0,
+    storesDeleted: 0,
+    storeTypesDeleted: 0,
+    variableDefinitionsDeleted: 0,
+    variableValuesDeleted: 0,
+    simulationJobsDeleted: 0,
+    notificationsDeleted: 0,
+  };
+
+  // 1. Delete all notifications related to this classroom
+  const notificationsResult = await Notification.deleteMany({
+    "modelData.classroom": classroomId,
+  });
+  stats.notificationsDeleted = notificationsResult.deletedCount || 0;
+
+  // 2. Delete all simulation jobs for this classroom
+  const simulationJobsResult = await SimulationJob.deleteMany({ classroomId });
+  stats.simulationJobsDeleted = simulationJobsResult.deletedCount || 0;
+
+  // 3. Delete all ledger entries for this classroom
+  const ledgerEntriesResult = await LedgerEntry.deleteMany({ classroomId });
+  stats.ledgerEntriesDeleted = ledgerEntriesResult.deletedCount || 0;
+
+  // 4. Delete all submissions for this classroom
+  const submissionsResult = await Submission.deleteMany({ classroomId });
+  stats.submissionsDeleted = submissionsResult.deletedCount || 0;
+
+  // 5. Delete all scenario outcomes for scenarios in this classroom
+  const scenarios = await Scenario.find({ classroomId }).select("_id").lean();
+  const scenarioIds = scenarios.map((s) => s._id);
+  if (scenarioIds.length > 0) {
+    const scenarioOutcomesResult = await ScenarioOutcome.deleteMany({
+      scenarioId: { $in: scenarioIds },
+    });
+    stats.scenarioOutcomesDeleted = scenarioOutcomesResult.deletedCount || 0;
+  }
+
+  // 6. Delete all scenarios for this classroom
+  const scenariosResult = await Scenario.deleteMany({ classroomId });
+  stats.scenariosDeleted = scenariosResult.deletedCount || 0;
+
+  // 7. Delete all stores for this classroom
+  const storesResult = await Store.deleteMany({ classroomId });
+  stats.storesDeleted = storesResult.deletedCount || 0;
+
+  // 8. Delete all store types for this classroom
+  const storeTypesResult = await StoreType.deleteMany({ classroomId });
+  stats.storeTypesDeleted = storeTypesResult.deletedCount || 0;
+
+  // 9. Delete all variable values for this classroom
+  const variableValuesResult = await VariableValue.deleteMany({ classroomId });
+  stats.variableValuesDeleted = variableValuesResult.deletedCount || 0;
+
+  // 10. Delete all variable definitions for this classroom
+  const variableDefinitionsResult = await VariableDefinition.deleteMany({
+    classroomId,
+  });
+  stats.variableDefinitionsDeleted =
+    variableDefinitionsResult.deletedCount || 0;
+
+  // 11. Delete all enrollments for this classroom
+  const enrollmentsResult = await Enrollment.deleteMany({ classroomId });
+  stats.enrollmentsDeleted = enrollmentsResult.deletedCount || 0;
+
+  // 12. Finally, delete the classroom itself
+  await this.findByIdAndDelete(classroomId);
+  stats.classroomDeleted = true;
+
+  return stats;
+};
+
 const Classroom = mongoose.model("Classroom", classroomSchema);
 
 module.exports = Classroom;

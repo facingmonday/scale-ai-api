@@ -58,6 +58,13 @@ router.put(
   controller.updateClass
 );
 
+router.delete(
+  "/:classroomId",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.deleteClass
+);
+
 router.get("/", requireAuth(), controller.getAllClassrooms);
 
 module.exports = router;

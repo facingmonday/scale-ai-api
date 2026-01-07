@@ -1906,6 +1906,69 @@ memberSchema.statics.formatMemberResponse = async function (
   };
 };
 
+/**
+ * Clear active classroom for all members who have a specific classroom set
+ * Also updates Clerk publicMetadata to keep it in sync
+ * @param {string} classroomId - Classroom ID to clear
+ * @returns {Promise<Object>} - Update stats
+ */
+memberSchema.statics.clearActiveClassroomForAll = async function (classroomId) {
+  const { clerkClient } = require("@clerk/express");
+
+  // Find all members who have this classroom as their active classroom
+  const members = await this.find({
+    "activeClassroom.classroomId": classroomId,
+  });
+
+  const stats = {
+    membersUpdated: 0,
+    clerkUpdated: 0,
+    clerkErrors: 0,
+  };
+
+  for (const member of members) {
+    try {
+      // Clear local activeClassroom field
+      member.activeClassroom = {
+        classroomId: null,
+        role: null,
+      };
+
+      // Clear from publicMetadata
+      if (member.publicMetadata?.activeClassroom) {
+        member.publicMetadata.activeClassroom = null;
+      }
+
+      await member.save();
+      stats.membersUpdated++;
+
+      // Also update in Clerk to keep it in sync
+      try {
+        await clerkClient.users.updateUser(member.clerkUserId, {
+          publicMetadata: {
+            ...member.publicMetadata,
+            activeClassroom: null,
+          },
+        });
+        stats.clerkUpdated++;
+      } catch (clerkError) {
+        console.error(
+          `Error updating Clerk metadata for user ${member.clerkUserId}:`,
+          clerkError.message
+        );
+        stats.clerkErrors++;
+      }
+    } catch (error) {
+      console.error(
+        `Error clearing active classroom for member ${member._id}:`,
+        error.message
+      );
+    }
+  }
+
+  return stats;
+};
+
 const Member = mongoose.model("Member", memberSchema);
 
 module.exports = Member;
