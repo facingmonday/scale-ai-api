@@ -343,6 +343,26 @@ ledgerEntrySchema.statics.getAISimulationResponseJsonSchema = function () {
             description:
               "The price per unit of finished goods that was realized in the simulation. This is calculated from the store type baseline and student decisions.",
           },
+          costPerGoodRefrigerated: {
+            type: "number",
+            description:
+              "Cost per finished good from refrigerated inventory: avg-unit-cost-refrigerated / goods-per-unit-refrigerated",
+          },
+          costPerGoodAmbient: {
+            type: "number",
+            description:
+              "Cost per finished good from ambient inventory: avg-unit-cost-ambient / goods-per-unit-ambient",
+          },
+          costPerGoodOperatingSupply: {
+            type: "number",
+            description:
+              "Cost per finished good from operating supply inventory: avg-unit-cost-operating-supply / goods-per-unit-operating-supply",
+          },
+          avgCostPerGood: {
+            type: "number",
+            description:
+              "Total average cost per finished good: costPerGoodRefrigerated + costPerGoodAmbient + costPerGoodOperatingSupply",
+          },
           materialFlowByBucket: {
             type: "object",
             required: [

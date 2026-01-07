@@ -26,6 +26,26 @@ process.on("unhandledRejection", (reason) => {
   process.exit(1);
 });
 
+// Configure morgan logging FIRST, before any middleware that might send responses
+// This ensures all requests are logged, even if middleware responds early
+if (process.env.NODE_ENV === "production") {
+  // In production, log only errors (status codes >= 400)
+  // Note: This logs AFTER response is sent, so statusCode will be available
+  app.use(
+    morgan("combined", {
+      skip: (req, res) => res.statusCode < 400,
+      stream: process.stdout, // Explicitly write to stdout
+    })
+  );
+} else {
+  // In non-production environments, use tiny format for all requests
+  app.use(
+    morgan("tiny", {
+      stream: process.stdout, // Explicitly write to stdout
+    })
+  );
+}
+
 // Initialize Clerk middleware with proper error handling
 // Check if Clerk environment variables are set
 if (!process.env.CLERK_SECRET_KEY) {
@@ -56,19 +76,6 @@ Disallow: /
 User-agent: *
 Allow: /`);
 });
-
-// Configure morgan logging based on environment
-if (process.env.NODE_ENV === "production") {
-  // In production, log only errors (status codes >= 400)
-  app.use(
-    morgan("combined", {
-      skip: (req, res) => res.statusCode < 400,
-    })
-  );
-} else {
-  // In non-production environments, use tiny format for all requests
-  app.use(morgan("tiny"));
-}
 
 // Webhooks moved to dedicated service in apps/webhooks
 
