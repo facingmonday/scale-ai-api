@@ -197,17 +197,17 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
         isActive: true,
       },
       {
-        key: "pricingStrategy",
-        label: "How are you pricing your product this week?",
+        key: "pricingMultiplier",
+        label: "Pricing Adjustment",
         description:
-          "Pricing affects customer demand, revenue, and how quickly inventory moves.",
+          "Adjust your pricing relative to your store's baseline price. 0.90 = 10% discount, 1.05 = 5% premium, 1.15 = aggressive pricing. This affects demand and revenue.",
         appliesTo: "submission",
-        dataType: "string",
-        inputType: "multiple-choice",
-        options: ["DISCOUNT", "STANDARD", "PREMIUM"],
-        defaultValue: "STANDARD",
-        min: null,
-        max: null,
+        dataType: "number",
+        inputType: "slider",
+        options: [],
+        defaultValue: 1.0,
+        min: 0.85,
+        max: 1.15,
         required: true,
         isActive: true,
       },
@@ -456,6 +456,21 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         required: true,
         isActive: true,
       },
+      {
+        key: "avg-selling-price-per-unit",
+        label: "Average Selling Price per Unit",
+        description:
+          "Baseline selling price per unit of finished goods for this store type. This represents the normal, expected price for this kind of business.",
+        appliesTo: "storeType",
+        dataType: "number",
+        inputType: "number",
+        options: [],
+        defaultValue: 16.0,
+        min: 5,
+        max: 50,
+        required: true,
+        isActive: true,
+      },
     ];
   };
 
@@ -608,7 +623,37 @@ SAFETY STOCK REQUIREMENT:
 
 CRITICAL: receivedUnits must be > 0 for buckets where ordering is triggered OR where beginUnits = 0. Do NOT set all receivedUnits to 0 unless the student explicitly chose to order nothing.
 
-12. FINAL CHECK
+12. PRICING CALCULATION (REQUIRED)
+Pricing is explicit and calculated from store type baseline and student decisions.
+
+BASELINE PRICE:
+- Store type provides: avg-selling-price-per-unit (baseline, expected price for this store type)
+- This is NOT a student decision - it's part of the store's identity
+- Examples: campus kiosk ~$10.50, casual dine-in ~$16, fine dining ~$28
+
+STUDENT PRICING DECISION:
+- Student provides: pricingMultiplier (range: 0.85 to 1.15)
+- This adjusts price relative to baseline
+- 0.90 = 10% discount, 1.05 = 5% premium, 1.15 = aggressive pricing
+
+CALCULATION:
+realizedUnitPrice = avgSellingPricePerUnit × pricingMultiplier
+
+SCENARIO EFFECTS:
+- Apply scenario context (cost volatility, market sensitivity, competitive pressure) to adjust demand elasticity
+- Higher prices may reduce demand more in price-sensitive scenarios
+- Cost spikes may justify price increases, but customers may resist
+- Market conditions affect how much pricing changes impact volume
+
+REVENUE:
+revenue = sales × realizedUnitPrice
+
+OUTPUT REQUIREMENT:
+- MUST include realizedUnitPrice in education.realizedUnitPrice
+- This makes pricing transparent and explainable to instructors and students
+- Revenue should equal sales × realizedUnitPrice (within reasonable rounding)
+
+13. FINAL CHECK
 Before returning output:
 - Buckets reconcile: endUnits = beginUnits + receivedUnits - usedUnits - wasteUnits for EACH bucket
 - No capacity violations: endUnits ≤ capacityUnits for each bucket
@@ -620,6 +665,8 @@ Before returning output:
 - CONSISTENCY: inventoryState.refrigeratedUnits MUST equal education.materialFlowByBucket.refrigerated.endUnits
 - CONSISTENCY: inventoryState.ambientUnits MUST equal education.materialFlowByBucket.ambient.endUnits
 - CONSISTENCY: inventoryState.notForResaleUnits MUST equal education.materialFlowByBucket.notForResaleDry.endUnits
+- PRICING: realizedUnitPrice MUST be included in education object
+- PRICING: revenue MUST equal sales × realizedUnitPrice (within reasonable rounding)
 `;
 
   return [
@@ -654,6 +701,8 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
     "goods-per-unit-operating-supply": 12,
     "avg-unit-cost-operating-supply": 1.75,
     "holding-cost-per-unit-operating-supply": 0.15,
+
+    "avg-selling-price-per-unit": 16.0,
   };
 
   // Hand-tuned adjustments using STORE_TYPE_PRESETS as qualitative guidance:
@@ -668,9 +717,11 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
       "starting-units-ambient": 25,
       "capacity-units-operating-supply": 55,
       "starting-units-operating-supply": 30,
+      "avg-selling-price-per-unit": 16.0,
     },
     cafe: {
       // balanced defaults
+      "avg-selling-price-per-unit": 16.0,
     },
     bar_and_grill: {
       "capacity-units-refrigerated": 55,
@@ -679,6 +730,7 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
       "starting-units-ambient": 55,
       "capacity-units-operating-supply": 70,
       "starting-units-operating-supply": 40,
+      "avg-selling-price-per-unit": 16.0,
     },
     fine_dining: {
       "capacity-units-refrigerated": 90,
@@ -698,6 +750,7 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
       "goods-per-unit-operating-supply": 10,
       "avg-unit-cost-operating-supply": 2.2,
       "holding-cost-per-unit-operating-supply": 0.18,
+      "avg-selling-price-per-pizza": 28.0,
     },
     street_cart: {
       "capacity-units-refrigerated": 20,
@@ -717,6 +770,7 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
       "goods-per-unit-operating-supply": 14,
       "avg-unit-cost-operating-supply": 1.4,
       "holding-cost-per-unit-operating-supply": 0.12,
+      "avg-selling-price-per-pizza": 10.5,
     },
     late_night_window: {
       "capacity-units-refrigerated": 50,
@@ -725,6 +779,7 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
       "starting-units-ambient": 45,
       "capacity-units-operating-supply": 75,
       "starting-units-operating-supply": 45,
+      "avg-selling-price-per-unit": 16.0,
     },
     ghost_kitchen: {
       "capacity-units-refrigerated": 65,
@@ -736,6 +791,7 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
       "starting-units-ambient": 50,
       "capacity-units-operating-supply": 80,
       "starting-units-operating-supply": 50,
+      "avg-selling-price-per-unit": 16.0,
     },
     campus_kiosk: {
       "capacity-units-refrigerated": 55,
@@ -744,6 +800,7 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
       "starting-units-ambient": 60,
       "capacity-units-operating-supply": 85,
       "starting-units-operating-supply": 55,
+      "avg-selling-price-per-pizza": 10.5,
     },
     upscale_bistro: {
       "capacity-units-refrigerated": 70,
@@ -759,6 +816,7 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
 
       "capacity-units-operating-supply": 65,
       "starting-units-operating-supply": 35,
+      "avg-selling-price-per-pizza": 22.0,
     },
     festival_vendor: {
       "capacity-units-refrigerated": 60,
@@ -767,6 +825,7 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
       "starting-units-ambient": 70,
       "capacity-units-operating-supply": 110,
       "starting-units-operating-supply": 70,
+      "avg-selling-price-per-unit": 16.0,
     },
     franchise_location: {
       "capacity-units-refrigerated": 80,
@@ -783,6 +842,7 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
       "starting-units-operating-supply": 45,
       "avg-unit-cost-operating-supply": 1.5,
       "holding-cost-per-unit-operating-supply": 0.14,
+      "avg-selling-price-per-unit": 16.0,
     },
   };
 

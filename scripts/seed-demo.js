@@ -517,8 +517,15 @@ function buildSubmissionVariables(rng, storePreset, scenarioVars) {
   const inventoryOrder = Math.round(
     clamp(plannedProduction * (0.7 + rng() * 0.6), 0, 100000)
   );
+  const pricingMultiplier = clamp(0.85 + rng() * 0.3, 0.85, 1.15); // Random between 0.85 and 1.15
 
-  return { plannedProduction, staffingLevel, marketingSpend, inventoryOrder };
+  return {
+    plannedProduction,
+    staffingLevel,
+    marketingSpend,
+    inventoryOrder,
+    pricingMultiplier,
+  };
 }
 
 function computeLedgerFromVars({
@@ -528,8 +535,13 @@ function computeLedgerFromVars({
   inventoryState,
   scenarioVars,
   submissionVars,
+  storeTypeVars,
 }) {
-  const price = 14.0; // $ per pizza (demo)
+  // Calculate price from store type baseline and student multiplier
+  const baselinePrice = storeTypeVars?.["avg-selling-price-per-unit"] || 16.0;
+  const pricingMultiplier = submissionVars.pricingMultiplier || 1.0;
+  const realizedUnitPrice = baselinePrice * pricingMultiplier;
+
   const unitCost = 6.25; // $ per pizza produced (demo)
   const wasteUnitCost = 1.0; // disposal / spoilage cost per unsold pizza (demo)
   const laborRate = 18.0; // $ per staff-hour (demo abstraction)
@@ -553,7 +565,7 @@ function computeLedgerFromVars({
   const serviceLevel = demandActual > 0 ? sales / demandActual : 1.0;
   const fillRate = serviceLevel; // Simplified for seed data
 
-  const revenue = roundMoney(sales * price);
+  const revenue = roundMoney(sales * realizedUnitPrice);
 
   // Cost breakdown
   const ingredientCost = roundMoney(
@@ -680,6 +692,7 @@ function computeLedgerFromVars({
         otherCost,
       },
       teachingNotes,
+      realizedUnitPrice: roundMoney(realizedUnitPrice),
     },
   };
 }
@@ -981,6 +994,7 @@ async function main() {
           inventoryState,
           scenarioVars,
           submissionVars,
+          storeTypeVars,
         });
 
         const ledger = await LedgerEntry.createLedgerEntry(

@@ -328,6 +328,7 @@ ledgerEntrySchema.statics.getAISimulationResponseJsonSchema = function () {
           "materialFlowByBucket",
           "costBreakdown",
           "teachingNotes",
+          "realizedUnitPrice",
         ],
         properties: {
           demandForecast: { type: "number" },
@@ -337,6 +338,7 @@ ledgerEntrySchema.statics.getAISimulationResponseJsonSchema = function () {
           stockoutUnits: { type: "number" },
           lostSalesUnits: { type: "number" },
           backorderUnits: { type: "number" },
+          realizedUnitPrice: { type: "number" },
           materialFlowByBucket: {
             type: "object",
             required: [
@@ -688,6 +690,16 @@ ledgerEntrySchema.statics.validateAISimulationResponse = function (response) {
   }
   if (typeof response.education.teachingNotes !== "string") {
     throw new Error("education.teachingNotes must be a string");
+  }
+  if (typeof response.education.realizedUnitPrice !== "number") {
+    throw new Error("education.realizedUnitPrice must be a number");
+  }
+  // Validate that revenue matches sales × price (within reasonable tolerance)
+  const expectedRevenue = response.sales * response.education.realizedUnitPrice;
+  if (Math.abs(response.revenue - expectedRevenue) > 0.5) {
+    throw new Error(
+      `Revenue mismatch: revenue (${response.revenue}) should equal sales (${response.sales}) × realizedUnitPrice (${response.education.realizedUnitPrice}) = ${expectedRevenue}`
+    );
   }
 
   // Validate cash continuity
