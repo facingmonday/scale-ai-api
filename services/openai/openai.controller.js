@@ -20,12 +20,12 @@ const s3 = new AWS.S3({
 
 exports.completion = async function (req, res) {
   try {
-    const { prompt } = req.body;
+    const { prompt, options = {} } = req.body;
 
     if (!prompt) {
       return res.status(400).send("Prompt is required");
     }
-    const text = await completion(prompt);
+    const text = await completion(prompt, options);
     res.status(200).json({ text });
   } catch (error) {
     console.error(error);
