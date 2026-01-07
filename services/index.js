@@ -9,7 +9,6 @@ const express = require("express");
 const router = express.Router();
 
 router.use("/auth", require("./auth"));
-router.use("/me", require("./me"));
 router.use("/members", require("./members"));
 router.use("/organizations", require("./organizations"));
 router.use("/notifications", require("./notifications"));

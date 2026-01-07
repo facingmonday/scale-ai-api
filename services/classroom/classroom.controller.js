@@ -425,6 +425,49 @@ exports.restoreClassroomTemplate = async function (req, res) {
 };
 
 /**
+ * Delete a classroom and all associated data
+ * DELETE /api/admin/class/:classroomId
+ */
+exports.deleteClass = async function (req, res) {
+  try {
+    const { classroomId } = req.params;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    // Validate admin access
+    await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId
+    );
+
+    // Clear this classroom from any member's activeClassroom before deleting
+    await Member.clearActiveClassroomForAll(classroomId);
+
+    // Delete classroom and all associated data
+    const stats = await Classroom.deleteClassroom(classroomId, organizationId);
+
+    res.json({
+      success: true,
+      message: "Classroom and all associated data deleted successfully",
+      data: stats,
+    });
+  } catch (error) {
+    console.error("Error deleting classroom:", error);
+    if (error.message === "Classroom not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: "Classroom not found" });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
  * Invite student to class
  * POST /api/admin/class/:classroomId/invite
  */

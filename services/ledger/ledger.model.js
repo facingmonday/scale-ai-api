@@ -338,7 +338,11 @@ ledgerEntrySchema.statics.getAISimulationResponseJsonSchema = function () {
           stockoutUnits: { type: "number" },
           lostSalesUnits: { type: "number" },
           backorderUnits: { type: "number" },
-          realizedUnitPrice: { type: "number" },
+          realizedUnitPrice: {
+            type: "number",
+            description:
+              "The price per unit of finished goods that was realized in the simulation. This is calculated from the store type baseline and student decisions.",
+          },
           materialFlowByBucket: {
             type: "object",
             required: [
