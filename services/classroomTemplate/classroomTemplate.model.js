@@ -240,7 +240,7 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         key: "capacity-units-refrigerated",
         label: "Capacity Units (Refrigerated)",
         description:
-          "Maximum cold storage capacity in abstract inventory units.",
+          "The maximum number of refrigerated inventory units you can store. Think of one unit as a bundle of cold ingredients like cheese, meat, and produce. Example: With a capacity of 40 units and 2.5 finished goods per unit, you can make up to 100 finished goods (40 × 2.5) from refrigerated inventory. This limit shows up in your ledger as inventoryState.refrigeratedUnits and you can never exceed it.",
         appliesTo: "storeType",
         dataType: "number",
         inputType: "number",
@@ -255,7 +255,7 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         key: "starting-units-refrigerated",
         label: "Starting Inventory Units (Refrigerated)",
         description:
-          "Initial refrigerated inventory units available at store start.",
+          "How many refrigerated inventory units you start with when opening your store. Example: Starting with 24 units and 2.5 finished goods per unit means you can make 60 finished goods (24 × 2.5) before needing to order more. This must be less than your capacity (40 units). This number appears in your first ledger entry as inventoryState.refrigeratedUnits.",
         appliesTo: "storeType",
         dataType: "number",
         inputType: "number",
@@ -270,7 +270,7 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         key: "goods-per-unit-refrigerated",
         label: "Goods per Unit (Refrigerated)",
         description:
-          "Number of finished goods supported by one refrigerated inventory unit.",
+          "How many finished goods you can make from one refrigerated inventory unit. Example: If this is 2.5, then one unit of cold ingredients makes 2.5 finished goods. With a unit cost of $9.50, each finished good costs $3.80 from refrigerated ingredients ($9.50 ÷ 2.5). This shows up in your results as costPerGoodRefrigerated. With a capacity of 40 units, you can make up to 100 finished goods (40 × 2.5) from refrigerated inventory.",
         appliesTo: "storeType",
         dataType: "number",
         inputType: "number",
@@ -284,7 +284,8 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
       {
         key: "avg-unit-cost-refrigerated",
         label: "Avg Unit Cost (Refrigerated)",
-        description: "Average dollar value of one refrigerated inventory unit.",
+        description:
+          "How much it costs to buy one refrigerated inventory unit (cold ingredients like cheese, meat, produce). Example: At $9.50 per unit and 2.5 finished goods per unit, each finished good costs $3.80 from refrigerated ingredients ($9.50 ÷ 2.5). This shows up in your results as costPerGoodRefrigerated and is part of your total ingredientCost. If you sell finished goods for $16, you make $12.20 profit per finished good from refrigerated ingredients ($16 - $3.80).",
         appliesTo: "storeType",
         dataType: "number",
         inputType: "number",
@@ -298,7 +299,8 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
       {
         key: "holding-cost-per-unit-refrigerated",
         label: "Holding Cost per Unit per Week (Refrigerated)",
-        description: "Weekly cost to hold one refrigerated inventory unit.",
+        description:
+          "How much it costs each week to keep one refrigerated inventory unit in storage (electricity for refrigeration, storage space, etc.). Example: If you end the week with 20 units in storage and holding cost is $0.75 per unit, you pay $15 in holding costs that week (20 × $0.75). This shows up in your ledger as costBreakdown.holdingCost. Higher holding costs mean it's more expensive to keep inventory, so you'll want to order less and more often.",
         appliesTo: "storeType",
         dataType: "number",
         inputType: "number",
@@ -313,7 +315,7 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         key: "capacity-units-ambient",
         label: "Capacity Units (Ambient)",
         description:
-          "Maximum dry or shelf storage capacity in abstract inventory units.",
+          "The maximum number of ambient inventory units you can store. Think of one unit as a bundle of dry ingredients like flour, canned goods, and dry spices. Example: With a capacity of 80 units and 5 finished goods per unit, you can make up to 400 finished goods (80 × 5) from ambient inventory. This limit shows up in your ledger as inventoryState.ambientUnits and you can never exceed it.",
         appliesTo: "storeType",
         dataType: "number",
         inputType: "number",
@@ -328,7 +330,7 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         key: "starting-units-ambient",
         label: "Starting Inventory Units (Ambient)",
         description:
-          "Initial ambient inventory units available at store start.",
+          "How many ambient inventory units you start with when opening your store. Example: Starting with 45 units and 5 finished goods per unit means you can make 225 finished goods (45 × 5) before needing to order more. This must be less than your capacity (80 units). This number appears in your first ledger entry as inventoryState.ambientUnits.",
         appliesTo: "storeType",
         dataType: "number",
         inputType: "number",
@@ -343,7 +345,7 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         key: "goods-per-unit-ambient",
         label: "Goods per Unit (Ambient)",
         description:
-          "Number of finished goods supported by one ambient inventory unit.",
+          "How many finished goods you can make from one ambient inventory unit. Example: If this is 5, then one unit of dry ingredients makes 5 finished goods. With a unit cost of $4.25, each finished good costs $0.85 from ambient ingredients ($4.25 ÷ 5). This shows up in your results as costPerGoodAmbient. With a capacity of 80 units, you can make up to 400 finished goods (80 × 5) from ambient inventory.",
         appliesTo: "storeType",
         dataType: "number",
         inputType: "number",
@@ -357,7 +359,8 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
       {
         key: "avg-unit-cost-ambient",
         label: "Avg Unit Cost (Ambient)",
-        description: "Average dollar value of one ambient inventory unit.",
+        description:
+          "How much it costs to buy one ambient inventory unit (dry ingredients like flour, canned goods, spices). Example: At $4.25 per unit and 5 finished goods per unit, each finished good costs $0.85 from ambient ingredients ($4.25 ÷ 5). This shows up in your results as costPerGoodAmbient and is part of your total ingredientCost. If you sell finished goods for $16, you make $15.15 profit per finished good from ambient ingredients ($16 - $0.85).",
         appliesTo: "storeType",
         dataType: "number",
         inputType: "number",
@@ -371,7 +374,8 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
       {
         key: "holding-cost-per-unit-ambient",
         label: "Holding Cost per Unit per Week (Ambient)",
-        description: "Weekly cost to hold one ambient inventory unit.",
+        description:
+          "How much it costs each week to keep one ambient inventory unit in storage (storage space, management, etc.). Example: If you end the week with 50 units in storage and holding cost is $0.25 per unit, you pay $12.50 in holding costs that week (50 × $0.25). This shows up in your ledger as costBreakdown.holdingCost. Since ambient items don't need refrigeration, this is usually cheaper than refrigerated holding costs.",
         appliesTo: "storeType",
         dataType: "number",
         inputType: "number",
@@ -386,7 +390,7 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         key: "capacity-units-operating-supply",
         label: "Capacity Units (Operating Supplies)",
         description:
-          "Maximum capacity for non-resale operating supplies such as packaging and disposables.",
+          "The maximum number of operating supply inventory units you can store. Think of one unit as a bundle of supplies like packaging, napkins, cleaning supplies, and other items you need to run the business (but don't sell). Example: With a capacity of 60 units and 12 finished goods per unit, you can make up to 720 finished goods (60 × 12) from operating supplies. This limit shows up in your ledger as inventoryState.notForResaleUnits and you can never exceed it.",
         appliesTo: "storeType",
         dataType: "number",
         inputType: "number",
@@ -401,7 +405,7 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         key: "starting-units-operating-supply",
         label: "Starting Inventory Units (Operating Supplies)",
         description:
-          "Initial operating supply inventory units available at store start.",
+          "How many operating supply inventory units you start with when opening your store. Example: Starting with 35 units and 12 finished goods per unit means you can make 420 finished goods (35 × 12) before needing to order more supplies. This must be less than your capacity (60 units). This number appears in your first ledger entry as inventoryState.notForResaleUnits.",
         appliesTo: "storeType",
         dataType: "number",
         inputType: "number",
@@ -416,7 +420,7 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         key: "goods-per-unit-operating-supply",
         label: "Goods per Unit (Operating Supplies)",
         description:
-          "Number of finished goods supported by one operating supply unit.",
+          "How many finished goods you can make from one operating supply inventory unit. Example: If this is 12, then one unit of supplies (packaging, napkins, etc.) supports 12 finished goods. With a unit cost of $1.75, each finished good costs $0.15 from operating supplies ($1.75 ÷ 12). This shows up in your results as costPerGoodOperatingSupply. With a capacity of 60 units, you can make up to 720 finished goods (60 × 12) from operating supplies.",
         appliesTo: "storeType",
         dataType: "number",
         inputType: "number",
@@ -431,7 +435,7 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         key: "avg-unit-cost-operating-supply",
         label: "Avg Unit Cost (Operating Supplies)",
         description:
-          "Average dollar value of one operating supply inventory unit.",
+          "How much it costs to buy one operating supply inventory unit (packaging, napkins, cleaning supplies, etc.). Example: At $1.75 per unit and 12 finished goods per unit, each finished good costs $0.15 from operating supplies ($1.75 ÷ 12). This shows up in your results as costPerGoodOperatingSupply and is part of your total ingredientCost. If you sell finished goods for $16, you make $15.85 profit per finished good from operating supplies ($16 - $0.15).",
         appliesTo: "storeType",
         dataType: "number",
         inputType: "number",
@@ -445,7 +449,8 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
       {
         key: "holding-cost-per-unit-operating-supply",
         label: "Holding Cost per Unit per Week (Operating Supplies)",
-        description: "Weekly cost to hold one operating supply inventory unit.",
+        description:
+          "How much it costs each week to keep one operating supply inventory unit in storage (storage space, management, etc.). Example: If you end the week with 30 units in storage and holding cost is $0.15 per unit, you pay $4.50 in holding costs that week (30 × $0.15). This shows up in your ledger as costBreakdown.holdingCost. Operating supplies usually have the lowest holding costs since they don't need refrigeration or special storage.",
         appliesTo: "storeType",
         dataType: "number",
         inputType: "number",
@@ -460,7 +465,7 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         key: "avg-selling-price-per-unit",
         label: "Average Selling Price per Unit",
         description:
-          "Baseline selling price per unit of finished goods for this store type. This represents the normal, expected price for this kind of business.",
+          "The normal selling price for one finished good at this type of store. Example: If this is $16, that's your baseline price. Students can adjust this with a pricing-multiplier (like 0.90 for 10% off or 1.10 for 10% more). The actual price you charge shows up in your results as realizedUnitPrice. Your revenue = number of finished goods sold × realizedUnitPrice. Example: If total cost per finished good is $4.80 ($3.80 refrigerated + $0.85 ambient + $0.15 supplies) and you sell for $16, you make $11.20 profit per finished good. This profit shows up in your ledger as netProfit.",
         appliesTo: "storeType",
         dataType: "number",
         inputType: "number",
