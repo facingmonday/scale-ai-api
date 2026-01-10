@@ -3,71 +3,116 @@ const Enrollment = require("../enrollment/enrollment.model");
 const Classroom = require("../classroom/classroom.model");
 
 /**
- * Create store
- * POST /api/student/store
+ * Validate store request body and extract store data
+ * @param {Object} body - Request body
+ * @param {boolean} requireAllFields - Whether all fields are required (for create)
+ * @returns {Object} { storeData, error }
  */
-exports.createStore = async function (req, res) {
-  try {
-    const {
-      classroomId,
+function validateStoreData(body, requireAllFields = false) {
+  const {
+    classroomId,
+    shopName,
+    storeDescription,
+    storeLocation,
+    storeType,
+    variables,
+    imageUrl,
+  } = body;
+
+  if (!classroomId) {
+    return { error: "classroomId is required" };
+  }
+
+  if (requireAllFields) {
+    if (!shopName) {
+      return { error: "shopName is required" };
+    }
+    if (!storeDescription) {
+      return { error: "storeDescription is required" };
+    }
+    if (!storeLocation) {
+      return { error: "storeLocation is required" };
+    }
+    if (!storeType) {
+      return { error: "storeType is required" };
+    }
+  }
+
+  return {
+    storeData: {
       shopName,
       storeDescription,
       storeLocation,
       storeType,
       variables,
       imageUrl,
-    } = req.body;
+    },
+  };
+}
+
+/**
+ * Verify enrollment and get classroom/organization context
+ * @param {string} classroomId - Class ID
+ * @param {string} userId - User ID
+ * @returns {Promise<Object>} { classroom, organizationId, error }
+ */
+async function verifyEnrollmentAndGetContext(classroomId, userId) {
+  // Verify user is enrolled in class
+  const isEnrolled = await Enrollment.isUserEnrolled(classroomId, userId);
+
+  if (!isEnrolled) {
+    return { error: "User is not enrolled in this class" };
+  }
+
+  // Get organization from class
+  const classDoc = await Classroom.findById(classroomId);
+  if (!classDoc) {
+    return { error: "Class not found" };
+  }
+
+  return {
+    classroom: classDoc,
+    organizationId: classDoc.organization,
+  };
+}
+
+/**
+ * Create store (delegates to updateStore for upsert behavior)
+ * POST /api/student/store
+ */
+exports.createStore = async function (req, res) {
+  try {
     const clerkUserId = req.clerkUser.id;
-
-    // Validate required fields
-    if (!classroomId) {
-      return res.status(400).json({ error: "classroomId is required" });
-    }
-    if (!shopName) {
-      return res.status(400).json({ error: "shopName is required" });
-    }
-    if (!storeDescription) {
-      return res.status(400).json({ error: "storeDescription is required" });
-    }
-    if (!storeLocation) {
-      return res.status(400).json({ error: "storeLocation is required" });
-    }
-    if (!storeType) {
-      return res.status(400).json({ error: "storeType is required" });
-    }
-
-    // Verify user is enrolled in class
     const member = req.user;
-    const isEnrolled = await Enrollment.isUserEnrolled(classroomId, member._id);
 
-    if (!isEnrolled) {
-      return res.status(403).json({
-        error: "User is not enrolled in this class",
-      });
+    // Validate required fields (all fields required for create)
+    const validation = validateStoreData(req.body, true);
+    if (validation.error) {
+      return res.status(400).json({ error: validation.error });
     }
 
-    // Get organization from class
-    const Classroom = require("../classroom/classroom.model");
-    const classDoc = await Classroom.findById(classroomId);
-    if (!classDoc) {
-      return res.status(404).json({ error: "Class not found" });
+    const { storeData } = validation;
+    const { classroomId } = req.body;
+
+    // Verify enrollment and get context
+    const context = await verifyEnrollmentAndGetContext(
+      classroomId,
+      member._id
+    );
+    if (context.error) {
+      return res
+        .status(context.error.includes("not enrolled") ? 403 : 404)
+        .json({
+          error: context.error,
+        });
     }
 
-    const organizationId = classDoc.organization;
-
-    // Create store using static method
+    // Create store (uses updateStore internally which now handles upsert)
     const store = await Store.createStore(
       classroomId,
       member._id,
-      {
-        shopName,
-        storeDescription,
-        storeLocation,
-        storeType,
-        variables,
-        imageUrl,
-      },
-      organizationId,
+      storeData,
+      context.organizationId,
       clerkUserId
     );
 
@@ -78,9 +123,6 @@ exports.createStore = async function (req, res) {
     });
   } catch (error) {
     console.error("Error creating store:", error);
-    if (error.message === "Store already exists for this user in this class") {
-      return res.status(409).json({ error: error.message });
-    }
     if (error.name === "ValidationError") {
       return res.status(400).json({ error: error.message });
     }
@@ -94,73 +136,41 @@ exports.createStore = async function (req, res) {
  */
 exports.updateStore = async function (req, res) {
   try {
-    const {
-      classroomId,
-      shopName,
-      storeDescription,
-      storeLocation,
-      storeType,
-      variables,
-      imageUrl,
-    } = req.body;
-    const member = req.user;
     const clerkUserId = req.clerkUser.id;
+    const member = req.user;
 
-    if (!classroomId) {
-      return res.status(400).json({ error: "classroomId is required" });
+    // Validate required fields (only classroomId required for update)
+    const validation = validateStoreData(req.body, false);
+    if (validation.error) {
+      return res.status(400).json({ error: validation.error });
     }
 
-    // Validate required fields if creating new store
+    const { storeData } = validation;
+    const { classroomId } = req.body;
+
+    // Check if store exists to determine success message
     const existingStore = await Store.getStoreByUser(classroomId, member._id);
     const isCreating = !existingStore;
 
-    if (isCreating) {
-      if (!shopName) {
-        return res.status(400).json({ error: "shopName is required" });
-      }
-      if (!storeDescription) {
-        return res.status(400).json({ error: "storeDescription is required" });
-      }
-      if (!storeLocation) {
-        return res.status(400).json({ error: "storeLocation is required" });
-      }
-      if (!storeType) {
-        return res
-          .status(400)
-          .json({ error: "storeType is required when creating a new store" });
-      }
+    // Verify enrollment and get context
+    const context = await verifyEnrollmentAndGetContext(
+      classroomId,
+      member._id
+    );
+    if (context.error) {
+      return res
+        .status(context.error.includes("not enrolled") ? 403 : 404)
+        .json({
+          error: context.error,
+        });
     }
-
-    // Verify user is enrolled in class
-    const isEnrolled = await Enrollment.isUserEnrolled(classroomId, member._id);
-
-    if (!isEnrolled) {
-      return res.status(403).json({
-        error: "User is not enrolled in this class",
-      });
-    }
-
-    // Get organization from class
-    const classDoc = await Classroom.findById(classroomId);
-    if (!classDoc) {
-      return res.status(404).json({ error: "Class not found" });
-    }
-
-    const organizationId = classDoc.organization;
 
     // Update or create store using static method (upsert)
     const store = await Store.updateStore(
       classroomId,
       member._id,
-      {
-        shopName,
-        storeDescription,
-        storeLocation,
-        storeType,
-        variables,
-        imageUrl,
-      },
-      organizationId,
+      storeData,
+      context.organizationId,
       clerkUserId
     );
 

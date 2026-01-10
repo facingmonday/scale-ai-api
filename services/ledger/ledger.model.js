@@ -186,20 +186,6 @@ ledgerEntrySchema.index({ organization: 1, scenarioId: 1 });
 ledgerEntrySchema.index({ organization: 1, classroomId: 1, userId: 1 });
 ledgerEntrySchema.index({ submissionId: 1 });
 
-// Auto-correct cash continuity: ensure cashAfter = cashBefore + netProfit
-// Recalculate netProfit from cashAfter - cashBefore to maintain consistency
-ledgerEntrySchema.pre("save", function (next) {
-  this._wasNew = this.isNew;
-  const expectedNetProfit = this.cashAfter - this.cashBefore;
-  if (Math.abs(this.netProfit - expectedNetProfit) > 0.01) {
-    console.warn(
-      `Cash continuity correction in pre-save hook: netProfit (${this.netProfit}) doesn't match cashAfter (${this.cashAfter}) - cashBefore (${this.cashBefore}) = ${expectedNetProfit}. Correcting netProfit...`
-    );
-    this.netProfit = expectedNetProfit;
-  }
-  next();
-});
-
 // Post-save hook to create notifications when ledger entries are created
 ledgerEntrySchema.post("save", async function (doc) {
   try {
@@ -333,11 +319,31 @@ ledgerEntrySchema.statics.getAISimulationResponseJsonSchema = function () {
         properties: {
           demandForecast: { type: "number" },
           demandActual: { type: "number" },
-          serviceLevel: { type: "number" },
-          fillRate: { type: "number" },
-          stockoutUnits: { type: "number" },
-          lostSalesUnits: { type: "number" },
-          backorderUnits: { type: "number" },
+          serviceLevel: {
+            type: "number",
+            description:
+              "Service level is the probability of not stocking out for an incoming order (often cycle-based). It measures the likelihood of meeting demand and is used for future planning. Service level is about probability and forward-looking planning - a high service level indicates a high probability of having stock available when orders arrive.",
+          },
+          fillRate: {
+            type: "number",
+            description:
+              "Fill rate is the percentage of total demand (units or orders) actually fulfilled from existing stock, measuring past performance. It is a retrospective measurement that shows what quantity of demand was met. A high fill rate indicates that most demand was satisfied from inventory, but it doesn't guarantee a high service level if a few large orders deplete stock.",
+          },
+          stockoutUnits: {
+            type: "number",
+            description:
+              "The number of units that were not sold because they were not in stock. This is calculated as demandActual - sales.",
+          },
+          lostSalesUnits: {
+            type: "number",
+            description:
+              "The number of units that were not sold because they were not in stock. This is calculated as demandActual - sales.",
+          },
+          backorderUnits: {
+            type: "number",
+            description:
+              "The number of units that were not sold because they were not in stock. This is calculated as demandActual - sales.",
+          },
           realizedUnitPrice: {
             type: "number",
             description:
@@ -892,16 +898,6 @@ ledgerEntrySchema.statics.createLedgerEntry = async function (
   organizationId,
   clerkUserId
 ) {
-  // Correct cash continuity: ensure cashAfter = cashBefore + netProfit
-  // Auto-correct netProfit from cashAfter - cashBefore to maintain consistency
-  const expectedNetProfit = input.cashAfter - input.cashBefore;
-  if (Math.abs(input.netProfit - expectedNetProfit) > 0.01) {
-    console.warn(
-      `Cash continuity correction in createLedgerEntry: netProfit (${input.netProfit}) doesn't match cashAfter (${input.cashAfter}) - cashBefore (${input.cashBefore}) = ${expectedNetProfit}. Correcting netProfit...`
-    );
-    input.netProfit = expectedNetProfit;
-  }
-
   // Check if entry already exists
   // For scenario-based entries, check scenarioId + userId
   // For initial entries, check classroomId + userId + scenarioId is null
@@ -1064,16 +1060,6 @@ ledgerEntrySchema.statics.overrideLedgerEntry = async function (
       entry[field] = patch[field];
     }
   });
-
-  // Correct cash continuity after override: ensure cashAfter = cashBefore + netProfit
-  // Auto-correct netProfit from cashAfter - cashBefore to maintain consistency
-  const expectedNetProfit = entry.cashAfter - entry.cashBefore;
-  if (Math.abs(entry.netProfit - expectedNetProfit) > 0.01) {
-    console.warn(
-      `Cash continuity correction in overrideLedgerEntry: netProfit (${entry.netProfit}) doesn't match cashAfter (${entry.cashAfter}) - cashBefore (${entry.cashBefore}) = ${expectedNetProfit}. Correcting netProfit...`
-    );
-    entry.netProfit = expectedNetProfit;
-  }
 
   // Mark as overridden
   entry.overridden = true;
