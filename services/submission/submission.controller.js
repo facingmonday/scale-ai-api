@@ -379,6 +379,20 @@ exports.getSubmissionsForScenario = async function (req, res) {
     // Get all submissions
     const submissions = await Submission.getSubmissionsByScenario(scenarioId);
 
+    // Fetch stores for all submissions
+    const submissionsWithStores = await Promise.all(
+      submissions.map(async (submission) => {
+        const store =
+          submission.member && submission.member._id
+            ? await Store.getStoreByUser(classroomId, submission.member._id)
+            : null;
+        return {
+          ...submission,
+          store: store,
+        };
+      })
+    );
+
     // Get missing submissions
     const missingUserIds = await Submission.getMissingSubmissions(
       classroomId,
@@ -394,7 +408,7 @@ exports.getSubmissionsForScenario = async function (req, res) {
     res.json({
       success: true,
       data: {
-        submissions,
+        submissions: submissionsWithStores,
         missingSubmissions: missingUsers.map((u) => ({
           ...u.toObject(),
           email: u.maskedEmail,

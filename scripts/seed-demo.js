@@ -602,11 +602,13 @@ function computeLedgerFromVars({
   const netProfit = roundMoney(cashAfter - cashBefore);
 
   // Material flow by bucket (simplified for seed data)
-  // Assume refrigerated is used for production, ambient/notForResaleDry are mostly static
+  // Assume refrigerated is used for production, ambient/notForResale are mostly static
   const refrigeratedUsed = Math.round(sales * 0.5); // Rough estimate: 50% of sales uses refrigerated
   const refrigeratedWaste = Math.round(waste * 0.3); // 30% of waste is refrigerated
   const refrigeratedBegin = inventoryState?.refrigeratedUnits || 0;
-  const refrigeratedReceived = Math.round(submissionVars["inventory-order"] * 0.5);
+  const refrigeratedReceived = Math.round(
+    submissionVars["inventory-order"] * 0.5
+  );
   const refrigeratedEnd = Math.max(
     0,
     refrigeratedBegin +
@@ -619,16 +621,16 @@ function computeLedgerFromVars({
   const ambientReceived = Math.round(submissionVars["inventory-order"] * 0.3);
   const ambientEnd = ambientBegin + ambientReceived; // Ambient doesn't get used in simplified model
 
-  const notForResaleDryBegin = inventoryState?.notForResaleUnits || 0;
-  const notForResaleDryReceived = Math.round(
+  const notForResaleBegin = inventoryState?.notForResaleUnits || 0;
+  const notForResaleReceived = Math.round(
     submissionVars["inventory-order"] * 0.2
   );
-  const notForResaleDryEnd = notForResaleDryBegin + notForResaleDryReceived; // Static inventory
+  const notForResaleEnd = notForResaleBegin + notForResaleReceived; // Static inventory
 
   const inventoryStateAfter = {
     refrigeratedUnits: refrigeratedEnd,
     ambientUnits: ambientEnd,
-    notForResaleUnits: notForResaleDryEnd,
+    notForResaleUnits: notForResaleEnd,
   };
 
   // Teaching notes (brief summary)
@@ -672,12 +674,12 @@ function computeLedgerFromVars({
           wasteUnits: 0,
           endUnits: ambientEnd,
         },
-        notForResaleDry: {
-          beginUnits: notForResaleDryBegin,
-          receivedUnits: notForResaleDryReceived,
+        notForResale: {
+          beginUnits: notForResaleBegin,
+          receivedUnits: notForResaleReceived,
           usedUnits: 0,
           wasteUnits: 0,
-          endUnits: notForResaleDryEnd,
+          endUnits: notForResaleEnd,
         },
       },
       costBreakdown: {

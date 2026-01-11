@@ -374,7 +374,7 @@ ledgerEntrySchema.statics.getAISimulationResponseJsonSchema = function () {
             required: [
               "refrigerated",
               "ambient",
-              "notForResaleDry",
+              "notForResale",
               "explanation",
             ],
             properties: {
@@ -391,6 +391,7 @@ ledgerEntrySchema.statics.getAISimulationResponseJsonSchema = function () {
                   "usedUnits",
                   "wasteUnits",
                   "endUnits",
+                  "endUnitsValue",
                 ],
                 properties: {
                   beginUnits: { type: "number" },
@@ -398,6 +399,11 @@ ledgerEntrySchema.statics.getAISimulationResponseJsonSchema = function () {
                   usedUnits: { type: "number" },
                   wasteUnits: { type: "number" },
                   endUnits: { type: "number" },
+                  endUnitsValue: {
+                    type: "number",
+                    description:
+                      "The value of the end units in the bucket. This is calculated as endUnits * avg-unit-cost-refrigerated",
+                  },
                 },
               },
               ambient: {
@@ -408,6 +414,7 @@ ledgerEntrySchema.statics.getAISimulationResponseJsonSchema = function () {
                   "usedUnits",
                   "wasteUnits",
                   "endUnits",
+                  "endUnitsValue",
                 ],
                 properties: {
                   beginUnits: { type: "number" },
@@ -415,9 +422,14 @@ ledgerEntrySchema.statics.getAISimulationResponseJsonSchema = function () {
                   usedUnits: { type: "number" },
                   wasteUnits: { type: "number" },
                   endUnits: { type: "number" },
+                  endUnitsValue: {
+                    type: "number",
+                    description:
+                      "The value of the end units in the bucket. This is calculated as endUnits * avg-unit-cost-ambient",
+                  },
                 },
               },
-              notForResaleDry: {
+              notForResale: {
                 type: "object",
                 required: [
                   "beginUnits",
@@ -425,6 +437,7 @@ ledgerEntrySchema.statics.getAISimulationResponseJsonSchema = function () {
                   "usedUnits",
                   "wasteUnits",
                   "endUnits",
+                  "endUnitsValue",
                 ],
                 properties: {
                   beginUnits: { type: "number" },
@@ -432,6 +445,11 @@ ledgerEntrySchema.statics.getAISimulationResponseJsonSchema = function () {
                   usedUnits: { type: "number" },
                   wasteUnits: { type: "number" },
                   endUnits: { type: "number" },
+                  endUnitsValue: {
+                    type: "number",
+                    description:
+                      "The value of the end units in the bucket. This is calculated as endUnits * avg-unit-cost-not-for-resale-dry",
+                  },
                 },
               },
             },
@@ -831,7 +849,7 @@ ledgerEntrySchema.statics.runAISimulation = async function (context) {
     const derivedInventoryState = {
       refrigeratedUnits: mfb.refrigerated?.endUnits ?? 0,
       ambientUnits: mfb.ambient?.endUnits ?? 0,
-      notForResaleUnits: mfb.notForResaleDry?.endUnits ?? 0,
+      notForResaleUnits: mfb.notForResale?.endUnits ?? 0,
     };
 
     // If inventoryState exists but doesn't match derived state, update it
