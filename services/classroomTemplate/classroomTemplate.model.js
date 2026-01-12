@@ -497,7 +497,7 @@ WAREHOUSE RULES - YOU MUST OBEY THESE RULES. Outputs that violate these rules ar
 Inventory exists ONLY in these buckets:
 - refrigerated
 - ambient
-- notForResaleDry
+- notForResale
 
 All units belong to exactly one bucket.
 
@@ -541,7 +541,7 @@ Inventory may only be used if it exists:
 usedUnits ≤ beginUnits + receivedUnits
 
 Default consumption order:
-refrigerated → ambient → notForResaleDry
+refrigerated → ambient → notForResale
 
 6. WASTE
 wasteUnits ≥ 0
@@ -615,9 +615,9 @@ MULTI-BUCKET ORDERING REQUIREMENT:
   - Ambient: 20-35% of total order (flour, canned goods, dry ingredients)
   - NotForResaleDry: 10-20% of total order (paper goods, cleaning supplies, packaging)
 - Adjust distribution based on inventoryProtectionPriority:
-  - REFRIGERATED_FIRST: 60-75% refrigerated, 20-30% ambient, 5-15% notForResaleDry
-  - AMBIENT_FIRST: 40-50% refrigerated, 40-50% ambient, 10-20% notForResaleDry
-  - BALANCED: 50-60% refrigerated, 30-40% ambient, 10-20% notForResaleDry
+  - REFRIGERATED_FIRST: 60-75% refrigerated, 20-30% ambient, 5-15% notForResale
+  - AMBIENT_FIRST: 40-50% refrigerated, 40-50% ambient, 10-20% notForResale
+  - BALANCED: 50-60% refrigerated, 30-40% ambient, 10-20% notForResale
 
 SAFETY STOCK REQUIREMENT:
 - DO NOT use 100% of received inventory in the same period it was received
@@ -669,7 +669,7 @@ Before returning output:
 - SAFETY STOCK: endUnits should not be 0 for all buckets unless operations are ceasing
 - CONSISTENCY: inventoryState.refrigeratedUnits MUST equal education.materialFlowByBucket.refrigerated.endUnits
 - CONSISTENCY: inventoryState.ambientUnits MUST equal education.materialFlowByBucket.ambient.endUnits
-- CONSISTENCY: inventoryState.notForResaleUnits MUST equal education.materialFlowByBucket.notForResaleDry.endUnits
+- CONSISTENCY: inventoryState.notForResaleUnits MUST equal education.materialFlowByBucket.notForResale.endUnits
 - PRICING: realizedUnitPrice MUST be included in education object
 - PRICING: revenue MUST equal sales × realizedUnitPrice (within reasonable rounding)
 `;

@@ -704,7 +704,7 @@ Create a variable definition for stores.
   "defaultValue": 5000,
   "min": 0,
   "max": 100000,
-  "required": true,
+  "required": true
 }
 ```
 
@@ -1611,7 +1611,7 @@ Each successful job creates a ledger entry that:
                 "wasteUnits" : NumberInt(0),
                 "endUnits" : NumberInt(300)
             },
-            "notForResaleDry" : {
+            "notForResale" : {
                 "beginUnits" : NumberInt(200),
                 "receivedUnits" : NumberInt(0),
                 "usedUnits" : NumberInt(0),

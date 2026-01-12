@@ -142,31 +142,60 @@ classroomSchema.statics.getDashboard = async function (
   }
 
   // Get leaderboard top 3 (by total netProfit across all scenarios in class)
+  // Exclude initial ledger entry (week 0) where scenarioId is null
+  // Only include scenario-based entries (actual profit from operations)
+  // Show store name (shopName) instead of member name
   const leaderboardTop3 = await LedgerEntry.aggregate([
-    { $match: { classroomId: new mongoose.Types.ObjectId(classroomId) } },
+    {
+      $match: {
+        classroomId: new mongoose.Types.ObjectId(classroomId),
+        scenarioId: { $ne: null }, // Exclude initial ledger entry (week 0)
+      },
+    },
     {
       $group: {
         _id: "$userId",
         totalProfit: { $sum: "$netProfit" },
+        classroomId: { $first: "$classroomId" }, // Keep classroomId for store lookup
       },
     },
     { $sort: { totalProfit: -1 } },
     { $limit: 3 },
     {
       $lookup: {
-        from: "members",
-        localField: "_id",
-        foreignField: "_id",
-        as: "member",
+        from: "stores",
+        let: {
+          userIdField: "$_id",
+          classroomIdField: "$classroomId",
+        },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ["$userId", "$$userIdField"] },
+                  { $eq: ["$classroomId", "$$classroomIdField"] },
+                ],
+              },
+            },
+          },
+          {
+            $project: {
+              shopName: 1,
+              _id: 1,
+            },
+          },
+        ],
+        as: "store",
       },
     },
-    { $unwind: { path: "$member", preserveNullAndEmptyArrays: true } },
+    { $unwind: { path: "$store", preserveNullAndEmptyArrays: false } }, // Exclude entries where store lookup failed
     {
       $project: {
         userId: "$_id",
         totalProfit: 1,
-        firstName: "$member.firstName",
-        lastName: "$member.lastName",
+        storeName: "$store.shopName",
+        storeId: "$store._id",
       },
     },
   ]);

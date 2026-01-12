@@ -24,12 +24,10 @@ const storeTypeSchema = new mongoose.Schema({
     type: String,
     default: "",
   },
-  // Financial starting point (used for initial cash before the first scenario)
   startingBalance: {
     type: Number,
     default: 0,
   },
-  // Up-front cost to start this store type (used as a seed signal for simulations/ledger)
   initialStartupCost: {
     type: Number,
     default: 0,

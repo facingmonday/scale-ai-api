@@ -97,7 +97,240 @@ storeSchema.index({ storeType: 1 });
 // Static methods - Shared utilities for store operations
 
 /**
- * Create a store with variables
+ * Validate and get storeType document
+ * @param {string} classroomId - Class ID
+ * @param {string} organizationId - Organization ID
+ * @param {string|ObjectId} storeType - Store type ID or ObjectId
+ * @returns {Promise<Object>} StoreType document
+ * @throws {Error} If storeType is invalid or not found
+ */
+storeSchema.statics.validateAndGetStoreType = async function (
+  classroomId,
+  organizationId,
+  storeType
+) {
+  if (!storeType) {
+    throw new Error("storeType is required");
+  }
+
+  const storeTypeDoc = await StoreType.getStoreTypeById(
+    classroomId,
+    organizationId,
+    storeType
+  );
+
+  if (!storeTypeDoc) {
+    throw new Error(
+      "Invalid storeType: Store type not found or does not belong to this organization"
+    );
+  }
+
+  return storeTypeDoc;
+};
+
+/**
+ * Create variable values for a store from definitions
+ * @param {string} classroomId - Class ID
+ * @param {ObjectId} storeId - Store ID
+ * @param {Object} providedVariables - Provided variable values
+ * @param {string} organizationId - Organization ID
+ * @param {string} clerkUserId - Clerk user ID
+ * @returns {Promise<void>}
+ */
+storeSchema.statics.createStoreVariables = async function (
+  classroomId,
+  storeId,
+  providedVariables,
+  organizationId,
+  clerkUserId
+) {
+  const providedVars =
+    providedVariables && typeof providedVariables === "object"
+      ? providedVariables
+      : {};
+
+  const definitions = await VariableDefinition.getDefinitionsForScope(
+    classroomId,
+    "store"
+  );
+
+  const variableDocs = definitions
+    .map((def) => {
+      const key = def.key;
+      const value =
+        providedVars[key] !== undefined
+          ? providedVars[key]
+          : def.defaultValue !== undefined
+            ? def.defaultValue
+            : null;
+
+      return {
+        classroomId,
+        appliesTo: "store",
+        ownerId: storeId,
+        variableKey: key,
+        value,
+        organization: organizationId,
+        createdBy: clerkUserId,
+        updatedBy: clerkUserId,
+      };
+    })
+    .filter((doc) => doc.value !== null);
+
+  if (variableDocs.length > 0) {
+    await VariableValue.insertMany(variableDocs);
+  }
+};
+
+/**
+ * Seed initial ledger entry (week 0) for a new store
+ * @param {ObjectId} storeId - Store ID
+ * @param {string} classroomId - Class ID
+ * @param {string} userId - User ID
+ * @param {Object} storeTypeDoc - StoreType document with startingBalance and initialStartupCost
+ * @param {string} organizationId - Organization ID
+ * @param {string} clerkUserId - Clerk user ID
+ * @returns {Promise<void>}
+ */
+storeSchema.statics.seedInitialLedgerEntry = async function (
+  storeId,
+  classroomId,
+  userId,
+  storeTypeDoc,
+  organizationId,
+  clerkUserId
+) {
+  const existingInitial = await LedgerEntry.findOne({
+    classroomId,
+    userId,
+    scenarioId: null,
+  }).select("_id");
+
+  if (existingInitial) {
+    return; // Already seeded
+  }
+
+  const startingBalance = Number(storeTypeDoc.startingBalance) || 0;
+  const initialStartupCost = Number(storeTypeDoc.initialStartupCost) || 0;
+  const cashBefore = 0;
+  const cashAfter = startingBalance - initialStartupCost;
+
+  const inventoryState = {
+    refrigeratedUnits: 0,
+    ambientUnits: 0,
+    notForResaleUnits: 0,
+  };
+  const storeTypeObj = storeTypeDoc.toObject();
+  if (storeTypeObj?.variables?.["starting-units-refrigerated"]) {
+    inventoryState.refrigeratedUnits =
+      storeTypeObj.variables["starting-units-refrigerated"];
+  }
+  if (storeTypeObj?.variables?.["starting-units-ambient"]) {
+    inventoryState.ambientUnits =
+      storeTypeObj.variables["starting-units-ambient"];
+  }
+  if (storeTypeObj?.variables?.["starting-units-operating-supply"]) {
+    inventoryState.notForResaleUnits =
+      storeTypeObj.variables["starting-units-operating-supply"];
+  }
+
+  await LedgerEntry.createLedgerEntry(
+    {
+      storeId,
+      classroomId,
+      scenarioId: null,
+      submissionId: null,
+      userId,
+      sales: 0,
+      revenue: 0,
+      costs: 0,
+      waste: 0,
+      cashBefore,
+      cashAfter,
+      inventoryState,
+      netProfit: 0,
+      randomEvent: null,
+      summary:
+        "Week 0: Store setup — initial funding and startup costs applied.",
+      education: null,
+      aiMetadata: {
+        model: "system_seed",
+        runId: uuidv4(),
+        generatedAt: new Date(),
+      },
+      calculationContext: {
+        storeVariables: {},
+        scenarioVariables: {},
+        submissionVariables: {},
+        outcomeVariables: {},
+        priorState: {},
+        prompt: null,
+      },
+    },
+    organizationId,
+    clerkUserId
+  );
+};
+
+/**
+ * Create a new store document with all setup (variables only - ledger entry handled in updateStore)
+ * @param {string} classroomId - Class ID
+ * @param {string} userId - Member ID
+ * @param {Object} storeFields - Store fields (shopName, storeDescription, storeLocation)
+ * @param {ObjectId} storeTypeId - StoreType ObjectId
+ * @param {string|null} imageUrl - Optional image URL
+ * @param {Object} providedVariables - Provided variable values
+ * @param {string} organizationId - Organization ID
+ * @param {string} clerkUserId - Clerk user ID
+ * @returns {Promise<Object>} Created store
+ */
+storeSchema.statics.createNewStore = async function (
+  classroomId,
+  userId,
+  storeFields,
+  storeTypeId,
+  imageUrl,
+  providedVariables,
+  organizationId,
+  clerkUserId
+) {
+  // Ensure classroom prompts exist (older classrooms may predate prompt templates)
+  await ensureClassroomPromptsInitialized(
+    classroomId,
+    organizationId,
+    clerkUserId
+  );
+
+  // Create store document
+  const store = new this({
+    classroomId,
+    userId,
+    shopName: storeFields.shopName,
+    storeDescription: storeFields.storeDescription,
+    storeLocation: storeFields.storeLocation,
+    storeType: storeTypeId,
+    imageUrl: imageUrl || null,
+    organization: organizationId,
+    createdBy: clerkUserId,
+    updatedBy: clerkUserId,
+  });
+
+  await store.save();
+
+  // Create variable values
+  await this.createStoreVariables(
+    classroomId,
+    store._id,
+    providedVariables,
+    organizationId,
+    clerkUserId
+  );
+
+  return store;
+};
+
+/**
+ * Create a store with variables (upsert behavior - creates if doesn't exist)
  * @param {string} classroomId - Class ID
  * @param {string} userId - Member ID
  * @param {Object} storeData - Store data (shopName, storeDescription, storeLocation, storeType, variables)
@@ -112,161 +345,14 @@ storeSchema.statics.createStore = async function (
   organizationId,
   clerkUserId
 ) {
-  // Check if store already exists
-  const existing = await this.findOne({ classroomId, userId });
-  if (existing) {
-    throw new Error("Store already exists for this user in this class");
-  }
-
-  // Validate storeType (should be ObjectId)
-  const {
-    storeType,
-    variables: providedVariables,
-    imageUrl,
-    ...storeFields
-  } = storeData;
-
-  if (!storeType) {
-    throw new Error("storeType is required");
-  }
-
-  // Validate storeType exists and belongs to organization
-  const storeTypeDoc = await StoreType.getStoreTypeById(
+  // Delegate to updateStore which now handles upsert
+  return await this.updateStore(
     classroomId,
-    organizationId,
-    storeType
-  );
-  if (!storeTypeDoc) {
-    throw new Error(
-      "Invalid storeType: Store type not found or does not belong to this organization"
-    );
-  }
-
-  const providedVars =
-    providedVariables && typeof providedVariables === "object"
-      ? providedVariables
-      : {};
-
-  // Ensure classroom prompts exist (older classrooms may predate prompt templates).
-  await ensureClassroomPromptsInitialized(
-    classroomId,
+    userId,
+    storeData,
     organizationId,
     clerkUserId
   );
-
-  // Create store document
-  const store = new this({
-    classroomId,
-    userId,
-    shopName: storeFields.shopName,
-    storeDescription: storeFields.storeDescription,
-    storeLocation: storeFields.storeLocation,
-    storeType: storeTypeDoc._id,
-    imageUrl: imageUrl || null,
-    organization: organizationId,
-    createdBy: clerkUserId,
-    updatedBy: clerkUserId,
-  });
-
-  await store.save();
-
-  // Create variable values from active definitions, using provided values first,
-  // then definition defaultValue. Presets are NOT persisted - they're used at read time.
-  const definitions = await VariableDefinition.getDefinitionsForScope(
-    classroomId,
-    "store"
-  );
-  const variableDocs = definitions
-    .map((def) => {
-      const key = def.key;
-      const value =
-        providedVars[key] !== undefined
-          ? providedVars[key]
-          : def.defaultValue !== undefined
-            ? def.defaultValue
-            : null;
-
-      return {
-        classroomId,
-        appliesTo: "store",
-        ownerId: store._id,
-        variableKey: key,
-        value,
-        organization: organizationId,
-        createdBy: clerkUserId,
-        updatedBy: clerkUserId,
-      };
-    })
-    // Don't store nulls to keep the collection lean; plugin will return null anyway
-    .filter((doc) => doc.value !== null);
-
-  if (variableDocs.length > 0) {
-    await VariableValue.insertMany(variableDocs);
-  }
-
-  // Seed initial ledger entry (week 0)
-  // cashBefore: 0
-  // cashAfter: startingBalance - initialStartupCost (from StoreType fields)
-  // Also seed initial inventoryState from storeType preset so subsequent simulations
-  // start from the correct inventory instead of zeros.
-  const existingInitial = await LedgerEntry.findOne({
-    classroomId,
-    userId,
-    scenarioId: null,
-  }).select("_id");
-
-  if (!existingInitial) {
-    const startingBalance = Number(storeTypeDoc.startingBalance) || 0;
-    const initialStartupCost = Number(storeTypeDoc.initialStartupCost) || 0;
-    const cashBefore = 0;
-    const cashAfter = startingBalance - initialStartupCost;
-
-    let inventoryState = {
-      refrigeratedUnits: 0,
-      ambientUnits: 0,
-      notForResaleUnits: 0,
-    };
-
-    await LedgerEntry.createLedgerEntry(
-      {
-        storeId: store._id,
-        classroomId,
-        scenarioId: null,
-        submissionId: null,
-        userId,
-        sales: 0,
-        revenue: startingBalance,
-        costs: initialStartupCost,
-        waste: 0,
-        cashBefore,
-        cashAfter,
-        inventoryState,
-        netProfit: cashAfter, // continuity: cashAfter = cashBefore + netProfit
-        randomEvent: null,
-        summary:
-          "Week 0: Store setup — initial funding and startup costs applied.",
-        education: null,
-        aiMetadata: {
-          model: "system_seed",
-          runId: uuidv4(),
-          generatedAt: new Date(),
-        },
-        calculationContext: {
-          storeVariables: {},
-          scenarioVariables: {},
-          submissionVariables: {},
-          outcomeVariables: {},
-          priorState: {},
-          prompt: null,
-        },
-      },
-      organizationId,
-      clerkUserId
-    );
-  }
-
-  // Return store with variables populated via plugin
-  return await this.getStoreByUser(classroomId, userId);
 };
 
 /**
@@ -524,13 +610,13 @@ storeSchema.statics.getStoresByClass = async function (classroomId) {
 };
 
 /**
- * Update a store with variables
+ * Update a store with variables (upsert - creates if doesn't exist)
  * @param {string} classroomId - Class ID
  * @param {string} userId - Member ID
  * @param {Object} storeData - Store data (shopName, storeDescription, storeLocation, storeType, variables)
  * @param {string} organizationId - Organization ID
  * @param {string} clerkUserId - Clerk user ID for updatedBy
- * @returns {Promise<Object>} Updated store with variables
+ * @returns {Promise<Object>} Updated or created store with variables
  */
 storeSchema.statics.updateStore = async function (
   classroomId,
@@ -549,142 +635,54 @@ storeSchema.statics.updateStore = async function (
 
   // Find existing store
   let store = await this.findOne({ classroomId, userId });
+  let storeTypeDoc = null;
+  let storeTypeChanged = false;
 
   if (!store) {
-    // If store doesn't exist and storeType is provided, create new store
+    // Create new store if it doesn't exist
     if (!storeType) {
       throw new Error("storeType is required when creating a new store");
     }
 
-    // Ensure classroom prompts exist (older classrooms may predate prompt templates).
-    await ensureClassroomPromptsInitialized(
-      classroomId,
-      organizationId,
-      clerkUserId
-    );
+    // Validate required fields for creation
+    if (!storeFields.shopName) {
+      throw new Error("shopName is required when creating a new store");
+    }
+    if (!storeFields.storeDescription) {
+      throw new Error("storeDescription is required when creating a new store");
+    }
+    if (!storeFields.storeLocation) {
+      throw new Error("storeLocation is required when creating a new store");
+    }
 
-    // Validate storeType exists and belongs to organization
-    const storeTypeDoc = await StoreType.getStoreTypeById(
+    // Validate and get storeType
+    storeTypeDoc = await this.validateAndGetStoreType(
       classroomId,
       organizationId,
       storeType
     );
-    if (!storeTypeDoc) {
-      throw new Error(
-        "Invalid storeType: Store type not found or does not belong to this organization"
-      );
-    }
 
-    const providedVars =
-      providedVariables && typeof providedVariables === "object"
-        ? providedVariables
-        : {};
-
-    // Create new store
-    store = new this({
+    // Create new store using shared helper (without ledger entry - will seed after)
+    store = await this.createNewStore(
       classroomId,
       userId,
-      shopName: storeFields.shopName,
-      storeDescription: storeFields.storeDescription,
-      storeLocation: storeFields.storeLocation,
-      storeType: storeTypeDoc._id, // Use store type ObjectId
-      imageUrl: imageUrl || null,
-      organization: organizationId,
-      createdBy: clerkUserId,
-      updatedBy: clerkUserId,
-    });
-
-    await store.save();
-
-    // Create variable values from active definitions, using provided values first,
-    // then definition defaultValue. Presets are NOT persisted - they're used at read time.
-    const definitions = await VariableDefinition.getDefinitionsForScope(
-      classroomId,
-      "store"
+      storeFields,
+      storeTypeDoc._id,
+      imageUrl,
+      providedVariables,
+      organizationId,
+      clerkUserId
     );
-    const variableDocs = definitions
-      .map((def) => {
-        const key = def.key;
-        const value =
-          providedVars[key] !== undefined
-            ? providedVars[key]
-            : def.defaultValue !== undefined
-              ? def.defaultValue
-              : null;
 
-        return {
-          classroomId,
-          appliesTo: "store",
-          ownerId: store._id,
-          variableKey: key,
-          value,
-          organization: organizationId,
-          createdBy: clerkUserId,
-          updatedBy: clerkUserId,
-        };
-      })
-      .filter((doc) => doc.value !== null);
-
-    if (variableDocs.length > 0) {
-      await VariableValue.insertMany(variableDocs);
-    }
-
-    // Seed initial ledger entry (week 0) for stores created via upsert path
-    const existingInitial = await LedgerEntry.findOne({
+    // Seed initial ledger entry for new store
+    await this.seedInitialLedgerEntry(
+      store._id,
       classroomId,
       userId,
-      scenarioId: null,
-    }).select("_id");
-
-    if (!existingInitial) {
-      const startingBalance = Number(storeTypeDoc.startingBalance) || 0;
-      const initialStartupCost = Number(storeTypeDoc.initialStartupCost) || 0;
-      const cashBefore = 0;
-      const cashAfter = startingBalance - initialStartupCost;
-
-      let inventoryState = {
-        refrigeratedUnits: 0,
-        ambientUnits: 0,
-        notForResaleUnits: 0,
-      };
-
-      await LedgerEntry.createLedgerEntry(
-        {
-          storeId: store._id,
-          classroomId,
-          scenarioId: null,
-          submissionId: null,
-          userId,
-          sales: 0,
-          revenue: startingBalance,
-          costs: initialStartupCost,
-          waste: 0,
-          cashBefore,
-          cashAfter,
-          inventoryState,
-          netProfit: cashAfter,
-          randomEvent: null,
-          summary:
-            "Week 0: Store setup — initial funding and startup costs applied.",
-          education: null,
-          aiMetadata: {
-            model: "system_seed",
-            runId: uuidv4(),
-            generatedAt: new Date(),
-          },
-          calculationContext: {
-            storeVariables: {},
-            scenarioVariables: {},
-            submissionVariables: {},
-            outcomeVariables: {},
-            priorState: {},
-            prompt: null,
-          },
-        },
-        organizationId,
-        clerkUserId
-      );
-    }
+      storeTypeDoc,
+      organizationId,
+      clerkUserId
+    );
   } else {
     // Update existing store fields
     if (storeFields.shopName !== undefined) {
@@ -703,17 +701,46 @@ storeSchema.statics.updateStore = async function (
 
       if (currentStoreTypeId !== newStoreTypeId) {
         // Validate storeType exists and belongs to organization
-        const storeTypeDoc = await StoreType.getStoreTypeById(
+        storeTypeDoc = await this.validateAndGetStoreType(
           classroomId,
           organizationId,
           storeType
         );
-        if (!storeTypeDoc) {
-          throw new Error(
-            "Invalid storeType: Store type not found or does not belong to this organization"
+        store.storeType = storeTypeDoc._id;
+        storeTypeChanged = true;
+
+        // If storeType changed, handle initial ledger entry:
+        // - If there's only the initial entry: delete and reseed with new storeType
+        // - If there's no initial entry: seed one with the new storeType
+        const allLedgerEntries = await LedgerEntry.find({ storeId: store._id });
+        const initialLedgerEntry = allLedgerEntries.find(
+          (entry) => entry.scenarioId == null // Use == to check for both null and undefined
+        );
+        const hasOnlyInitialEntry =
+          allLedgerEntries.length === 1 && initialLedgerEntry !== undefined;
+
+        // Track if we deleted the initial entry so we know to reseed
+        let deletedInitialEntry = false;
+
+        if (hasOnlyInitialEntry && initialLedgerEntry) {
+          // Delete the existing initial ledger entry (will reseed below)
+          await LedgerEntry.deleteOne({ _id: initialLedgerEntry._id });
+          deletedInitialEntry = true;
+        }
+
+        // Seed initial entry if:
+        // - We just deleted it (deletedInitialEntry is true), OR
+        // - There's no initial entry at all (initialLedgerEntry is undefined)
+        if (deletedInitialEntry || !initialLedgerEntry) {
+          await this.seedInitialLedgerEntry(
+            store._id,
+            classroomId,
+            userId,
+            storeTypeDoc,
+            organizationId,
+            clerkUserId
           );
         }
-        store.storeType = storeTypeDoc._id;
       }
     }
     if (imageUrl !== undefined) {
@@ -722,38 +749,38 @@ storeSchema.statics.updateStore = async function (
 
     store.updatedBy = clerkUserId;
     await store.save();
-  }
 
-  // Update or create variable values if provided
-  if (providedVariables && typeof providedVariables === "object") {
-    const variableEntries = Object.entries(providedVariables);
-    for (const [key, value] of variableEntries) {
-      await VariableValue.setVariable(
-        classroomId,
-        "store",
-        store._id,
-        key,
-        value,
-        organizationId,
-        clerkUserId
-      );
-    }
-
-    // Delete variables that are not in the new set
-    const existingVariables = await VariableValue.find({
-      classroomId,
-      appliesTo: "store",
-      ownerId: store._id,
-    });
-    const newKeys = new Set(Object.keys(providedVariables));
-    for (const existingVar of existingVariables) {
-      if (!newKeys.has(existingVar.variableKey)) {
-        await VariableValue.deleteOne({ _id: existingVar._id });
+    // Update variable values if provided
+    if (providedVariables && typeof providedVariables === "object") {
+      const variableEntries = Object.entries(providedVariables);
+      for (const [key, value] of variableEntries) {
+        await VariableValue.setVariable(
+          classroomId,
+          "store",
+          store._id,
+          key,
+          value,
+          organizationId,
+          clerkUserId
+        );
       }
-    }
 
-    store.updatedBy = clerkUserId;
-    await store.save();
+      // Delete variables that are not in the new set
+      const existingVariables = await VariableValue.find({
+        classroomId,
+        appliesTo: "store",
+        ownerId: store._id,
+      });
+      const newKeys = new Set(Object.keys(providedVariables));
+      for (const existingVar of existingVariables) {
+        if (!newKeys.has(existingVar.variableKey)) {
+          await VariableValue.deleteOne({ _id: existingVar._id });
+        }
+      }
+
+      store.updatedBy = clerkUserId;
+      await store.save();
+    }
   }
 
   // Return store with variables populated via plugin
