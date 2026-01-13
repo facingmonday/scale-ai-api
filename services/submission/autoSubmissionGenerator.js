@@ -212,10 +212,10 @@ async function generateSubmissionVariablesForStoreType({
 
   if (absentPunishmentLevel) {
     const punishmentGuidance = {
-      high: "The student was absent and should receive significantly negative outcomes. Generate decisions that will result in poor performance (e.g., low production, insufficient staffing, poor inventory management). The store should be heavily penalized for the absence.",
+      high: "The student was absent; simulate severe mismanagement. Generate decisions that reliably lead to large stockouts AND/or large waste/spoilage, plus service failures. Examples: staffing at/near the minimum, production plan badly mismatched to expected demand (either too low causing stockouts or too high causing spoilage), reorders far too low for key ingredients, late/forgotten replenishment, poor inventory planning choices. Make the overall set of decisions clearly worse than a typical week.",
       medium:
-        "The student was absent and should receive moderately negative outcomes. Generate decisions that will result in below-average performance. The store should be penalized for the absence but not severely.",
-      low: "The student was absent and should receive slightly negative outcomes. Generate decisions that will result in slightly below-average performance. The store should be mildly penalized for the absence.",
+        "The student was absent; simulate noticeable mismanagement. Generate decisions that tend to cause below-average outcomes: slightly insufficient staffing, reorders that are too low or poorly timed, and a production plan that modestly misses demand. Include at least one clear operational mistake (e.g., under-ordering, not scaling staffing with demand, overproducing perishables).",
+      low: "The student was absent; simulate mild mismanagement. Generate decisions that are still plausible but slightly worse than average: a bit understaffed, slightly conservative/low reorders, and a production plan that leaves some demand unmet or causes some waste.",
     };
 
     systemMessages.push(

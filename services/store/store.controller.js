@@ -11,6 +11,7 @@ const Classroom = require("../classroom/classroom.model");
 function validateStoreData(body, requireAllFields = false) {
   const {
     classroomId,
+    studentId,
     shopName,
     storeDescription,
     storeLocation,
@@ -24,6 +25,9 @@ function validateStoreData(body, requireAllFields = false) {
   }
 
   if (requireAllFields) {
+    if (!studentId) {
+      return { error: "studentId is required" };
+    }
     if (!shopName) {
       return { error: "shopName is required" };
     }
@@ -40,6 +44,7 @@ function validateStoreData(body, requireAllFields = false) {
 
   return {
     storeData: {
+      studentId,
       shopName,
       storeDescription,
       storeLocation,

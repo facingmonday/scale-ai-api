@@ -611,6 +611,19 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
     },
   ];
 
+  // If the submission was auto-generated (AI or forwarded), force a negative outcome to
+  // discourage non-participation. This is an explicit instruction to the model.
+  const submissionGenerationMethod = submission?.generation?.method || "MANUAL";
+  if (submissionGenerationMethod !== "MANUAL") {
+    messages.push({
+      role: "user",
+      content:
+        `IMPORTANT (ABSENCE PENALTY): This submission was auto-generated (method: ${submissionGenerationMethod}). ` +
+        `The outcome for this scenario MUST be negative, resulting in the business losing money. ` +
+        `Set netProfit to a negative number and ensure cashAfter < cashBefore.`,
+    });
+  }
+
   messages.push({
     role: "user",
     content: `CURRENT INVENTORY STATE:\n${JSON.stringify(

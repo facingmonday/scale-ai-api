@@ -21,10 +21,6 @@ const classroomSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
   },
-  adminIds: {
-    type: [String], // Clerk user IDs
-    default: [],
-  },
   ownership: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Member",
@@ -61,7 +57,6 @@ const classroomSchema = new mongoose.Schema({
 classroomSchema.index({ organization: 1, name: 1 });
 classroomSchema.index({ organization: 1, isActive: 1 });
 classroomSchema.index({ organization: 1, createdDate: -1 });
-classroomSchema.index({ adminIds: 1 });
 
 // Virtual for enrollment count
 classroomSchema.virtual("enrollmentCount", {
@@ -78,23 +73,6 @@ classroomSchema.statics.findByOrganization = function (orgId) {
 
 classroomSchema.statics.findActiveByOrganization = function (orgId) {
   return this.find({ organization: orgId, isActive: true });
-};
-
-// Instance methods
-classroomSchema.methods.isAdmin = function (clerkUserId) {
-  return this.adminIds.includes(clerkUserId);
-};
-
-classroomSchema.methods.addAdmin = function (clerkUserId) {
-  if (!this.adminIds.includes(clerkUserId)) {
-    this.adminIds.push(clerkUserId);
-  }
-  return this;
-};
-
-classroomSchema.methods.removeAdmin = function (clerkUserId) {
-  this.adminIds = this.adminIds.filter((id) => id !== clerkUserId);
-  return this;
 };
 
 /**
@@ -182,6 +160,7 @@ classroomSchema.statics.getDashboard = async function (
           {
             $project: {
               shopName: 1,
+              studentId: 1,
               _id: 1,
             },
           },
@@ -196,6 +175,7 @@ classroomSchema.statics.getDashboard = async function (
         totalProfit: 1,
         storeName: "$store.shopName",
         storeId: "$store._id",
+        studentId: "$store.studentId",
       },
     },
   ]);
@@ -322,7 +302,40 @@ classroomSchema.statics.validateAdminAccess = async function (
     throw new Error("Class not found");
   }
 
-  if (!classDoc.isAdmin(clerkUserId)) {
+  // Resolve Clerk user -> Member (needed for ownership/enrollment/org-role checks)
+  const Member = require("../members/member.model");
+  const member = await Member.findOne({ clerkUserId })
+    .select("_id organizationMemberships")
+    .lean();
+
+  const isOwner =
+    !!member &&
+    !!classDoc.ownership &&
+    classDoc.ownership.toString() === member._id.toString();
+
+  const isEnrollmentAdmin = !!member
+    ? !!(await Enrollment.findOne({
+        classroomId,
+        userId: member._id,
+        role: "admin",
+        isRemoved: false,
+      })
+        .select("_id")
+        .lean())
+    : false;
+
+  const isOrgAdmin =
+    !!member &&
+    Array.isArray(member.organizationMemberships) &&
+    member.organizationMemberships.some((m) => {
+      if (!m || !m.organizationId) return false;
+      return (
+        m.organizationId.toString() === organizationId.toString() &&
+        m.role === "org:admin"
+      );
+    });
+
+  if (!isOwner && !isEnrollmentAdmin && !isOrgAdmin) {
     throw new Error("Insufficient permissions: Admin access required");
   }
 

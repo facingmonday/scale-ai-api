@@ -803,7 +803,6 @@ async function main() {
       name: `SEED: Demo Classroom ${cIdx + 1}`,
       description: seedTag, // seed marker
       isActive: true,
-      adminIds: [adminClerkUserId],
       ownership: admin._id,
       organization: organizationId,
       createdBy: adminClerkUserId,

@@ -21,6 +21,31 @@ const submissionSchema = new mongoose.Schema({
     ref: "Member",
     required: true,
   },
+  // Tracks how this submission was created (manual student submission vs automation).
+  // NOTE: This is separate from createdBy/updatedBy (which may still be the student).
+  generation: {
+    method: {
+      type: String,
+      enum: ["MANUAL", "AI", "FORWARDED_PREVIOUS", "AI_FALLBACK"],
+      default: "MANUAL",
+      index: true,
+    },
+    forwardedFromScenarioId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Scenario",
+      default: null,
+    },
+    forwardedFromSubmissionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Submission",
+      default: null,
+    },
+    // Arbitrary metadata for debugging/auditing (model name, reason, etc.)
+    meta: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+  },
   submittedAt: {
     type: Date,
     default: Date.now,
@@ -116,7 +141,8 @@ submissionSchema.statics.createSubmission = async function (
   userId,
   variables,
   organizationId,
-  clerkUserId
+  clerkUserId,
+  createOptions = {}
 ) {
   // Check if submission already exists
   const exists = await this.submissionExists(classroomId, scenarioId, userId);
@@ -164,6 +190,19 @@ submissionSchema.statics.createSubmission = async function (
     createdBy: clerkUserId,
     updatedBy: clerkUserId,
   });
+
+  // Optional generation metadata (defaults to MANUAL if not provided)
+  if (createOptions && typeof createOptions === "object") {
+    const gen = createOptions.generation;
+    if (gen && typeof gen === "object") {
+      submission.generation = {
+        method: gen.method || undefined,
+        forwardedFromScenarioId: gen.forwardedFromScenarioId || null,
+        forwardedFromSubmissionId: gen.forwardedFromSubmissionId || null,
+        meta: gen.meta !== undefined ? gen.meta : null,
+      };
+    }
+  }
 
   await submission.save();
 

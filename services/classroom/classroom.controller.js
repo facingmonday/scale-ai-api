@@ -42,7 +42,6 @@ exports.createClass = async function (req, res) {
       description: description || "",
       imageUrl: imageUrl || null,
       isActive: true,
-      adminIds: [clerkUserId], // Auto-enroll creator as admin
       ownership: memberId, // Set ownership to the creator
       organization: organizationId,
       createdBy: clerkUserId,

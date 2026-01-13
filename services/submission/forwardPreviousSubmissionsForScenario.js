@@ -198,7 +198,18 @@ async function forwardPreviousSubmissionsForScenario({
             userId,
             aiVars,
             organizationId,
-            clerkUserId
+            clerkUserId,
+            {
+              generation: {
+                method: "AI_FALLBACK",
+                meta: {
+                  model: process.env.AUTO_SUBMISSION_MODEL || "gpt-4o-mini",
+                  absentPunishmentLevel,
+                  reason: "NO_PREVIOUS_SUBMISSION",
+                  note: "Forward-previous mode fell back to AI",
+                },
+              },
+            }
           );
 
           created += 1;
@@ -272,7 +283,17 @@ async function forwardPreviousSubmissionsForScenario({
         userId,
         varsWithDefaults,
         organizationId,
-        clerkUserId
+        clerkUserId,
+        {
+          generation: {
+            method: "FORWARDED_PREVIOUS",
+            forwardedFromScenarioId: previousSubmission.scenarioId || null,
+            forwardedFromSubmissionId: previousSubmission._id || null,
+            meta: {
+              note: "Auto-created on scenario outcome (FORWARD_PREVIOUS)",
+            },
+          },
+        }
       );
 
       created += 1;

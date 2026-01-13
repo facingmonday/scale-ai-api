@@ -261,6 +261,7 @@ class SimulationWorker {
     // Store: getStoreForSimulation returns flattened object, variables are at top level
     // We need to extract only variable keys (exclude store metadata like shopName, storeType, etc.)
     const storeMetadataKeys = [
+      "studentId",
       "shopName",
       "storeType",
       "storeTypeId",

@@ -57,6 +57,10 @@ const storeSchema = new mongoose.Schema({
     ref: "Member",
     required: true,
   },
+  studentId: {
+    type: String,
+    required: true,
+  },
   shopName: {
     type: String,
     required: true,
@@ -276,7 +280,7 @@ storeSchema.statics.seedInitialLedgerEntry = async function (
  * Create a new store document with all setup (variables only - ledger entry handled in updateStore)
  * @param {string} classroomId - Class ID
  * @param {string} userId - Member ID
- * @param {Object} storeFields - Store fields (shopName, storeDescription, storeLocation)
+ * @param {Object} storeFields - Store fields (studentId, shopName, storeDescription, storeLocation)
  * @param {ObjectId} storeTypeId - StoreType ObjectId
  * @param {string|null} imageUrl - Optional image URL
  * @param {Object} providedVariables - Provided variable values
@@ -305,6 +309,7 @@ storeSchema.statics.createNewStore = async function (
   const store = new this({
     classroomId,
     userId,
+    studentId: storeFields.studentId,
     shopName: storeFields.shopName,
     storeDescription: storeFields.storeDescription,
     storeLocation: storeFields.storeLocation,
@@ -542,6 +547,7 @@ storeSchema.statics.getStoreForSimulation = async function (
   // Flatten store data: include storeType key and variables directly
   return {
     storeId: store._id?.toString?.() || null,
+    studentId: store.studentId,
     shopName: store.shopName,
     storeType: storeTypeKey, // Return key for compatibility
     storeTypeId: storeTypeId, // Also include ID
@@ -645,6 +651,9 @@ storeSchema.statics.updateStore = async function (
     }
 
     // Validate required fields for creation
+    if (!storeFields.studentId) {
+      throw new Error("studentId is required when creating a new store");
+    }
     if (!storeFields.shopName) {
       throw new Error("shopName is required when creating a new store");
     }
@@ -685,6 +694,9 @@ storeSchema.statics.updateStore = async function (
     );
   } else {
     // Update existing store fields
+    if (storeFields.studentId !== undefined) {
+      store.studentId = storeFields.studentId;
+    }
     if (storeFields.shopName !== undefined) {
       store.shopName = storeFields.shopName;
     }

@@ -176,13 +176,10 @@ exports.getMyClasses = async function (req, res) {
 
   const enrolledClassIds = enrollments.map((e) => e.classroomId);
 
-  // Get classrooms where enrolled OR admin
+  // Get classrooms where enrolled (admin access handled via Enrollment.role)
   const classrooms = await Classroom.find({
     organization: organizationId,
-    $or: [
-      { _id: { $in: enrolledClassIds } }, // Enrolled
-      { adminIds: clerkUserId }, // Admin (might not be enrolled yet)
-    ],
+    _id: { $in: enrolledClassIds },
   }).populate({
     path: "ownership",
     select: "firstName lastName",
@@ -197,7 +194,7 @@ exports.getMyClasses = async function (req, res) {
     return {
       ...classroom.toObject(),
       myRole: {
-        isAdmin: classroom.isAdmin(clerkUserId),
+        isAdmin: enrollment?.role === "admin",
         isEnrolled: !!enrollment,
         enrollmentRole: enrollment?.role || null,
       },
