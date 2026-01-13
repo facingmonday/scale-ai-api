@@ -1380,7 +1380,7 @@ The application uses **Bull** (Redis-based queue) for background job processing.
 
 ### Queue Types
 
-- **Simulation** - AI-driven simulation job processing (concurrency: 1)
+- **Simulation** - AI-driven simulation job processing (env-configurable concurrency; defaults to 2)
 - **Email Sending** - Email notifications
 - **PDF Generation** - PDF document generation
 - **SMS Sending** - SMS notifications
@@ -1457,7 +1457,10 @@ Jobs are processed by the **Workers Service** using Bull queue with the followin
 
 **Queue Configuration:**
 
-- **Concurrency**: 1 job at a time (ensures ordering and prevents rate limiting)
+- **Concurrency**: Controlled by `SIMULATION_CONCURRENCY` (default: `2`). Increase gradually.
+- **Optional rate limiting**: You can enable a Bull limiter for simulation jobs with:
+  - `SIMULATION_RATE_LIMIT_MAX` (e.g. `10`)
+  - `SIMULATION_RATE_LIMIT_DURATION_MS` (e.g. `60000` for per-minute)
 - **Retries**: 3 attempts with exponential backoff (1s, 2s, 4s delays)
 - **Failure Handling**: Failed jobs remain in queue for inspection
 

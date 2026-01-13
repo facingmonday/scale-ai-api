@@ -203,7 +203,17 @@ async function autoCreateSubmissionsForScenario({
         task.userId,
         vars,
         organizationId,
-        task.clerkUserId
+        task.clerkUserId,
+        {
+          generation: {
+            method: "AI",
+            meta: {
+              model,
+              absentPunishmentLevel,
+              note: "Auto-created on scenario outcome (USE_AI)",
+            },
+          },
+        }
       );
       created += 1;
     } catch (e) {

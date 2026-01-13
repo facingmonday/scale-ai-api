@@ -191,10 +191,11 @@ enrollmentSchema.statics.requireAdmin = async function (classroomId, userId) {
 /**
  * Get class roster
  * @param {string} classroomId - Class ID
- * @returns {Promise<Array>} Roster array with user info (only org:member role)
+ * @returns {Promise<Array>} Roster array with user info and store (only org:member role)
  */
 enrollmentSchema.statics.getClassRoster = async function (classroomId) {
   const Classroom = require("../classroom/classroom.model");
+  const Store = require("../store/store.model");
 
   // Get classroom to access organization
   const classroom = await Classroom.findById(classroomId);
@@ -228,11 +229,27 @@ enrollmentSchema.statics.getClassRoster = async function (classroomId) {
     return !!orgMembership;
   });
 
+  // Get all stores for this classroom
+  const stores = await Store.getStoresByClass(classroomId);
+
+  // Create a map of userId -> store for quick lookup
+  const storeMap = new Map();
+  stores.forEach((store) => {
+    // getStoresByClass already returns plain objects, but userId might be ObjectId
+    const userId = store.userId?.toString ? store.userId.toString() : String(store.userId);
+    storeMap.set(userId, store);
+  });
+
   return filteredEnrollments.map((enrollment) => {
     const member = enrollment.userId;
     const displayName = member
       ? `${member.firstName || ""} ${member.lastName || ""}`.trim() || "Unknown"
       : "Unknown";
+
+    // Get store for this user
+    const store = member?._id
+      ? storeMap.get(member._id.toString()) || null
+      : null;
 
     return {
       enrollmentId: enrollment._id,
@@ -244,6 +261,7 @@ enrollmentSchema.statics.getClassRoster = async function (classroomId) {
       lastName: member?.lastName || "",
       role: enrollment.role,
       joinedAt: enrollment.joinedAt,
+      store,
     };
   });
 };

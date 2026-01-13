@@ -670,6 +670,7 @@ scenarioSchema.statics.getStoreTypeStats = async function (
       userId: submission.userId,
       store: {
         _id: store._id,
+        studentId: store.studentId,
         shopName: store.shopName,
         storeType: store.storeType,
       },
@@ -962,8 +963,62 @@ scenarioSchema.statics.processScenarioExport = async function (
 ) {
   const Submission = require("../submission/submission.model");
   const LedgerEntry = require("../ledger/ledger.model");
+  const Store = require("../store/store.model");
   const AWS = require("aws-sdk");
   const { Parser } = require("json2csv");
+
+  // Flatten nested objects into a single-level map for CSV columns.
+  // Example: { a: { b: 1 } } => { prefix_a_b: 1 }
+  const toSafeKeyPart = (k) =>
+    String(k)
+      .trim()
+      .replace(/[^a-zA-Z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+
+  const flattenForCsv = (value, prefix) => {
+    const out = {};
+
+    const walk = (v, path) => {
+      if (v === undefined) return;
+      if (v === null) {
+        out[path] = "";
+        return;
+      }
+      if (v instanceof Date) {
+        out[path] = v.toISOString();
+        return;
+      }
+      if (Array.isArray(v)) {
+        if (v.length === 0) {
+          out[path] = "";
+          return;
+        }
+        v.forEach((item, idx) => {
+          walk(item, `${path}_${idx}`);
+        });
+        return;
+      }
+      if (typeof v === "object") {
+        const keys = Object.keys(v);
+        if (keys.length === 0) {
+          out[path] = "";
+          return;
+        }
+        keys.forEach((key) => {
+          const safe = toSafeKeyPart(key) || "key";
+          walk(v[key], `${path}_${safe}`);
+        });
+        return;
+      }
+
+      // Primitive
+      out[path] = v;
+    };
+
+    const safePrefix = toSafeKeyPart(prefix) || "value";
+    walk(value, safePrefix);
+    return out;
+  };
 
   // Get scenario
   const scenario = await this.findById(scenarioId);
@@ -989,13 +1044,40 @@ scenarioSchema.statics.processScenarioExport = async function (
     ledgerMap.set(ledger.userId.toString(), ledger);
   });
 
+  // Load stores so we can export shopName + studentId
+  const classroomId = scenario.classroomId;
+  const userIdsForStores = submissionDocs
+    .map((s) => s?.userId?._id || s?.userId)
+    .filter(Boolean);
+  const stores = userIdsForStores.length
+    ? await Store.find({ classroomId, userId: { $in: userIdsForStores } })
+        .select("userId studentId shopName")
+        .lean()
+    : [];
+  const storeByUserId = new Map(
+    (stores || []).map((st) => [st.userId.toString(), st])
+  );
+
   // Flatten data for CSV
   const csvData = submissionDocs.map((submission) => {
     const submissionObj = submission.toObject();
     const userId =
       submissionObj.userId?._id?.toString() || submissionObj.userId?.toString();
     const ledger = userId ? ledgerMap.get(userId) : null;
+    const store = userId ? storeByUserId.get(userId) : null;
     const variables = submissionObj.variables || {};
+
+    const flattenedInventoryState = ledger
+      ? flattenForCsv(ledger.inventoryState || null, "ledgerInventoryState")
+      : {
+          ledgerInventoryState_refrigeratedUnits: "",
+          ledgerInventoryState_ambientUnits: "",
+          ledgerInventoryState_notForResaleUnits: "",
+        };
+
+    const flattenedEducation = ledger
+      ? flattenForCsv(ledger.education ?? null, "ledgerEducation")
+      : { ledgerEducation: "" };
 
     // Build base row with submission and user data
     const row = {
@@ -1012,6 +1094,14 @@ scenarioSchema.statics.processScenarioExport = async function (
       studentLastName: submissionObj.userId?.lastName || "",
       studentEmail: submissionObj.userId?.maskedEmail || "",
       studentClerkUserId: submissionObj.userId?.clerkUserId || "",
+
+      // Store data
+      storeShopName: store?.shopName || "",
+      storeStudentId: store?.studentId || "",
+
+      // Ledger nested fields (flattened)
+      ...flattenedInventoryState,
+      ...flattenedEducation,
 
       // Submission variables (flattened)
       ...Object.keys(variables).reduce((acc, key) => {

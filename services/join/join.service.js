@@ -173,7 +173,16 @@ async function ensureJoin({ orgId, classroomId, clerkUserId, member }) {
   const clerkMembership = await getOrCreateClerkOrgMembership(orgId, clerkUserId);
   await syncMemberOrgMembership(member, organization, clerkMembership);
 
-  const role = classroom.isAdmin(clerkUserId) ? "admin" : "member";
+  // Determine classroom role:
+  // - org:admin => classroom admin
+  // - classroom owner => classroom admin
+  // - otherwise member
+  const isOrgAdmin = clerkMembership?.role === "org:admin";
+  const isOwner =
+    classroom.ownership?.toString?.() &&
+    member?._id?.toString?.() &&
+    classroom.ownership.toString() === member._id.toString();
+  const role = isOrgAdmin || isOwner ? "admin" : "member";
   const enrollment = await ensureEnrollment({
     classroomId: classroom._id,
     memberId: member._id,
