@@ -722,11 +722,11 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
       "starting-units-ambient": 25,
       "capacity-units-operating-supply": 55,
       "starting-units-operating-supply": 30,
-      "avg-selling-price-per-unit": 16.0,
+      "avg-selling-price-per-unit": 10.0,
     },
     cafe: {
       // balanced defaults
-      "avg-selling-price-per-unit": 16.0,
+      "avg-selling-price-per-unit": 20.0,
     },
     bar_and_grill: {
       "capacity-units-refrigerated": 55,
@@ -735,7 +735,7 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
       "starting-units-ambient": 55,
       "capacity-units-operating-supply": 70,
       "starting-units-operating-supply": 40,
-      "avg-selling-price-per-unit": 16.0,
+      "avg-selling-price-per-unit": 22.0,
     },
     fine_dining: {
       "capacity-units-refrigerated": 90,
@@ -755,7 +755,7 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
       "goods-per-unit-operating-supply": 10,
       "avg-unit-cost-operating-supply": 2.2,
       "holding-cost-per-unit-operating-supply": 0.18,
-      "avg-selling-price-per-pizza": 28.0,
+      "avg-selling-price-per-unit": 35.0,
     },
     street_cart: {
       "capacity-units-refrigerated": 20,
@@ -775,7 +775,7 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
       "goods-per-unit-operating-supply": 14,
       "avg-unit-cost-operating-supply": 1.4,
       "holding-cost-per-unit-operating-supply": 0.12,
-      "avg-selling-price-per-pizza": 10.5,
+      "avg-selling-price-per-unit": 7.0,
     },
     late_night_window: {
       "capacity-units-refrigerated": 50,
@@ -784,7 +784,7 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
       "starting-units-ambient": 45,
       "capacity-units-operating-supply": 75,
       "starting-units-operating-supply": 45,
-      "avg-selling-price-per-unit": 16.0,
+      "avg-selling-price-per-unit": 11.0,
     },
     ghost_kitchen: {
       "capacity-units-refrigerated": 65,
@@ -796,7 +796,7 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
       "starting-units-ambient": 50,
       "capacity-units-operating-supply": 80,
       "starting-units-operating-supply": 50,
-      "avg-selling-price-per-unit": 16.0,
+      "avg-selling-price-per-unit": 24.0,
     },
     campus_kiosk: {
       "capacity-units-refrigerated": 55,
@@ -805,7 +805,7 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
       "starting-units-ambient": 60,
       "capacity-units-operating-supply": 85,
       "starting-units-operating-supply": 55,
-      "avg-selling-price-per-pizza": 10.5,
+      "avg-selling-price-per-unit": 6.0,
     },
     upscale_bistro: {
       "capacity-units-refrigerated": 70,
@@ -821,7 +821,7 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
 
       "capacity-units-operating-supply": 65,
       "starting-units-operating-supply": 35,
-      "avg-selling-price-per-pizza": 22.0,
+      "avg-selling-price-per-unit": 30.0,
     },
     festival_vendor: {
       "capacity-units-refrigerated": 60,
@@ -830,7 +830,7 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
       "starting-units-ambient": 70,
       "capacity-units-operating-supply": 110,
       "starting-units-operating-supply": 70,
-      "avg-selling-price-per-unit": 16.0,
+      "avg-selling-price-per-unit": 9.0,
     },
     franchise_location: {
       "capacity-units-refrigerated": 80,
@@ -847,7 +847,7 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
       "starting-units-operating-supply": 45,
       "avg-unit-cost-operating-supply": 1.5,
       "holding-cost-per-unit-operating-supply": 0.14,
-      "avg-selling-price-per-unit": 16.0,
+      "avg-selling-price-per-unit": 18.0,
     },
   };
 
