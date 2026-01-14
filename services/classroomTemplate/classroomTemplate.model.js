@@ -755,7 +755,7 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
       "goods-per-unit-operating-supply": 10,
       "avg-unit-cost-operating-supply": 2.2,
       "holding-cost-per-unit-operating-supply": 0.18,
-      "avg-selling-price-per-unit": 35.0,
+      "avg-selling-price-per-unit": 48.0,
     },
     street_cart: {
       "capacity-units-refrigerated": 20,
@@ -821,7 +821,7 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
 
       "capacity-units-operating-supply": 65,
       "starting-units-operating-supply": 35,
-      "avg-selling-price-per-unit": 30.0,
+      "avg-selling-price-per-unit": 3.0,
     },
     festival_vendor: {
       "capacity-units-refrigerated": 60,
