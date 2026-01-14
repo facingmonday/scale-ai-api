@@ -493,9 +493,11 @@ async function queueScenarioPublishedEmails(scenario) {
     return;
   }
 
-  // Get all enrolled students (members only)
-  const enrollments = await Enrollment.findByClass(classroomId);
-  const memberEnrollments = enrollments.filter((e) => e.role === "member");
+  // Get all enrolled students (members only) - explicitly exclude admins
+  const memberEnrollments = await Enrollment.findByClassAndRole(
+    classroomId,
+    "member"
+  );
 
   if (memberEnrollments.length === 0) {
     return;
@@ -795,6 +797,7 @@ scenarioSchema.statics.getMissingSubmissions = async function (
 ) {
   const Submission = require("../submission/submission.model");
   const Member = require("../members/member.model");
+  const Store = require("../store/store.model");
 
   const missingUserIds = await Submission.getMissingSubmissions(
     classroomId,
@@ -806,10 +809,32 @@ scenarioSchema.statics.getMissingSubmissions = async function (
     _id: { $in: missingUserIds },
   }).select("_id firstName lastName maskedEmail clerkUserId");
 
-  return missingUsers.map((u) => ({
-    ...u.toObject(),
-    email: u.maskedEmail,
-  }));
+  // Get all stores for this classroom
+  const stores = await Store.getStoresByClass(classroomId);
+
+  // Create a map of userId -> store for quick lookup
+  const storeMap = new Map();
+  stores.forEach((store) => {
+    // getStoresByClass already returns plain objects, but userId might be ObjectId
+    const userId = store.userId?.toString
+      ? store.userId.toString()
+      : String(store.userId);
+    storeMap.set(userId, store);
+  });
+
+  return missingUsers.map((u) => {
+    const userObj = u.toObject();
+    // Get store for this user
+    const store = userObj._id
+      ? storeMap.get(userObj._id.toString()) || null
+      : null;
+
+    return {
+      ...userObj,
+      email: u.maskedEmail,
+      store,
+    };
+  });
 };
 
 /**

@@ -405,14 +405,36 @@ exports.getSubmissionsForScenario = async function (req, res) {
       _id: { $in: missingUserIds },
     }).select("_id firstName lastName maskedEmail clerkUserId");
 
+    // Get all stores for this classroom
+    const stores = await Store.getStoresByClass(classroomId);
+
+    // Create a map of userId -> store for quick lookup
+    const storeMap = new Map();
+    stores.forEach((store) => {
+      // getStoresByClass already returns plain objects, but userId might be ObjectId
+      const userId = store.userId?.toString
+        ? store.userId.toString()
+        : String(store.userId);
+      storeMap.set(userId, store);
+    });
+
     res.json({
       success: true,
       data: {
         submissions: submissionsWithStores,
-        missingSubmissions: missingUsers.map((u) => ({
-          ...u.toObject(),
-          email: u.maskedEmail,
-        })),
+        missingSubmissions: missingUsers.map((u) => {
+          const userObj = u.toObject();
+          // Get store for this user
+          const store = userObj._id
+            ? storeMap.get(userObj._id.toString()) || null
+            : null;
+
+          return {
+            ...userObj,
+            email: u.maskedEmail,
+            store,
+          };
+        }),
         totalEnrolled: submissions.length + missingUsers.length,
         submittedCount: submissions.length,
         missingCount: missingUsers.length,
