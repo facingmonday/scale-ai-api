@@ -821,7 +821,7 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
 
       "capacity-units-operating-supply": 65,
       "starting-units-operating-supply": 35,
-      "avg-selling-price-per-unit": 3.0,
+      "avg-selling-price-per-unit": 36.0,
     },
     festival_vendor: {
       "capacity-units-refrigerated": 60,
