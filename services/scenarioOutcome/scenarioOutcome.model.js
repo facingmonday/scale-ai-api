@@ -29,7 +29,7 @@ const scenarioOutcomeSchema = new mongoose.Schema({
   // Options: "USE_AI", "FORWARD_PREVIOUS", or undefined/null (no auto-generation)
   autoGenerateSubmissionsOnOutcome: {
     type: String,
-    enum: ["USE_AI", "FORWARD_PREVIOUS"],
+    enum: ["USE_AI", "FORWARD_PREVIOUS", "USE_DEFAULTS"],
     default: null,
   },
   // Punishment level for absent students when using FORWARD_PREVIOUS

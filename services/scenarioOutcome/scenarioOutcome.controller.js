@@ -8,7 +8,9 @@ const {
 const {
   forwardPreviousSubmissionsForScenario,
 } = require("../submission/forwardPreviousSubmissionsForScenario");
-
+const {
+  useDefaultsForSubmissions,
+} = require("../submission/useDefaultsForSubmissions");
 /**
  * Set scenario outcome
  * POST /api/admin/scenarios/:scenarioId/outcome
@@ -88,6 +90,20 @@ exports.setScenarioOutcome = async function (req, res) {
         missingStore: autoGenerateResult.missingStore,
         errors: autoGenerateResult.errors?.length || 0,
         punishAbsentStudents: outcome.punishAbsentStudents || "none",
+      });
+    } else if (autoGenerateMode === "USE_DEFAULTS") {
+      // Use defaults for submissions
+      autoGenerateResult = await useDefaultsForSubmissions({
+        scenarioId,
+        organizationId,
+        clerkUserId,
+      });
+
+      console.log("Auto-generated submissions (Defaults):", {
+        created: autoGenerateResult.created,
+        existing: autoGenerateResult.existing,
+        missingStore: autoGenerateResult.missingStore,
+        errors: autoGenerateResult.errors?.length || 0,
       });
     } else if (autoGenerateMode === "FORWARD_PREVIOUS") {
       // Forward previous submissions for missing students

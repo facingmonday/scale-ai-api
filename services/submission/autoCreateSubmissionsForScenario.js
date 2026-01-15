@@ -137,20 +137,21 @@ async function autoCreateSubmissionsForScenario({
 
   // Normalize punishment level (case-insensitive) if provided
   let absentPunishmentLevel = null;
-  if (punishAbsentStudents) {
-    const normalized =
-      typeof punishAbsentStudents === "string"
-        ? punishAbsentStudents.toLowerCase()
-        : String(punishAbsentStudents).toLowerCase();
-    // Only set punishment level if it's not "none"
-    if (
-      normalized !== "none" &&
-      normalized !== null &&
-      normalized !== undefined
-    ) {
-      absentPunishmentLevel = normalized;
-    }
-  }
+  // TODO: JMP removed punishment from submission and added to the submission processing logic
+  // if (punishAbsentStudents) {
+  //   const normalized =
+  //     typeof punishAbsentStudents === "string"
+  //       ? punishAbsentStudents.toLowerCase()
+  //       : String(punishAbsentStudents).toLowerCase();
+  //   // Only set punishment level if it's not "none"
+  //   if (
+  //     normalized !== "none" &&
+  //     normalized !== null &&
+  //     normalized !== undefined
+  //   ) {
+  //     absentPunishmentLevel = normalized;
+  //   }
+  // }
 
   // Generate one submission vars object per storeType
   const generatedByStoreType = new Map();
