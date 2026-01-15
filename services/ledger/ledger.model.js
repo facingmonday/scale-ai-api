@@ -300,7 +300,11 @@ ledgerEntrySchema.statics.getAISimulationResponseJsonSchema = function () {
       },
       netProfit: { type: "number" },
       randomEvent: { type: ["string", "null"] },
-      summary: { type: "string" },
+      summary: {
+        type: "string",
+        description:
+          "A detailed summary of the results of the simultion. Include the key factors that contributed to the results and any other relevant information. If the student was absent, explain why and what the results would have been if they had been present.",
+      },
       education: {
         type: "object",
         required: [
@@ -504,6 +508,8 @@ ledgerEntrySchema.statics.getClassroomBasePrompts = async function (
   const Classroom = require("../classroom/classroom.model");
   const ClassroomTemplate = require("../classroomTemplate/classroomTemplate.model");
 
+  const asJsonEnvelope = (obj) => JSON.stringify(obj);
+
   if (!classroomId) {
     return ClassroomTemplate.getDefaultClassroomPrompts();
   }
@@ -525,7 +531,9 @@ ledgerEntrySchema.statics.getClassroomBasePrompts = async function (
     ...finalPrompts,
     {
       role: "user",
-      content: `CLASSROOM DATA:\n${JSON.stringify(classroomData, null, 2)}`,
+      // Note: OpenAI Chat Completions expects text content; we encode structured data
+      // as a JSON envelope so the model gets stable semantic boundaries.
+      content: asJsonEnvelope({ type: "classroom", data: classroomData }),
     },
   ];
 };
@@ -549,6 +557,22 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
   ledgerHistory,
   inventoryState
 ) {
+  const asJsonEnvelope = (obj) => JSON.stringify(obj);
+
+  // Only pass OpenAI-supported fields on each message (role/content).
+  // This also avoids leaking Mongo document metadata (e.g. _id).
+  const sanitizedBasePrompts = (Array.isArray(basePrompts) ? basePrompts : [])
+    .filter((m) => m && typeof m === "object")
+    .map((m) => ({ role: m.role, content: m.content }))
+    .filter((m) => m.role && typeof m.content === "string");
+
+  // Keep the payload lean: the model needs numeric values, not UI descriptions.
+  const storeForPrompt = (() => {
+    if (!store || typeof store !== "object") return store;
+    const { variablesDetailed, ...rest } = store;
+    return rest;
+  })();
+
   const chancePercent =
     scenarioOutcome?.randomEventChancePercent !== undefined
       ? Number(scenarioOutcome.randomEventChancePercent)
@@ -559,55 +583,52 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
     Math.random() * 100 < chancePercent;
 
   const messages = [
-    ...(Array.isArray(basePrompts) ? basePrompts : []),
+    ...sanitizedBasePrompts,
     {
       role: "user",
-      content: `STORE CONFIGURATION:\n${JSON.stringify(
-        {
-          shopName: store.shopName || "Student Shop",
-          storeType: store.storeType,
+      content: asJsonEnvelope({
+        type: "store_configuration",
+        data: {
+          shopName: store?.shopName || "Student Shop",
+          storeType: store?.storeType,
           // Variables are flattened by getStoreForSimulation, so all variable keys are at top level
-          ...store,
+          ...storeForPrompt,
         },
-        null,
-        2
-      )}`,
+      }),
     },
     {
       role: "user",
-      content: `SCENARIO:\n${JSON.stringify(
-        {
+      content: asJsonEnvelope({
+        type: "scenario",
+        data: {
           title: scenario.title,
           description: scenario.description,
           variables: scenario.variables || {},
         },
-        null,
-        2
-      )}`,
+      }),
     },
     {
       role: "user",
-      content: `GLOBAL SCENARIO OUTCOME:\n${JSON.stringify(
-        {
+      content: asJsonEnvelope({
+        type: "global_scenario_outcome",
+        data: {
           notes: scenarioOutcome.notes || "",
           hiddenNotes: scenarioOutcome.hiddenNotes || "",
-          ...(shouldGenerateEvent
-            ? {
-                randomEvent: `Generate ONE plausible, educational random operational event grounded in the inputs and set randomEvent to that event text (1-3 sentences). Apply its impact in your calculations.`,
-              }
-            : {}),
         },
-        null,
-        2
-      )}`,
+        ...(shouldGenerateEvent
+          ? {
+              randomEventInstruction:
+                "Generate ONE plausible, educational random operational event grounded in the inputs and set randomEvent to that event text (1-3 sentences). Apply its impact in your calculations.",
+            }
+          : {}),
+      }),
     },
     {
       role: "user",
-      content: `STUDENT DECISIONS:\n${JSON.stringify(
-        submission.variables || {},
-        null,
-        2
-      )}`,
+      content: asJsonEnvelope({
+        type: "student_decisions",
+        data: submission.variables || {},
+      }),
     },
   ];
 
@@ -626,11 +647,10 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
 
   messages.push({
     role: "user",
-    content: `CURRENT INVENTORY STATE:\n${JSON.stringify(
-      inventoryState,
-      null,
-      2
-    )}`,
+    content: asJsonEnvelope({
+      type: "current_inventory_state",
+      units: inventoryState,
+    }),
   });
 
   // Add ledger history if available
@@ -649,11 +669,10 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
 
     messages.push({
       role: "user",
-      content: `LEDGER HISTORY:\n${JSON.stringify(
-        { entries: historyData },
-        null,
-        2
-      )}`,
+      content: asJsonEnvelope({
+        type: "ledger_history",
+        entries: historyData,
+      }),
     });
   }
 

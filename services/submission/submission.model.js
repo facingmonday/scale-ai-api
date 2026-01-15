@@ -26,7 +26,7 @@ const submissionSchema = new mongoose.Schema({
   generation: {
     method: {
       type: String,
-      enum: ["MANUAL", "AI", "FORWARDED_PREVIOUS", "AI_FALLBACK"],
+      enum: ["MANUAL", "AI", "FORWARDED_PREVIOUS", "AI_FALLBACK", "DEFAULTS"],
       default: "MANUAL",
       index: true,
     },
@@ -344,6 +344,11 @@ submissionSchema.statics.getSubmissionsByScenario = async function (
     .populate({
       path: "jobs",
       select: "_id status error attempts startedAt completedAt dryRun",
+    })
+    .populate({
+      path: "ledgerEntryId",
+      select:
+        "_id sales revenue costs waste cashBefore cashAfter inventoryState netProfit randomEvent summary",
     });
 
   // Use plugin's efficient batch population
