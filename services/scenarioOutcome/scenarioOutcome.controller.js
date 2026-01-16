@@ -194,7 +194,9 @@ exports.getScenarioOutcome = async function (req, res) {
     const outcome = await ScenarioOutcome.getOutcomeByScenario(scenarioId);
 
     if (!outcome) {
-      return res.status(404).json({ error: "Scenario outcome not found" });
+      // Outcome may legitimately not exist yet (scenario not closed / instructor hasn't set it).
+      // Return a stable 200 response with null data instead of a 404.
+      return res.status(200).json({ success: true, data: null });
     }
 
     res.json({

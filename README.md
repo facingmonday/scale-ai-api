@@ -1071,6 +1071,7 @@ await fetch("/v1/student/store", {
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Get scenario outcome for a scenario
+- **Notes**: Returns `200` with `{ success: true, data: null }` if an outcome hasn't been set yet.
 
 ##### `DELETE /v1/admin/scenarioOutcomes/:scenarioId/outcome`
 
@@ -1083,6 +1084,7 @@ await fetch("/v1/student/store", {
 
 - **Auth**: `requireAuth()`, `checkRole('org:member')`
 - **Description**: Get scenario outcome (student view, after results are published)
+- **Notes**: Returns `200` with `{ success: true, data: null }` if an outcome hasn't been set yet.
 
 ### Submission Routes (`/v1/admin/submissions` and `/v1/student/submission`)
 
