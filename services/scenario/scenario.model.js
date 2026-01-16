@@ -1112,6 +1112,8 @@ scenarioSchema.statics.processScenarioExport = async function (
         ? new Date(submissionObj.submittedAt).toISOString()
         : "",
       submissionProcessingStatus: submissionObj.processingStatus || "pending",
+      submissionGenerationMethod:
+        submissionObj.generation?.method || submissionObj.generationMethod || "MANUAL",
 
       // User/Student data
       userId: userId || "",
