@@ -541,12 +541,14 @@ exports.getCurrentScenario = async function (req, res) {
     const scenario = await Scenario.getActiveScenario(classroomId);
 
     if (!scenario) {
-      return res.status(404).json({ error: "No active scenario found" });
+      // Treat "no current scenario" as an empty state, not an error
+      return res.status(200).json({ success: true, data: null });
     }
 
     // Ensure scenario is published (additional safety check)
     if (!scenario.isPublished) {
-      return res.status(404).json({ error: "No active scenario found" });
+      // Treat "no current scenario" as an empty state, not an error
+      return res.status(200).json({ success: true, data: null });
     }
 
     // Get submission status for this student
@@ -614,7 +616,8 @@ exports.getCurrentScenarioForAdmin = async function (req, res) {
     const scenario = await Scenario.getActiveScenario(classroomId);
 
     if (!scenario) {
-      return res.status(404).json({ error: "No active scenario found" });
+      // Treat "no current scenario" as an empty state, not an error
+      return res.status(200).json({ success: true, data: null });
     }
 
     res.json({
