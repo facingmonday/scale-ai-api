@@ -235,12 +235,15 @@ class SimulationWorker {
       }
     }
 
+    // Jus send the latest ledger entry
+    const latestLedgerEntry = [...ledgerHistory].reverse()[0];
+
     return {
       store,
       scenario,
       scenarioOutcome,
       submission,
-      ledgerHistory,
+      latestLedgerEntry,
       cashBefore,
       inventoryState,
     };

@@ -81,7 +81,50 @@ Allow: /`);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(cors());
+const PROD_CORS_ORIGINS = ["https://app.scalelxp.com"];
+const DEV_CORS_ORIGINS = [
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:5173",
+];
+
+// Optional: comma-separated list, e.g. "http://localhost:3001,https://staging.example.com"
+const EXTRA_CORS_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+const isDev = process.env.NODE_ENV === "development";
+
+// Defaults to strict production allowlist; expands in non-prod for local dev.
+const ALLOWED_CORS_ORIGINS = new Set([
+  ...PROD_CORS_ORIGINS,
+  ...(isDev ? DEV_CORS_ORIGINS : []),
+  ...EXTRA_CORS_ORIGINS,
+]);
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow non-browser / same-origin requests that don't send an Origin header
+      if (!origin) return callback(null, true);
+
+      if (ALLOWED_CORS_ORIGINS.has(origin)) return callback(null, true);
+      return callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    optionsSuccessStatus: 204,
+  })
+);
+
+// Return a clean 403 for disallowed CORS origins (instead of default 500)
+app.use((err, req, res, next) => {
+  if (err?.message === "Not allowed by CORS") {
+    return res.status(403).json({ error: "CORS origin not allowed" });
+  }
+  next(err);
+});
 
 // Public join endpoint alias for backwards/contract compatibility.
 // This mounts ONLY the join route at /api/join (without exposing the entire /v1 surface under /api).

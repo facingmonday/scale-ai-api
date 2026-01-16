@@ -360,13 +360,31 @@ memberSchema.methods.removeOrganizationMembership = function (organization) {
 };
 
 // Methods for fetching email/phone from Clerk
-memberSchema.methods.getEmailFromClerk = async function () {
+memberSchema.methods.getContactFromClerk = async function () {
   try {
     const clerkUser = await clerkClient.users.getUser(this.clerkUserId);
+
     const primaryEmail = clerkUser.emailAddresses?.find(
       (email) => email.id === clerkUser.primaryEmailAddressId
     );
-    return primaryEmail?.emailAddress || "";
+    const primaryPhone = clerkUser.phoneNumbers?.find(
+      (phone) => phone.id === clerkUser.primaryPhoneNumberId
+    );
+
+    return {
+      email: primaryEmail?.emailAddress || "",
+      phone: primaryPhone?.phoneNumber || "",
+    };
+  } catch (error) {
+    console.error("Error fetching contact info from Clerk:", error);
+    return { email: "", phone: "" };
+  }
+};
+
+memberSchema.methods.getEmailFromClerk = async function () {
+  try {
+    const { email } = await this.getContactFromClerk();
+    return email;
   } catch (error) {
     console.error("Error fetching email from Clerk:", error);
     return "";
@@ -375,11 +393,8 @@ memberSchema.methods.getEmailFromClerk = async function () {
 
 memberSchema.methods.getPhoneFromClerk = async function () {
   try {
-    const clerkUser = await clerkClient.users.getUser(this.clerkUserId);
-    const primaryPhone = clerkUser.phoneNumbers?.find(
-      (phone) => phone.id === clerkUser.primaryPhoneNumberId
-    );
-    return primaryPhone?.phoneNumber || "";
+    const { phone } = await this.getContactFromClerk();
+    return phone;
   } catch (error) {
     console.error("Error fetching phone from Clerk:", error);
     return "";
@@ -1433,42 +1448,7 @@ memberSchema.statics.getOrganizationMembers = async function (
     const formattedMembers = await Promise.all(
       members.map(async (member) => {
         const orgMembership = member.getOrganizationMembership(organization);
-        const formattedMember = await this.formatMemberResponse(
-          member,
-          orgMembership
-        );
-
-        // Ensure masked contact info is populated if not already available
-        if (
-          formattedMember &&
-          (!formattedMember.maskedEmail || !formattedMember.maskedPhone)
-        ) {
-          try {
-            if (member.clerkUserId) {
-              await this.populateMaskedContactInfo(member.clerkUserId);
-            } else {
-              console.warn(
-                `Member ${member._id} missing clerkUserId; skipping masked contact population`
-              );
-            }
-            // Re-format with updated masked fields
-            const updatedMember = await this.findById(member._id);
-            const updatedOrgMembership =
-              updatedMember.getOrganizationMembership(organization);
-            return await this.formatMemberResponse(
-              updatedMember,
-              updatedOrgMembership
-            );
-          } catch (error) {
-            console.warn(
-              `Could not populate masked contact info for member ${member._id}:`,
-              error.message
-            );
-            // Return original formatted member if population fails
-          }
-        }
-
-        return formattedMember;
+        return await this.formatMemberResponse(member, orgMembership);
       })
     );
 
@@ -1514,42 +1494,7 @@ memberSchema.statics.searchMembers = async function (
     const formattedMembers = await Promise.all(
       members.map(async (member) => {
         const orgMembership = member.getOrganizationMembership(organization);
-        const formattedMember = await this.formatMemberResponse(
-          member,
-          orgMembership
-        );
-
-        // Ensure masked contact info is populated if not already available
-        if (
-          formattedMember &&
-          (!formattedMember.maskedEmail || !formattedMember.maskedPhone)
-        ) {
-          try {
-            if (member.clerkUserId) {
-              await this.populateMaskedContactInfo(member.clerkUserId);
-            } else {
-              console.warn(
-                `Member ${member._id} missing clerkUserId; skipping masked contact population`
-              );
-            }
-            // Re-format with updated masked fields
-            const updatedMember = await this.findById(member._id);
-            const updatedOrgMembership =
-              updatedMember.getOrganizationMembership(organization);
-            return await this.formatMemberResponse(
-              updatedMember,
-              updatedOrgMembership
-            );
-          } catch (error) {
-            console.warn(
-              `Could not populate masked contact info for member ${member._id}:`,
-              error.message
-            );
-            // Return original formatted member if population fails
-          }
-        }
-
-        return formattedMember;
+        return await this.formatMemberResponse(member, orgMembership);
       })
     );
 

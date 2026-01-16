@@ -1076,7 +1076,7 @@ scenarioSchema.statics.processScenarioExport = async function (
     .filter(Boolean);
   const stores = userIdsForStores.length
     ? await Store.find({ classroomId, userId: { $in: userIdsForStores } })
-        .select("userId studentId shopName")
+        .select("userId studentId shopName imageUrl")
         .lean()
     : [];
   const storeByUserId = new Map(

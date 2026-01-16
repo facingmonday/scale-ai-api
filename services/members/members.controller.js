@@ -76,7 +76,7 @@ exports.getMemberById = async (req, res) => {
     const formattedMember = await Member.formatMemberResponse(
       member,
       orgMembership,
-      true
+      false
     );
 
     res.status(200).json(formattedMember);
@@ -399,13 +399,43 @@ exports.exportMembers = async (req, res) => {
           `Starting member export for organization ${organization._id}, sending to ${recipientEmail}`
         );
 
-        // Fetch all members with emails (throttled to avoid rate limits)
-        const membersData = await Member.getAllMembersWithEmails(
-          organization,
-          { rateLimitDelay: 1000 } // 1 second delay between Clerk API calls
-        );
+        // Fetch all members locally (no Clerk API calls). Exports contain only local fields.
+        const members = await Member.findByOrganization(organization, {}).sort({
+          "organizationMemberships.createdAt": -1,
+        });
 
-        console.log(`Fetched ${membersData.length} members with email data`);
+        const membersData = members
+          .map((member) => {
+            const orgMembership = member.getOrganizationMembership(organization);
+            if (!orgMembership) return null;
+
+            return {
+              id: member._id?.toString() || "",
+              clerkUserId: member.clerkUserId || "",
+              firstName: member.firstName || "",
+              lastName: member.lastName || "",
+              fullName: member.fullName || "",
+              username: member.username || "",
+              email: "", // Not stored locally
+              phone: "", // Not stored locally
+              maskedEmail: member.maskedEmail || "",
+              maskedPhone: member.maskedPhone || "",
+              imageUrl: member.imageUrl || "",
+              role: orgMembership.role || "",
+              isActive: orgMembership.publicMetadata?.isActive !== false,
+              subscribed: orgMembership.publicMetadata?.subscribed === true,
+              membershipType:
+                orgMembership.publicMetadata?.membershipType || "basic",
+              tags: orgMembership.publicMetadata?.tags || [],
+              joinedDate: orgMembership.createdAt || null,
+              createdAt: member.createdAt || null,
+              updatedAt: member.updatedAt || null,
+              lastSignInAt: member.lastSignInAt || null,
+            };
+          })
+          .filter(Boolean);
+
+        console.log(`Fetched ${membersData.length} members locally for export`);
 
         // Generate CSV
         const { Parser } = require("json2csv");
