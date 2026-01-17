@@ -68,7 +68,7 @@ exports.joinClass = async function (req, res) {
 
 /**
  * Get class roster
- * GET /api/admin/class/:classroomId/roster?page=0&pageSize=50
+ * GET /api/admin/class/:classroomId/roster?page=0&pageSize=50&search=term
  */
 exports.getClassRoster = async function (req, res) {
   try {
@@ -79,6 +79,7 @@ exports.getClassRoster = async function (req, res) {
     // Parse pagination parameters
     const page = parseInt(req.query.page) || 0;
     const pageSize = parseInt(req.query.pageSize) || 50;
+    const search = (req.query.search || "").trim().toLowerCase();
 
     // Validate admin access
     await Classroom.validateAdminAccess(
@@ -88,7 +89,23 @@ exports.getClassRoster = async function (req, res) {
     );
 
     // Get roster using Enrollment model
-    const roster = await Enrollment.getClassRoster(classroomId);
+    let roster = await Enrollment.getClassRoster(classroomId);
+
+    // Apply search filter if provided
+    if (search) {
+      roster = roster.filter((student) => {
+        const firstName = (student.firstName || "").toLowerCase();
+        const lastName = (student.lastName || "").toLowerCase();
+        const displayName = (student.displayName || "").toLowerCase();
+
+        // Match if search term is found in firstName, lastName, or combined displayName
+        return (
+          firstName.includes(search) ||
+          lastName.includes(search) ||
+          displayName.includes(search)
+        );
+      });
+    }
 
     // Apply pagination in controller
     const totalCount = roster.length;
@@ -202,4 +219,58 @@ exports.getMyClasses = async function (req, res) {
   });
 
   res.json({ success: true, data: enrichedClassrooms });
+};
+
+/**
+ * Export class roster as CSV
+ * POST /api/admin/class/:classroomId/roster/export
+ */
+exports.exportRoster = async function (req, res) {
+  try {
+    const { classroomId } = req.params;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    // Verify classroom exists and user has access
+    const classroom = await Classroom.findById(classroomId);
+    if (!classroom) {
+      return res.status(404).json({ error: "Class not found" });
+    }
+
+    // Verify admin access
+    await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId
+    );
+
+    // Process export to get CSV directly
+    const result = await Enrollment.processRosterExport(
+      classroomId,
+      organizationId
+    );
+
+    // Set headers for CSV download
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${result.fileName}"`
+    );
+    // optional: helps with proxies/buffers
+    res.setHeader("Content-Length", Buffer.byteLength(result.csv, "utf8"));
+
+    return res.status(200).send(result.csv);
+  } catch (error) {
+    console.error("Error exporting roster:", error);
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    if (error.message === "No students found in roster") {
+      return res.status(404).json({ error: error.message });
+    }
+    return res.status(500).json({ error: error.message });
+  }
 };

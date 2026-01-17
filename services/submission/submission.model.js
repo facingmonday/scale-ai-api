@@ -357,9 +357,18 @@ submissionSchema.statics.getSubmissionsByScenario = async function (
   // Variables are automatically included via plugin (already in array format with full definitions)
   return submissions.map((submission) => {
     const submissionObj = submission.toObject();
+    // Ensure legacy submissions (created before generation metadata existed) still expose a method.
+    const generation =
+      submissionObj.generation && typeof submissionObj.generation === "object"
+        ? {
+            ...submissionObj.generation,
+            method: submissionObj.generation.method || "MANUAL",
+          }
+        : { method: "MANUAL" };
 
     return {
       ...submissionObj,
+      generation,
       member: submission.userId
         ? {
             _id: submission.userId._id,
@@ -472,6 +481,14 @@ submissionSchema.statics.getSubmission = async function (
   // Explicitly populate variables before returning (post-init hook may not complete in time)
   await this.populateVariablesForMany([submission]);
   const submissionObj = submission.toObject();
+  // Ensure legacy submissions (created before generation metadata existed) still expose a method.
+  submissionObj.generation =
+    submissionObj.generation && typeof submissionObj.generation === "object"
+      ? {
+          ...submissionObj.generation,
+          method: submissionObj.generation.method || "MANUAL",
+        }
+      : { method: "MANUAL" };
   // Ensure _id is included (should be by default, but make it explicit)
   submissionObj._id = submission._id;
   submissionObj.jobs = submissionObj.jobs || [];
@@ -504,6 +521,14 @@ submissionSchema.statics.getSubmissionsByUser = async function (
   // Variables are automatically included via plugin
   return submissions.map((submission) => {
     const submissionObj = submission.toObject();
+    // Ensure legacy submissions (created before generation metadata existed) still expose a method.
+    submissionObj.generation =
+      submissionObj.generation && typeof submissionObj.generation === "object"
+        ? {
+            ...submissionObj.generation,
+            method: submissionObj.generation.method || "MANUAL",
+          }
+        : { method: "MANUAL" };
     submissionObj.jobs = submissionObj.jobs || [];
     submissionObj.processingStatus =
       submissionObj.processingStatus || "pending";

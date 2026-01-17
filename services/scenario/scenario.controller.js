@@ -541,12 +541,14 @@ exports.getCurrentScenario = async function (req, res) {
     const scenario = await Scenario.getActiveScenario(classroomId);
 
     if (!scenario) {
-      return res.status(404).json({ error: "No active scenario found" });
+      // Treat "no current scenario" as an empty state, not an error
+      return res.status(200).json({ success: true, data: null });
     }
 
     // Ensure scenario is published (additional safety check)
     if (!scenario.isPublished) {
-      return res.status(404).json({ error: "No active scenario found" });
+      // Treat "no current scenario" as an empty state, not an error
+      return res.status(200).json({ success: true, data: null });
     }
 
     // Get submission status for this student
@@ -614,7 +616,8 @@ exports.getCurrentScenarioForAdmin = async function (req, res) {
     const scenario = await Scenario.getActiveScenario(classroomId);
 
     if (!scenario) {
-      return res.status(404).json({ error: "No active scenario found" });
+      // Treat "no current scenario" as an empty state, not an error
+      return res.status(200).json({ success: true, data: null });
     }
 
     res.json({
@@ -823,7 +826,6 @@ exports.deleteScenario = async function (req, res) {
     res.status(500).json({ error: error.message });
   }
 };
-
 /**
  * Export scenario submissions as CSV
  * GET /api/admin/scenarios/:scenarioId/export
@@ -834,39 +836,37 @@ exports.exportScenario = async function (req, res) {
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
-    // Find scenario to verify it exists and user has access
     const scenario = await Scenario.getScenarioById(scenarioId, organizationId);
+    if (!scenario) return res.status(404).json({ error: "Scenario not found" });
 
-    if (!scenario) {
-      return res.status(404).json({ error: "Scenario not found" });
-    }
-
-    // Verify admin access
     await Classroom.validateAdminAccess(
       scenario.classroomId,
       clerkUserId,
       organizationId
     );
 
-    // Process export
+    // ✅ generate CSV content (string or Buffer)
     const result = await Scenario.processScenarioExport(
       scenarioId,
       organizationId
     );
 
-    return res.json({
-      success: true,
-      url: result.s3Url,
-      total: result.total,
-    });
+    // Tell browser to download it
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${result.fileName}"`
+    );
+    // optional: helps with proxies/buffers
+    res.setHeader("Content-Length", Buffer.byteLength(result.csv, "utf8"));
+
+    return res.status(200).send(result.csv);
   } catch (error) {
     console.error("Error exporting scenario:", error);
-    if (error.message === "Class not found") {
+    if (error.message === "Class not found")
       return res.status(404).json({ error: error.message });
-    }
-    if (error.message.includes("Insufficient permissions")) {
+    if (error.message.includes("Insufficient permissions"))
       return res.status(403).json({ error: error.message });
-    }
-    res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: error.message });
   }
 };
