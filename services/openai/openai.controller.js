@@ -36,6 +36,12 @@ exports.completion = async function (req, res) {
 exports.generateImage = async function (req, res) {
   try {
     const { prompt, bucket = "images", size, quality = "low" } = req.body;
+    const allowedQualities = new Set(["low", "medium", "high"]);
+    const normalizedQuality =
+      typeof quality === "string" ? quality.toLowerCase() : "low";
+    const safeQuality = allowedQualities.has(normalizedQuality)
+      ? normalizedQuality
+      : "low";
     // Check if prompt exists
     if (!prompt && !size) {
       return res
@@ -55,7 +61,7 @@ exports.generateImage = async function (req, res) {
       prompt: prompt,
       n: 1,
       size: size,
-      quality: quality,
+      quality: safeQuality,
     });
     const image_b64_json = newImageResponse.data[0].b64_json;
     const endTime = Date.now();

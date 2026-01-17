@@ -590,9 +590,16 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
         type: "store_configuration",
         data: {
           shopName: store?.shopName || "Student Shop",
-          storeType: store?.storeType,
           // Variables are flattened by getStoreForSimulation, so all variable keys are at top level
           ...storeForPrompt,
+          // StoreType in simulation context may be a key string (legacy) + separate id/label/description.
+          // Provide a stable object to the model for richer reasoning.
+          storeType: {
+            id: store?.storeTypeId || null,
+            key: store?.storeType || null,
+            label: store?.storeTypeLabel || store?.storeType || null,
+            description: store?.storeTypeDescription || "",
+          },
         },
       }),
     },
@@ -611,9 +618,33 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
       role: "user",
       content: asJsonEnvelope({
         type: "global_scenario_outcome",
+        // IMPORTANT: This is the realized world-state for the scenario (what actually happened),
+        // and MUST be applied in the calculations even if it contradicts the scenario's expected conditions.
+        //
+        // Example: if the scenario expects good weather but the outcome says it rained, outdoor-dependent
+        // businesses should generally suffer (lower demand / higher waste / higher costs), while indoor
+        // businesses may do better. Apply these impacts in demandActual, sales, costs, waste, and pricing.
+        instruction:
+          "Treat this outcome as authoritative realized conditions. Apply it directly in your calculations. " +
+          "If it contradicts scenario expectations, outcome wins. Reflect impacts in demandActual, sales, realizedUnitPrice, costs, waste, and netProfit. " +
+          "Keep results grounded in the store type and store configuration.",
         data: {
-          notes: scenarioOutcome.notes || "",
-          hiddenNotes: scenarioOutcome.hiddenNotes || "",
+          notes: scenarioOutcome?.notes || "",
+          hiddenNotes: scenarioOutcome?.hiddenNotes || "",
+          // Include additional outcome knobs for model context (even if some are only operationally used by the app).
+          randomEventChancePercent:
+            scenarioOutcome?.randomEventChancePercent !== undefined
+              ? Number(scenarioOutcome.randomEventChancePercent)
+              : 0,
+          autoGenerateSubmissionsOnOutcome:
+            scenarioOutcome?.autoGenerateSubmissionsOnOutcome || null,
+          punishAbsentStudents: scenarioOutcome?.punishAbsentStudents || null,
+          // Forward-compatible: allow structured variables if present (some workers expect this).
+          variables:
+            scenarioOutcome?.variables &&
+            typeof scenarioOutcome.variables === "object"
+              ? scenarioOutcome.variables
+              : {},
         },
         ...(shouldGenerateEvent
           ? {

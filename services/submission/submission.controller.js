@@ -903,9 +903,17 @@ exports.getSubmissions = async function (req, res) {
     // Format submissions
     const formattedSubmissions = submissions.map((submission) => {
       const submissionObj = submission.toObject();
+      const generation =
+        submissionObj.generation && typeof submissionObj.generation === "object"
+          ? {
+              ...submissionObj.generation,
+              method: submissionObj.generation.method || "MANUAL",
+            }
+          : { method: "MANUAL" };
 
       return {
         ...submissionObj,
+        generation,
         member: submission.userId
           ? {
               _id: submission.userId._id,
