@@ -19,7 +19,8 @@
     "seed:demo": "node scripts/seed-demo.js",
     "seed:store-types-from-presets": "node scripts/seed-store-types-from-presets.js",
     "seed:submission-variables": "node scripts/seed-submission-variables.js",
-    "sync:clerk": "node scripts/sync-clerk.js"
+    "sync:clerk": "node scripts/sync-clerk.js",
+    "sim:cli": "node apps/sim-cli/index.js"
   },
   "keywords": [],
   "author": "",

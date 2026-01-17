@@ -38,6 +38,12 @@ class SimulationWorker {
       // Run AI simulation
       const aiResult = await LedgerEntry.runAISimulation(context);
 
+      const round2 = (n) => {
+        const x = Number(n);
+        if (!Number.isFinite(x)) return n;
+        return Math.round((x + Number.EPSILON) * 100) / 100;
+      };
+
       // Validate and correct cashBefore if needed
       // The AI should calculate this from ledger history, but we ensure continuity
       const expectedCashBefore = context.cashBefore;
@@ -61,6 +67,12 @@ class SimulationWorker {
         );
         aiResult.netProfit = expectedNetProfit;
       }
+
+      // Stabilize currency formatting (cents) to prevent float drift in persisted ledger values
+      aiResult.cashBefore = round2(aiResult.cashBefore);
+      aiResult.cashAfter = round2(aiResult.cashAfter);
+      aiResult.netProfit = round2(aiResult.cashAfter - aiResult.cashBefore);
+      aiResult.cashAfter = round2(aiResult.cashBefore + aiResult.netProfit);
 
       // If not a dry run, write to ledger
       if (!job.dryRun) {
@@ -234,6 +246,18 @@ class SimulationWorker {
         };
       }
     }
+
+    // Stabilize expected input values (cents + integer units) so the model and checks are consistent
+    cashBefore = Math.round((Number(cashBefore) + Number.EPSILON) * 100) / 100;
+    inventoryState = {
+      refrigeratedUnits: Math.round(
+        Number(inventoryState.refrigeratedUnits) || 0
+      ),
+      ambientUnits: Math.round(Number(inventoryState.ambientUnits) || 0),
+      notForResaleUnits: Math.round(
+        Number(inventoryState.notForResaleUnits) || 0
+      ),
+    };
 
     // Jus send the latest ledger entry
     const latestLedgerEntry = [...ledgerHistory].reverse()[0];

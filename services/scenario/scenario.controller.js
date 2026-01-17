@@ -7,6 +7,9 @@ const JobService = require("../job/lib/jobService");
 const LedgerEntry = require("../ledger/ledger.model");
 const SimulationWorker = require("../job/lib/simulationWorker");
 const {
+  enqueueSimulationBatchSubmit,
+} = require("../../lib/queues/simulation-batch-worker");
+const {
   autoCreateSubmissionsForScenario,
 } = require("../submission/autoCreateSubmissionsForScenario");
 
@@ -485,13 +488,25 @@ exports.rerunScenario = async function (req, res) {
     // 3. Recreate jobs for all submissions
     // Jobs are automatically enqueued to Bull queue by createJobsForScenario -> createJob
     // The Bull queue worker will process them asynchronously
+    const simulationMode = String(process.env.SIMULATION_MODE || "direct");
+    const useBatch = simulationMode === "batch";
     const jobs = await JobService.createJobsForScenario(
       scenarioId,
       scenario.classroomId,
       false, // dryRun = false
       organizationId,
-      clerkUserId
+      clerkUserId,
+      { enqueue: !useBatch }
     );
+
+    if (useBatch) {
+      await enqueueSimulationBatchSubmit({
+        scenarioId,
+        classroomId: scenario.classroomId,
+        organizationId,
+        clerkUserId,
+      });
+    }
 
     res.json({
       success: true,
