@@ -542,6 +542,13 @@ storeSchema.statics.getStoreForSimulation = async function (
   const storeTypeKey = store.storeTypeKey || store.storeType?.key || null;
   const storeTypeId =
     store.storeType?._id?.toString() || store.storeType?.toString() || null;
+  const storeTypeLabel =
+    store.storeTypeLabel || store.storeType?.label || storeTypeKey || null;
+  const storeTypeDescription =
+    store.storeType?.description !== undefined &&
+    store.storeType?.description !== null
+      ? String(store.storeType.description)
+      : "";
 
   // Return normalized object for AI simulation
   // Flatten store data: include storeType key and variables directly
@@ -551,6 +558,8 @@ storeSchema.statics.getStoreForSimulation = async function (
     shopName: store.shopName,
     storeType: storeTypeKey, // Return key for compatibility
     storeTypeId: storeTypeId, // Also include ID
+    storeTypeLabel,
+    storeTypeDescription,
     storeDescription: store.storeDescription,
     storeLocation: store.storeLocation,
     // Flat values at top-level (backward compatibility + easiest for AI)
