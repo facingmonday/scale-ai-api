@@ -976,12 +976,6 @@ scenarioSchema.statics.deleteScenario = async function (scenarioId) {
   return scenario;
 };
 
-/**
- * Process scenario export - generates CSV with all submissions and uploads to S3
- * @param {string} scenarioId - Scenario ID
- * @param {string} organizationId - Organization ID
- * @returns {Promise<Object>} Export result with s3Url and total
- */
 scenarioSchema.statics.processScenarioExport = async function (
   scenarioId,
   organizationId
@@ -1179,48 +1173,18 @@ scenarioSchema.statics.processScenarioExport = async function (
     return row;
   });
 
-  // Generate CSV
-  // If no submissions, return empty result
-  if (csvData.length === 0) {
+  if (csvData.length === 0)
     throw new Error("No submissions found for this scenario");
-  }
 
-  // Let json2csv auto-detect all fields from all rows (handles dynamic variable columns)
   const parser = new Parser();
   const csv = parser.parse(csvData);
 
-  // Upload to S3/Spaces
-  const spacesEndpoint = new AWS.Endpoint(
-    "https://nyc3.digitaloceanspaces.com"
-  );
-  const s3 = new AWS.S3({
-    endpoint: spacesEndpoint,
-    accessKeyId: process.env.SPACES_API_KEY,
-    secretAccessKey: process.env.SPACES_API_SECRET,
-  });
-
   const timestamp = Date.now();
   const fileName = `scenario_${scenarioId}_export_${timestamp}.csv`;
-  const keyPath = `organizations/${organizationId}/exports/${fileName}`;
-
-  const uploadParams = {
-    Bucket: process.env.SPACES_BUCKET,
-    Key: keyPath,
-    Body: csv,
-    ACL: "public-read",
-    ContentType: "text/csv",
-  };
-
-  const uploadResult = await s3.upload(uploadParams).promise();
-  let fileUrl = uploadResult.Location;
-
-  // Ensure URL has https
-  if (!fileUrl.startsWith("http")) {
-    fileUrl = "https://" + fileUrl;
-  }
 
   return {
-    s3Url: fileUrl,
+    csv,
+    fileName,
     total: csvData.length,
   };
 };
