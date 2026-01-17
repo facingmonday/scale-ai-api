@@ -16,6 +16,8 @@ const { randomUUID } = require("crypto");
 // Load all mongoose models
 require("../../models");
 
+const openai = require("../../lib/openai");
+
 const Organization = require("../../services/organizations/organization.model");
 const Member = require("../../services/members/member.model");
 const Classroom = require("../../services/classroom/classroom.model");
@@ -26,16 +28,41 @@ const Store = require("../../services/store/store.model");
 const Scenario = require("../../services/scenario/scenario.model");
 const ScenarioOutcome = require("../../services/scenarioOutcome/scenarioOutcome.model");
 const LedgerEntry = require("../../services/ledger/ledger.model");
+const Submission = require("../../services/submission/submission.model");
+const VariableDefinition = require("../../services/variableDefinition/variableDefinition.model");
 const {
-  autoCreateSubmissionsForScenario,
-} = require("../../services/submission/autoCreateSubmissionsForScenario");
-const {
-  useDefaultsForSubmissions,
-} = require("../../services/submission/useDefaultsForSubmissions");
+  generateSubmissionVariablesForStoreType,
+} = require("../../services/submission/autoSubmissionGenerator");
 const JobService = require("../../services/job/lib/jobService");
 const {
   enqueueSimulationBatchSubmit,
 } = require("../../lib/queues/simulation-batch-worker");
+
+const COLOR_ENABLED =
+  !!process.stdout.isTTY &&
+  String(process.env.NO_COLOR || "").trim() === "" &&
+  String(process.env.TERM || "").toLowerCase() !== "dumb";
+
+const ansi = {
+  reset: "\x1b[0m",
+  bold: "\x1b[1m",
+  dim: "\x1b[2m",
+  red: "\x1b[31m",
+  green: "\x1b[32m",
+  yellow: "\x1b[33m",
+  blue: "\x1b[34m",
+  magenta: "\x1b[35m",
+  cyan: "\x1b[36m",
+};
+
+function color(text, ...styles) {
+  if (!COLOR_ENABLED) return String(text);
+  const prefix = styles
+    .map((s) => ansi[s])
+    .filter(Boolean)
+    .join("");
+  return `${prefix}${text}${ansi.reset}`;
+}
 
 function toSafeSlugPart(value) {
   return String(value || "")
@@ -118,9 +145,14 @@ async function promptChoice(rl, question, options, { defaultIndex = 0 } = {}) {
   if (!Array.isArray(options) || options.length === 0) {
     throw new Error("promptChoice requires at least one option");
   }
-  console.log(question);
+  console.log(color(question, "bold"));
   options.forEach((opt, idx) => {
-    console.log(`  ${idx + 1}) ${opt.label}`);
+    const isDefault = idx === defaultIndex;
+    const num = color(String(idx + 1), "cyan");
+    const label = isDefault
+      ? `${opt.label} ${color("(default)", "dim")}`
+      : opt.label;
+    console.log(`  ${num}) ${label}`);
   });
   const chosen = await promptInt(rl, "Select option", {
     defaultValue: defaultIndex + 1,
@@ -128,6 +160,184 @@ async function promptChoice(rl, question, options, { defaultIndex = 0 } = {}) {
     max: options.length,
   });
   return options[chosen - 1].value;
+}
+
+async function ensureEnrollmentInClass({
+  classroomId,
+  memberId,
+  role,
+  organizationId,
+  clerkUserId,
+}) {
+  const existing = await Enrollment.findOne({ classroomId, userId: memberId });
+  if (existing && !existing.isRemoved) return existing;
+  if (existing && existing.isRemoved) {
+    existing.isRemoved = false;
+    existing.removedAt = null;
+    existing.role = role;
+    existing.organization = organizationId;
+    existing.updatedBy = clerkUserId;
+    existing.updatedDate = new Date();
+    await existing.save();
+    return existing;
+  }
+  const enrollment = new Enrollment({
+    classroomId,
+    userId: memberId,
+    role,
+    joinedAt: new Date(),
+    isRemoved: false,
+    organization: organizationId,
+    createdBy: clerkUserId,
+    updatedBy: clerkUserId,
+  });
+  await enrollment.save();
+  return enrollment;
+}
+
+async function chooseOrCreateClassroom({
+  rl,
+  nonInteractive,
+  organizationDoc,
+}) {
+  const existing = await Classroom.find({
+    organization: organizationDoc._id,
+    isActive: true,
+  })
+    .select("_id name description createdDate")
+    .sort({ createdDate: -1 })
+    .lean();
+
+  if (nonInteractive || !rl) {
+    return { mode: "create" };
+  }
+
+  const options = [
+    { label: "Create a new classroom", value: { mode: "create" } },
+    ...existing.map((c) => ({
+      label: `Use existing: ${c.name} ${color(`(${c._id})`, "dim")}`,
+      value: { mode: "existing", classroomId: c._id },
+    })),
+  ];
+
+  return await promptChoice(
+    rl,
+    "Classroom: choose an existing classroom or create a new one",
+    options,
+    { defaultIndex: 0 }
+  );
+}
+
+async function generateScenarioOutcomeViaAI({
+  organizationName,
+  classroomName,
+  classroomDescription,
+  storeTypeLabels,
+}) {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY is not set");
+  }
+
+  const schema = {
+    type: "object",
+    additionalProperties: false,
+    required: [
+      "title",
+      "description",
+      "outcomeNotes",
+      "randomEventChancePercent",
+      "weather",
+      "campusEvent",
+      "footTrafficExpectation",
+    ],
+    properties: {
+      title: { type: "string" },
+      description: { type: "string" },
+      outcomeNotes: { type: "string" },
+      randomEventChancePercent: { type: "number", minimum: 0, maximum: 100 },
+      weather: {
+        type: "string",
+        enum: [
+          "sunny",
+          "cloudy",
+          "rainy",
+          "stormy",
+          "snowy",
+          "heatwave",
+          "cold_snap",
+        ],
+      },
+      campusEvent: { type: "string" },
+      footTrafficExpectation: {
+        type: "string",
+        enum: ["very_low", "low", "normal", "high", "very_high"],
+      },
+    },
+  };
+
+  const promptPayload = {
+    organizationName,
+    classroomName,
+    classroomDescription,
+    storeTypes: storeTypeLabels,
+    styleGuide: {
+      scope:
+        "GLOBAL campus-wide scenario (not specific to a single store type)",
+      include: [
+        "Weather conditions",
+        "A fictional campus event (sports game, career fair, orientation, concert, etc.)",
+        "Foot traffic expectations (qualitative, and explain why)",
+        "Operational implications for pizza demand / staffing / inventory",
+      ],
+      tone: "Realistic, teaching-oriented, concise (3-6 sentences each for description and outcomeNotes)",
+    },
+  };
+
+  const res = await openai.chat.completions.create({
+    model: process.env.SIM_SCENARIO_MODEL || "gpt-4o-mini",
+    temperature: 0.4,
+    max_tokens: 500,
+    messages: [
+      {
+        role: "system",
+        content:
+          "You generate a GLOBAL weekly campus scenario and an instructor outcome summary for a pizza operations simulation. The scenario should reference weather, a fictional campus event, and foot traffic expectations. Return ONLY JSON matching the provided schema.",
+      },
+      {
+        role: "user",
+        content:
+          "Generate a scenario and outcome for the next week.\n" +
+          JSON.stringify(promptPayload, null, 2),
+      },
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: { name: "scenario_outcome", schema },
+    },
+  });
+
+  const content = res.choices?.[0]?.message?.content || "{}";
+  let parsed = null;
+  try {
+    parsed = JSON.parse(content);
+  } catch (e) {
+    throw new Error(`Failed to parse AI JSON: ${e.message}`);
+  }
+
+  const pct = Math.max(
+    0,
+    Math.min(100, Math.round(Number(parsed.randomEventChancePercent) || 0))
+  );
+
+  return {
+    title: String(parsed.title || "").trim(),
+    description: String(parsed.description || "").trim(),
+    outcomeNotes: String(parsed.outcomeNotes || "").trim(),
+    randomEventChancePercent: pct,
+    weather: String(parsed.weather || "").trim(),
+    campusEvent: String(parsed.campusEvent || "").trim(),
+    footTrafficExpectation: String(parsed.footTrafficExpectation || "").trim(),
+  };
 }
 
 function buildMongoUrlFromParts() {
@@ -182,6 +392,339 @@ async function findNextSuffixNumber({ model, field, prefix }) {
     if (Number.isFinite(n)) max = Math.max(max, n);
   }
   return max + 1;
+}
+
+function toObjectIdString(v) {
+  try {
+    return v?.toString?.() || String(v);
+  } catch (_) {
+    return String(v);
+  }
+}
+
+async function autoCreateSubmissionsForUsersAI({
+  scenarioId,
+  classroomId,
+  organizationId,
+  clerkUserId,
+  userIds,
+  options = {},
+}) {
+  const {
+    model = process.env.AUTO_SUBMISSION_MODEL || "gpt-4o-mini",
+    includeExisting = true,
+  } = options;
+
+  if (!process.env.OPENAI_API_KEY) {
+    return {
+      skipped: true,
+      reason: "OPENAI_API_KEY not set",
+      created: 0,
+      existing: 0,
+      missingStore: 0,
+      errors: [],
+    };
+  }
+
+  const scenario = await Scenario.findOne({
+    _id: scenarioId,
+    organization: organizationId,
+  });
+  if (!scenario) throw new Error("Scenario not found");
+  if (!scenario.isPublished || scenario.isClosed) {
+    return {
+      skipped: true,
+      reason: "Scenario not published or already closed",
+      created: 0,
+      existing: 0,
+      missingStore: 0,
+      errors: [],
+    };
+  }
+
+  const hydratedScenario = await Scenario.getScenarioById(
+    scenarioId,
+    organizationId
+  );
+
+  const uniqueUserIds = Array.from(
+    new Set((userIds || []).map((id) => toObjectIdString(id)))
+  );
+  if (uniqueUserIds.length === 0) {
+    return {
+      skipped: false,
+      created: 0,
+      existing: 0,
+      missingStore: 0,
+      errors: [],
+    };
+  }
+
+  // Load members for clerkUserId attribution (local-only mocked users are fine)
+  const members = await Member.find({ _id: { $in: uniqueUserIds } })
+    .select("_id clerkUserId")
+    .lean();
+  const clerkByMemberId = new Map(
+    members.map((m) => [toObjectIdString(m._id), m.clerkUserId])
+  );
+
+  // Load stores for the provided users only
+  const stores = await Store.find({
+    classroomId,
+    userId: { $in: uniqueUserIds },
+  })
+    .select("userId storeType")
+    .lean();
+  const storeByUserId = new Map(
+    stores.map((s) => [toObjectIdString(s.userId), s])
+  );
+
+  // Group users by storeTypeId
+  const usersByStoreTypeId = new Map(); // storeTypeId -> [{ userId, clerkUserId }]
+  let missingStore = 0;
+  for (const uid of uniqueUserIds) {
+    const store = storeByUserId.get(uid);
+    if (!store) {
+      missingStore += 1;
+      continue;
+    }
+    const storeTypeId =
+      store.storeType?.toString?.() || String(store.storeType);
+    if (!usersByStoreTypeId.has(storeTypeId))
+      usersByStoreTypeId.set(storeTypeId, []);
+    usersByStoreTypeId.get(storeTypeId).push({
+      userId: uid,
+      clerkUserId: clerkByMemberId.get(uid) || clerkUserId,
+    });
+  }
+
+  const storeTypeIds = Array.from(usersByStoreTypeId.keys());
+  const storeTypeDocs = await StoreType.find({
+    _id: { $in: storeTypeIds },
+    organization: organizationId,
+    isActive: true,
+  });
+  await Promise.all(storeTypeDocs.map((st) => st._loadVariables()));
+  const storeTypeById = new Map(
+    storeTypeDocs.map((st) => [toObjectIdString(st._id), st])
+  );
+
+  // Generate one vars object per storeType, then reuse for all users of that type
+  const varsByStoreTypeId = new Map();
+  for (const storeTypeId of storeTypeIds) {
+    const storeTypeDoc = storeTypeById.get(toObjectIdString(storeTypeId));
+    if (!storeTypeDoc) {
+      throw new Error(`StoreType not found or inactive: ${storeTypeId}`);
+    }
+    const vars = await generateSubmissionVariablesForStoreType({
+      classroomId,
+      storeTypeKey: storeTypeDoc.key,
+      storeTypeVariables: storeTypeDoc.variables || {},
+      scenario: hydratedScenario,
+      organizationId,
+      clerkUserId,
+      model,
+      absentPunishmentLevel: null,
+    });
+    varsByStoreTypeId.set(storeTypeId, vars);
+  }
+
+  let created = 0;
+  let existing = 0;
+  const errors = [];
+
+  for (const [storeTypeId, users] of usersByStoreTypeId) {
+    const vars = varsByStoreTypeId.get(storeTypeId);
+    for (const u of users) {
+      try {
+        await Submission.createSubmission(
+          classroomId,
+          scenarioId,
+          u.userId,
+          vars,
+          organizationId,
+          u.clerkUserId,
+          {
+            generation: {
+              method: "AI",
+              meta: {
+                model,
+                note: "sim-cli: auto-created for simulated students",
+              },
+            },
+          }
+        );
+        created += 1;
+      } catch (e) {
+        const msg = e?.message || String(e);
+        if (includeExisting && msg.toLowerCase().includes("already exists")) {
+          existing += 1;
+        } else {
+          errors.push({ userId: toObjectIdString(u.userId), error: msg });
+        }
+      }
+    }
+  }
+
+  return {
+    skipped: false,
+    created,
+    existing,
+    missingStore,
+    errors,
+  };
+}
+
+async function createDefaultSubmissionsForUsers({
+  scenarioId,
+  classroomId,
+  organizationId,
+  clerkUserId,
+  userIds,
+}) {
+  const scenario = await Scenario.findOne({
+    _id: scenarioId,
+    organization: organizationId,
+  });
+  if (!scenario) throw new Error("Scenario not found");
+  if (!scenario.isPublished || scenario.isClosed) {
+    return {
+      skipped: true,
+      reason: "Scenario not published or already closed",
+      created: 0,
+      existing: 0,
+      missingStore: 0,
+      errors: [],
+    };
+  }
+
+  const uniqueUserIds = Array.from(
+    new Set((userIds || []).map((id) => toObjectIdString(id)))
+  );
+  if (uniqueUserIds.length === 0) {
+    return {
+      skipped: false,
+      created: 0,
+      existing: 0,
+      missingStore: 0,
+      errors: [],
+    };
+  }
+
+  const stores = await Store.find({
+    classroomId,
+    userId: { $in: uniqueUserIds },
+  })
+    .select("userId")
+    .lean();
+  const storeByUserId = new Map(
+    stores.map((s) => [toObjectIdString(s.userId), s])
+  );
+
+  let created = 0;
+  let existing = 0;
+  let missingStore = 0;
+  const errors = [];
+
+  // Apply defaults once (same for all users)
+  const varsWithDefaults = await VariableDefinition.applyDefaults(
+    classroomId,
+    "submission",
+    {}
+  );
+  const validation = await VariableDefinition.validateValues(
+    classroomId,
+    "submission",
+    varsWithDefaults
+  );
+  if (!validation.isValid) {
+    throw new Error(
+      `Defaults validation failed: ${validation.errors.map((e) => e.message).join(", ")}`
+    );
+  }
+
+  for (const userId of uniqueUserIds) {
+    try {
+      const userIdStr = toObjectIdString(userId);
+      if (!storeByUserId.has(userIdStr)) {
+        missingStore += 1;
+        errors.push({ userId: userIdStr, error: "No store found for user" });
+        continue;
+      }
+
+      const existingSubmission = await Submission.findOne({
+        classroomId,
+        scenarioId,
+        userId,
+      }).select("_id");
+      if (existingSubmission) {
+        existing += 1;
+        continue;
+      }
+
+      await Submission.createSubmission(
+        classroomId,
+        scenarioId,
+        userId,
+        varsWithDefaults,
+        organizationId,
+        clerkUserId,
+        {
+          generation: {
+            method: "MANUAL",
+            meta: { note: "sim-cli: defaults for simulated students" },
+          },
+        }
+      );
+      created += 1;
+    } catch (e) {
+      errors.push({
+        userId: toObjectIdString(userId),
+        error: e?.message || String(e),
+      });
+    }
+  }
+
+  return { skipped: false, created, existing, missingStore, errors };
+}
+
+async function createJobsForScenarioForUserIds({
+  scenarioId,
+  classroomId,
+  organizationId,
+  clerkUserId,
+  userIds,
+  enqueue,
+  dryRun,
+}) {
+  const uniqueUserIds = Array.from(
+    new Set((userIds || []).map((id) => toObjectIdString(id)))
+  );
+  if (uniqueUserIds.length === 0) return [];
+
+  const submissions = await Submission.find({
+    scenarioId,
+    classroomId,
+    userId: { $in: uniqueUserIds },
+  })
+    .select("_id userId")
+    .lean();
+
+  const jobs = [];
+  for (const s of submissions) {
+    const job = await JobService.createJob({
+      classroomId,
+      scenarioId,
+      userId: s.userId,
+      dryRun,
+      submissionId: s._id,
+      organizationId,
+      clerkUserId,
+      enqueue,
+    });
+    jobs.push(job);
+  }
+  return jobs;
 }
 
 function toDisplayName(member) {
@@ -349,36 +892,97 @@ async function main() {
           { defaultIndex: 0 }
         );
 
-    const studentCount = args.nonInteractive
-      ? 10
-      : await promptInt(rl, "How many students?", {
-          defaultValue: 10,
-          min: 1,
-          max: 500,
-        });
-
-    const scenarioTitle = await promptLine(rl, "Scenario title", {
-      defaultValue: "Week 1: Demand Shock & Supply Constraints",
-    });
-    const scenarioDescription = await promptLine(rl, "Scenario description", {
-      defaultValue: "A sudden demand spike ...",
-    });
-
-    const outcomeNotes = await promptLine(
+    const classroomChoice = await chooseOrCreateClassroom({
       rl,
-      "Scenario outcome notes (shown to students)",
-      {
-        defaultValue: "The week ended with ...",
-      }
-    );
+      nonInteractive: args.nonInteractive,
+      organizationDoc,
+    });
 
-    const randomEventChancePercent = args.nonInteractive
-      ? 0
-      : await promptInt(rl, "Random event chance percent (0-100)", {
-          defaultValue: 0,
-          min: 0,
-          max: 100,
-        });
+    // If an existing classroom already has students, use them instead of creating new ones.
+    // Only prompt to create students when the classroom has zero enrolled members.
+    let existingStudentUserIds = [];
+    if (classroomChoice?.mode === "existing" && classroomChoice.classroomId) {
+      const existingEnrollments = await Enrollment.findByClassAndRole(
+        classroomChoice.classroomId,
+        "member"
+      )
+        .select("userId")
+        .lean();
+      existingStudentUserIds = (existingEnrollments || [])
+        .map((e) => e.userId)
+        .filter(Boolean);
+    }
+
+    const shouldCreateStudents = existingStudentUserIds.length === 0;
+    const studentCount = shouldCreateStudents
+      ? args.nonInteractive
+        ? 10
+        : await promptInt(rl, "How many students?", {
+            defaultValue: 10,
+            min: 1,
+            max: 500,
+          })
+      : existingStudentUserIds.length;
+
+    const scenarioMode = args.nonInteractive
+      ? "manual"
+      : await promptChoice(
+          rl,
+          "Scenario + outcome: how should they be created?",
+          [
+            {
+              label: "Manual (you enter title/description/outcome)",
+              value: "manual",
+            },
+            { label: "AI (structured JSON output)", value: "ai" },
+          ],
+          { defaultIndex: 0 }
+        );
+
+    const submissionMode = args.nonInteractive
+      ? process.env.OPENAI_API_KEY
+        ? "ai"
+        : "defaults"
+      : await promptChoice(
+          rl,
+          "Submissions: how should we create submissions for the simulated students?",
+          [
+            { label: "AI (reuse store-type generation)", value: "ai" },
+            {
+              label: "Defaults (use submission variable definition defaults)",
+              value: "defaults",
+            },
+          ],
+          { defaultIndex: process.env.OPENAI_API_KEY ? 0 : 1 }
+        );
+
+    let scenarioTitle = "Week 1: Demand Shock & Supply Constraints";
+    let scenarioDescription =
+      "A sudden demand spike hits the neighborhood while a key ingredient supplier becomes unreliable. Students must balance staffing, inventory, and pricing decisions under uncertainty.";
+    let outcomeNotes =
+      "The week ended with volatile demand and supplier variability. Strong plans balanced service level with spoilage risk.";
+    let randomEventChancePercent = 0;
+
+    if (scenarioMode === "manual") {
+      scenarioTitle = await promptLine(rl, "Scenario title", {
+        defaultValue: scenarioTitle,
+      });
+      scenarioDescription = await promptLine(rl, "Scenario description", {
+        defaultValue: scenarioDescription,
+      });
+      outcomeNotes = await promptLine(
+        rl,
+        "Scenario outcome notes (shown to students)",
+        { defaultValue: outcomeNotes }
+      );
+      randomEventChancePercent = args.nonInteractive
+        ? 0
+        : await promptInt(rl, "Random event chance percent (0-100)", {
+            defaultValue: 0,
+            min: 0,
+            max: 100,
+          });
+    }
 
     const simulationMode = String(process.env.SIMULATION_MODE || "direct");
     const useBatch = simulationMode === "batch";
@@ -388,15 +992,33 @@ async function main() {
     console.log(
       `- org: existing (${organizationDoc.name}) (${useBatch ? "batch ledger mode" : "direct ledger mode"})`
     );
-    console.log(`- classroom: auto (template applied)`);
-    console.log(`- students: ${studentCount} (local-only mocked clerkUserId)`);
-    console.log(`- scenario: "${scenarioTitle}" (published)`);
     console.log(
-      `- submissions: AI (if OPENAI_API_KEY set; else optional defaults)`
+      `- classroom: ${
+        classroomChoice?.mode === "existing"
+          ? `existing (${classroomChoice.classroomId})`
+          : "create new"
+      } (template applied)`
     );
     console.log(
-      `- outcome: randomEventChancePercent=${randomEventChancePercent}`
+      `- students: ${
+        shouldCreateStudents
+          ? `${studentCount} (create local-only mocked clerkUserId)`
+          : `${studentCount} (use existing students in classroom)`
+      }`
     );
+    console.log(
+      `- scenario: ${scenarioMode === "ai" ? "AI" : "manual"} (published)`
+    );
+    console.log(
+      `- submissions: ${
+        submissionMode === "ai" ? "AI" : "defaults"
+      } (sim students only)`
+    );
+    if (scenarioMode === "manual") {
+      console.log(
+        `- outcome: randomEventChancePercent=${randomEventChancePercent}`
+      );
+    }
     console.log(
       `- trigger: ${useBatch ? "enqueue simulation-batch submit job" : "enqueue direct simulation jobs"}`
     );
@@ -414,34 +1036,47 @@ async function main() {
       process.exit(0);
     }
 
-    // 1) Create classroom under selected organization
-    const classroomSuffix = await findNextSuffixNumber({
-      model: Classroom,
-      field: "name",
-      prefix: "classroom",
-    });
-    const classroomName = `classroom_${classroomSuffix}`;
+    // 1) Create or load classroom under selected organization
+    let classroom = null;
+    if (classroomChoice?.mode === "existing" && classroomChoice.classroomId) {
+      classroom = await Classroom.findOne({
+        _id: classroomChoice.classroomId,
+        organization: organizationDoc._id,
+      });
+      if (!classroom) {
+        throw new Error(
+          "Selected classroom not found in selected organization"
+        );
+      }
+    } else {
+      const classroomSuffix = await findNextSuffixNumber({
+        model: Classroom,
+        field: "name",
+        prefix: "classroom",
+      });
+      const classroomName = `classroom_${classroomSuffix}`;
 
-    const classroom = await Classroom.create({
-      name: classroomName,
-      description: `Simulation CLI created on ${new Date().toISOString()}`,
-      isActive: true,
-      ownership: actingAdmin._id,
-      organization: organizationDoc._id,
-      createdBy: actingAdmin.clerkUserId,
-      updatedBy: actingAdmin.clerkUserId,
-    });
+      classroom = await Classroom.create({
+        name: classroomName,
+        description: `Simulation CLI created on ${new Date().toISOString()}`,
+        isActive: true,
+        ownership: actingAdmin._id,
+        organization: organizationDoc._id,
+        createdBy: actingAdmin.clerkUserId,
+        updatedBy: actingAdmin.clerkUserId,
+      });
 
-    await Enrollment.enrollUser(
-      classroom._id,
-      actingAdmin._id,
-      "admin",
-      organizationDoc._id,
-      actingAdmin.clerkUserId
-    );
+      await ensureDefaultTemplateAppliedToClassroom({
+        classroomId: classroom._id,
+        organizationId: organizationDoc._id,
+        clerkUserId: actingAdmin.clerkUserId,
+      });
+    }
 
-    await ensureDefaultTemplateAppliedToClassroom({
+    await ensureEnrollmentInClass({
       classroomId: classroom._id,
+      memberId: actingAdmin._id,
+      role: "admin",
       organizationId: organizationDoc._id,
       clerkUserId: actingAdmin.clerkUserId,
     });
@@ -449,21 +1084,31 @@ async function main() {
     // 2) Create students + enroll + stores
     const seedPrefix = `sim_${toSafeSlugPart(organizationDoc.name) || "org"}_${randomUUID().slice(0, 8)}`;
 
-    const students = await createLocalOnlyStudents({
-      organizationDoc,
-      count: studentCount,
-      seedPrefix,
-    });
+    let students = [];
+    let createdNewStudents = false;
+    if (shouldCreateStudents) {
+      createdNewStudents = true;
+      students = await createLocalOnlyStudents({
+        organizationDoc,
+        count: studentCount,
+        seedPrefix,
+      });
 
-    for (let i = 0; i < students.length; i++) {
-      const s = students[i];
-      await Enrollment.enrollUser(
-        classroom._id,
-        s._id,
-        "member",
-        organizationDoc._id,
-        actingAdmin.clerkUserId
-      );
+      for (let i = 0; i < students.length; i++) {
+        const s = students[i];
+        await Enrollment.enrollUser(
+          classroom._id,
+          s._id,
+          "member",
+          organizationDoc._id,
+          actingAdmin.clerkUserId
+        );
+      }
+    } else {
+      // Use existing students already enrolled in this classroom.
+      students = await Member.find({ _id: { $in: existingStudentUserIds } })
+        .select("_id clerkUserId firstName lastName username")
+        .lean();
     }
 
     const storeTypes = await StoreType.getStoreTypesByClassroom(
@@ -476,62 +1121,126 @@ async function main() {
       );
     }
 
-    const storeTypeCounts = new Map(); // storeTypeId -> count
-    for (let i = 0; i < students.length; i++) {
-      const s = students[i];
-      const st = storeTypes[i % storeTypes.length];
-      storeTypeCounts.set(
-        st._id.toString(),
-        (storeTypeCounts.get(st._id.toString()) || 0) + 1
-      );
-      const createdStore = await Store.createStore(
-        classroom._id,
-        s._id,
-        {
-          shopName: `Sim Pizza ${toSafeSlugPart(organizationDoc.name) || "org"}-${i + 1}`,
-          storeDescription: "Auto-created by simulation CLI.",
-          storeLocation: "Sim City",
-          studentId: `student_${String(i + 1).padStart(3, "0")}`,
-          storeType: st._id,
-          variables: {},
-        },
-        organizationDoc._id,
-        actingAdmin.clerkUserId
-      );
+    if (createdNewStudents) {
+      const storeTypeCounts = new Map(); // storeTypeId -> count
+      for (let i = 0; i < students.length; i++) {
+        const s = students[i];
+        const st = storeTypes[i % storeTypes.length];
+        storeTypeCounts.set(
+          st._id.toString(),
+          (storeTypeCounts.get(st._id.toString()) || 0) + 1
+        );
+        const createdStore = await Store.createStore(
+          classroom._id,
+          s._id,
+          {
+            shopName: `Sim Pizza ${toSafeSlugPart(organizationDoc.name) || "org"}-${i + 1}`,
+            storeDescription: "Auto-created by simulation CLI.",
+            storeLocation: "Sim City",
+            studentId: `student_${String(i + 1).padStart(3, "0")}`,
+            storeType: st._id,
+            variables: {},
+          },
+          organizationDoc._id,
+          actingAdmin.clerkUserId
+        );
 
-      // Safety check: ensure the "week 0" initial ledger entry exists.
-      // Store.createStore() *should* seed it when creating a brand new store, but if something
-      // ever bypasses that path, the simulation will fall back to startingBalance and can drift.
-      const hasInitial = await LedgerEntry.findOne({
-        classroomId: classroom._id,
-        userId: s._id,
-        scenarioId: null,
-      })
-        .select("_id")
-        .lean();
+        // Safety check: ensure the "week 0" initial ledger entry exists.
+        // Store.createStore() *should* seed it when creating a brand new store, but if something
+        // ever bypasses that path, the simulation will fall back to startingBalance and can drift.
+        const hasInitial = await LedgerEntry.findOne({
+          classroomId: classroom._id,
+          userId: s._id,
+          scenarioId: null,
+        })
+          .select("_id")
+          .lean();
 
-      if (!hasInitial) {
-        const storeId = createdStore?._id || createdStore?.id;
-        const storeTypeDoc = await StoreType.findById(st._id);
-        if (storeTypeDoc && storeTypeDoc._loadVariables) {
-          await storeTypeDoc._loadVariables();
-        }
-        if (storeId && storeTypeDoc) {
-          await Store.seedInitialLedgerEntry(
-            storeId,
-            classroom._id,
-            s._id,
-            storeTypeDoc,
-            organizationDoc._id,
-            actingAdmin.clerkUserId
-          );
+        if (!hasInitial) {
+          const storeId = createdStore?._id || createdStore?.id;
+          const storeTypeDoc = await StoreType.findById(st._id);
+          if (storeTypeDoc && storeTypeDoc._loadVariables) {
+            await storeTypeDoc._loadVariables();
+          }
+          if (storeId && storeTypeDoc) {
+            await Store.seedInitialLedgerEntry(
+              storeId,
+              classroom._id,
+              s._id,
+              storeTypeDoc,
+              organizationDoc._id,
+              actingAdmin.clerkUserId
+            );
+          }
         }
       }
+      console.log("\nStoreType distribution (round-robin):");
+      for (const st of storeTypes) {
+        const c = storeTypeCounts.get(st._id.toString()) || 0;
+        if (c > 0) console.log(`- ${st.label || st.key || st._id}: ${c}`);
+      }
     }
-    console.log("\nStoreType distribution (round-robin):");
-    for (const st of storeTypes) {
-      const c = storeTypeCounts.get(st._id.toString()) || 0;
-      if (c > 0) console.log(`- ${st.label || st.key || st._id}: ${c}`);
+
+    // If AI scenario mode, generate now that we have classroom + store types.
+    if (scenarioMode === "ai") {
+      const generated = await generateScenarioOutcomeViaAI({
+        organizationName: organizationDoc.name,
+        classroomName: classroom.name,
+        classroomDescription: classroom.description || "",
+        storeTypeLabels: storeTypes
+          .map((st) => st.label || st.key)
+          .filter(Boolean),
+      });
+
+      console.log("\nAI generated scenario/outcome:");
+      console.log(color("Title: ", "bold") + generated.title);
+      console.log(color("Weather: ", "bold") + (generated.weather || ""));
+      console.log(
+        color("Campus event: ", "bold") + (generated.campusEvent || "")
+      );
+      console.log(
+        color("Foot traffic: ", "bold") +
+          (generated.footTrafficExpectation || "")
+      );
+      console.log(color("Description: ", "bold") + generated.description);
+      console.log(color("Outcome notes: ", "bold") + generated.outcomeNotes);
+      console.log(
+        color("Random event chance percent: ", "bold") +
+          String(generated.randomEventChancePercent)
+      );
+
+      const ok = args.nonInteractive
+        ? true
+        : await promptYesNo(rl, "Use these values?", { defaultValue: true });
+
+      if (!ok) {
+        // Fall back to manual edits
+        scenarioTitle = await promptLine(rl, "Scenario title", {
+          defaultValue: generated.title,
+        });
+        scenarioDescription = await promptLine(rl, "Scenario description", {
+          defaultValue: generated.description,
+        });
+        outcomeNotes = await promptLine(
+          rl,
+          "Scenario outcome notes (shown to students)",
+          { defaultValue: generated.outcomeNotes }
+        );
+        randomEventChancePercent = await promptInt(
+          rl,
+          "Random event chance percent (0-100)",
+          {
+            defaultValue: generated.randomEventChancePercent,
+            min: 0,
+            max: 100,
+          }
+        );
+      } else {
+        scenarioTitle = generated.title;
+        scenarioDescription = generated.description;
+        outcomeNotes = generated.outcomeNotes;
+        randomEventChancePercent = generated.randomEventChancePercent;
+      }
     }
 
     // 3) Create + publish scenario
@@ -559,27 +1268,44 @@ async function main() {
     );
     const scenarioDoc = await Scenario.findById(scenarioId);
 
-    // 4) Create submissions (AI first, fallback to defaults)
-    const subGen = await autoCreateSubmissionsForScenario({
-      scenarioId: scenarioDoc._id,
-      organizationId: organizationDoc._id,
-      clerkUserId: actingAdmin.clerkUserId,
-      options: { includeExisting: true },
-    });
+    // 4) Create submissions (ONLY for the newly-created simulated students)
+    const simStudentIds = students.map((s) => s._id);
+    if (submissionMode === "defaults") {
+      await createDefaultSubmissionsForUsers({
+        scenarioId: scenarioDoc._id,
+        classroomId: classroom._id,
+        organizationId: organizationDoc._id,
+        clerkUserId: actingAdmin.clerkUserId,
+        userIds: simStudentIds,
+      });
+    } else {
+      const subGen = await autoCreateSubmissionsForUsersAI({
+        scenarioId: scenarioDoc._id,
+        classroomId: classroom._id,
+        organizationId: organizationDoc._id,
+        clerkUserId: actingAdmin.clerkUserId,
+        userIds: simStudentIds,
+        options: { includeExisting: true },
+      });
 
-    if (subGen?.skipped) {
-      console.log(`Submissions AI generation skipped: ${subGen.reason}`);
-      const useDefaults = await promptYesNo(
-        rl,
-        "Generate submissions with defaults instead?",
-        { defaultValue: true }
-      );
-      if (useDefaults) {
-        await useDefaultsForSubmissions({
-          scenarioId: scenarioDoc._id,
-          organizationId: organizationDoc._id,
-          clerkUserId: actingAdmin.clerkUserId,
-        });
+      if (subGen?.skipped) {
+        console.log(`Submissions AI generation skipped: ${subGen.reason}`);
+        const useDefaults = args.nonInteractive
+          ? true
+          : await promptYesNo(
+              rl,
+              "Generate submissions with defaults instead?",
+              { defaultValue: true }
+            );
+        if (useDefaults) {
+          await createDefaultSubmissionsForUsers({
+            scenarioId: scenarioDoc._id,
+            classroomId: classroom._id,
+            organizationId: organizationDoc._id,
+            clerkUserId: actingAdmin.clerkUserId,
+            userIds: simStudentIds,
+          });
+        }
       }
     }
 
@@ -589,21 +1315,23 @@ async function main() {
       {
         notes: outcomeNotes,
         randomEventChancePercent,
-        autoGenerateSubmissionsOnOutcome: "USE_AI", // fill any missing (idempotent)
-        punishAbsentStudents: "none",
+        // IMPORTANT: In simulation runs, we do NOT auto-generate missing submissions on outcome.
+        // Students who did not submit should be skipped (no submission => no job).
+        autoGenerateSubmissionsOnOutcome: null,
       },
       organizationDoc._id,
       actingAdmin.clerkUserId
     );
 
-    const jobs = await JobService.createJobsForScenario(
-      scenarioDoc._id,
-      classroom._id,
-      false,
-      organizationDoc._id,
-      actingAdmin.clerkUserId,
-      { enqueue: !useBatch }
-    );
+    const jobs = await createJobsForScenarioForUserIds({
+      scenarioId: scenarioDoc._id,
+      classroomId: classroom._id,
+      organizationId: organizationDoc._id,
+      clerkUserId: actingAdmin.clerkUserId,
+      userIds: simStudentIds,
+      enqueue: !useBatch,
+      dryRun: false,
+    });
 
     if (useBatch) {
       await enqueueSimulationBatchSubmit({
@@ -623,7 +1351,7 @@ async function main() {
     console.log(`Classroom: ${classroom._id} (${classroom.name})`);
     console.log(`Scenario: ${scenarioDoc._id} (published+closed)`);
     console.log(`Students: ${students.length}`);
-    console.log(`Jobs created: ${jobs.length}`);
+    console.log(`Jobs created (sim students): ${jobs.length}`);
 
     const appHost = process.env.SCALE_APP_HOST || "http://localhost:5173";
     console.log(`Open class in app: ${appHost}/class/${classroom._id}`);

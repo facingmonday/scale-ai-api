@@ -2,11 +2,16 @@
 
 Interactive CLI to create:
 - a new `Classroom` inside an existing `Organization` (chosen from the selected admin’s org:admin memberships)
-- a new `Classroom` (with template applied)
+- a new **or existing** `Classroom` (with template applied / ensured)
 - N student `Member`s + `Enrollment`s + `Store`s
-- a published `Scenario`
+- a published `Scenario` (published without save hooks to avoid notifications)
 - AI-generated `Submission`s (existing functionality)
 - a `ScenarioOutcome`, then triggers simulation jobs (direct or batch depending on `SIMULATION_MODE`)
+
+Interactive options include:
+- colored multiple-choice menus
+- choose existing classroom vs create new
+- scenario + outcome created manually or via AI structured output (requires `OPENAI_API_KEY`)
 
 ## Run
 
