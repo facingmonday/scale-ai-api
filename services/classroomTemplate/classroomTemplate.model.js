@@ -485,6 +485,87 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
 
 classroomTemplateSchema.statics.GLOBAL_DEFAULT_KEY = "default_supply_chain_101";
 
+const DEFAULT_COST_GUARDRAILS_PROMPT = `
+COST GUARDRAILS AND REALISM CONSTRAINTS
+
+All operating costs must remain realistic, proportional, and capacity-aware. These costs should generally be low relative to revenue, but may vary based on store type, scenario conditions, and scenario outcome.
+
+1. Labor Cost
+- Labor cost MUST scale with sales volume and operational intensity.
+- Labor cost MUST remain within plausible bounds for the store type.
+- Labor cost should increase under conditions such as:
+  - High sales volume
+  - Overtime or rush conditions
+  - Service-level prioritization
+- Labor cost MUST NOT grow faster than sales volume.
+- If capacity limits are reached, labor cost should plateau rather than explode.
+
+2. Logistics Cost
+- Logistics cost represents delivery, expediting, or supplier-related friction.
+- Logistics cost should be near zero in normal conditions.
+- Logistics cost may increase modestly when:
+  - Scenario outcome includes supply disruption
+  - Inventory is expedited to avoid stockouts
+- Logistics cost MUST be small relative to ingredient costs.
+- Logistics cost MUST NOT exceed a reasonable fraction of total inventory purchasing cost.
+
+3. Overflow Storage Cost
+- Overflow storage cost applies only when inventory exceeds on-site capacity.
+- Overflow storage cost should be zero if capacity limits are respected.
+- If overflow occurs, cost should:
+  - Scale with excess units
+  - Be modest but persistent
+- Overflow storage MUST NOT be used as a profit penalty mechanism.
+- Overflow storage cost MUST NOT exceed holding costs by an order of magnitude.
+
+4. Waste Cost
+- Waste cost must be tied directly to wasted inventory units.
+- Waste should increase under conditions such as:
+  - Overproduction
+  - Poor demand forecasting
+  - Low waste discipline
+- Waste cost MUST be proportional to unit costs.
+- Waste MUST NOT exceed the inventory actually available.
+- Waste cost should be a meaningful but not dominant expense.
+
+5. Disposal Cost
+- Disposal cost applies only when waste occurs.
+- Disposal cost should be a small add-on to waste cost.
+- Disposal cost may increase slightly under:
+  - Environmental regulation scenarios
+  - Large waste volumes
+- Disposal cost MUST remain minor compared to waste cost itself.
+
+6. Other Cost
+- Other cost represents miscellaneous operational friction.
+- Other cost should be low and often zero.
+- Other cost may be introduced sparingly to explain:
+  - Minor equipment issues
+  - Administrative overhead
+  - One-time operational inefficiencies
+- Other cost MUST NOT be used to absorb excess profit or loss.
+- Other cost MUST remain a small fraction of total costs.
+
+7. Global Cost Constraints
+- No single cost category may dominate total costs unless explicitly justified by the scenario outcome.
+- Total operating costs MUST scale sensibly with sales and capacity.
+- Costs MUST NOT increase without a clear operational or scenario-driven cause.
+- If costs exceed plausible bounds, adjust them downward to the nearest realistic level.
+`;
+
+function ensureDefaultCostGuardrailsPrompt(prompts) {
+  const arr = Array.isArray(prompts) ? prompts : [];
+  const alreadyPresent = arr.some(
+    (p) =>
+      p &&
+      typeof p === "object" &&
+      typeof p.content === "string" &&
+      p.content.includes("COST GUARDRAILS AND REALISM CONSTRAINTS")
+  );
+  if (alreadyPresent) return arr;
+  return [...arr, { role: "system", content: DEFAULT_COST_GUARDRAILS_PROMPT }];
+}
+
 /**
  * Default classroom prompts (prepended to OpenAI messages).
  * These prompts do NOT depend on scenario/submission/store data.
@@ -682,6 +763,7 @@ Before returning output:
         "Return ONLY valid JSON matching the provided schema. You may invent reasonable intermediate numbers when needed. Also compute the required education metrics so instructors can explain results (service level, stockouts/lost sales, by-bucket material flow, and cost breakdown).",
     },
     { role: "system", content: warehouseRules },
+    { role: "system", content: DEFAULT_COST_GUARDRAILS_PROMPT },
   ];
 };
 
@@ -917,6 +999,8 @@ classroomTemplateSchema.statics.ensureGlobalDefaultTemplate =
 
       if (!Array.isArray(payload.prompts) || payload.prompts.length === 0) {
         payload.prompts = this.getDefaultClassroomPrompts();
+      } else {
+        payload.prompts = ensureDefaultCostGuardrailsPrompt(payload.prompts);
       }
 
       existing.payload = payload;
@@ -999,6 +1083,17 @@ classroomTemplateSchema.statics.copyGlobalToOrganization = async function (
       existingOrgTemplate.payload = payload;
       existingOrgTemplate.updatedBy = clerkUserId;
       await existingOrgTemplate.save();
+    }
+
+    // Ensure cost guardrails exist (idempotent)
+    if (Array.isArray(payload.prompts) && payload.prompts.length > 0) {
+      const patchedPrompts = ensureDefaultCostGuardrailsPrompt(payload.prompts);
+      if (patchedPrompts.length !== payload.prompts.length) {
+        payload.prompts = patchedPrompts;
+        existingOrgTemplate.payload = payload;
+        existingOrgTemplate.updatedBy = clerkUserId;
+        await existingOrgTemplate.save();
+      }
     }
 
     // Backfill storeTypes financial fields (startingBalance, initialStartupCost) if missing

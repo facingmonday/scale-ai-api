@@ -10,11 +10,18 @@
 require("dotenv").config();
 
 const mongoose = require("mongoose");
-const { createInterface } = require("readline");
 const { randomUUID } = require("crypto");
 
 // Load all mongoose models
 require("../../models");
+
+let prompts = null;
+try {
+  // Interactive prompts (arrow keys + enter)
+  prompts = require("prompts");
+} catch (_) {
+  prompts = null;
+}
 
 const openai = require("../../lib/openai");
 
@@ -72,10 +79,6 @@ function toSafeSlugPart(value) {
     .replace(/^_+|_+$/g, "");
 }
 
-function makeRl() {
-  return createInterface({ input: process.stdin, output: process.stdout });
-}
-
 function parseArgs(argv) {
   const args = { dryRun: false, nonInteractive: false };
   for (const raw of argv.slice(2)) {
@@ -87,79 +90,95 @@ function parseArgs(argv) {
   return args;
 }
 
+function ensurePromptsAvailable() {
+  if (!prompts) {
+    throw new Error(
+      "Interactive mode requires the 'prompts' dependency. Run `npm install` from repo root, or use --yes / --non-interactive."
+    );
+  }
+}
+
 async function promptLine(rl, question, { defaultValue = null } = {}) {
   if (!rl) {
     return defaultValue !== null ? String(defaultValue) : "";
   }
-  const suffix = defaultValue !== null ? ` (default: ${defaultValue})` : "";
-  const answer = await new Promise((resolve) => {
-    try {
-      rl.question(`${question}${suffix}: `, resolve);
-    } catch (e) {
-      // Non-interactive shells can close stdin; fall back to default.
-      return resolve(defaultValue !== null ? String(defaultValue) : "");
+  ensurePromptsAvailable();
+  const res = await prompts(
+    {
+      type: "text",
+      name: "value",
+      message: question,
+      initial: defaultValue !== null ? String(defaultValue) : "",
+    },
+    {
+      onCancel: () => {
+        throw new Error("Cancelled");
+      },
     }
-  });
-  const trimmed = String(answer || "").trim();
+  );
+  const trimmed = String(res?.value ?? "").trim();
   if (!trimmed && defaultValue !== null) return String(defaultValue);
   return trimmed;
 }
 
 async function promptYesNo(rl, question, { defaultValue = false } = {}) {
-  const defLabel = defaultValue ? "Y/n" : "y/N";
-  const answer = await promptLine(rl, `${question} [${defLabel}]`, {
-    defaultValue: "",
-  });
-  const t = String(answer || "")
-    .trim()
-    .toLowerCase();
-  if (!t) return !!defaultValue;
-  if (["y", "yes"].includes(t)) return true;
-  if (["n", "no"].includes(t)) return false;
-  return !!defaultValue;
+  if (!rl) return !!defaultValue;
+  ensurePromptsAvailable();
+  const res = await prompts(
+    { type: "confirm", name: "value", message: question, initial: !!defaultValue },
+    {
+      onCancel: () => {
+        throw new Error("Cancelled");
+      },
+    }
+  );
+  return !!res?.value;
 }
 
 async function promptInt(rl, question, { defaultValue, min, max } = {}) {
-  while (true) {
-    const raw = await promptLine(rl, question, {
-      defaultValue: defaultValue !== undefined ? String(defaultValue) : null,
-    });
-    const n = parseInt(raw, 10);
-    if (!Number.isFinite(n)) {
-      console.log("Please enter a valid integer.");
-      continue;
+  if (!rl) return defaultValue !== undefined ? Number(defaultValue) : 0;
+  ensurePromptsAvailable();
+  const initial =
+    defaultValue !== undefined && defaultValue !== null
+      ? Number(defaultValue)
+      : 0;
+  const res = await prompts(
+    { type: "number", name: "value", message: question, initial, min, max },
+    {
+      onCancel: () => {
+        throw new Error("Cancelled");
+      },
     }
-    if (min !== undefined && n < min) {
-      console.log(`Must be >= ${min}.`);
-      continue;
-    }
-    if (max !== undefined && n > max) {
-      console.log(`Must be <= ${max}.`);
-      continue;
-    }
-    return n;
-  }
+  );
+  return Number(res?.value);
 }
 
 async function promptChoice(rl, question, options, { defaultIndex = 0 } = {}) {
   if (!Array.isArray(options) || options.length === 0) {
     throw new Error("promptChoice requires at least one option");
   }
-  console.log(color(question, "bold"));
-  options.forEach((opt, idx) => {
-    const isDefault = idx === defaultIndex;
-    const num = color(String(idx + 1), "cyan");
-    const label = isDefault
-      ? `${opt.label} ${color("(default)", "dim")}`
-      : opt.label;
-    console.log(`  ${num}) ${label}`);
-  });
-  const chosen = await promptInt(rl, "Select option", {
-    defaultValue: defaultIndex + 1,
-    min: 1,
-    max: options.length,
-  });
-  return options[chosen - 1].value;
+  if (!rl) return options[Math.max(0, defaultIndex)]?.value;
+  ensurePromptsAvailable();
+  const choices = options.map((opt) => ({
+    title: opt.label,
+    value: opt.value,
+  }));
+  const safeInitial = Math.max(0, Math.min(defaultIndex, choices.length - 1));
+  const res = await prompts(
+    {
+      type: "select",
+      name: "value",
+      message: question,
+      choices,
+      initial: safeInitial,
+    },
+    {
+      onCancel: () => {
+        throw new Error("Cancelled");
+      },
+    }
+  );
+  return res?.value;
 }
 
 async function ensureEnrollmentInClass({
@@ -224,7 +243,7 @@ async function chooseOrCreateClassroom({
     rl,
     "Classroom: choose an existing classroom or create a new one",
     options,
-    { defaultIndex: 0 }
+    { defaultIndex: existing.length > 0 ? 1 : 0 }
   );
 }
 
@@ -739,7 +758,7 @@ async function getCurrentAdminMembers() {
     organizationMemberships: { $elemMatch: { role: "org:admin" } },
   })
     .select(
-      "_id clerkUserId firstName lastName username organizationMemberships"
+      "_id clerkUserId firstName lastName username maskedEmail organizationMemberships"
     )
     .lean();
 }
@@ -826,7 +845,8 @@ async function createLocalOnlyStudents({ organizationDoc, count, seedPrefix }) {
 
 async function main() {
   const args = parseArgs(process.argv);
-  const rl = args.nonInteractive ? null : makeRl();
+  // For interactive mode we only need a truthy sentinel; actual prompting is handled by `prompts`.
+  const rl = args.nonInteractive ? null : { interactive: true };
 
   try {
     await connectMongo();
@@ -844,7 +864,9 @@ async function main() {
           rl,
           "Pick the admin user who will OWN the classroom and be used as createdBy/updatedBy:",
           admins.map((a) => ({
-            label: `${toDisplayName(a)} (${a.clerkUserId})`,
+            label: `${toDisplayName(a)} — ${
+              a.maskedEmail ? a.maskedEmail : "no email"
+            } ${color(`(${a._id})`, "dim")}`,
             value: a,
           })),
           { defaultIndex: 0 }
@@ -956,11 +978,39 @@ async function main() {
           { defaultIndex: process.env.OPENAI_API_KEY ? 0 : 1 }
         );
 
+    const missingSubmissionsMode = args.nonInteractive
+      ? null
+      : await promptChoice(
+          rl,
+          "Outcome: what should we do with missing submissions?",
+          [
+            {
+              label: "Skip (null) — do nothing for students missing submissions",
+              value: null,
+            },
+            {
+              label:
+                "Defaults (USE_DEFAULTS) — create default submissions for missing students",
+              value: "USE_DEFAULTS",
+            },
+            {
+              label: "AI (USE_AI) — auto-generate submissions for missing students",
+              value: "USE_AI",
+            },
+            {
+              label:
+                "Forward previous (FORWARD_PREVIOUS) — copy last submission forward",
+              value: "FORWARD_PREVIOUS",
+            },
+          ],
+          { defaultIndex: 0 }
+        );
+
     let scenarioTitle = "Week 1: Demand Shock & Supply Constraints";
     let scenarioDescription =
-      "A sudden demand spike hits the neighborhood while a key ingredient supplier becomes unreliable. Students must balance staffing, inventory, and pricing decisions under uncertainty.";
+      "A sudden demand spike hits ...";
     let outcomeNotes =
-      "The week ended with volatile demand and supplier variability. Strong plans balanced service level with spoilage risk.";
+      "The week ended with ...";
     let randomEventChancePercent = 0;
 
     if (scenarioMode === "manual") {
@@ -1013,6 +1063,13 @@ async function main() {
       `- submissions: ${
         submissionMode === "ai" ? "AI" : "defaults"
       } (sim students only)`
+    );
+    console.log(
+      `- outcome missing submissions: ${
+        missingSubmissionsMode === null
+          ? "Skip (null)"
+          : String(missingSubmissionsMode)
+      }`
     );
     if (scenarioMode === "manual") {
       console.log(
@@ -1315,9 +1372,7 @@ async function main() {
       {
         notes: outcomeNotes,
         randomEventChancePercent,
-        // IMPORTANT: In simulation runs, we do NOT auto-generate missing submissions on outcome.
-        // Students who did not submit should be skipped (no submission => no job).
-        autoGenerateSubmissionsOnOutcome: null,
+        autoGenerateSubmissionsOnOutcome: missingSubmissionsMode,
       },
       organizationDoc._id,
       actingAdmin.clerkUserId
@@ -1361,7 +1416,7 @@ async function main() {
     process.exitCode = 1;
   } finally {
     try {
-      rl.close();
+      rl?.close?.();
     } catch (_) {}
     try {
       await mongoose.disconnect();

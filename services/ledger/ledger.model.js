@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 const openai = require("../../lib/openai");
 const { v4: uuidv4 } = require("uuid");
+const { round2, roundInt } = require("../../lib/number-utils");
 const AI_MODEL = process.env.AI_MODEL || "gpt-5-mini-2025-08-07";
 
 const ledgerEntrySchema = new mongoose.Schema({
@@ -1058,18 +1059,6 @@ ledgerEntrySchema.statics.normalizeAndValidateAISimulationResult = function (
   if (!aiResult || typeof aiResult !== "object") {
     throw new Error("AI result must be an object");
   }
-
-  const round2 = (n) => {
-    const x = Number(n);
-    if (!Number.isFinite(x)) return n;
-    return Math.round((x + Number.EPSILON) * 100) / 100;
-  };
-
-  const roundInt = (n) => {
-    const x = Number(n);
-    if (!Number.isFinite(x)) return n;
-    return Math.round(x);
-  };
 
   // Normalize response: Move teachingNotes from root to education if needed
   if (aiResult.teachingNotes && typeof aiResult.teachingNotes === "string") {

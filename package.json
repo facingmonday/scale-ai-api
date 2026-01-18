@@ -82,6 +82,7 @@
     "path": "^0.12.7",
     "pdfkit": "^0.16.0",
     "puppeteer": "^24.2.1",
+    "prompts": "^2.4.2",
     "qrcode": "^1.5.4",
     "querystring": "^0.2.1",
     "react": "^19.2.0",

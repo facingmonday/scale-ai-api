@@ -23,6 +23,7 @@ node ./apps/sim-cli/index.js
 
 ### Notes / prerequisites
 
+- Interactive prompts use `prompts` (arrow keys + enter). If you see a missing dependency error, run `npm install` from repo root.
 - Requires Mongo env vars (same as other apps):
   - `MONGO_URL` or `MONGO_URI` (preferred), OR
   - `MONGO_SCHEME`, `MONGO_USERNAME`, `MONGO_PASSWORD`, `MONGO_HOSTNAME`, `MONGO_DB`

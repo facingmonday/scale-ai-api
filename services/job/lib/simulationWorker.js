@@ -4,6 +4,7 @@ const Scenario = require("../../scenario/scenario.model");
 const ScenarioOutcome = require("../../scenarioOutcome/scenarioOutcome.model");
 const Submission = require("../../submission/submission.model");
 const LedgerEntry = require("../../ledger/ledger.model");
+const { round2 } = require("../../../lib/number-utils");
 
 /**
  * Simulation Worker
@@ -37,12 +38,6 @@ class SimulationWorker {
 
       // Run AI simulation
       const aiResult = await LedgerEntry.runAISimulation(context);
-
-      const round2 = (n) => {
-        const x = Number(n);
-        if (!Number.isFinite(x)) return n;
-        return Math.round((x + Number.EPSILON) * 100) / 100;
-      };
 
       // Validate and correct cashBefore if needed
       // The AI should calculate this from ledger history, but we ensure continuity
