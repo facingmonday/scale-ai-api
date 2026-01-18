@@ -63,8 +63,10 @@ NotificationSchema.statics.getReceiver = async function (
   recipient,
   templateData,
   modelData,
-  organizationId
+  organizationId,
+  options = {}
 ) {
+  const { resolveEmail = true } = options || {};
   if (recipient.type === "Guest") {
     // For guests (users who don't exist yet), use email from templateData
     if (!templateData || (!templateData.email && !templateData.phoneNumber)) {
@@ -118,8 +120,10 @@ NotificationSchema.statics.getReceiver = async function (
         }
       }
 
-      // Get email and phone from Clerk since they're no longer stored locally
-      const email = await member.getEmailFromClerk();
+      // IMPORTANT:
+      // Avoid hitting Clerk in the API process when we create notifications in bulk
+      // (e.g. scenario publish). Email can be resolved later in the email worker.
+      const email = resolveEmail ? await member.getEmailFromClerk() : "";
 
       return {
         email: email,
@@ -363,7 +367,8 @@ NotificationSchema.post("save", async function () {
         this.recipient,
         this.templateData,
         this.modelData,
-        this.organization
+        this.organization,
+        { resolveEmail: false }
       );
 
       if (!receiver) {
