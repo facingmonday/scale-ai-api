@@ -12,7 +12,12 @@ exports.getAllOrganizations = async (req, res) => {
       .lean();
 
     // Format the response to only include public data
-    const publicOrganizations = organizations.map((org) => ({
+    const publicOrganizations = organizations
+      .filter((org) => {
+        const publicFlag = org.publicMetadata?.public;
+        return !(publicFlag === false || publicFlag === "false");
+      })
+      .map((org) => ({
       _id: org._id,
       id: org.clerkOrganizationId,
       name: org.name,

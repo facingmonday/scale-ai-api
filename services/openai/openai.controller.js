@@ -55,7 +55,6 @@ exports.generateImage = async function (req, res) {
     }
 
     const startTime = Date.now();
-    console.log("Generating image from prompt");
     const newImageResponse = await openai.images.generate({
       model: "gpt-image-1-mini",
       prompt: prompt,
@@ -84,7 +83,6 @@ exports.generateImage = async function (req, res) {
     };
     const uploadResponse = await s3.upload(uploadParams).promise();
     const fileUrl = uploadResponse.Location;
-    console.log("Finished uploading image", fileUrl);
     res.status(200).send({
       image: fileUrl,
     });
