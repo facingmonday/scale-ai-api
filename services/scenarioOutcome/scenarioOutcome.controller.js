@@ -11,6 +11,9 @@ const {
 const {
   useDefaultsForSubmissions,
 } = require("../submission/useDefaultsForSubmissions");
+const {
+  enqueueSimulationBatchSubmit,
+} = require("../../lib/queues/simulation-batch-worker");
 /**
  * Set scenario outcome
  * POST /api/admin/scenarios/:scenarioId/outcome
@@ -126,13 +129,27 @@ exports.setScenarioOutcome = async function (req, res) {
     // If autoGenerateMode is undefined, null, or any other value, skip auto-generation
 
     // Create jobs for all submissions (dryRun = false, will write to ledger)
+    const simulationMode = String(process.env.SIMULATION_MODE || "direct");
+    const useBatch = simulationMode === "batch";
+
     const jobs = await JobService.createJobsForScenario(
       scenarioId,
       scenario.classroomId,
       false, // dryRun = false, will write to ledger
       organizationId,
-      clerkUserId
+      clerkUserId,
+      { enqueue: !useBatch }
     );
+
+    // If using OpenAI Batch, submit a single scenario-level batch job.
+    if (useBatch) {
+      await enqueueSimulationBatchSubmit({
+        scenarioId,
+        classroomId: scenario.classroomId,
+        organizationId,
+        clerkUserId,
+      });
+    }
 
     // Close scenario
     await scenario.close(clerkUserId);

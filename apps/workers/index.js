@@ -76,9 +76,14 @@ const simulationAdapter = new BullAdapter(queues.simulation, {
   allowRetries: !readOnlyMode,
   description: "Simulation jobs",
 });
+const simulationBatchAdapter = new BullAdapter(queues.simulationBatch, {
+  readOnlyMode,
+  allowRetries: !readOnlyMode,
+  description: "Simulation batch jobs (submit/poll/ingest)",
+});
 
 createBullBoard({
-  queues: [emailAdapter, simulationAdapter],
+  queues: [emailAdapter, simulationAdapter, simulationBatchAdapter],
   serverAdapter: serverAdapter,
   options: {
     uiConfig: {

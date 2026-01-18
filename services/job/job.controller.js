@@ -3,6 +3,9 @@ const JobModel = require("./job.model");
 const SimulationWorker = require("./lib/simulationWorker");
 const Classroom = require("../classroom/classroom.model");
 const Scenario = require("../scenario/scenario.model");
+const {
+  enqueueSimulationBatchSubmit,
+} = require("../../lib/queues/simulation-batch-worker");
 
 /**
  * Get jobs for a scenario
@@ -135,10 +138,23 @@ exports.retryJob = async function (req, res) {
     // Reset and process job
     await job.reset();
 
-    // Process job asynchronously
-    SimulationWorker.processJob(jobId).catch((error) => {
-      console.error(`Error processing job ${jobId} after retry:`, error);
-    });
+    const simulationMode = String(process.env.SIMULATION_MODE || "direct");
+    const useBatch = simulationMode === "batch";
+
+    if (useBatch) {
+      // Re-submit as a (small) batch: submit all pending jobs for this scenario.
+      await enqueueSimulationBatchSubmit({
+        scenarioId: job.scenarioId,
+        classroomId: job.classroomId,
+        organizationId,
+        clerkUserId,
+      });
+    } else {
+      // Process job asynchronously (direct mode)
+      SimulationWorker.processJob(jobId).catch((error) => {
+        console.error(`Error processing job ${jobId} after retry:`, error);
+      });
+    }
 
     res.json({
       success: true,
@@ -171,7 +187,36 @@ exports.processPendingJobs = async function (req, res) {
     // This is a system-level operation, so we'll allow org admins
     // In production, you might want to add additional checks
 
-    const results = await SimulationWorker.processPendingJobs(limit);
+    const simulationMode = String(process.env.SIMULATION_MODE || "direct");
+    const useBatch = simulationMode === "batch";
+
+    let results;
+    if (useBatch) {
+      // In batch mode, submit batches per scenario for pending jobs (up to limit jobs total).
+      const pending = await JobModel.find({ status: "pending" })
+        .sort({ createdDate: 1 })
+        .limit(limit);
+
+      const byScenario = new Map();
+      for (const j of pending) {
+        const key = String(j.scenarioId);
+        if (!byScenario.has(key)) byScenario.set(key, j);
+      }
+
+      const enqueued = [];
+      for (const [, j] of byScenario) {
+        await enqueueSimulationBatchSubmit({
+          scenarioId: j.scenarioId,
+          classroomId: j.classroomId,
+          organizationId: j.organization,
+          clerkUserId,
+        });
+        enqueued.push({ scenarioId: j.scenarioId, classroomId: j.classroomId });
+      }
+      results = enqueued.map((x) => ({ success: true, ...x }));
+    } else {
+      results = await SimulationWorker.processPendingJobs(limit);
+    }
 
     res.json({
       success: true,
