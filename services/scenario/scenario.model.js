@@ -1117,6 +1117,7 @@ scenarioSchema.statics.processScenarioExport = async function (
       studentClerkUserId: submissionObj.userId?.clerkUserId || "",
 
       // Store data
+      studentId: store?.studentId || "",
       storeShopName: store?.shopName || "",
       storeStudentId: store?.studentId || "",
 

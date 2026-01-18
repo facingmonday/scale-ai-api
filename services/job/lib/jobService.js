@@ -23,6 +23,7 @@ class JobService {
       organizationId,
       clerkUserId,
       submissionId = null,
+      enqueue = true,
       ...input
     } = params;
 
@@ -71,23 +72,25 @@ class JobService {
       // Don't throw - job creation should still succeed even if linking fails
     }
 
-    // Enqueue for Bull processing (one-at-a-time processor handles ordering)
-    // Always enqueue, even if job already existed (it may have been reset)
-    try {
-      await ensureQueueReady(queues.simulation, "simulation");
-      await queues.simulation.add(
-        { jobId: job._id },
-        {
-          attempts: 3,
-          backoff: { type: "exponential", delay: 1000 },
-          removeOnComplete: true,
-          removeOnFail: false,
-        }
-      );
-    } catch (err) {
-      console.error("Failed to enqueue simulation job:", err.message);
-      // Surface the error so the caller knows the job was not enqueued
-      throw err;
+    if (enqueue) {
+      // Enqueue for Bull processing (one-at-a-time processor handles ordering)
+      // Always enqueue, even if job already existed (it may have been reset)
+      try {
+        await ensureQueueReady(queues.simulation, "simulation");
+        await queues.simulation.add(
+          { jobId: job._id },
+          {
+            attempts: 3,
+            backoff: { type: "exponential", delay: 1000 },
+            removeOnComplete: true,
+            removeOnFail: false,
+          }
+        );
+      } catch (err) {
+        console.error("Failed to enqueue simulation job:", err.message);
+        // Surface the error so the caller knows the job was not enqueued
+        throw err;
+      }
     }
 
     return job;
@@ -107,7 +110,8 @@ class JobService {
     classroomId,
     dryRun = false,
     organizationId,
-    clerkUserId
+    clerkUserId,
+    options = {}
   ) {
     const Submission = require("../../submission/submission.model");
 
@@ -119,6 +123,8 @@ class JobService {
     }
 
     // Create jobs for each submission (createJob will link them automatically)
+    const enqueue = options.enqueue !== undefined ? options.enqueue : true;
+
     const jobPromises = submissions.map(async (submission) => {
       // Get userId from submission (could be in member._id or userId field)
       // submission.userId from toObject() will be the ObjectId
@@ -132,6 +138,7 @@ class JobService {
         submissionId: submission._id,
         organizationId,
         clerkUserId,
+        enqueue,
       });
 
       return job;

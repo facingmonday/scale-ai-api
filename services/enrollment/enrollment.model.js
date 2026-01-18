@@ -345,58 +345,6 @@ enrollmentSchema.statics.processRosterExport = async function (
 ) {
   const { Parser } = require("json2csv");
 
-  // Flatten nested objects into a single-level map for CSV columns.
-  const toSafeKeyPart = (k) =>
-    String(k)
-      .trim()
-      .replace(/[^a-zA-Z0-9]+/g, "_")
-      .replace(/^_+|_+$/g, "");
-
-  const flattenForCsv = (value, prefix) => {
-    const out = {};
-
-    const walk = (v, path) => {
-      if (v === undefined) return;
-      if (v === null) {
-        out[path] = "";
-        return;
-      }
-      if (v instanceof Date) {
-        out[path] = v.toISOString();
-        return;
-      }
-      if (Array.isArray(v)) {
-        if (v.length === 0) {
-          out[path] = "";
-          return;
-        }
-        v.forEach((item, idx) => {
-          walk(item, `${path}_${idx}`);
-        });
-        return;
-      }
-      if (typeof v === "object") {
-        const keys = Object.keys(v);
-        if (keys.length === 0) {
-          out[path] = "";
-          return;
-        }
-        keys.forEach((key) => {
-          const safe = toSafeKeyPart(key) || "key";
-          walk(v[key], `${path}_${safe}`);
-        });
-        return;
-      }
-
-      // Primitive
-      out[path] = v;
-    };
-
-    const safePrefix = toSafeKeyPart(prefix) || "value";
-    walk(value, safePrefix);
-    return out;
-  };
-
   // Get roster data
   const roster = await this.getClassRoster(classroomId);
 
@@ -405,39 +353,119 @@ enrollmentSchema.statics.processRosterExport = async function (
     throw new Error("No students found in roster");
   }
 
-  // Flatten data for CSV
-  const csvData = roster.map((item) => {
+  const asString = (v) => {
+    if (v === undefined || v === null) return "";
+    if (v instanceof Date) return v.toISOString();
+    return String(v);
+  };
+
+  const asIsoDate = (v) => {
+    if (!v) return "";
+    const d = v instanceof Date ? v : new Date(v);
+    return Number.isNaN(d.getTime()) ? "" : d.toISOString();
+  };
+
+  const asJson = (v) => {
+    if (!v || typeof v !== "object") return "";
+    try {
+      return JSON.stringify(v);
+    } catch (e) {
+      return "";
+    }
+  };
+
+  // Build a strict, safe export shape (no ObjectIds / no Clerk ids / no internal metadata)
+  const csvRows = roster.map((item) => {
     const store = item.store || null;
-    const flattenedStore = store
-      ? flattenForCsv(store, "store")
-      : { store: "" };
+    const storeType =
+      store && typeof store.storeType === "object" && store.storeType
+        ? store.storeType
+        : null;
 
-    // Build row with enrollment and user data
-    const row = {
-      // Enrollment metadata
-      enrollmentId: item.enrollmentId?.toString() || "",
-      role: item.role || "",
-      joinedAt: item.joinedAt ? new Date(item.joinedAt).toISOString() : "",
+    // StoreType label/description should come from the populated storeType doc when available,
+    // else fall back to the backward-compatible top-level storeTypeLabel/storeTypeKey.
+    const storeTypeLabel =
+      (storeType && storeType.label !== undefined && storeType.label !== null
+        ? storeType.label
+        : store?.storeTypeLabel || store?.storeTypeKey) || "";
+    const storeTypeDescription =
+      storeType &&
+      storeType.description !== undefined &&
+      storeType.description !== null
+        ? storeType.description
+        : "";
+    const storeTypeKey =
+      (storeType && storeType.key !== undefined && storeType.key !== null
+        ? storeType.key
+        : store?.storeTypeKey) || "";
 
-      // User/Student data
-      userId: item.userId?.toString() || "",
-      studentFirstName: item.firstName || "",
-      studentLastName: item.lastName || "",
-      studentDisplayName: item.displayName || "",
-      studentEmail: item.email || "",
-      studentClerkUserId: item.clerkUserId || "",
+    const storeVariables =
+      store && store.variables && typeof store.variables === "object"
+        ? store.variables
+        : null;
+    const storeTypeVariables =
+      storeType && storeType.variables && typeof storeType.variables === "object"
+        ? storeType.variables
+        : null;
 
-      // Store data (flattened)
-      ...flattenedStore,
+    return {
+      // Store (priority order)
+      storeStudentId: asString(store?.studentId),
+      storeShopName: asString(store?.shopName),
+      storeDescription: asString(store?.storeDescription),
+      storeTypeLabel: asString(storeTypeLabel),
+      storeTypeDescription: asString(storeTypeDescription),
+
+      // Member
+      memberFirstName: asString(item.firstName),
+      memberLastName: asString(item.lastName),
+      memberDisplayName: asString(item.displayName),
+      memberEmail: asString(item.email),
+
+      // Enrollment
+      enrollmentRole: asString(item.role),
+      enrollmentJoinedAt: asIsoDate(item.joinedAt),
+
+      // Other store info
+      storeLocation: asString(store?.storeLocation),
+      storeImageUrl: asString(store?.imageUrl),
+      storeTypeKey: asString(storeTypeKey),
+
+      // Variable maps (kept as JSON to avoid exploding columns and to prevent ObjectId leakage)
+      storeVariablesJson: asJson(storeVariables),
+      storeTypeVariablesJson: asJson(storeTypeVariables),
     };
-
-    return row;
   });
 
-  // Generate CSV
-  // Let json2csv auto-detect all fields from all rows (handles dynamic store columns)
-  const parser = new Parser();
-  const csv = parser.parse(csvData);
+  // Generate CSV with explicit, ordered columns (prevents ObjectId -> *_buffer_* leakage)
+  const fields = [
+    { label: "store.studentId", value: "storeStudentId" },
+    { label: "store.shopName", value: "storeShopName" },
+    { label: "store.storeDescription", value: "storeDescription" },
+    { label: "storeType.label", value: "storeTypeLabel" },
+    { label: "storeType.description", value: "storeTypeDescription" },
+
+    { label: "member.firstName", value: "memberFirstName" },
+    { label: "member.lastName", value: "memberLastName" },
+    { label: "member.displayName", value: "memberDisplayName" },
+    { label: "member.email", value: "memberEmail" },
+
+    { label: "enrollment.role", value: "enrollmentRole" },
+    { label: "enrollment.joinedAt", value: "enrollmentJoinedAt" },
+
+    { label: "store.storeLocation", value: "storeLocation" },
+    { label: "store.imageUrl", value: "storeImageUrl" },
+    { label: "storeType.key", value: "storeTypeKey" },
+
+    { label: "store.variablesJson", value: "storeVariablesJson" },
+    { label: "storeType.variablesJson", value: "storeTypeVariablesJson" },
+  ];
+
+  const parser = new Parser({
+    fields,
+    withBOM: true,
+  });
+  const csv = parser.parse(csvRows);
 
   // Generate filename with classroom ID and timestamp
   const timestamp = Date.now();
@@ -446,7 +474,7 @@ enrollmentSchema.statics.processRosterExport = async function (
   return {
     csv,
     fileName,
-    total: csvData.length,
+    total: csvRows.length,
   };
 };
 

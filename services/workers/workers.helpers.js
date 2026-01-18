@@ -271,6 +271,9 @@ function initializeQueueWorkers() {
     // const { initPdfWorker } = require("../../lib/queues/pdf-worker");
     const { initEmailWorker } = require("../../lib/queues/email-worker");
     const { initSimulationWorker } = require("../../lib/queues/simulation-worker");
+    const {
+      initSimulationBatchWorker,
+    } = require("../../lib/queues/simulation-batch-worker");
     // SMS worker disabled - not sending SMS messages
     // const { initSmsWorker } = require("../../lib/queues/sms-worker");
     // Push notifications disabled - not using push notifications
@@ -279,6 +282,7 @@ function initializeQueueWorkers() {
     // initPdfWorker();
     initEmailWorker();
     initSimulationWorker();
+    initSimulationBatchWorker();
     // initSmsWorker();
     // initPushWorker();
 
