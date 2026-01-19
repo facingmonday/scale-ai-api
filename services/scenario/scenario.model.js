@@ -670,6 +670,7 @@ scenarioSchema.statics.getStoreTypeStats = async function (
     // Store submission data for winner/loser analysis
     stats.submissions.push({
       userId: submission.userId,
+      submissionId: submission._id,
       store: {
         _id: store._id,
         studentId: store.studentId,
@@ -722,6 +723,7 @@ scenarioSchema.statics.getStoreTypeStats = async function (
     // Top 3 winners (highest netProfit)
     stats.winners = sortedSubmissions.slice(0, 3).map((sub) => ({
       userId: sub.userId,
+      submissionId: sub.submissionId,
       store: sub.store,
       netProfit: sub.ledger.netProfit,
       revenue: sub.ledger.revenue,
@@ -734,6 +736,7 @@ scenarioSchema.statics.getStoreTypeStats = async function (
       .reverse()
       .map((sub) => ({
         userId: sub.userId,
+        submissionId: sub.submissionId,
         store: sub.store,
         netProfit: sub.ledger.netProfit,
         revenue: sub.ledger.revenue,
@@ -983,7 +986,6 @@ scenarioSchema.statics.processScenarioExport = async function (
   const Submission = require("../submission/submission.model");
   const LedgerEntry = require("../ledger/ledger.model");
   const Store = require("../store/store.model");
-  const StoreType = require("../storeType/storeType.model");
   const AWS = require("aws-sdk");
   const { Parser } = require("json2csv");
 
@@ -1069,38 +1071,13 @@ scenarioSchema.statics.processScenarioExport = async function (
   const userIdsForStores = submissionDocs
     .map((s) => s?.userId?._id || s?.userId)
     .filter(Boolean);
-
-  // Fetch stores (with store variables) + their storeTypes (with storeType variables)
-  const storeDocs = userIdsForStores.length
+  const stores = userIdsForStores.length
     ? await Store.find({ classroomId, userId: { $in: userIdsForStores } })
-        .select(
-          "classroomId userId studentId shopName storeDescription storeLocation imageUrl storeType"
-        )
-        .populate({
-          path: "storeType",
-          select: "classroomId key label description startingBalance initialStartupCost",
-        })
+        .select("userId studentId shopName imageUrl")
+        .lean()
     : [];
-
-  // Batch populate store variables
-  await Store.populateVariablesForMany(storeDocs);
-
-  // Batch populate storeType variables for all referenced storeTypes
-  const storeTypeDocs = [];
-  const seenStoreTypeIds = new Set();
-  for (const st of storeDocs) {
-    const storeTypeDoc = st?.storeType;
-    if (!storeTypeDoc?._id) continue;
-    const id = storeTypeDoc._id.toString();
-    if (seenStoreTypeIds.has(id)) continue;
-    seenStoreTypeIds.add(id);
-    storeTypeDocs.push(storeTypeDoc);
-  }
-  await StoreType.populateVariablesForMany(storeTypeDocs);
-
-  // Build userId -> store map (plain objects with variables + nested storeType)
   const storeByUserId = new Map(
-    (storeDocs || []).map((st) => [st.userId.toString(), st.toObject()])
+    (stores || []).map((st) => [st.userId.toString(), st])
   );
 
   // Flatten data for CSV
@@ -1111,15 +1088,6 @@ scenarioSchema.statics.processScenarioExport = async function (
     const ledger = userId ? ledgerMap.get(userId) : null;
     const store = userId ? storeByUserId.get(userId) : null;
     const variables = submissionObj.variables || {};
-    const storeVariables =
-      store && store.variables && typeof store.variables === "object"
-        ? store.variables
-        : {};
-    const storeType = store?.storeType || null;
-    const storeTypeVariables =
-      storeType && storeType.variables && typeof storeType.variables === "object"
-        ? storeType.variables
-        : {};
 
     const flattenedInventoryState = ledger
       ? flattenForCsv(ledger.inventoryState || null, "ledgerInventoryState")
@@ -1155,32 +1123,10 @@ scenarioSchema.statics.processScenarioExport = async function (
       studentId: store?.studentId || "",
       storeShopName: store?.shopName || "",
       storeStudentId: store?.studentId || "",
-      storeDescription: store?.storeDescription || "",
-      storeLocation: store?.storeLocation || "",
-      storeImageUrl: store?.imageUrl || "",
-      storeTypeId: storeType?._id ? String(storeType._id) : "",
-      storeTypeKey: storeType?.key || "",
-      storeTypeLabel: storeType?.label || "",
 
       // Ledger nested fields (flattened)
       ...flattenedInventoryState,
       ...flattenedEducation,
-
-      // Store variables (flattened)
-      ...Object.keys(storeVariables).reduce((acc, key) => {
-        const value = storeVariables[key];
-        acc[`storeVar_${key}`] =
-          typeof value === "object" ? JSON.stringify(value) : value;
-        return acc;
-      }, {}),
-
-      // StoreType variables (flattened)
-      ...Object.keys(storeTypeVariables).reduce((acc, key) => {
-        const value = storeTypeVariables[key];
-        acc[`storeTypeVar_${key}`] =
-          typeof value === "object" ? JSON.stringify(value) : value;
-        return acc;
-      }, {}),
 
       // Submission variables (flattened)
       ...Object.keys(variables).reduce((acc, key) => {
@@ -1234,15 +1180,7 @@ scenarioSchema.statics.processScenarioExport = async function (
   if (csvData.length === 0)
     throw new Error("No submissions found for this scenario");
 
-  // Ensure we include all columns even if some rows have extra keys
-  const fields = Array.from(
-    csvData.reduce((set, row) => {
-      Object.keys(row || {}).forEach((k) => set.add(k));
-      return set;
-    }, new Set())
-  ).sort();
-
-  const parser = new Parser({ fields });
+  const parser = new Parser();
   const csv = parser.parse(csvData);
 
   const timestamp = Date.now();

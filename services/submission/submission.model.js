@@ -331,12 +331,20 @@ submissionSchema.statics.updateSubmission = async function (
 /**
  * Get submissions for a scenario (normalized for AI)
  * @param {string} scenarioId - Scenario ID
- * @returns {Promise<Array>} Array of normalized submission objects
+ * @param {Object} options - Optional pagination parameters
+ * @param {number} options.page - Page number (0-indexed)
+ * @param {number} options.pageSize - Number of items per page
+ * @returns {Promise<Array|Object>} Array of normalized submission objects, or object with submissions and pagination info if pagination is used
  */
 submissionSchema.statics.getSubmissionsByScenario = async function (
-  scenarioId
+  scenarioId,
+  options = {}
 ) {
-  const submissions = await this.find({ scenarioId })
+  const { page, pageSize } = options;
+  const usePagination = page !== undefined && pageSize !== undefined;
+
+  // Build the query
+  let query = this.find({ scenarioId })
     .populate({
       path: "userId",
       select: "_id clerkUserId firstName lastName maskedEmail",
@@ -351,11 +359,21 @@ submissionSchema.statics.getSubmissionsByScenario = async function (
         "_id sales revenue costs waste cashBefore cashAfter inventoryState netProfit randomEvent summary",
     });
 
+  // Get total count if pagination is used
+  let total = null;
+  if (usePagination) {
+    total = await this.countDocuments({ scenarioId });
+    const skip = page * pageSize;
+    query = query.skip(skip).limit(pageSize);
+  }
+
+  const submissions = await query;
+
   // Use plugin's efficient batch population
   await this.populateVariablesForMany(submissions);
 
   // Variables are automatically included via plugin (already in array format with full definitions)
-  return submissions.map((submission) => {
+  const normalizedSubmissions = submissions.map((submission) => {
     const submissionObj = submission.toObject();
     // Ensure legacy submissions (created before generation metadata existed) still expose a method.
     const generation =
@@ -384,6 +402,19 @@ submissionSchema.statics.getSubmissionsByScenario = async function (
       processingStatus: submissionObj.processingStatus || "pending",
     };
   });
+
+  // Return paginated result if pagination is used, otherwise return array for backward compatibility
+  if (usePagination) {
+    return {
+      submissions: normalizedSubmissions,
+      total,
+      page,
+      pageSize,
+      hasMore: (page + 1) * pageSize < total,
+    };
+  }
+
+  return normalizedSubmissions;
 };
 
 /**

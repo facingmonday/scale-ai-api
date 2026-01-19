@@ -354,12 +354,34 @@ exports.getStudentSubmissions = async function (req, res) {
 /**
  * Get all submissions for scenario (admin)
  * GET /api/admin/scenarios/:scenarioId/submissions
+ * Query params:
+ *   - page: Page number (default: 0)
+ *   - pageSize: Items per page (default: 50)
+ *   - status: Filter by "submitted" or "missing" (optional)
+ *   - search: Search by member name or email (optional)
+ *   - storeType: Filter by store type ID (optional)
+ *   - generationMethod: Filter by submission generation method (MANUAL, AI, FORWARDED_PREVIOUS, etc.) (optional)
+ *   - sortBy: Field to sort by (default: "submittedAt")
+ *   - sortOrder: "asc" or "desc" (default: "desc")
  */
 exports.getSubmissionsForScenario = async function (req, res) {
   try {
     const { scenarioId } = req.params;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
+
+    // Parse pagination parameters
+    const page = parseInt(req.query.page) || 0;
+    const pageSize = parseInt(req.query.pageSize) || 50;
+
+    // Parse filter parameters
+    const searchTerm = req.query.search; // Search by name or email
+    const storeTypeFilter = req.query.storeType; // Store type ID
+    const generationMethodFilter = req.query.generationMethod; // Generation method
+
+    // Parse sort parameters
+    const sortBy = req.query.sortBy || "submittedAt";
+    const sortOrder = req.query.sortOrder === "asc" ? 1 : -1;
 
     // Get scenario to get classroomId
     const scenario = await Scenario.findById(scenarioId);
@@ -377,11 +399,11 @@ exports.getSubmissionsForScenario = async function (req, res) {
     );
 
     // Get all submissions
-    const submissions = await Submission.getSubmissionsByScenario(scenarioId);
+    const allSubmissions = await Submission.getSubmissionsByScenario(scenarioId);
 
-    // Fetch stores for all submissions
-    const submissionsWithStores = await Promise.all(
-      submissions.map(async (submission) => {
+    // Fetch stores for all submissions and format
+    let submissionsWithStores = await Promise.all(
+      allSubmissions.map(async (submission) => {
         const store =
           submission.member && submission.member._id
             ? await Store.getStoreByUser(classroomId, submission.member._id)
@@ -393,6 +415,133 @@ exports.getSubmissionsForScenario = async function (req, res) {
       })
     );
 
+    // Apply filters
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      submissionsWithStores = submissionsWithStores.filter((sub) => {
+        const member = sub.member;
+        if (!member) return false;
+        const firstName = (member.firstName || "").toLowerCase();
+        const lastName = (member.lastName || "").toLowerCase();
+        const email = (member.email || "").toLowerCase();
+        return (
+          firstName.includes(searchLower) ||
+          lastName.includes(searchLower) ||
+          email.includes(searchLower) ||
+          `${firstName} ${lastName}`.includes(searchLower)
+        );
+      });
+    }
+
+    if (storeTypeFilter) {
+      submissionsWithStores = submissionsWithStores.filter((sub) => {
+        return (
+          sub.store &&
+          sub.store.storeType &&
+          sub.store.storeType.toString() === storeTypeFilter
+        );
+      });
+    }
+
+    if (generationMethodFilter) {
+      submissionsWithStores = submissionsWithStores.filter((sub) => {
+        return (
+          sub.generation &&
+          sub.generation.method === generationMethodFilter
+        );
+      });
+    }
+
+    // Apply sorting
+    const sortField = sortBy;
+    if (sortField === "submittedAt") {
+      submissionsWithStores.sort((a, b) => {
+        const dateA = a.submittedAt ? new Date(a.submittedAt) : new Date(0);
+        const dateB = b.submittedAt ? new Date(b.submittedAt) : new Date(0);
+        return (dateB - dateA) * sortOrder;
+      });
+    } else if (sortField === "name") {
+      submissionsWithStores.sort((a, b) => {
+        const nameA = `${a.member?.firstName || ""} ${a.member?.lastName || ""}`.trim() || "";
+        const nameB = `${b.member?.firstName || ""} ${b.member?.lastName || ""}`.trim() || "";
+        return nameA.localeCompare(nameB) * sortOrder;
+      });
+    } else if (sortField === "email") {
+      submissionsWithStores.sort((a, b) => {
+        const emailA = (a.member?.email || "").toLowerCase();
+        const emailB = (b.member?.email || "").toLowerCase();
+        return emailA.localeCompare(emailB) * sortOrder;
+      });
+    }
+
+    // Apply pagination
+    const totalCount = submissionsWithStores.length;
+    const skip = page * pageSize;
+    const paginatedResults = submissionsWithStores.slice(skip, skip + pageSize);
+    const hasMore = skip + pageSize < totalCount;
+
+    res.json({
+      success: true,
+      page,
+      pageSize,
+      total: totalCount,
+      hasMore,
+      data: {
+        submissions: paginatedResults,
+      },
+    });
+  } catch (error) {
+    console.error("Error getting submissions for scenario:", error);
+    if (error.message === "Scenario not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Get missing submissions for a scenario
+ * GET /api/admin/scenarios/:scenarioId/submissions/missing
+ */
+exports.getMissingSubmissionsForScenario = async function (req, res) {
+  try {
+    const { scenarioId } = req.params;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    // Parse pagination parameters
+    const page = parseInt(req.query.page) || 0;
+    const pageSize = parseInt(req.query.pageSize) || 50;
+
+    // Parse filter parameters
+    const searchTerm = req.query.search; // Search by name or email
+    const storeTypeFilter = req.query.storeType; // Store type ID
+
+    // Parse sort parameters
+    const sortBy = req.query.sortBy || "name";
+    const sortOrder = req.query.sortOrder === "asc" ? 1 : -1;
+
+    // Get scenario to get classroomId
+    const scenario = await Scenario.findById(scenarioId);
+    if (!scenario) {
+      return res.status(404).json({ error: "Scenario not found" });
+    }
+
+    const classroomId = scenario.classroomId;
+
+    // Verify admin access
+    await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId
+    );
+
     // Get missing submissions
     const missingUserIds = await Submission.getMissingSubmissions(
       classroomId,
@@ -400,7 +549,6 @@ exports.getSubmissionsForScenario = async function (req, res) {
     );
 
     // Get user details for missing submissions
-    // Note: getMissingSubmissions already filters by org:member role, so we just fetch by ID
     const missingUsers = await Member.find({
       _id: { $in: missingUserIds },
     }).select("_id firstName lastName maskedEmail clerkUserId");
@@ -411,37 +559,86 @@ exports.getSubmissionsForScenario = async function (req, res) {
     // Create a map of userId -> store for quick lookup
     const storeMap = new Map();
     stores.forEach((store) => {
-      // getStoresByClass already returns plain objects, but userId might be ObjectId
       const userId = store.userId?.toString
         ? store.userId.toString()
         : String(store.userId);
       storeMap.set(userId, store);
     });
 
+    // Format missing submissions
+    let missingSubmissions = missingUsers.map((u) => {
+      const userObj = u.toObject();
+      const store = userObj._id
+        ? storeMap.get(userObj._id.toString()) || null
+        : null;
+
+      return {
+        ...userObj,
+        email: u.maskedEmail,
+        store,
+      };
+    });
+
+    // Apply filters
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      missingSubmissions = missingSubmissions.filter((user) => {
+        const firstName = (user.firstName || "").toLowerCase();
+        const lastName = (user.lastName || "").toLowerCase();
+        const email = (user.email || "").toLowerCase();
+        return (
+          firstName.includes(searchLower) ||
+          lastName.includes(searchLower) ||
+          email.includes(searchLower) ||
+          `${firstName} ${lastName}`.includes(searchLower)
+        );
+      });
+    }
+
+    if (storeTypeFilter) {
+      missingSubmissions = missingSubmissions.filter((user) => {
+        return (
+          user.store &&
+          user.store.storeType &&
+          user.store.storeType.toString() === storeTypeFilter
+        );
+      });
+    }
+
+    // Apply sorting
+    const sortField = sortBy;
+    if (sortField === "name") {
+      missingSubmissions.sort((a, b) => {
+        const nameA = `${a.firstName || ""} ${a.lastName || ""}`.trim();
+        const nameB = `${b.firstName || ""} ${b.lastName || ""}`.trim();
+        return nameA.localeCompare(nameB) * sortOrder;
+      });
+    } else if (sortField === "email") {
+      missingSubmissions.sort((a, b) => {
+        const emailA = (a.email || "").toLowerCase();
+        const emailB = (b.email || "").toLowerCase();
+        return emailA.localeCompare(emailB) * sortOrder;
+      });
+    }
+
+    // Apply pagination
+    const totalCount = missingSubmissions.length;
+    const skip = page * pageSize;
+    const paginatedResults = missingSubmissions.slice(skip, skip + pageSize);
+    const hasMore = skip + pageSize < totalCount;
+
     res.json({
       success: true,
+      page,
+      pageSize,
+      total: totalCount,
+      hasMore,
       data: {
-        submissions: submissionsWithStores,
-        missingSubmissions: missingUsers.map((u) => {
-          const userObj = u.toObject();
-          // Get store for this user
-          const store = userObj._id
-            ? storeMap.get(userObj._id.toString()) || null
-            : null;
-
-          return {
-            ...userObj,
-            email: u.maskedEmail,
-            store,
-          };
-        }),
-        totalEnrolled: submissions.length + missingUsers.length,
-        submittedCount: submissions.length,
-        missingCount: missingUsers.length,
+        missingSubmissions: paginatedResults,
       },
     });
   } catch (error) {
-    console.error("Error getting submissions for scenario:", error);
+    console.error("Error getting missing submissions for scenario:", error);
     if (error.message === "Scenario not found") {
       return res.status(404).json({ error: error.message });
     }

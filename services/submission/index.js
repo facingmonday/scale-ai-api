@@ -87,4 +87,11 @@ router.get(
   controller.getSubmissionsForScenario
 );
 
+router.get(
+  "/admin/scenarios/:scenarioId/missing-submissions",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.getMissingSubmissionsForScenario
+);
+
 module.exports = router;

@@ -119,11 +119,11 @@ classroomSchema.statics.getDashboard = async function (
     submissionsCompleted = submissions.length;
   }
 
-  // Get leaderboard top 3 (by total netProfit across all scenarios in class)
+  // Get leaderboard top 10 (by total netProfit across all scenarios in class)
   // Exclude initial ledger entry (week 0) where scenarioId is null
   // Only include scenario-based entries (actual profit from operations)
   // Show store name (shopName) instead of member name
-  const leaderboardTop3 = await LedgerEntry.aggregate([
+  const leaderboardTop10 = await LedgerEntry.aggregate([
     {
       $match: {
         classroomId: new mongoose.Types.ObjectId(classroomId),
@@ -138,7 +138,7 @@ classroomSchema.statics.getDashboard = async function (
       },
     },
     { $sort: { totalProfit: -1 } },
-    { $limit: 3 },
+    { $limit: 10 },
     {
       $lookup: {
         from: "stores",
@@ -204,7 +204,7 @@ classroomSchema.statics.getDashboard = async function (
     students: studentCount,
     activeScenario: activeScenarioData,
     submissionsCompleted: submissionsCompleted,
-    leaderboardTop3: leaderboardTop3,
+    leaderboardTop10: leaderboardTop10,
     pendingApprovals: pendingApprovals,
   };
 };
