@@ -115,36 +115,32 @@ class JobService {
   ) {
     const Submission = require("../../submission/submission.model");
 
-    // Get all submissions for this scenario
-    const submissions = await Submission.getSubmissionsByScenario(scenarioId);
+    // Get lightweight submission refs for this scenario (avoid expensive populates/variable population)
+    const submissions = await Submission.getSubmissionRefsByScenario(scenarioId);
 
     if (submissions.length === 0) {
       return [];
     }
 
-    // Create jobs for each submission (createJob will link them automatically)
+    // Create jobs for each submission (createJob will link them automatically).
+    // Process synchronously to keep behavior simple and predictable.
     const enqueue = options.enqueue !== undefined ? options.enqueue : true;
 
-    const jobPromises = submissions.map(async (submission) => {
-      // Get userId from submission (could be in member._id or userId field)
-      // submission.userId from toObject() will be the ObjectId
-      const userId = submission.member?._id || submission.userId;
-
+    const jobs = [];
+    for (const submission of submissions) {
       const job = await this.createJob({
         classroomId,
         scenarioId,
-        userId,
+        userId: submission.userId,
         dryRun,
         submissionId: submission._id,
         organizationId,
         clerkUserId,
         enqueue,
       });
+      jobs.push(job);
+    }
 
-      return job;
-    });
-
-    const jobs = await Promise.all(jobPromises);
     return jobs;
   }
 

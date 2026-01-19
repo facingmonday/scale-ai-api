@@ -1109,10 +1109,28 @@ ledgerEntrySchema.statics.normalizeAndValidateAISimulationResult = function (
   // Normalize inventoryState from materialFlowByBucket.endUnits if present
   if (aiResult.education?.materialFlowByBucket) {
     const mfb = aiResult.education.materialFlowByBucket;
+    // IMPORTANT:
+    // Some model outputs include `materialFlowByBucket` but omit one or more buckets.
+    // In that case, defaulting missing buckets to 0 will incorrectly "zero out" inventory.
+    // Instead, fall back to any explicitly-provided `inventoryState` values for missing buckets.
+    const currentStateForFallback =
+      aiResult.inventoryState && typeof aiResult.inventoryState === "object"
+        ? aiResult.inventoryState
+        : null;
     const derivedInventoryState = {
-      refrigeratedUnits: roundInt(mfb.refrigerated?.endUnits ?? 0),
-      ambientUnits: roundInt(mfb.ambient?.endUnits ?? 0),
-      notForResaleUnits: roundInt(mfb.notForResale?.endUnits ?? 0),
+      refrigeratedUnits: roundInt(
+        mfb.refrigerated?.endUnits ??
+          currentStateForFallback?.refrigeratedUnits ??
+          0
+      ),
+      ambientUnits: roundInt(
+        mfb.ambient?.endUnits ?? currentStateForFallback?.ambientUnits ?? 0
+      ),
+      notForResaleUnits: roundInt(
+        mfb.notForResale?.endUnits ??
+          currentStateForFallback?.notForResaleUnits ??
+          0
+      ),
     };
 
     if (aiResult.inventoryState) {

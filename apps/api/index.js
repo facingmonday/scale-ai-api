@@ -200,19 +200,6 @@ async function main() {
     console.log(`Server running on port ${PORT}`)
   );
 
-  // Initialize email worker so emails can be processed from API service
-  try {
-    const { initEmailWorker } = require("../../lib/queues/email-worker");
-    initEmailWorker();
-    console.log("✅ Email worker initialized in API service");
-  } catch (error) {
-    console.error(
-      "❌ Failed to initialize email worker in API service:",
-      error.message
-    );
-    // Don't exit - API can still function without email processing
-  }
-
   // Run Redis connectivity verification in the background and log outcome
   setTimeout(async () => {
     try {
