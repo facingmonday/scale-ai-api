@@ -15,6 +15,20 @@ require("../../models");
 
 const app = express();
 
+// Color helpers for local/dev logging (avoid emitting ANSI codes into non-TTY logs)
+const ANSI = {
+  reset: "\x1b[0m",
+  redBold: "\x1b[31;1m",
+};
+
+morgan.token("statusColored", (req, res) => {
+  const status = res.statusCode;
+  const statusStr = status == null ? "-" : String(status);
+  if (!process.stdout.isTTY) return statusStr;
+  if (status >= 400) return `${ANSI.redBold}${statusStr}${ANSI.reset}`;
+  return statusStr;
+});
+
 // Global crash handlers to log unexpected errors
 process.on("uncaughtException", (err) => {
   console.error("Uncaught exception:", err);
@@ -40,7 +54,7 @@ if (process.env.NODE_ENV === "production") {
 } else {
   // In non-production environments, use tiny format for all requests
   app.use(
-    morgan("tiny", {
+    morgan(":method :url :statusColored :res[content-length] - :response-time ms", {
       stream: process.stdout, // Explicitly write to stdout
     })
   );
