@@ -328,6 +328,78 @@ submissionSchema.statics.updateSubmission = async function (
   return updatedSubmission ? updatedSubmission.toObject() : null;
 };
 
+
+/**
+* Get submissions for a scenario (normalized for AI)
+* @param {string} scenarioId - Scenario ID
+* @returns {Promise<Array>} Array of normalized submission objects
+*/
+submissionSchema.statics.getSubmissionsByScenario = async function (
+ scenarioId
+) {
+ const submissions = await this.find({ scenarioId })
+   .populate({
+     path: "userId",
+     select: "_id clerkUserId firstName lastName maskedEmail",
+   })
+   .populate({
+     path: "jobs",
+     select: "_id status error attempts startedAt completedAt dryRun",
+   })
+   .populate({
+     path: "ledgerEntryId",
+     select:
+       "_id sales revenue costs waste cashBefore cashAfter inventoryState netProfit randomEvent summary",
+   });
+
+ // Use plugin's efficient batch population
+ await this.populateVariablesForMany(submissions);
+
+ // Variables are automatically included via plugin (already in array format with full definitions)
+ return submissions.map((submission) => {
+   const submissionObj = submission.toObject();
+   // Ensure legacy submissions (created before generation metadata existed) still expose a method.
+   const generation =
+     submissionObj.generation && typeof submissionObj.generation === "object"
+       ? {
+           ...submissionObj.generation,
+           method: submissionObj.generation.method || "MANUAL",
+         }
+       : { method: "MANUAL" };
+
+   return {
+     ...submissionObj,
+     generation,
+     member: submission.userId
+       ? {
+           _id: submission.userId._id,
+           clerkUserId: submission.userId.clerkUserId,
+           email: submission.userId.maskedEmail,
+           firstName: submission.userId.firstName,
+           lastName: submission.userId.lastName,
+         }
+       : null,
+     variables: submissionObj.variables || [],
+     submittedAt: submissionObj.submittedAt,
+     jobs: submissionObj.jobs || [],
+     processingStatus: submissionObj.processingStatus || "pending",
+   };
+ });
+};
+
+/**
+* Get lightweight submission references for a scenario (for job creation/enqueue).
+* This intentionally avoids populates + variable population (which are expensive and unnecessary here).
+*
+* @param {string} scenarioId - Scenario ID
+* @returns {Promise<Array<{_id: ObjectId, userId: ObjectId}>>}
+*/
+submissionSchema.statics.getSubmissionRefsByScenario = async function (
+ scenarioId
+) {
+ return await this.find({ scenarioId }).select("_id userId").lean();
+};
+
 /**
  * Get missing submissions for a scenario
  * @param {string} classroomId - Class ID
