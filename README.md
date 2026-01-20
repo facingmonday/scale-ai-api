@@ -1884,6 +1884,15 @@ If `OPENAI_API_KEY` is not set, auto-generation is skipped.
 - **Delay**: 100ms between jobs (prevents bursts)
 - **Retries**: Handled by Bull queue system
 
+**Rate limiting (recommended):**
+
+To prevent bursts from hammering Clerk/SendGrid (e.g. publishing a scenario to a large class), the
+`email-sending` Bull queue is **rate limited by default** to **1 job per 1000ms**.
+
+- `EMAIL_RATE_LIMIT_MAX` (default: `1`) and `EMAIL_RATE_LIMIT_DURATION_MS` (default: `1000`) tune throughput.
+- Set `EMAIL_RATE_LIMIT_MAX=0` to disable rate limiting entirely.
+- `EMAIL_JOB_DELAY_MS` (default: `1000`) adds an additional per-job delay at enqueue time.
+
 **Queue Monitoring:**
 
 - Jobs tracked in Redis

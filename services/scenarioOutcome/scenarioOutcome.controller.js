@@ -1,23 +1,17 @@
 const ScenarioOutcome = require("./scenarioOutcome.model");
 const Scenario = require("../scenario/scenario.model");
 const Classroom = require("../classroom/classroom.model");
-const JobService = require("../job/lib/jobService");
 const {
-  autoCreateSubmissionsForScenario,
-} = require("../submission/autoCreateSubmissionsForScenario");
-const {
-  forwardPreviousSubmissionsForScenario,
-} = require("../submission/forwardPreviousSubmissionsForScenario");
-const {
-  useDefaultsForSubmissions,
-} = require("../submission/useDefaultsForSubmissions");
-const {
-  enqueueSimulationBatchSubmit,
-} = require("../../lib/queues/simulation-batch-worker");
+  enqueueOutcomeProcessing,
+} = require("../../lib/queues/outcome-processing-worker");
 /**
  * Set scenario outcome
  * POST /api/admin/scenarios/:scenarioId/outcome
- * This automatically closes the scenario and creates jobs for processing
+ * This enqueues a background job to:
+ * - auto-generate missing submissions (optional)
+ * - create simulation jobs
+ * - enqueue batch submit (if enabled)
+ * - close the scenario
  */
 exports.setScenarioOutcome = async function (req, res) {
   try {
@@ -69,111 +63,20 @@ exports.setScenarioOutcome = async function (req, res) {
       clerkUserId
     );
 
-    // Auto-generate submissions for missing students based on outcome settings
-    // autoGenerateSubmissionsOnOutcome can be: "USE_AI", "FORWARD_PREVIOUS", or undefined/null
-    const autoGenerateMode = outcome.autoGenerateSubmissionsOnOutcome;
-    let autoGenerateResult = null;
-
-    if (autoGenerateMode === "USE_AI") {
-      // Use AI to generate submissions for missing students
-      // Pass punishAbsentStudents from outcome to the function
-      autoGenerateResult = await autoCreateSubmissionsForScenario({
-        scenarioId,
-        organizationId,
-        clerkUserId,
-        options: {
-          includeExisting: true, // Skip errors for existing submissions
-        },
-        punishAbsentStudents: outcome.punishAbsentStudents,
-      });
-
-      console.log("Auto-generated submissions (AI):", {
-        created: autoGenerateResult.created,
-        existing: autoGenerateResult.existing,
-        missingStore: autoGenerateResult.missingStore,
-        errors: autoGenerateResult.errors?.length || 0,
-        punishAbsentStudents: outcome.punishAbsentStudents || "none",
-      });
-    } else if (autoGenerateMode === "USE_DEFAULTS") {
-      // Use defaults for submissions
-      autoGenerateResult = await useDefaultsForSubmissions({
-        scenarioId,
-        organizationId,
-        clerkUserId,
-      });
-
-      console.log("Auto-generated submissions (Defaults):", {
-        created: autoGenerateResult.created,
-        existing: autoGenerateResult.existing,
-        missingStore: autoGenerateResult.missingStore,
-        errors: autoGenerateResult.errors?.length || 0,
-      });
-    } else if (autoGenerateMode === "FORWARD_PREVIOUS") {
-      // Forward previous submissions for missing students
-      // Pass punishAbsentStudents from outcome to the function
-      autoGenerateResult = await forwardPreviousSubmissionsForScenario({
-        scenarioId,
-        organizationId,
-        clerkUserId,
-        punishAbsentStudents: outcome.punishAbsentStudents,
-      });
-
-      console.log("Auto-generated submissions (Forward Previous):", {
-        created: autoGenerateResult.created,
-        existing: autoGenerateResult.existing,
-        missingPrevious: autoGenerateResult.missingPrevious,
-        errors: autoGenerateResult.errors?.length || 0,
-        punishAbsentStudents: outcome.punishAbsentStudents || "none",
-      });
-    }
-    // If autoGenerateMode is undefined, null, or any other value, skip auto-generation
-
-    // Create jobs for all submissions (dryRun = false, will write to ledger)
-    const simulationMode = String(process.env.SIMULATION_MODE || "direct");
-    const useBatch = simulationMode === "batch";
-
-    const jobs = await JobService.createJobsForScenario(
+    // Enqueue background processing so the API request stays fast and stable.
+    const queuedJob = await enqueueOutcomeProcessing({
       scenarioId,
-      scenario.classroomId,
-      false, // dryRun = false, will write to ledger
       organizationId,
       clerkUserId,
-      { enqueue: !useBatch }
-    );
-
-    // If using OpenAI Batch, submit a single scenario-level batch job.
-    if (useBatch) {
-      await enqueueSimulationBatchSubmit({
-        scenarioId,
-        classroomId: scenario.classroomId,
-        organizationId,
-        clerkUserId,
-      });
-    }
-
-    // Close scenario
-    await scenario.close(clerkUserId);
+    });
 
     res.json({
       success: true,
       message:
-        "Scenario outcome set successfully. Scenario closed and jobs queued for processing.",
+        "Scenario outcome set successfully. Background processing job queued.",
       data: {
         outcome,
-        jobsCreated: jobs.length,
-        ...(autoGenerateResult && {
-          autoGeneratedSubmissions: {
-            created: autoGenerateResult.created || 0,
-            existing: autoGenerateResult.existing || 0,
-            ...(autoGenerateResult.missingStore !== undefined && {
-              missingStore: autoGenerateResult.missingStore,
-            }),
-            ...(autoGenerateResult.missingPrevious !== undefined && {
-              missingPrevious: autoGenerateResult.missingPrevious,
-            }),
-            errors: autoGenerateResult.errors?.length || 0,
-          },
-        }),
+        outcomeProcessingJobId: queuedJob?.id,
       },
     });
   } catch (error) {

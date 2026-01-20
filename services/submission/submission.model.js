@@ -387,6 +387,19 @@ submissionSchema.statics.getSubmissionsByScenario = async function (
 };
 
 /**
+ * Get lightweight submission references for a scenario (for job creation/enqueue).
+ * This intentionally avoids populates + variable population (which are expensive and unnecessary here).
+ *
+ * @param {string} scenarioId - Scenario ID
+ * @returns {Promise<Array<{_id: ObjectId, userId: ObjectId}>>}
+ */
+submissionSchema.statics.getSubmissionRefsByScenario = async function (
+  scenarioId
+) {
+  return await this.find({ scenarioId }).select("_id userId").lean();
+};
+
+/**
  * Get missing submissions for a scenario
  * @param {string} classroomId - Class ID
  * @param {string} scenarioId - Scenario ID
