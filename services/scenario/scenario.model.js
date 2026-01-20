@@ -479,6 +479,15 @@ async function queueScenarioPublishedEmails(scenario) {
   const Enrollment = require("../enrollment/enrollment.model");
   const Notification = require("../notifications/notifications.model");
 
+  // Abort as early as possible: if SEND_EMAIL isn't enabled, don't create Notification
+  // records (which would otherwise enqueue email jobs via Notification post-save hook).
+  if (process.env.SEND_EMAIL !== "true") {
+    console.log(
+      "SEND_EMAIL is not set to 'true'; skipping scenario published notification creation"
+    );
+    return;
+  }
+
   const classroomId = scenario.classroomId;
   const organizationId = scenario.organization;
 

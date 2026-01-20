@@ -15,6 +15,20 @@ require("../../models");
 
 const app = express();
 
+// Color helpers for local/dev logging (avoid emitting ANSI codes into non-TTY logs)
+const ANSI = {
+  reset: "\x1b[0m",
+  redBold: "\x1b[31;1m",
+};
+
+morgan.token("statusColored", (req, res) => {
+  const status = res.statusCode;
+  const statusStr = status == null ? "-" : String(status);
+  if (!process.stdout.isTTY) return statusStr;
+  if (status >= 400) return `${ANSI.redBold}${statusStr}${ANSI.reset}`;
+  return statusStr;
+});
+
 // Global crash handlers to log unexpected errors
 process.on("uncaughtException", (err) => {
   console.error("Uncaught exception:", err);
@@ -40,7 +54,7 @@ if (process.env.NODE_ENV === "production") {
 } else {
   // In non-production environments, use tiny format for all requests
   app.use(
-    morgan("tiny", {
+    morgan(":method :url :statusColored :res[content-length] - :response-time ms", {
       stream: process.stdout, // Explicitly write to stdout
     })
   );
@@ -199,19 +213,6 @@ async function main() {
   const server = app.listen(PORT, () =>
     console.log(`Server running on port ${PORT}`)
   );
-
-  // Initialize email worker so emails can be processed from API service
-  try {
-    const { initEmailWorker } = require("../../lib/queues/email-worker");
-    initEmailWorker();
-    console.log("✅ Email worker initialized in API service");
-  } catch (error) {
-    console.error(
-      "❌ Failed to initialize email worker in API service:",
-      error.message
-    );
-    // Don't exit - API can still function without email processing
-  }
 
   // Run Redis connectivity verification in the background and log outcome
   setTimeout(async () => {
