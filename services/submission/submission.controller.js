@@ -7,6 +7,90 @@ const Member = require("../members/member.model");
 const LedgerEntry = require("../ledger/ledger.model");
 const Store = require("../store/store.model");
 
+// ---- helpers ----
+
+function isSafePath(path) {
+  // Allow "a", "a.b.c", etc.
+  // Disallow anything that starts with "$" or contains "$." segments
+  if (typeof path !== "string" || !path.trim()) return false;
+  if (path.startsWith("$")) return false;
+  if (path.split(".").some((p) => p.startsWith("$"))) return false;
+  return true;
+}
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function coerceValue(v) {
+  // Convert valid ObjectId strings to ObjectId; leave everything else as-is
+  if (typeof v === "string" && mongoose.Types.ObjectId.isValid(v)) {
+    return new mongoose.Types.ObjectId(v);
+  }
+  if (Array.isArray(v)) return v.map(coerceValue);
+  return v;
+}
+
+function buildMatchCondition(field, operator, value) {
+  const v = coerceValue(value);
+
+  switch (operator) {
+    case "eq":
+      return { [field]: v };
+    case "ne":
+      return { [field]: { $ne: v } };
+    case "in":
+      return { [field]: { $in: Array.isArray(v) ? v : [v] } };
+    case "nin":
+      return { [field]: { $nin: Array.isArray(v) ? v : [v] } };
+    case "gt":
+      return { [field]: { $gt: v } };
+    case "gte":
+      return { [field]: { $gte: v } };
+    case "lt":
+      return { [field]: { $lt: v } };
+    case "lte":
+      return { [field]: { $lte: v } };
+    case "exists":
+      return { [field]: { $exists: Boolean(v) } };
+    case "contains": {
+      const s = String(v ?? "");
+      return { [field]: { $regex: escapeRegex(s), $options: "i" } };
+    }
+    case "startsWith": {
+      const s = String(v ?? "");
+      return { [field]: { $regex: `^${escapeRegex(s)}`, $options: "i" } };
+    }
+    case "endsWith": {
+      const s = String(v ?? "");
+      return { [field]: { $regex: `${escapeRegex(s)}$`, $options: "i" } };
+    }
+    default:
+      throw new Error(`Unsupported operator: ${operator}`);
+  }
+}
+
+function shouldLookupJobs({ filters, sortField, includeJobs }) {
+  if (includeJobs) return true;
+  if (typeof sortField === "string" && sortField.startsWith("jobs.")) return true;
+  if (Array.isArray(filters)) {
+    return filters.some((f) => typeof f?.field === "string" && f.field.startsWith("jobs."));
+  }
+  return false;
+}
+
+function isPostLookupField(field) {
+  // Heuristic: anything referencing these joined/virtual namespaces
+  return (
+    field.startsWith("member.") ||
+    field.startsWith("store.") ||
+    field.startsWith("ledger.") ||
+    field.startsWith("scenario.") ||
+    field.startsWith("classroom.") ||
+    field.startsWith("jobs.")
+  );
+}
+
 /**
  * Submit scenario decisions
  * POST /api/student/submission
@@ -515,18 +599,6 @@ exports.getMissingSubmissionsForScenario = async function (req, res) {
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
-    // Parse pagination parameters
-    const page = parseInt(req.query.page) || 0;
-    const pageSize = parseInt(req.query.pageSize) || 50;
-
-    // Parse filter parameters
-    const searchTerm = req.query.search; // Search by name or email
-    const storeTypeFilter = req.query.storeType; // Store type ID
-
-    // Parse sort parameters
-    const sortBy = req.query.sortBy || "name";
-    const sortOrder = req.query.sortOrder === "asc" ? 1 : -1;
-
     // Get scenario to get classroomId
     const scenario = await Scenario.findById(scenarioId);
     if (!scenario) {
@@ -548,13 +620,20 @@ exports.getMissingSubmissionsForScenario = async function (req, res) {
       scenarioId
     );
 
-    // Get user details for missing submissions
+    // Get user details for missing submissions (lightweight query)
     const missingUsers = await Member.find({
       _id: { $in: missingUserIds },
-    }).select("_id firstName lastName maskedEmail clerkUserId");
+    })
+      .select("_id firstName lastName clerkUserId")
+      .lean();
 
-    // Get all stores for this classroom
-    const stores = await Store.getStoresByClass(classroomId);
+    // Get stores for missing users only (lightweight query)
+    const stores = await Store.find({
+      classroomId,
+      userId: { $in: missingUserIds },
+    })
+      .select("_id userId shopName studentId")
+      .lean();
 
     // Create a map of userId -> store for quick lookup
     const storeMap = new Map();
@@ -562,79 +641,38 @@ exports.getMissingSubmissionsForScenario = async function (req, res) {
       const userId = store.userId?.toString
         ? store.userId.toString()
         : String(store.userId);
-      storeMap.set(userId, store);
+      storeMap.set(userId, {
+        _id: store._id,
+        shopName: store.shopName,
+        studentId: store.studentId,
+      });
     });
 
-    // Format missing submissions
-    let missingSubmissions = missingUsers.map((u) => {
-      const userObj = u.toObject();
-      const store = userObj._id
-        ? storeMap.get(userObj._id.toString()) || null
-        : null;
+    // Format missing submissions (lightweight response)
+    const missingSubmissions = missingUsers.map((user) => {
+      const userId = user._id.toString();
+      const store = storeMap.get(userId) || null;
 
       return {
-        ...userObj,
-        email: u.maskedEmail,
-        store,
+        _id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        clerkUserId: user.clerkUserId,
+        studentId: store?.studentId || null,
+        store: store
+          ? {
+              _id: store._id,
+              shopName: store.shopName,
+              studentId: store.studentId,
+            }
+          : null,
       };
     });
 
-    // Apply filters
-    if (searchTerm) {
-      const searchLower = searchTerm.toLowerCase();
-      missingSubmissions = missingSubmissions.filter((user) => {
-        const firstName = (user.firstName || "").toLowerCase();
-        const lastName = (user.lastName || "").toLowerCase();
-        const email = (user.email || "").toLowerCase();
-        return (
-          firstName.includes(searchLower) ||
-          lastName.includes(searchLower) ||
-          email.includes(searchLower) ||
-          `${firstName} ${lastName}`.includes(searchLower)
-        );
-      });
-    }
-
-    if (storeTypeFilter) {
-      missingSubmissions = missingSubmissions.filter((user) => {
-        return (
-          user.store &&
-          user.store.storeType &&
-          user.store.storeType.toString() === storeTypeFilter
-        );
-      });
-    }
-
-    // Apply sorting
-    const sortField = sortBy;
-    if (sortField === "name") {
-      missingSubmissions.sort((a, b) => {
-        const nameA = `${a.firstName || ""} ${a.lastName || ""}`.trim();
-        const nameB = `${b.firstName || ""} ${b.lastName || ""}`.trim();
-        return nameA.localeCompare(nameB) * sortOrder;
-      });
-    } else if (sortField === "email") {
-      missingSubmissions.sort((a, b) => {
-        const emailA = (a.email || "").toLowerCase();
-        const emailB = (b.email || "").toLowerCase();
-        return emailA.localeCompare(emailB) * sortOrder;
-      });
-    }
-
-    // Apply pagination
-    const totalCount = missingSubmissions.length;
-    const skip = page * pageSize;
-    const paginatedResults = missingSubmissions.slice(skip, skip + pageSize);
-    const hasMore = skip + pageSize < totalCount;
-
     res.json({
       success: true,
-      page,
-      pageSize,
-      total: totalCount,
-      hasMore,
       data: {
-        missingSubmissions: paginatedResults,
+        missingSubmissions,
       },
     });
   } catch (error) {
@@ -1007,99 +1045,287 @@ exports.getSubmission = async function (req, res) {
 };
 
 /**
- * Get all submissions with query params and pagination (admin)
- * GET /api/admin/submissions?classroomId=...&scenarioId=...&userId=...&page=0&pageSize=50
+ * POST /api/admin/submissions/search
+ * Body:
+ * {
+ *   classroomId: string (required),
+ *   page?: number (default 0),
+ *   pageSize?: number (default 50),
+ *   sortField?: string (default "submittedAt"),
+ *   sortDirection?: "asc"|"desc" (default "desc"),
+ *   filters?: Array<{ field: string, operator: string, value: any }>,
+ *   includeJobs?: boolean (default true),
+ * }
  */
 exports.getSubmissions = async function (req, res) {
   try {
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
-    // Parse pagination parameters
-    const page = parseInt(req.query.page) || 0;
-    const pageSize = parseInt(req.query.pageSize) || 50;
+    const {
+      classroomId,
+      page = 0,
+      pageSize = 50,
+      sortField = "submittedAt",
+      sortDirection = "desc",
+      filters = [],
+      includeJobs = true,
+    } = req.body || {};
 
-    // Parse query filters
-    const query = { organization: organizationId };
-
-    if (req.query.classroomId) {
-      if (!mongoose.Types.ObjectId.isValid(req.query.classroomId)) {
-        return res.status(400).json({ error: "Invalid classroomId" });
-      }
-      query.classroomId = req.query.classroomId;
-
-      // Verify admin access to the classroom
-      await Classroom.validateAdminAccess(
-        req.query.classroomId,
-        clerkUserId,
-        organizationId
-      );
+    if (!classroomId || !mongoose.Types.ObjectId.isValid(classroomId)) {
+      return res.status(400).json({ error: "classroomId is required and must be a valid ObjectId" });
     }
 
-    if (req.query.scenarioId) {
-      if (!mongoose.Types.ObjectId.isValid(req.query.scenarioId)) {
-        return res.status(400).json({ error: "Invalid scenarioId" });
-      }
-      query.scenarioId = req.query.scenarioId;
-    }
+    // Verify admin access once, since classroomId is required scope
+    await Classroom.validateAdminAccess(classroomId, clerkUserId, organizationId);
 
-    if (req.query.userId) {
-      if (!mongoose.Types.ObjectId.isValid(req.query.userId)) {
-        return res.status(400).json({ error: "Invalid userId" });
-      }
-      query.userId = req.query.userId;
-    }
+    const pageNum = Math.max(parseInt(page, 10) || 0, 0);
+    const size = Math.min(Math.max(parseInt(pageSize, 10) || 50, 1), 200);
+    const skip = pageNum * size;
 
-    // If classroomId is provided, verify access
-    // If not provided but other filters are, we need to verify access for each result
-    if (!req.query.classroomId && (req.query.scenarioId || req.query.userId)) {
-      // If scenarioId is provided, get classroomId from scenario
-      if (req.query.scenarioId) {
-        const scenario = await Scenario.findById(req.query.scenarioId);
-        if (!scenario) {
-          return res.status(404).json({ error: "Scenario not found" });
+    if (!isSafePath(sortField)) {
+      return res.status(400).json({ error: "Invalid sortField" });
+    }
+    const sortDir = sortDirection === "asc" ? 1 : -1;
+
+    // Build match stages from filters (split into pre/post lookup for performance)
+    const preLookupMatches = [];
+    const postLookupMatches = [];
+
+    const allowedOperators = new Set([
+      "eq",
+      "ne",
+      "in",
+      "nin",
+      "gt",
+      "gte",
+      "lt",
+      "lte",
+      "contains",
+      "startsWith",
+      "endsWith",
+      "exists",
+    ]);
+
+    if (Array.isArray(filters)) {
+      for (const f of filters) {
+        if (!f) continue;
+        const field = f.field;
+        const operator = f.operator;
+        const value = f.value;
+
+        if (!isSafePath(field)) {
+          return res.status(400).json({ error: `Invalid filter field: ${field}` });
         }
-        await Classroom.validateAdminAccess(
-          scenario.classroomId,
-          clerkUserId,
-          organizationId
-        );
-        query.classroomId = scenario.classroomId;
+        if (!allowedOperators.has(operator)) {
+          return res.status(400).json({ error: `Unsupported operator: ${operator}` });
+        }
+
+        // Map your preferred aliases (optional convenience)
+        // memberId -> userId, storeName -> store.shopName, studentId -> store.studentId
+        let normalizedField = field;
+        if (field === "memberId") normalizedField = "userId";
+        if (field === "storeName") normalizedField = "store.shopName";
+        if (field === "studentId") normalizedField = "store.studentId";
+        if (field === "netProfit") normalizedField = "ledger.netProfit";
+
+        const condition = buildMatchCondition(normalizedField, operator, value);
+
+        if (isPostLookupField(normalizedField)) postLookupMatches.push(condition);
+        else preLookupMatches.push(condition);
       }
     }
 
-    // Get total count
-    const totalCount = await Submission.countDocuments(query);
+    const includeJobsLookup = shouldLookupJobs({
+      filters,
+      sortField,
+      includeJobs,
+    });
 
-    // Apply pagination
-    const skip = page * pageSize;
-    const submissions = await Submission.find(query)
-      .populate({
-        path: "userId",
-        select: "_id clerkUserId firstName lastName maskedEmail",
-      })
-      .populate({
-        path: "scenarioId",
-        select: "_id title isPublished isClosed",
-      })
-      .populate({
-        path: "classroomId",
-        select: "_id name",
-      })
-      .populate({
-        path: "jobs",
-        select: "_id status error attempts startedAt completedAt dryRun",
-      })
-      .sort({ submittedAt: -1 })
-      .limit(pageSize)
-      .skip(skip);
+    // Collection names (safe even if you rename models)
+    const membersCollection = Member.collection.name;
+    const scenariosCollection = Scenario.collection.name;
+    const classroomsCollection = Classroom.collection.name;
+    const storesCollection = Store.collection.name;
+    const ledgersCollection = LedgerEntry.collection.name;
 
-    // Populate variables for all submissions
-    await Submission.populateVariablesForMany(submissions);
+    // Base match (hard scope)
+    const baseMatch = {
+      organization: organizationId,
+      classroomId: new mongoose.Types.ObjectId(classroomId),
+    };
 
-    // Format submissions
-    const formattedSubmissions = submissions.map((submission) => {
-      const submissionObj = submission.toObject();
+    const pipeline = [
+      { $match: baseMatch },
+
+      // Apply submission-native filters early
+      ...(preLookupMatches.length ? [{ $match: { $and: preLookupMatches } }] : []),
+
+      // ---- lookups ----
+
+      // member (Submission.userId -> Member)
+      {
+        $lookup: {
+          from: membersCollection,
+          localField: "userId",
+          foreignField: "_id",
+          as: "member",
+        },
+      },
+      { $unwind: { path: "$member", preserveNullAndEmptyArrays: true } },
+
+      // scenario (Submission.scenarioId -> Scenario)
+      {
+        $lookup: {
+          from: scenariosCollection,
+          localField: "scenarioId",
+          foreignField: "_id",
+          as: "scenario",
+        },
+      },
+      { $unwind: { path: "$scenario", preserveNullAndEmptyArrays: true } },
+
+      // classroom (Submission.classroomId -> Classroom)
+      {
+        $lookup: {
+          from: classroomsCollection,
+          localField: "classroomId",
+          foreignField: "_id",
+          as: "classroom",
+        },
+      },
+      { $unwind: { path: "$classroom", preserveNullAndEmptyArrays: true } },
+
+      // store (by classroomId + userId)
+      {
+        $lookup: {
+          from: storesCollection,
+          let: { cId: "$classroomId", uId: "$userId" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [{ $eq: ["$classroomId", "$$cId"] }, { $eq: ["$userId", "$$uId"] }],
+                },
+              },
+            },
+            // If there can be multiple, you can decide how to pick:
+            // { $sort: { createdDate: -1 } },
+            { $limit: 1 },
+          ],
+          as: "store",
+        },
+      },
+      { $unwind: { path: "$store", preserveNullAndEmptyArrays: true } },
+
+      // ledger (Submission.ledgerEntryId -> LedgerEntry)
+      {
+        $lookup: {
+          from: ledgersCollection,
+          localField: "ledgerEntryId",
+          foreignField: "_id",
+          as: "ledger",
+        },
+      },
+      { $unwind: { path: "$ledger", preserveNullAndEmptyArrays: true } },
+
+
+      // Apply filters that depend on lookups
+      ...(postLookupMatches.length ? [{ $match: { $and: postLookupMatches } }] : []),
+
+      // Dynamic sort (with tie-breaker for stable paging)
+      {
+        $sort: {
+          [sortField]: sortDir,
+          _id: 1,
+        },
+      },
+
+      // Facet: data + total
+      {
+        $facet: {
+          data: [
+            { $skip: skip },
+            { $limit: size },
+
+            // Project into a predictable response shape.
+            // Keep submission doc fields at root so we can hydrate it for variables.
+            {
+              $project: {
+                generation: 1,
+                _id: 1,
+                classroomId: 1,
+                scenarioId: 1,
+                userId: 1,
+                submittedAt: 1,
+                ledgerEntryId: 1,
+                processingStatus: 1,
+                organization: 1,
+                createdBy: 1,
+                updatedBy: 1,
+                createdDate: 1,
+                updatedDate: 1,
+
+                // Joined fields (namespaced)
+                member: {
+                  _id: "$member._id",
+                  clerkUserId: "$member.clerkUserId",
+                  firstName: "$member.firstName",
+                  lastName: "$member.lastName",
+                  maskedEmail: "$member.maskedEmail",
+                },
+                store: "$store",
+                ledger: "$ledger",
+                scenario: {
+                  _id: "$scenario._id",
+                  title: "$scenario.title",
+                  isPublished: "$scenario.isPublished",
+                  isClosed: "$scenario.isClosed",
+                },
+                classroom: {
+                  _id: "$classroom._id",
+                  name: "$classroom.name",
+                },
+                jobs: includeJobsLookup
+                  ? {
+                      $map: {
+                        input: "$jobs",
+                        as: "j",
+                        in: {
+                          _id: "$$j._id",
+                          status: "$$j.status",
+                          error: "$$j.error",
+                          attempts: "$$j.attempts",
+                          startedAt: "$$j.startedAt",
+                          completedAt: "$$j.completedAt",
+                          dryRun: "$$j.dryRun",
+                        },
+                      },
+                    }
+                  : 1,
+              },
+            },
+          ],
+          meta: [{ $count: "total" }],
+        },
+      },
+    ];
+
+    const aggResult = await Submission.aggregate(pipeline);
+    const data = aggResult?.[0]?.data || [];
+    const total = aggResult?.[0]?.meta?.[0]?.total || 0;
+
+    // ---- populate variables via existing helper ----
+    // We hydrate each row into a Submission doc to reuse your existing population logic.
+    const hydrated = data.map((row) => Submission.hydrate(row));
+    await Submission.populateVariablesForMany(hydrated);
+
+    // Merge variables back into rows
+    const rowsWithVariables = data.map((row, idx) => {
+      const submissionDoc = hydrated[idx];
+      const submissionObj = submissionDoc.toObject();
+
+      // generation guard (like your existing controller)
       const generation =
         submissionObj.generation && typeof submissionObj.generation === "object"
           ? {
@@ -1109,57 +1335,46 @@ exports.getSubmissions = async function (req, res) {
           : { method: "MANUAL" };
 
       return {
-        ...submissionObj,
+        ...row,
         generation,
-        member: submission.userId
+        variables: submissionObj.variables || {},
+        // Backwards-compat / convenience fields like your existing endpoint:
+        member: row.member
           ? {
-              _id: submission.userId._id,
-              clerkUserId: submission.userId.clerkUserId,
-              email: submission.userId.maskedEmail,
-              firstName: submission.userId.firstName,
-              lastName: submission.userId.lastName,
+              _id: row.member._id,
+              clerkUserId: row.member.clerkUserId,
+              email: row.member.maskedEmail,
+              firstName: row.member.firstName,
+              lastName: row.member.lastName,
             }
           : null,
-        scenario: submission.scenarioId
-          ? {
-              _id: submission.scenarioId._id,
-              title: submission.scenarioId.title,
-              isPublished: submission.scenarioId.isPublished,
-              isClosed: submission.scenarioId.isClosed,
-            }
-          : null,
-        classroom: submission.classroomId
-          ? {
-              _id: submission.classroomId._id,
-              name: submission.classroomId.name,
-            }
-          : null,
-        jobs: submissionObj.jobs || [],
-        processingStatus: submissionObj.processingStatus || "pending",
+        processingStatus: row.processingStatus || "pending",
       };
     });
 
-    const hasMore = skip + pageSize < totalCount;
+    const hasMore = skip + size < total;
 
-    res.json({
+    return res.json({
       success: true,
-      page,
-      pageSize,
-      total: totalCount,
+      classroomId,
+      page: pageNum,
+      pageSize: size,
+      total,
       hasMore,
-      data: formattedSubmissions,
+      sortField,
+      sortDirection: sortDirection === "asc" ? "asc" : "desc",
+      filters,
+      data: rowsWithVariables,
     });
   } catch (error) {
-    console.error("Error getting submissions:", error);
-    if (error.message === "Scenario not found") {
-      return res.status(404).json({ error: error.message });
-    }
+    console.error("Error searching submissions:", error);
+
     if (error.message === "Class not found") {
       return res.status(404).json({ error: error.message });
     }
     if (error.message.includes("Insufficient permissions")) {
       return res.status(403).json({ error: error.message });
     }
-    res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: error.message });
   }
 };

@@ -68,7 +68,13 @@ exports.joinClass = async function (req, res) {
 
 /**
  * Get class roster
- * GET /api/admin/class/:classroomId/roster?page=0&pageSize=50&search=term
+ * GET /api/admin/class/:classroomId/roster?page=0&pageSize=50&search=term&sortBy=name&sortOrder=asc
+ * Query params:
+ *   - page: Page number (default: 0)
+ *   - pageSize: Items per page (default: 50)
+ *   - search: Search by name, email, studentId, or store name (optional)
+ *   - sortBy: Field to sort by - "name", "email", "studentId", "storeName", "joinedAt" (default: "name")
+ *   - sortOrder: "asc" or "desc" (default: "asc")
  */
 exports.getClassRoster = async function (req, res) {
   try {
@@ -79,7 +85,11 @@ exports.getClassRoster = async function (req, res) {
     // Parse pagination parameters
     const page = parseInt(req.query.page) || 0;
     const pageSize = parseInt(req.query.pageSize) || 50;
-    const search = (req.query.search || "").trim().toLowerCase();
+    const searchTerm = (req.query.search || "").trim();
+
+    // Parse sort parameters
+    const sortBy = req.query.sortBy || "name";
+    const sortOrder = req.query.sortOrder === "desc" ? -1 : 1;
 
     // Validate admin access
     await Classroom.validateAdminAccess(
@@ -92,22 +102,63 @@ exports.getClassRoster = async function (req, res) {
     let roster = await Enrollment.getClassRoster(classroomId);
 
     // Apply search filter if provided
-    if (search) {
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
       roster = roster.filter((student) => {
         const firstName = (student.firstName || "").toLowerCase();
         const lastName = (student.lastName || "").toLowerCase();
         const displayName = (student.displayName || "").toLowerCase();
+        const email = (student.email || "").toLowerCase();
+        const studentId = (student.store?.studentId || "").toLowerCase();
+        const storeName = (student.store?.shopName || "").toLowerCase();
 
-        // Match if search term is found in firstName, lastName, or combined displayName
+        // Match if search term is found in any of these fields
         return (
-          firstName.includes(search) ||
-          lastName.includes(search) ||
-          displayName.includes(search)
+          firstName.includes(searchLower) ||
+          lastName.includes(searchLower) ||
+          displayName.includes(searchLower) ||
+          email.includes(searchLower) ||
+          studentId.includes(searchLower) ||
+          storeName.includes(searchLower) ||
+          `${firstName} ${lastName}`.includes(searchLower)
         );
       });
     }
 
-    // Apply pagination in controller
+    // Apply sorting
+    if (sortBy === "name") {
+      roster.sort((a, b) => {
+        const nameA = `${a.firstName || ""} ${a.lastName || ""}`.trim() || "";
+        const nameB = `${b.firstName || ""} ${b.lastName || ""}`.trim() || "";
+        return nameA.localeCompare(nameB) * sortOrder;
+      });
+    } else if (sortBy === "email") {
+      roster.sort((a, b) => {
+        const emailA = (a.email || "").toLowerCase();
+        const emailB = (b.email || "").toLowerCase();
+        return emailA.localeCompare(emailB) * sortOrder;
+      });
+    } else if (sortBy === "studentId") {
+      roster.sort((a, b) => {
+        const studentIdA = (a.store?.studentId || "").toLowerCase();
+        const studentIdB = (b.store?.studentId || "").toLowerCase();
+        return studentIdA.localeCompare(studentIdB) * sortOrder;
+      });
+    } else if (sortBy === "storeName") {
+      roster.sort((a, b) => {
+        const storeNameA = (a.store?.shopName || "").toLowerCase();
+        const storeNameB = (b.store?.shopName || "").toLowerCase();
+        return storeNameA.localeCompare(storeNameB) * sortOrder;
+      });
+    } else if (sortBy === "joinedAt") {
+      roster.sort((a, b) => {
+        const dateA = a.joinedAt ? new Date(a.joinedAt) : new Date(0);
+        const dateB = b.joinedAt ? new Date(b.joinedAt) : new Date(0);
+        return (dateA - dateB) * sortOrder;
+      });
+    }
+
+    // Apply pagination
     const totalCount = roster.length;
     const skip = page * pageSize;
     const paginatedRoster = roster.slice(skip, skip + pageSize);
@@ -119,6 +170,8 @@ exports.getClassRoster = async function (req, res) {
       pageSize,
       total: totalCount,
       hasMore,
+      sortBy,
+      sortOrder: sortOrder === 1 ? "asc" : "desc",
       data: paginatedRoster,
     });
   } catch (error) {

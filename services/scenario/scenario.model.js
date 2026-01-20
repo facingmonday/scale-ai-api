@@ -895,22 +895,18 @@ scenarioSchema.statics.getStatsForScenario = async function (scenarioId) {
     totalEnrolled,
     submittedCount,
     missingCount,
-    missingSubmissions,
   ] = await Promise.all([
     this.getStoreTypeStats(submissionsWithStores),
     this.getTotalEnrolled(scenario.classroomId),
     this.getSubmittedCount(scenarioId),
     this.getMissingCount(scenario.classroomId, scenarioId),
-    this.getMissingSubmissions(scenario.classroomId, scenarioId),
   ]);
 
   return {
-    submissions: submissionsWithStores,
     storeTypeStats: storeTypeStats,
     totalEnrolled: totalEnrolled,
     submittedCount: submittedCount,
     missingCount: missingCount,
-    missingSubmissions: missingSubmissions,
   };
 };
 

@@ -22,7 +22,7 @@ router.get(
   checkRole("org:admin"),
   controller.getSubmission
 );
-router.get(
+router.post(
   "/admin/submissions",
   requireAuth(),
   checkRole("org:admin"),
