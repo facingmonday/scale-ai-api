@@ -706,7 +706,6 @@ scenarioSchema.statics.getStoreTypeStats = async function (
 
   // Calculate averages and identify winners/losers for each store type
   Object.keys(storeTypeStats).forEach((storeType) => {
-    console.log("storeType", JSON.stringify(storeType));
     const stats = storeTypeStats[storeType];
     const count = stats.count;
 
