@@ -22,7 +22,7 @@ router.get(
   checkRole("org:admin"),
   controller.getSubmission
 );
-router.get(
+router.post(
   "/admin/submissions",
   requireAuth(),
   checkRole("org:admin"),
@@ -85,6 +85,13 @@ router.get(
   requireAuth(),
   checkRole("org:admin"),
   controller.getSubmissionsForScenario
+);
+
+router.get(
+  "/admin/scenarios/:scenarioId/missing-submissions",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.getMissingSubmissionsForScenario
 );
 
 module.exports = router;
