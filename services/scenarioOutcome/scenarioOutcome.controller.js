@@ -21,6 +21,7 @@ exports.setScenarioOutcome = async function (req, res) {
       randomEventChancePercent,
       autoGenerateSubmissionsOnOutcome,
       punishAbsentStudents,
+      variables,
     } = req.body;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
@@ -50,14 +51,16 @@ exports.setScenarioOutcome = async function (req, res) {
       });
     }
 
-    // Create or update outcome using static method
+    // Create or update outcome using static method (classroomId for variable plugin)
     const outcome = await ScenarioOutcome.createOrUpdateOutcome(
       scenarioId,
       {
+        classroomId: scenario.classroomId,
         notes,
         randomEventChancePercent,
         autoGenerateSubmissionsOnOutcome,
         punishAbsentStudents,
+        variables,
       },
       organizationId,
       clerkUserId

@@ -145,8 +145,8 @@ class SimulationWorker {
       throw new Error(`Scenario not found: ${job.scenarioId}`);
     }
 
-    // Fetch scenario outcome
-    const scenarioOutcome = await ScenarioOutcome.getOutcomeByScenario(
+    // Fetch scenario outcome (load variables and pass as plain object so ledger gets .variables)
+    let scenarioOutcome = await ScenarioOutcome.getOutcomeByScenario(
       job.scenarioId
     );
     if (!scenarioOutcome) {
@@ -154,6 +154,13 @@ class SimulationWorker {
         `Scenario outcome not found for scenario ${job.scenarioId}`
       );
     }
+    if (typeof scenarioOutcome._loadVariables === "function") {
+      await scenarioOutcome._loadVariables();
+    }
+    scenarioOutcome =
+      typeof scenarioOutcome.toObject === "function"
+        ? scenarioOutcome.toObject()
+        : scenarioOutcome;
 
     // Fetch submission
     const submission = await Submission.getSubmission(

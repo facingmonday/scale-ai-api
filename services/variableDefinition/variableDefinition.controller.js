@@ -42,9 +42,13 @@ exports.createVariableDefinition = async function (req, res) {
     }
 
     // Validate appliesTo enum
-    if (!["store", "scenario", "submission", "storeType"].includes(appliesTo)) {
+    if (
+      !["store", "scenario", "submission", "storeType", "scenarioOutcome"].includes(
+        appliesTo
+      )
+    ) {
       throw new Error(
-        "appliesTo must be one of: store, scenario, submission, storeType"
+        "appliesTo must be one of: store, scenario, submission, storeType, scenarioOutcome"
       );
     }
 

@@ -898,17 +898,13 @@ scenarioSchema.statics.getStatsForScenario = async function (scenarioId) {
   });
 
   // Get all stats in parallel
-  const [
-    storeTypeStats,
-    totalEnrolled,
-    submittedCount,
-    missingCount,
-  ] = await Promise.all([
-    this.getStoreTypeStats(submissionsWithStores),
-    this.getTotalEnrolled(scenario.classroomId),
-    this.getSubmittedCount(scenarioId),
-    this.getMissingCount(scenario.classroomId, scenarioId),
-  ]);
+  const [storeTypeStats, totalEnrolled, submittedCount, missingCount] =
+    await Promise.all([
+      this.getStoreTypeStats(submissionsWithStores),
+      this.getTotalEnrolled(scenario.classroomId),
+      this.getSubmittedCount(scenarioId),
+      this.getMissingCount(scenario.classroomId, scenarioId),
+    ]);
 
   return {
     storeTypeStats: storeTypeStats,
@@ -1114,7 +1110,9 @@ scenarioSchema.statics.processScenarioExport = async function (
         : "",
       submissionProcessingStatus: submissionObj.processingStatus || "pending",
       submissionGenerationMethod:
-        submissionObj.generation?.method || submissionObj.generationMethod || "MANUAL",
+        submissionObj.generation?.method ||
+        submissionObj.generationMethod ||
+        "MANUAL",
 
       // User/Student data
       userId: userId || "",
@@ -1188,7 +1186,26 @@ scenarioSchema.statics.processScenarioExport = async function (
   const csv = parser.parse(csvData);
 
   const timestamp = Date.now();
-  const fileName = `scenario_${scenarioId}_export_${timestamp}.csv`;
+  const toSlug = (str, wordLimit) =>
+    (str || "")
+      .trim()
+      .split(/\s+/)
+      .slice(0, wordLimit)
+      .map((w) => w.replace(/[^a-zA-Z0-9]/g, ""))
+      .filter(Boolean)
+      .join("-")
+      .toLowerCase();
+
+  const Classroom = require("../classroom/classroom.model");
+  const classroom = await Classroom.findById(scenario.classroomId)
+    .select("name")
+    .lean();
+  const classroomSlug = toSlug(classroom?.name || "", 3);
+  const titleSlug = toSlug(scenario.title, 4);
+  const slug =
+    [classroomSlug, titleSlug].filter(Boolean).join("_") ||
+    `scenario-${scenarioId}`;
+  const fileName = `${slug}_${timestamp}.csv`;
 
   return {
     csv,
