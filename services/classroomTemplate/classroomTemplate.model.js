@@ -226,6 +226,175 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
         required: true,
         isActive: true,
       },
+      // Transportation-focused submission variables
+      {
+        key: "transportation-mode",
+        label: "How are you planning to move inventory this week?",
+        description:
+          "Tradeoff between cost and responsiveness. Speed is insurance, not free.",
+        appliesTo: "submission",
+        dataType: "string",
+        inputType: "selectbutton",
+        options: ["LOW_COST_SLOW", "BALANCED", "FAST_EXPENSIVE"],
+        defaultValue: "BALANCED",
+        min: null,
+        max: null,
+        required: true,
+        isActive: true,
+      },
+      {
+        key: "transportation-aggressiveness",
+        label:
+          "How aggressively are you willing to pay to keep inventory flowing?",
+        description:
+          "Similar to reorder intensity, but applied to logistics. Makes inventory forecasts more meaningful because supply response differs.",
+        appliesTo: "submission",
+        dataType: "string",
+        inputType: "selectbutton",
+        options: ["VERY_CAUTIOUS", "BALANCED", "AGGRESSIVE"],
+        defaultValue: "BALANCED",
+        min: null,
+        max: null,
+        required: true,
+        isActive: true,
+      },
+      {
+        key: "lead-time-expectation",
+        label: "How confident are you that deliveries will arrive on time?",
+        description:
+          "Forecasting is not just demand, it is supply reliability.",
+        appliesTo: "submission",
+        dataType: "string",
+        inputType: "selectbutton",
+        options: ["VERY_CONFIDENT", "SOMEWHAT_UNCERTAIN", "EXPECTING_DELAYS"],
+        defaultValue: "SOMEWHAT_UNCERTAIN",
+        min: null,
+        max: null,
+        required: true,
+        isActive: true,
+      },
+      {
+        key: "safety-stock-philosophy",
+        label:
+          "How much buffer inventory are you planning to carry due to transportation uncertainty?",
+        description:
+          "Classic safety stock concept without naming it. Connects transport risk to holding costs.",
+        appliesTo: "submission",
+        dataType: "string",
+        inputType: "selectbutton",
+        options: ["MINIMAL_BUFFER", "MODERATE_BUFFER", "HIGH_BUFFER"],
+        defaultValue: "MODERATE_BUFFER",
+        min: null,
+        max: null,
+        required: true,
+        isActive: true,
+      },
+      {
+        key: "transportation-risk-tolerance",
+        label:
+          "If deliveries are disrupted, which outcome concerns you more?",
+        description: "Forces students to acknowledge tradeoffs explicitly.",
+        appliesTo: "submission",
+        dataType: "string",
+        inputType: "selectbutton",
+        options: ["STOCKOUT_AVERSION", "COST_AVERSION", "BALANCED"],
+        defaultValue: "BALANCED",
+        min: null,
+        max: null,
+        required: true,
+        isActive: true,
+      },
+      {
+        key: "contingency-planning",
+        label: "Do you plan to have a backup transportation option this week?",
+        description:
+          "Redundancy has a cost. Planning ahead reduces volatility.",
+        appliesTo: "submission",
+        dataType: "string",
+        inputType: "selectbutton",
+        options: [
+          "NO_BACKUP",
+          "BACKUP_IF_NEEDED",
+          "ALWAYS_MAINTAIN_BACKUP",
+        ],
+        defaultValue: "BACKUP_IF_NEEDED",
+        min: null,
+        max: null,
+        required: true,
+        isActive: true,
+      },
+    ];
+  };
+
+/**
+ * Example scenario variable definitions (template/documentation only).
+ * Instructors create scenario variables per scenario; these are optional
+ * transportation-related examples (e.g. "Weather may disrupt deliveries",
+ * "Fuel prices volatile") that can be used when authoring scenarios.
+ */
+classroomTemplateSchema.statics.getDefaultScenarioVariableDefinitions =
+  function () {
+    return [
+      {
+        key: "transportation-weather-warning",
+        label: "Weather may disrupt deliveries this week",
+        description:
+          "Optional scenario context: weather could affect delivery reliability.",
+        appliesTo: "scenario",
+        dataType: "string",
+        inputType: "text",
+        options: [],
+        defaultValue: null,
+        min: null,
+        max: null,
+        required: false,
+        isActive: true,
+      },
+      {
+        key: "transportation-fuel-volatility",
+        label: "Fuel prices are volatile",
+        description:
+          "Optional scenario context: fuel cost volatility may affect transport costs.",
+        appliesTo: "scenario",
+        dataType: "string",
+        inputType: "text",
+        options: [],
+        defaultValue: null,
+        min: null,
+        max: null,
+        required: false,
+        isActive: true,
+      },
+      {
+        key: "transportation-congestion-event",
+        label: "Local event causing congestion",
+        description:
+          "Optional scenario context: local event may cause delivery delays.",
+        appliesTo: "scenario",
+        dataType: "string",
+        inputType: "text",
+        options: [],
+        defaultValue: null,
+        min: null,
+        max: null,
+        required: false,
+        isActive: true,
+      },
+      {
+        key: "transportation-supplier-backlog",
+        label: "Supplier backlog reported",
+        description:
+          "Optional scenario context: supplier backlog may affect lead times.",
+        appliesTo: "scenario",
+        dataType: "string",
+        inputType: "text",
+        options: [],
+        defaultValue: null,
+        min: null,
+        max: null,
+        required: false,
+        isActive: true,
+      },
     ];
   };
 

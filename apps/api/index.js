@@ -54,9 +54,12 @@ if (process.env.NODE_ENV === "production") {
 } else {
   // In non-production environments, use tiny format for all requests
   app.use(
-    morgan(":method :url :statusColored :res[content-length] - :response-time ms", {
-      stream: process.stdout, // Explicitly write to stdout
-    })
+    morgan(
+      ":method :url :statusColored :res[content-length] - :response-time ms",
+      {
+        stream: process.stdout, // Explicitly write to stdout
+      }
+    )
   );
 }
 
@@ -128,6 +131,7 @@ app.use(
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    exposedHeaders: ["Content-Disposition"],
     optionsSuccessStatus: 204,
   })
 );

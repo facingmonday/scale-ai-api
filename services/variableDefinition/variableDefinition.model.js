@@ -23,7 +23,7 @@ const variableDefinitionSchema = new mongoose.Schema({
   },
   appliesTo: {
     type: String,
-    enum: ["store", "scenario", "submission", "storeType"],
+    enum: ["store", "scenario", "submission", "storeType", "scenarioOutcome"],
     required: true,
     index: true,
   },

@@ -1,6 +1,9 @@
 const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 const LedgerEntry = require("../ledger/ledger.model");
+const VariableDefinition = require("../variableDefinition/variableDefinition.model");
+const VariableValue = require("../variableDefinition/variableValue.model");
+const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
 
 const scenarioOutcomeSchema = new mongoose.Schema({
   scenarioId: {
@@ -8,6 +11,13 @@ const scenarioOutcomeSchema = new mongoose.Schema({
     ref: "Scenario",
     required: true,
     unique: true,
+  },
+  // Required for variable plugin to load outcome variable definitions/values
+  classroomId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Classroom",
+    required: false,
+    index: true,
   },
   notes: {
     type: String,
@@ -41,9 +51,17 @@ const scenarioOutcomeSchema = new mongoose.Schema({
   },
 }).add(baseSchema);
 
+// Apply variable population plugin so outcome.variables is loaded and serialized
+scenarioOutcomeSchema.plugin(variablePopulationPlugin, {
+  variableValueModel: VariableValue,
+  appliesTo: "scenarioOutcome",
+  outputFormat: "valueMap",
+});
+
 // Indexes for performance
 // scenarioId already has a unique index from unique: true
 scenarioOutcomeSchema.index({ organization: 1, scenarioId: 1 });
+scenarioOutcomeSchema.index({ classroomId: 1 });
 
 // Static methods - Shared utilities for scenario outcome operations
 
@@ -93,12 +111,16 @@ scenarioOutcomeSchema.statics.createOrUpdateOutcome = async function (
     if (normalizedPunishAbsent !== undefined) {
       outcome.punishAbsentStudents = normalizedPunishAbsent;
     }
+    if (outcomeData.classroomId !== undefined) {
+      outcome.classroomId = outcomeData.classroomId || null;
+    }
     outcome.updatedBy = clerkUserId;
     await outcome.save();
   } else {
-    // Create new outcome
+    // Create new outcome (classroomId required for variable plugin; from scenario)
     outcome = new this({
       scenarioId,
+      classroomId: outcomeData.classroomId || null,
       notes: outcomeData.notes || "",
       randomEventChancePercent:
         normalizedChancePercent !== undefined ? normalizedChancePercent : 0,
@@ -109,6 +131,58 @@ scenarioOutcomeSchema.statics.createOrUpdateOutcome = async function (
       updatedBy: clerkUserId,
     });
     await outcome.save();
+  }
+
+  // Handle outcome variables (validate, apply defaults, persist, remove omitted keys)
+  if (
+    outcomeData.variables !== undefined &&
+    outcomeData.variables !== null &&
+    typeof outcomeData.variables === "object" &&
+    outcome.classroomId
+  ) {
+    const classroomId = outcome.classroomId;
+    const validation = await VariableDefinition.validateValues(
+      classroomId,
+      "scenarioOutcome",
+      outcomeData.variables
+    );
+    if (!validation.isValid) {
+      throw new Error(
+        `Invalid scenario outcome variables: ${validation.errors.map((e) => e.message).join(", ")}`
+      );
+    }
+    const variablesWithDefaults = await VariableDefinition.applyDefaults(
+      classroomId,
+      "scenarioOutcome",
+      outcomeData.variables
+    );
+    for (const [key, value] of Object.entries(variablesWithDefaults)) {
+      await VariableValue.setVariable(
+        classroomId,
+        "scenarioOutcome",
+        outcome._id,
+        key,
+        value,
+        organizationId,
+        clerkUserId
+      );
+    }
+    // Remove variable values no longer in the set
+    const existingValues = await VariableValue.find({
+      classroomId,
+      appliesTo: "scenarioOutcome",
+      ownerId: outcome._id,
+    });
+    const newKeys = new Set(Object.keys(variablesWithDefaults));
+    for (const existingVar of existingValues) {
+      if (!newKeys.has(existingVar.variableKey)) {
+        await VariableValue.deleteOne({ _id: existingVar._id });
+      }
+    }
+    // Reload variables on the document so cache is updated
+    if (typeof outcome._loadVariables === "function") {
+      await outcome._loadVariables();
+    }
   }
 
   return outcome;

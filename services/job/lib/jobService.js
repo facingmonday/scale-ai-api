@@ -80,6 +80,9 @@ class JobService {
         await queues.simulation.add(
           { jobId: job._id },
           {
+            // Deduplicate Bull jobs per SimulationJob to avoid accidental queue storms
+            // (e.g., scenario outcome processing retries, admin double-submits, etc.).
+            jobId: `simulation:${String(job._id)}`,
             attempts: 3,
             backoff: { type: "exponential", delay: 1000 },
             removeOnComplete: true,

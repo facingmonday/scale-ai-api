@@ -71,18 +71,6 @@ class SimulationWorker {
 
       // If not a dry run, write to ledger
       if (!job.dryRun) {
-        // Create a safe copy for logging (without circular references)
-        const logSafeResult = { ...aiResult };
-        if (logSafeResult.aiMetadata) {
-          logSafeResult.aiMetadata = {
-            ...aiResult.aiMetadata,
-            aiResult: "[Circular Reference Removed]",
-            prompt: "[Prompt Removed for Logging]",
-          };
-        }
-        console.log(
-          `Writing ledger entry: ${JSON.stringify(logSafeResult, null, 2)}`
-        );
         await this.writeLedgerEntry(job, aiResult, context);
       } else {
         // Create a safe copy for logging (without circular references)
@@ -157,8 +145,8 @@ class SimulationWorker {
       throw new Error(`Scenario not found: ${job.scenarioId}`);
     }
 
-    // Fetch scenario outcome
-    const scenarioOutcome = await ScenarioOutcome.getOutcomeByScenario(
+    // Fetch scenario outcome (load variables and pass as plain object so ledger gets .variables)
+    let scenarioOutcome = await ScenarioOutcome.getOutcomeByScenario(
       job.scenarioId
     );
     if (!scenarioOutcome) {
@@ -166,6 +154,13 @@ class SimulationWorker {
         `Scenario outcome not found for scenario ${job.scenarioId}`
       );
     }
+    if (typeof scenarioOutcome._loadVariables === "function") {
+      await scenarioOutcome._loadVariables();
+    }
+    scenarioOutcome =
+      typeof scenarioOutcome.toObject === "function"
+        ? scenarioOutcome.toObject()
+        : scenarioOutcome;
 
     // Fetch submission
     const submission = await Submission.getSubmission(
