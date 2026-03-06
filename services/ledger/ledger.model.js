@@ -320,6 +320,9 @@ ledgerEntrySchema.statics.getAISimulationResponseJsonSchema = function () {
           "costBreakdown",
           "teachingNotes",
           "realizedUnitPrice",
+          "transportationCost",
+          "delayedReceiptUnits",
+          "transportationNotes",
         ],
         properties: {
           demandForecast: { type: "number" },
@@ -373,6 +376,21 @@ ledgerEntrySchema.statics.getAISimulationResponseJsonSchema = function () {
             type: "number",
             description:
               "Total average cost per finished good: costPerGoodRefrigerated + costPerGoodAmbient + costPerGoodOperatingSupply",
+          },
+          transportationCost: {
+            type: "number",
+            description:
+              "Total transportation/logistics cost this period (delivery, expediting, backup options). Connects student transport mode and aggressiveness to a visible cost. Optional.",
+          },
+          delayedReceiptUnits: {
+            type: "number",
+            description:
+              "Number of units that arrived late this period, affecting when inventory was available. Connects lead-time expectation and scenario outcomes to supply reliability. Optional.",
+          },
+          transportationNotes: {
+            type: "string",
+            description:
+              "One to three sentences explaining how the student's transportation decisions (mode, aggressiveness, contingency) played out and any impact on costs, stockouts, or delays. Optional.",
           },
           materialFlowByBucket: {
             type: "object",
@@ -1102,6 +1120,16 @@ ledgerEntrySchema.statics.normalizeAndValidateAISimulationResult = function (
     if (aiResult.education.realizedUnitPrice !== undefined) {
       aiResult.education.realizedUnitPrice = round2(
         aiResult.education.realizedUnitPrice
+      );
+    }
+    if (aiResult.education.transportationCost !== undefined) {
+      aiResult.education.transportationCost = round2(
+        aiResult.education.transportationCost
+      );
+    }
+    if (aiResult.education.delayedReceiptUnits !== undefined) {
+      aiResult.education.delayedReceiptUnits = roundInt(
+        aiResult.education.delayedReceiptUnits
       );
     }
   }
