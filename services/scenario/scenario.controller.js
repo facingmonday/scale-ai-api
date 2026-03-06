@@ -10,6 +10,9 @@ const {
   enqueueSimulationBatchSubmit,
 } = require("../../lib/queues/simulation-batch-worker");
 const {
+  cancelInProgressBatchForScenario,
+} = require("../job/simulationBatch.service");
+const {
   autoCreateSubmissionsForScenario,
 } = require("../submission/autoCreateSubmissionsForScenario");
 
@@ -519,6 +522,97 @@ exports.rerunScenario = async function (req, res) {
     });
   } catch (error) {
     console.error("Error rerunning scenario:", error);
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Cancel any in-progress OpenAI batch, reset jobs, and rerun scenario outcome.
+ * POST /api/admin/scenarios/:scenarioId/cancel-batch-and-rerun
+ */
+exports.cancelBatchAndRerunScenario = async function (req, res) {
+  try {
+    const { scenarioId } = req.params;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    // Find scenario
+    const scenario = await Scenario.getScenarioById(scenarioId, organizationId);
+
+    if (!scenario) {
+      return res.status(404).json({ error: "Scenario not found" });
+    }
+
+    // Verify admin access
+    await Classroom.validateAdminAccess(
+      scenario.classroomId,
+      clerkUserId,
+      organizationId
+    );
+
+    // Get outcome (required for rerun)
+    const outcome = await ScenarioOutcome.getOutcomeByScenario(scenarioId);
+
+    if (!outcome) {
+      return res.status(400).json({
+        error: "Scenario outcome must be set before rerunning",
+      });
+    }
+
+    // 1. Cancel any in-progress OpenAI batch (batch mode only)
+    let batchCancelled = false;
+    let openaiBatchId = null;
+    const simulationMode = String(process.env.SIMULATION_MODE || "direct");
+    if (simulationMode === "batch") {
+      const cancelResult =
+        await cancelInProgressBatchForScenario(scenarioId);
+      batchCancelled = cancelResult.cancelled;
+      openaiBatchId = cancelResult.openaiBatchId || null;
+    }
+
+    // 2. Reset all jobs for this scenario
+    await JobService.resetJobsForScenario(scenarioId);
+
+    // 3. Delete existing ledger entries
+    await LedgerEntry.deleteLedgerEntriesForScenario(scenarioId);
+
+    // 4. Recreate jobs and enqueue
+    const useBatch = simulationMode === "batch";
+    const jobs = await JobService.createJobsForScenario(
+      scenarioId,
+      scenario.classroomId,
+      false, // dryRun = false
+      organizationId,
+      clerkUserId,
+      { enqueue: !useBatch }
+    );
+
+    if (useBatch) {
+      await enqueueSimulationBatchSubmit({
+        scenarioId,
+        classroomId: scenario.classroomId,
+        organizationId,
+        clerkUserId,
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Batch cancelled and scenario rerun initiated.",
+      data: {
+        batchCancelled,
+        openaiBatchId,
+        jobsCreated: jobs.length,
+      },
+    });
+  } catch (error) {
+    console.error("Error in cancel-batch-and-rerun:", error);
     if (error.message === "Class not found") {
       return res.status(404).json({ error: error.message });
     }

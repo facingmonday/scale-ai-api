@@ -25,6 +25,7 @@ const simulationBatchSchema = new mongoose.Schema({
       "completed",
       "failed",
       "expired",
+      "cancelling",
       "cancelled",
     ],
     default: "created",
@@ -136,6 +137,23 @@ simulationBatchSchema.methods.markFailed = async function (errorMessage) {
   this.completedAt = new Date();
   await this.save();
   return this;
+};
+
+simulationBatchSchema.methods.markCancelled = async function (reason) {
+  this.status = "cancelled";
+  this.error = reason || "Cancelled by admin";
+  this.completedAt = new Date();
+  await this.save();
+  return this;
+};
+
+simulationBatchSchema.statics.findInProgressByScenario = async function (
+  scenarioId
+) {
+  return this.findOne({
+    scenarioId,
+    status: { $in: ["validating", "in_progress", "finalizing"] },
+  }).sort({ createdDate: -1 });
 };
 
 const SimulationBatch = mongoose.model("SimulationBatch", simulationBatchSchema);

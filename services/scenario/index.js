@@ -60,6 +60,13 @@ router.post(
 );
 
 router.post(
+  "/admin/scenarios/:scenarioId/cancel-batch-and-rerun",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.cancelBatchAndRerunScenario
+);
+
+router.post(
   "/admin/scenarios/:scenarioId/export",
   requireAuth(),
   checkRole("org:admin"),
