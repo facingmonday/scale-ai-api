@@ -81,7 +81,7 @@ variableDefinitionSchema.index(
   {
     unique: true,
     sparse: true, // keep sparse to avoid impacting older docs during transition
-  }
+  },
 );
 variableDefinitionSchema.index({ classroomId: 1, appliesTo: 1 });
 variableDefinitionSchema.index({ classroomId: 1, isActive: 1 });
@@ -102,7 +102,7 @@ variableDefinitionSchema.statics.createDefinition = async function (
   classroomId,
   payload,
   organizationId,
-  clerkUserId
+  clerkUserId,
 ) {
   if (!classroomId) {
     throw new Error("classroomId is required");
@@ -118,7 +118,7 @@ variableDefinitionSchema.statics.createDefinition = async function (
 
   if (existing) {
     throw new Error(
-      `Variable definition with key "${payload.key}" already exists for this class`
+      `Variable definition with key "${payload.key}" already exists for this class`,
     );
   }
 
@@ -136,7 +136,7 @@ variableDefinitionSchema.statics.createDefinition = async function (
     !validCombinations[payload.dataType].includes(payload.inputType)
   ) {
     throw new Error(
-      `Invalid inputType "${payload.inputType}" for dataType "${payload.dataType}"`
+      `Invalid inputType "${payload.inputType}" for dataType "${payload.dataType}"`,
     );
   }
 
@@ -199,9 +199,9 @@ variableDefinitionSchema.statics.createDefinition = async function (
 variableDefinitionSchema.statics.getDefinitionsForScope = async function (
   classroomId,
   appliesTo,
-  options = {}
+  options = {},
 ) {
-  const query = { appliesTo, isActive: true };
+  const query = { appliesTo }; // isActive: true
   if (!classroomId) {
     throw new Error("classroomId is required");
   }
@@ -223,9 +223,9 @@ variableDefinitionSchema.statics.getDefinitionsForScope = async function (
  */
 variableDefinitionSchema.statics.getDefinitionsByClass = async function (
   classroomId,
-  options = {}
+  options = {},
 ) {
-  const query = { classroomId, isActive: true };
+  const query = { classroomId }; // , isActive: true
   if (options.includeInactive) {
     delete query.isActive;
   }
@@ -244,12 +244,16 @@ variableDefinitionSchema.statics.getDefinitionsByClass = async function (
 variableDefinitionSchema.statics.validateValues = async function (
   classroomId,
   appliesTo,
-  valuesObject
+  valuesObject,
 ) {
   const definitions = await this.getDefinitionsForScope(classroomId, appliesTo);
   const errors = [];
 
-  for (const definition of definitions) {
+  const activeDefinitions = definitions.filter(
+    (definition) => definition.isActive,
+  );
+
+  for (const definition of activeDefinitions) {
     const value = valuesObject[definition.key];
 
     // Check required fields
@@ -356,7 +360,7 @@ variableDefinitionSchema.statics.validateValues = async function (
 variableDefinitionSchema.statics.applyDefaults = async function (
   classroomId,
   appliesTo,
-  valuesObject
+  valuesObject,
 ) {
   const definitions = await this.getDefinitionsForScope(classroomId, appliesTo);
   const result = { ...valuesObject };
@@ -390,7 +394,7 @@ variableDefinitionSchema.statics.applyDefaults = async function (
 variableDefinitionSchema.statics.getDefinitionByKey = async function (
   classroomId,
   key,
-  options = {}
+  options = {},
 ) {
   const query = { key, isActive: true };
   if (!classroomId) {
@@ -442,7 +446,7 @@ variableDefinitionSchema.methods.isInUse = async function () {
 
 const VariableDefinition = mongoose.model(
   "VariableDefinition",
-  variableDefinitionSchema
+  variableDefinitionSchema,
 );
 
 module.exports = VariableDefinition;
