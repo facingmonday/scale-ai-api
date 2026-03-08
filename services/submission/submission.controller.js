@@ -385,7 +385,7 @@ exports.getStudentSubmissions = async function (req, res) {
         : [],
       uniqueScenarioIds.length > 0
         ? Scenario.find({ _id: { $in: uniqueScenarioIds } }).select(
-            "_id title isPublished isClosed"
+            "_id title isPublished isClosed batchProcessingStatus"
           )
         : [],
     ]);
@@ -395,6 +395,7 @@ exports.getStudentSubmissions = async function (req, res) {
 
     const toScenarioStatus = (scenarioDoc) => {
       if (!scenarioDoc) return null;
+      if (scenarioDoc.batchProcessingStatus === "processing") return "processing";
       if (scenarioDoc.isClosed) return "closed";
       if (scenarioDoc.isPublished) return "published";
       return "draft";
@@ -796,7 +797,7 @@ exports.getAllSubmissionsForUser = async function (req, res) {
         : [],
       uniqueScenarioIds.length > 0
         ? Scenario.find({ _id: { $in: uniqueScenarioIds } }).select(
-            "_id title isPublished isClosed"
+            "_id title isPublished isClosed batchProcessingStatus"
           )
         : [],
     ]);

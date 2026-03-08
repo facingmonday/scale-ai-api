@@ -258,16 +258,75 @@ async function createLedgerCreatedNotification(ledgerEntry) {
 // Static methods
 
 /**
+ * Build the "education" sub-schema from SimulationOutputDefinition documents.
+ * Each definition becomes a property inside the education object.
+ * Definitions with dataType "object" or "array" use schemaHint if provided;
+ * otherwise they fall back to a permissive { type } declaration.
+ *
+ * @param {Array} definitions - SimulationOutputDefinition docs (or blueprint objects)
+ * @returns {Object} JSON Schema for the education object
+ */
+function buildEducationSchemaFromDefinitions(definitions) {
+  const required = [];
+  const properties = {};
+
+  for (const def of definitions) {
+    if (!def.key || !def.isActive) continue;
+
+    if (def.required) {
+      required.push(def.key);
+    }
+
+    if (
+      (def.dataType === "object" || def.dataType === "array") &&
+      def.schemaHint &&
+      typeof def.schemaHint === "object"
+    ) {
+      properties[def.key] = def.schemaHint;
+    } else {
+      const prop = { type: def.dataType };
+      if (def.description) prop.description = def.description;
+      properties[def.key] = prop;
+    }
+  }
+
+  return {
+    type: "object",
+    required,
+    properties,
+  };
+}
+
+/**
  * Get the OpenAI JSON schema for an AI-generated scenario ledger entry payload.
  *
- * Notes:
- * - This schema describes the AI response payload (NOT the full Mongo document).
- * - aiMetadata + calculationContext are added by the application after the AI responds.
- * - Keep this in sync with how SimulationWorker writes ledger entries.
+ * When classroomId is provided, fetches SimulationOutputDefinition documents
+ * for that classroom and builds the education sub-schema dynamically.
+ * Falls back to the default blueprint when no definitions exist.
  *
- * @returns {Object} JSON schema object for OpenAI response_format.json_schema.schema
+ * @param {string|null} [classroomId] - Classroom ID (optional for backward compat)
+ * @returns {Promise<Object>} JSON schema object for OpenAI response_format.json_schema.schema
  */
-ledgerEntrySchema.statics.getAISimulationResponseJsonSchema = function () {
+ledgerEntrySchema.statics.getAISimulationResponseJsonSchema = async function (
+  classroomId
+) {
+  const SimulationOutputDefinition = require("../simulationOutputDefinition/simulationOutputDefinition.model");
+  const ClassroomTemplate = require("../classroomTemplate/classroomTemplate.model");
+
+  let definitions = [];
+  if (classroomId) {
+    definitions =
+      await SimulationOutputDefinition.getDefinitionsForClassroom(classroomId);
+  }
+
+  if (!definitions || definitions.length === 0) {
+    definitions = ClassroomTemplate.getDefaultSimulationOutputDefinitions().map(
+      (d) => ({ ...d, isActive: true })
+    );
+  }
+
+  const educationSchema = buildEducationSchemaFromDefinitions(definitions);
+
   return {
     type: "object",
     required: [
@@ -306,193 +365,7 @@ ledgerEntrySchema.statics.getAISimulationResponseJsonSchema = function () {
         description:
           "A detailed summary of the results of the simultion. Include the key factors that contributed to the results and any other relevant information. If the student was absent, explain why and what the results would have been if they had been present.",
       },
-      education: {
-        type: "object",
-        required: [
-          "demandForecast",
-          "demandActual",
-          "serviceLevel",
-          "fillRate",
-          "stockoutUnits",
-          "lostSalesUnits",
-          "backorderUnits",
-          "materialFlowByBucket",
-          "costBreakdown",
-          "teachingNotes",
-          "realizedUnitPrice",
-        ],
-        properties: {
-          demandForecast: { type: "number" },
-          demandActual: { type: "number" },
-          serviceLevel: {
-            type: "number",
-            description:
-              "Service level is the probability of not stocking out for an incoming order (often cycle-based). It measures the likelihood of meeting demand and is used for future planning. Service level is about probability and forward-looking planning - a high service level indicates a high probability of having stock available when orders arrive.",
-          },
-          fillRate: {
-            type: "number",
-            description:
-              "Fill rate is the percentage of total demand (units or orders) actually fulfilled from existing stock, measuring past performance. It is a retrospective measurement that shows what quantity of demand was met. A high fill rate indicates that most demand was satisfied from inventory, but it doesn't guarantee a high service level if a few large orders deplete stock.",
-          },
-          stockoutUnits: {
-            type: "number",
-            description:
-              "The number of units that were not sold because they were not in stock. This is calculated as demandActual - sales.",
-          },
-          lostSalesUnits: {
-            type: "number",
-            description:
-              "The number of units that were not sold because they were not in stock. This is calculated as demandActual - sales.",
-          },
-          backorderUnits: {
-            type: "number",
-            description:
-              "The number of units that were not sold because they were not in stock. This is calculated as demandActual - sales.",
-          },
-          realizedUnitPrice: {
-            type: "number",
-            description:
-              "The price per unit of finished goods that was realized in the simulation. This is calculated from the store type baseline and student decisions.",
-          },
-          costPerGoodRefrigerated: {
-            type: "number",
-            description:
-              "Cost per finished good from refrigerated inventory: avg-unit-cost-refrigerated / goods-per-unit-refrigerated",
-          },
-          costPerGoodAmbient: {
-            type: "number",
-            description:
-              "Cost per finished good from ambient inventory: avg-unit-cost-ambient / goods-per-unit-ambient",
-          },
-          costPerGoodOperatingSupply: {
-            type: "number",
-            description:
-              "Cost per finished good from operating supply inventory: avg-unit-cost-operating-supply / goods-per-unit-operating-supply",
-          },
-          avgCostPerGood: {
-            type: "number",
-            description:
-              "Total average cost per finished good: costPerGoodRefrigerated + costPerGoodAmbient + costPerGoodOperatingSupply",
-          },
-          materialFlowByBucket: {
-            type: "object",
-            required: [
-              "refrigerated",
-              "ambient",
-              "notForResale",
-              "explanation",
-            ],
-            properties: {
-              explanation: {
-                type: "string",
-                description:
-                  "Explain in detail using an example based off the store description what the inventory state is and why. Explain what a unit is and how it is used in the store.",
-              },
-              refrigerated: {
-                type: "object",
-                required: [
-                  "beginUnits",
-                  "receivedUnits",
-                  "usedUnits",
-                  "wasteUnits",
-                  "endUnits",
-                  "endUnitsValue",
-                ],
-                properties: {
-                  beginUnits: { type: "number" },
-                  receivedUnits: { type: "number" },
-                  usedUnits: { type: "number" },
-                  wasteUnits: { type: "number" },
-                  endUnits: { type: "number" },
-                  endUnitsValue: {
-                    type: "number",
-                    description:
-                      "The value of the end units in the bucket. This is calculated as endUnits * avg-unit-cost-refrigerated",
-                  },
-                },
-              },
-              ambient: {
-                type: "object",
-                required: [
-                  "beginUnits",
-                  "receivedUnits",
-                  "usedUnits",
-                  "wasteUnits",
-                  "endUnits",
-                  "endUnitsValue",
-                ],
-                properties: {
-                  beginUnits: { type: "number" },
-                  receivedUnits: { type: "number" },
-                  usedUnits: { type: "number" },
-                  wasteUnits: { type: "number" },
-                  endUnits: { type: "number" },
-                  endUnitsValue: {
-                    type: "number",
-                    description:
-                      "The value of the end units in the bucket. This is calculated as endUnits * avg-unit-cost-ambient",
-                  },
-                },
-              },
-              notForResale: {
-                type: "object",
-                required: [
-                  "beginUnits",
-                  "receivedUnits",
-                  "usedUnits",
-                  "wasteUnits",
-                  "endUnits",
-                  "endUnitsValue",
-                ],
-                properties: {
-                  beginUnits: { type: "number" },
-                  receivedUnits: { type: "number" },
-                  usedUnits: { type: "number" },
-                  wasteUnits: { type: "number" },
-                  endUnits: { type: "number" },
-                  endUnitsValue: {
-                    type: "number",
-                    description:
-                      "The value of the end units in the bucket. This is calculated as endUnits * avg-unit-cost-not-for-resale-dry",
-                  },
-                },
-              },
-            },
-          },
-          costBreakdown: {
-            type: "object",
-            required: [
-              "ingredientCost",
-              "laborCost",
-              "logisticsCost",
-              "tariffCost",
-              "holdingCost",
-              "overflowStorageCost",
-              "expediteCost",
-              "wasteDisposalCost",
-              "otherCost",
-              "explanation",
-            ],
-            properties: {
-              explanation: {
-                type: "string",
-                description:
-                  "Explain in detail using an example based off the store description what the cost breakdown is and why. Explain what a unit is and how it is used in the store.",
-              },
-              ingredientCost: { type: "number" },
-              laborCost: { type: "number" },
-              logisticsCost: { type: "number" },
-              tariffCost: { type: "number" },
-              holdingCost: { type: "number" },
-              overflowStorageCost: { type: "number" },
-              expediteCost: { type: "number" },
-              wasteDisposalCost: { type: "number" },
-              otherCost: { type: "number" },
-            },
-          },
-          teachingNotes: { type: "string" },
-        },
-      },
+      education: educationSchema,
     },
   };
 };
@@ -1030,7 +903,8 @@ ledgerEntrySchema.statics.buildAISimulationOpenAIRequest = async function (
   );
 
   const hardenedMessages = this.hardenAISimulationMessages(rawMessages);
-  const aiResponseSchema = this.getAISimulationResponseJsonSchema();
+  const aiResponseSchema =
+    await this.getAISimulationResponseJsonSchema(classroomId);
 
   return {
     rawMessages,

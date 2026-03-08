@@ -665,6 +665,13 @@ classroomSchema.statics.adminRestoreTemplateForClassroom = async function (
     classroomId,
   });
 
+  // 1b) Delete simulation output definitions (will be re-created by applyToClassroom)
+  const SimulationOutputDefinition = require("../simulationOutputDefinition/simulationOutputDefinition.model");
+  await SimulationOutputDefinition.deleteMany({
+    organization: organizationId,
+    classroomId,
+  });
+
   // 2) Apply template (recreates StoreType defs + StoreType values; creates other defs too)
   const templateApply = await template.applyToClassroom({
     classroomId,

@@ -11,10 +11,36 @@ const {
 } = require("../../lib/queues/simulation-batch-worker");
 const {
   cancelInProgressBatchForScenario,
+  cancelBatchOnly,
 } = require("../job/simulationBatch.service");
+const SimulationBatch = require("../job/simulationBatch.model");
+const openai = require("../../lib/openai");
 const {
   autoCreateSubmissionsForScenario,
 } = require("../submission/autoCreateSubmissionsForScenario");
+
+/** Helper: available admin actions for batch monitoring */
+function getBatchAvailableActions(scenario) {
+  const actions = [];
+  const batch = scenario.batch;
+  const isProcessing =
+    scenario.batchProcessingStatus === "processing" ||
+    (batch &&
+      ["submitted", "validating", "in_progress", "finalizing"].includes(
+        batch.status
+      ));
+  if (isProcessing) {
+    actions.push({
+      id: "cancelBatch",
+      label: "Cancel batch (close without results)",
+    });
+    actions.push({ id: "cancelBatchAndRerun", label: "Cancel and rerun scenario" });
+  }
+  if (scenario.isClosed && batch) {
+    actions.push({ id: "rerun", label: "Rerun scenario" });
+  }
+  return actions;
+}
 
 /**
  * Get all scenarios
@@ -52,6 +78,29 @@ exports.getScenarioById = async function (req, res) {
       // This includes stats for the scenario
       const stats = await Scenario.getStatsForScenario(scenario._id);
       scenario.stats = stats;
+    }
+
+    // Include batch info when using batch mode (for admin monitoring)
+    const useBatch = String(process.env.SIMULATION_MODE || "direct") === "batch";
+    if (useBatch) {
+      const batch = await SimulationBatch.findLatestByScenario(id);
+      scenario.batch = batch
+        ? {
+            _id: batch._id,
+            status: batch.status,
+            openaiBatchId: batch.openaiBatchId,
+            jobCount: batch.jobCount,
+            submittedAt: batch.submittedAt,
+            completedAt: batch.completedAt,
+            lastPolledAt: batch.lastPolledAt,
+            pollCount: batch.pollCount,
+            error: batch.error,
+            openaiRequestCounts: batch.openaiRequestCounts,
+            openaiInProgressAt: batch.openaiInProgressAt,
+            openaiExpiresAt: batch.openaiExpiresAt,
+          }
+        : null;
+      scenario.availableActions = getBatchAvailableActions(scenario);
     }
 
     res.status(200).json({ success: true, data: scenario });
@@ -503,6 +552,9 @@ exports.rerunScenario = async function (req, res) {
     );
 
     if (useBatch) {
+      // Re-open scenario and mark as processing (batch worker will close when done)
+      await scenario.open(clerkUserId);
+      await scenario.setBatchProcessingStatus("processing", clerkUserId);
       await enqueueSimulationBatchSubmit({
         scenarioId,
         classroomId: scenario.classroomId,
@@ -613,6 +665,156 @@ exports.cancelBatchAndRerunScenario = async function (req, res) {
     });
   } catch (error) {
     console.error("Error in cancel-batch-and-rerun:", error);
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Cancel in-progress batch and close scenario (no rerun).
+ * Use when batch is stuck (e.g. OpenAI API degraded) and admin wants to stop processing.
+ * POST /api/admin/scenarios/:scenarioId/cancel-batch
+ */
+exports.cancelBatch = async function (req, res) {
+  try {
+    const { scenarioId } = req.params;
+    const organizationId = req.organization._id;
+
+    const scenario = await Scenario.getScenarioById(scenarioId, organizationId);
+    if (!scenario) {
+      return res.status(404).json({ error: "Scenario not found" });
+    }
+
+    await Classroom.validateAdminAccess(
+      scenario.classroomId,
+      req.clerkUser.id,
+      organizationId
+    );
+
+    const simulationMode = String(process.env.SIMULATION_MODE || "direct");
+    if (simulationMode !== "batch") {
+      return res.status(400).json({
+        error: "Cancel batch is only available when SIMULATION_MODE=batch",
+      });
+    }
+
+    const cancelResult = await cancelBatchOnly(scenarioId);
+    res.json({
+      success: true,
+      message: cancelResult.cancelled
+        ? "Batch cancelled. Scenario has been closed."
+        : "No in-progress batch found for this scenario.",
+      data: cancelResult,
+    });
+  } catch (error) {
+    console.error("Error in cancel-batch:", error);
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Get detailed batch status for a scenario (refresh from OpenAI if in progress).
+ * Helps diagnose stuck batches (e.g. 0 progress for hours).
+ * GET /api/admin/scenarios/:scenarioId/batch-status
+ */
+exports.getBatchStatus = async function (req, res) {
+  try {
+    const { scenarioId } = req.params;
+    const organizationId = req.organization._id;
+    const refresh = req.query.refresh === "true";
+
+    const scenario = await Scenario.getScenarioById(scenarioId, organizationId);
+    if (!scenario) {
+      return res.status(404).json({ error: "Scenario not found" });
+    }
+
+    await Classroom.validateAdminAccess(
+      scenario.classroomId,
+      req.clerkUser.id,
+      organizationId
+    );
+
+    const batch = await SimulationBatch.findLatestByScenario(scenarioId);
+    if (!batch) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          scenarioId,
+          batchProcessingStatus: scenario.batchProcessingStatus,
+          batch: null,
+          message: "No batch found for this scenario.",
+        },
+      });
+    }
+
+    let openaiBatch = null;
+    if (batch.openaiBatchId) {
+      if (
+        refresh &&
+        ["submitted", "validating", "in_progress", "finalizing"].includes(
+          batch.status
+        )
+      ) {
+        try {
+          openaiBatch = await openai.batches.retrieve(batch.openaiBatchId);
+          const batchDocForUpdate = await SimulationBatch.findById(batch._id);
+          if (batchDocForUpdate) {
+            await batchDocForUpdate.updateFromOpenAIStatus(openaiBatch);
+          }
+        } catch (err) {
+          console.warn("Failed to refresh batch from OpenAI:", err.message);
+        }
+      }
+      if (!openaiBatch && batch.openaiBatchId) {
+        try {
+          openaiBatch = await openai.batches.retrieve(batch.openaiBatchId);
+        } catch (err) {
+          console.warn("Failed to fetch batch from OpenAI:", err.message);
+        }
+      }
+    }
+
+    const batchDoc = await SimulationBatch.findById(batch._id).lean();
+
+    res.status(200).json({
+      success: true,
+      data: {
+        scenarioId,
+        batchProcessingStatus: scenario.batchProcessingStatus,
+        batch: {
+          ...batchDoc,
+          openaiRaw: openaiBatch
+            ? {
+                status: openaiBatch.status,
+                request_counts: openaiBatch.request_counts,
+                in_progress_at: openaiBatch.in_progress_at,
+                expires_at: openaiBatch.expires_at,
+                created_at: openaiBatch.created_at,
+                completed_at: openaiBatch.completed_at,
+              }
+            : null,
+        },
+        availableActions: getBatchAvailableActions({
+          ...(typeof scenario.toObject === "function"
+            ? scenario.toObject()
+            : scenario || {}),
+          batch: batchDoc,
+        }),
+      },
+    });
+  } catch (error) {
+    console.error("Error getting batch status:", error);
     if (error.message === "Class not found") {
       return res.status(404).json({ error: error.message });
     }

@@ -45,6 +45,9 @@ router.use("/", require("./scenarioOutcome"));
 // Submission routes
 router.use("/", require("./submission"));
 
+// SimulationOutputDefinition routes
+router.use("/", require("./simulationOutputDefinition"));
+
 // Ledger routes
 router.use("/admin/ledger", require("./ledger"));
 

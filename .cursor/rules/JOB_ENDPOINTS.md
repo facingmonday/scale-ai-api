@@ -180,4 +180,77 @@ Example route: `/jobs/:jobId`
 - Call **GET** `/api/admin/job/:jobId`
 - Allow retry via **POST** `/api/admin/job/:jobId/retry` (only if failed)
 
+---
+
+## Batch API (when SIMULATION_MODE=batch)
+
+When using OpenAI Batch API, scenarios stay in **processing** state until the batch completes. Use these endpoints to monitor and control batch jobs.
+
+### Scenario batch state
+
+- **`batchProcessingStatus`**: `null` | `processing` | `completed` | `failed` | `expired` | `cancelled`
+- **`batch`** (on scenario): latest SimulationBatch with `openaiRequestCounts`, `openaiExpiresAt`, etc.
+- **`availableActions`**: suggested admin actions (e.g. cancel batch, rerun)
+
+### Get batch status (detailed)
+
+**GET** `/api/admin/scenarios/:scenarioId/batch-status`
+
+Query: `?refresh=true` to fetch latest from OpenAI (for stuck-batch diagnosis).
+
+**Response**
+
+```json
+{
+  "success": true,
+  "data": {
+    "scenarioId": "...",
+    "batchProcessingStatus": "processing",
+    "batch": {
+      "_id": "...",
+      "status": "in_progress",
+      "openaiBatchId": "batch_xxx",
+      "jobCount": 25,
+      "openaiRequestCounts": { "total": 25, "completed": 0, "failed": 0 },
+      "openaiInProgressAt": "...",
+      "openaiExpiresAt": "...",
+      "lastPolledAt": "...",
+      "pollCount": 3,
+      "openaiRaw": { "status": "...", "request_counts": {...}, "expires_at": ... }
+    },
+    "availableActions": [
+      { "id": "cancelBatch", "label": "Cancel batch (close without results)" },
+      { "id": "cancelBatchAndRerun", "label": "Cancel and rerun scenario" }
+    ]
+  }
+}
+```
+
+**UI guidance**
+
+- **request_counts**: If `completed` stays at 0 for hours, batch may be stuck (see [OpenAI community](https://community.openai.com/t/batch-api-degraded-since-march-4-stuck-at-0-progress-expiring-after-partial-completion/1375809/3))
+- **openaiExpiresAt**: Batch expires after 24h; show countdown if processing
+
+### Cancel batch only
+
+**POST** `/api/admin/scenarios/:scenarioId/cancel-batch`
+
+Cancels the in-progress OpenAI batch and closes the scenario (no results). Use when batch is stuck.
+
+**Response**
+
+```json
+{
+  "success": true,
+  "message": "Batch cancelled. Scenario has been closed.",
+  "data": { "cancelled": true, "openaiBatchId": "batch_xxx" }
+}
+```
+
+### Cancel batch and rerun
+
+**POST** `/api/admin/scenarios/:scenarioId/cancel-batch-and-rerun`
+
+Cancels the batch, resets jobs, and starts a new batch submit. Use to retry after a stuck/failed batch.
+
 

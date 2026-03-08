@@ -76,6 +76,15 @@ const simulationBatchSchema = new mongoose.Schema({
     type: String,
     default: null,
   },
+  // OpenAI Batch API diagnostics (helps diagnose stuck batches - see request_counts)
+  openaiRequestCounts: {
+    total: { type: Number, default: null },
+    completed: { type: Number, default: null },
+    failed: { type: Number, default: null },
+  },
+  openaiInProgressAt: { type: Date, default: null },
+  openaiExpiresAt: { type: Date, default: null },
+  openaiCompletedAt: { type: Date, default: null },
 }).add(baseSchema);
 
 simulationBatchSchema.index({ scenarioId: 1, createdDate: -1 });
@@ -125,6 +134,23 @@ simulationBatchSchema.methods.updateFromOpenAIStatus = async function (
   if (openaiBatch?.status === "completed") {
     this.completedAt = this.completedAt || new Date();
   }
+  // Persist OpenAI diagnostics for admin monitoring (request_counts helps detect stuck batches at 0 progress)
+  if (openaiBatch?.request_counts && typeof openaiBatch.request_counts === "object") {
+    this.openaiRequestCounts = {
+      total: openaiBatch.request_counts.total ?? null,
+      completed: openaiBatch.request_counts.completed ?? null,
+      failed: openaiBatch.request_counts.failed ?? null,
+    };
+  }
+  if (openaiBatch?.in_progress_at) {
+    this.openaiInProgressAt = new Date(openaiBatch.in_progress_at * 1000);
+  }
+  if (openaiBatch?.expires_at) {
+    this.openaiExpiresAt = new Date(openaiBatch.expires_at * 1000);
+  }
+  if (openaiBatch?.completed_at) {
+    this.openaiCompletedAt = new Date(openaiBatch.completed_at * 1000);
+  }
   this.lastPolledAt = new Date();
   this.pollCount += 1;
   await this.save();
@@ -152,8 +178,22 @@ simulationBatchSchema.statics.findInProgressByScenario = async function (
 ) {
   return this.findOne({
     scenarioId,
-    status: { $in: ["validating", "in_progress", "finalizing"] },
+    openaiBatchId: { $ne: null },
+    status: {
+      $in: ["submitted", "validating", "in_progress", "finalizing"],
+    },
   }).sort({ createdDate: -1 });
+};
+
+/**
+ * Get the most recent batch for a scenario (any status), for admin monitoring.
+ */
+simulationBatchSchema.statics.findLatestByScenario = async function (
+  scenarioId
+) {
+  return this.findOne({ scenarioId })
+    .sort({ createdDate: -1 })
+    .lean();
 };
 
 const SimulationBatch = mongoose.model("SimulationBatch", simulationBatchSchema);

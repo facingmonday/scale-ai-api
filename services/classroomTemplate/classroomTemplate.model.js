@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const StoreType = require("../storeType/storeType.model");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
 const VariableValue = require("../variableDefinition/variableValue.model");
+const SimulationOutputDefinition = require("../simulationOutputDefinition/simulationOutputDefinition.model");
 const { STORE_TYPE_PRESETS } = require("../store/storeTypePresets");
 
 const classroomTemplateSchema = new mongoose.Schema(
@@ -475,6 +476,293 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         max: 50,
         required: true,
         isActive: true,
+      },
+    ];
+  };
+
+/**
+ * Default simulation output definitions (template blueprint).
+ * Mirrors the hardcoded JSON schema from getAISimulationResponseJsonSchema.
+ * Each entry maps to a SimulationOutputDefinition document when applied.
+ */
+classroomTemplateSchema.statics.getDefaultSimulationOutputDefinitions =
+  function () {
+    return [
+      // --- Top-level education metrics ---
+      {
+        key: "demandForecast",
+        label: "Demand Forecast",
+        description: "The forecasted demand for the period.",
+        dataType: "number",
+        required: true,
+        group: "education",
+        schemaHint: null,
+        displayOrder: 10,
+      },
+      {
+        key: "demandActual",
+        label: "Actual Demand",
+        description: "The actual realized demand for the period.",
+        dataType: "number",
+        required: true,
+        group: "education",
+        schemaHint: null,
+        displayOrder: 20,
+      },
+      {
+        key: "serviceLevel",
+        label: "Service Level",
+        description:
+          "Service level is the probability of not stocking out for an incoming order (often cycle-based). It measures the likelihood of meeting demand and is used for future planning.",
+        dataType: "number",
+        required: true,
+        group: "education",
+        schemaHint: null,
+        displayOrder: 30,
+      },
+      {
+        key: "fillRate",
+        label: "Fill Rate",
+        description:
+          "Fill rate is the percentage of total demand (units or orders) actually fulfilled from existing stock, measuring past performance.",
+        dataType: "number",
+        required: true,
+        group: "education",
+        schemaHint: null,
+        displayOrder: 40,
+      },
+      {
+        key: "stockoutUnits",
+        label: "Stockout Units",
+        description:
+          "The number of units that were not sold because they were not in stock. Calculated as demandActual - sales.",
+        dataType: "number",
+        required: true,
+        group: "education",
+        schemaHint: null,
+        displayOrder: 50,
+      },
+      {
+        key: "lostSalesUnits",
+        label: "Lost Sales Units",
+        description:
+          "The number of units that were not sold because they were not in stock. Calculated as demandActual - sales.",
+        dataType: "number",
+        required: true,
+        group: "education",
+        schemaHint: null,
+        displayOrder: 60,
+      },
+      {
+        key: "backorderUnits",
+        label: "Backorder Units",
+        description:
+          "The number of units that were not sold because they were not in stock. Calculated as demandActual - sales.",
+        dataType: "number",
+        required: true,
+        group: "education",
+        schemaHint: null,
+        displayOrder: 70,
+      },
+      {
+        key: "realizedUnitPrice",
+        label: "Realized Unit Price",
+        description:
+          "The price per unit of finished goods that was realized in the simulation. Calculated from the store type baseline and student decisions.",
+        dataType: "number",
+        required: true,
+        group: "education",
+        schemaHint: null,
+        displayOrder: 80,
+      },
+      {
+        key: "costPerGoodRefrigerated",
+        label: "Cost per Good (Refrigerated)",
+        description:
+          "Cost per finished good from refrigerated inventory: avg-unit-cost-refrigerated / goods-per-unit-refrigerated",
+        dataType: "number",
+        required: false,
+        group: "education",
+        schemaHint: null,
+        displayOrder: 90,
+      },
+      {
+        key: "costPerGoodAmbient",
+        label: "Cost per Good (Ambient)",
+        description:
+          "Cost per finished good from ambient inventory: avg-unit-cost-ambient / goods-per-unit-ambient",
+        dataType: "number",
+        required: false,
+        group: "education",
+        schemaHint: null,
+        displayOrder: 100,
+      },
+      {
+        key: "costPerGoodOperatingSupply",
+        label: "Cost per Good (Operating Supply)",
+        description:
+          "Cost per finished good from operating supply inventory: avg-unit-cost-operating-supply / goods-per-unit-operating-supply",
+        dataType: "number",
+        required: false,
+        group: "education",
+        schemaHint: null,
+        displayOrder: 110,
+      },
+      {
+        key: "avgCostPerGood",
+        label: "Average Cost per Good",
+        description:
+          "Total average cost per finished good: costPerGoodRefrigerated + costPerGoodAmbient + costPerGoodOperatingSupply",
+        dataType: "number",
+        required: false,
+        group: "education",
+        schemaHint: null,
+        displayOrder: 120,
+      },
+      {
+        key: "teachingNotes",
+        label: "Teaching Notes",
+        description: "Instructor-facing notes explaining the results.",
+        dataType: "string",
+        required: true,
+        group: "education",
+        schemaHint: null,
+        displayOrder: 200,
+      },
+
+      // --- Material Flow (object with per-bucket sub-objects) ---
+      {
+        key: "materialFlowByBucket",
+        label: "Material Flow by Bucket",
+        description:
+          "Per-bucket material flow tracking: begin, received, used, waste, end units and value.",
+        dataType: "object",
+        required: true,
+        group: "materialFlow",
+        schemaHint: {
+          type: "object",
+          required: ["refrigerated", "ambient", "notForResale", "explanation"],
+          properties: {
+            explanation: {
+              type: "string",
+              description:
+                "Explain in detail using an example based off the store description what the inventory state is and why. Explain what a unit is and how it is used in the store.",
+            },
+            refrigerated: {
+              type: "object",
+              required: [
+                "beginUnits",
+                "receivedUnits",
+                "usedUnits",
+                "wasteUnits",
+                "endUnits",
+                "endUnitsValue",
+              ],
+              properties: {
+                beginUnits: { type: "number" },
+                receivedUnits: { type: "number" },
+                usedUnits: { type: "number" },
+                wasteUnits: { type: "number" },
+                endUnits: { type: "number" },
+                endUnitsValue: {
+                  type: "number",
+                  description:
+                    "The value of the end units in the bucket. Calculated as endUnits * avg-unit-cost-refrigerated",
+                },
+              },
+            },
+            ambient: {
+              type: "object",
+              required: [
+                "beginUnits",
+                "receivedUnits",
+                "usedUnits",
+                "wasteUnits",
+                "endUnits",
+                "endUnitsValue",
+              ],
+              properties: {
+                beginUnits: { type: "number" },
+                receivedUnits: { type: "number" },
+                usedUnits: { type: "number" },
+                wasteUnits: { type: "number" },
+                endUnits: { type: "number" },
+                endUnitsValue: {
+                  type: "number",
+                  description:
+                    "The value of the end units in the bucket. Calculated as endUnits * avg-unit-cost-ambient",
+                },
+              },
+            },
+            notForResale: {
+              type: "object",
+              required: [
+                "beginUnits",
+                "receivedUnits",
+                "usedUnits",
+                "wasteUnits",
+                "endUnits",
+                "endUnitsValue",
+              ],
+              properties: {
+                beginUnits: { type: "number" },
+                receivedUnits: { type: "number" },
+                usedUnits: { type: "number" },
+                wasteUnits: { type: "number" },
+                endUnits: { type: "number" },
+                endUnitsValue: {
+                  type: "number",
+                  description:
+                    "The value of the end units in the bucket. Calculated as endUnits * avg-unit-cost-not-for-resale-dry",
+                },
+              },
+            },
+          },
+        },
+        displayOrder: 300,
+      },
+
+      // --- Cost Breakdown (object with category keys) ---
+      {
+        key: "costBreakdown",
+        label: "Cost Breakdown",
+        description:
+          "Breakdown of all cost categories for the period including explanation.",
+        dataType: "object",
+        required: true,
+        group: "costBreakdown",
+        schemaHint: {
+          type: "object",
+          required: [
+            "ingredientCost",
+            "laborCost",
+            "logisticsCost",
+            "tariffCost",
+            "holdingCost",
+            "overflowStorageCost",
+            "expediteCost",
+            "wasteDisposalCost",
+            "otherCost",
+            "explanation",
+          ],
+          properties: {
+            explanation: {
+              type: "string",
+              description:
+                "Explain in detail using an example based off the store description what the cost breakdown is and why.",
+            },
+            ingredientCost: { type: "number" },
+            laborCost: { type: "number" },
+            logisticsCost: { type: "number" },
+            tariffCost: { type: "number" },
+            holdingCost: { type: "number" },
+            overflowStorageCost: { type: "number" },
+            expediteCost: { type: "number" },
+            wasteDisposalCost: { type: "number" },
+            otherCost: { type: "number" },
+          },
+        },
+        displayOrder: 400,
       },
     ];
   };
@@ -1003,6 +1291,14 @@ classroomTemplateSchema.statics.ensureGlobalDefaultTemplate =
         payload.prompts = ensureDefaultCostGuardrailsPrompt(payload.prompts);
       }
 
+      if (
+        !Array.isArray(payload.simulationOutputDefinitions) ||
+        payload.simulationOutputDefinitions.length === 0
+      ) {
+        payload.simulationOutputDefinitions =
+          this.getDefaultSimulationOutputDefinitions();
+      }
+
       existing.payload = payload;
       existing.updatedBy = existing.updatedBy || "system_startup";
       await existing.save();
@@ -1028,6 +1324,8 @@ classroomTemplateSchema.statics.ensureGlobalDefaultTemplate =
       storeTypeValuesByStoreTypeKey:
         buildDefaultStoreTypeValuesByStoreTypeKey(),
       prompts: this.getDefaultClassroomPrompts(),
+      simulationOutputDefinitions:
+        this.getDefaultSimulationOutputDefinitions(),
     };
 
     const doc = new this({
@@ -1171,6 +1469,8 @@ classroomTemplateSchema.methods.applyToClassroom = async function ({
     variableDefinitionsSkipped: 0,
     variableValuesCreated: 0,
     variableValuesSkipped: 0,
+    simulationOutputDefinitionsCreated: 0,
+    simulationOutputDefinitionsSkipped: 0,
   };
 
   const payload = this.payload || {};
@@ -1319,6 +1619,33 @@ classroomTemplateSchema.methods.applyToClassroom = async function ({
       const res = await VariableValue.bulkWrite(ops, { ordered: false });
       stats.variableValuesCreated += res?.insertedCount || 0;
     }
+  }
+
+  // 4) Create SimulationOutputDefinitions (classroom-scoped, create-only)
+  const simOutputDefs = Array.isArray(payload.simulationOutputDefinitions)
+    ? payload.simulationOutputDefinitions
+    : [];
+
+  for (const sod of simOutputDefs) {
+    if (!sod || !sod.key) continue;
+    const exists = await SimulationOutputDefinition.findOne({
+      organization: organizationId,
+      classroomId,
+      key: sod.key,
+    }).select("_id");
+
+    if (exists) {
+      stats.simulationOutputDefinitionsSkipped += 1;
+      continue;
+    }
+
+    await SimulationOutputDefinition.createDefinition(
+      classroomId,
+      sod,
+      organizationId,
+      clerkUserId
+    );
+    stats.simulationOutputDefinitionsCreated += 1;
   }
 
   return stats;

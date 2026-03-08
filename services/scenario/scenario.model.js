@@ -27,6 +27,19 @@ const scenarioSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  /**
+   * Batch processing state (only used when SIMULATION_MODE=batch).
+   * - null: not applicable (direct mode or batch not yet started)
+   * - processing: OpenAI batch in progress; scenario stays "processing" until batch finishes
+   * - completed: batch finished successfully; scenario closed
+   * - failed | expired | cancelled: batch ended in terminal state; scenario closed
+   */
+  batchProcessingStatus: {
+    type: String,
+    enum: ["processing", "completed", "failed", "expired", "cancelled", null],
+    default: null,
+    required: false,
+  },
   week: {
     type: Number,
     default: 0,
@@ -375,6 +388,26 @@ scenarioSchema.methods.unpublish = async function (clerkUserId) {
 scenarioSchema.methods.close = async function (clerkUserId) {
   this.isClosed = true;
   this.updatedBy = clerkUserId;
+  await this.save();
+  return this;
+};
+
+/**
+ * Set batch processing status (used when SIMULATION_MODE=batch).
+ * When status is a terminal value (completed/failed/expired/cancelled), also closes the scenario.
+ * @param {string} status - One of: processing | completed | failed | expired | cancelled
+ * @param {string} clerkUserId - Clerk user ID for updatedBy
+ * @returns {Promise<Object>} Updated scenario
+ */
+scenarioSchema.methods.setBatchProcessingStatus = async function (
+  status,
+  clerkUserId
+) {
+  this.batchProcessingStatus = status;
+  this.updatedBy = clerkUserId;
+  if (["completed", "failed", "expired", "cancelled"].includes(status)) {
+    this.isClosed = true;
+  }
   await this.save();
   return this;
 };

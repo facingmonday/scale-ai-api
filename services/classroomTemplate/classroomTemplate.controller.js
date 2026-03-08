@@ -3,6 +3,7 @@ const Classroom = require("../classroom/classroom.model");
 const StoreType = require("../storeType/storeType.model");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
 const VariableValue = require("../variableDefinition/variableValue.model");
+const SimulationOutputDefinition = require("../simulationOutputDefinition/simulationOutputDefinition.model");
 
 async function buildTemplatePayloadFromClassroom({
   organizationId,
@@ -74,6 +75,16 @@ async function buildTemplatePayloadFromClassroom({
     });
   }
 
+  // Fetch classroom-scoped simulation output definitions
+  const simOutputQuery = {
+    organization: organizationId,
+    classroomId,
+    ...(includeInactive === "true" ? {} : { isActive: true }),
+  };
+  const simOutputDefs = await SimulationOutputDefinition.find(simOutputQuery)
+    .sort({ displayOrder: 1, group: 1, label: 1 })
+    .lean();
+
   return {
     prompts:
       Array.isArray(classDoc?.prompts) && classDoc.prompts.length > 0
@@ -87,6 +98,17 @@ async function buildTemplatePayloadFromClassroom({
     })),
     variableDefinitionsByAppliesTo: defsByAppliesTo,
     storeTypeValuesByStoreTypeKey,
+    simulationOutputDefinitions: simOutputDefs.map((d) => ({
+      key: d.key,
+      label: d.label,
+      description: d.description || "",
+      dataType: d.dataType,
+      required: d.required || false,
+      group: d.group || null,
+      schemaHint: d.schemaHint || null,
+      displayOrder: d.displayOrder || 0,
+      isActive: d.isActive !== false,
+    })),
   };
 }
 

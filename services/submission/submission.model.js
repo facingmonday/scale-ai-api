@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
 const Scenario = require("../scenario/scenario.model");
+const ScenarioOutcome = require("../scenarioOutcome/scenarioOutcome.model");
 const VariableValue = require("../variableDefinition/variableValue.model");
 const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
 
@@ -179,6 +180,11 @@ submissionSchema.statics.createSubmission = async function (
   if (scenario.isClosed) {
     throw new Error("Scenario is closed");
   }
+  // Block new submissions once outcome is set (in batch mode, scenario may not be closed yet)
+  const outcome = await ScenarioOutcome.findOne({ scenarioId });
+  if (outcome) {
+    throw new Error("Scenario outcome has been set; no further submissions allowed");
+  }
 
   // Create submission document
   const submission = new this({
@@ -268,6 +274,10 @@ submissionSchema.statics.updateSubmission = async function (
   }
   if (scenario.isClosed) {
     throw new Error("Scenario is closed");
+  }
+  const outcome = await ScenarioOutcome.findOne({ scenarioId });
+  if (outcome) {
+    throw new Error("Scenario outcome has been set; no further submissions allowed");
   }
 
   // Validate variables

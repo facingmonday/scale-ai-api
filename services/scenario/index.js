@@ -67,6 +67,20 @@ router.post(
 );
 
 router.post(
+  "/admin/scenarios/:scenarioId/cancel-batch",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.cancelBatch
+);
+
+router.get(
+  "/admin/scenarios/:scenarioId/batch-status",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.getBatchStatus
+);
+
+router.post(
   "/admin/scenarios/:scenarioId/export",
   requireAuth(),
   checkRole("org:admin"),
