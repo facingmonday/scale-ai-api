@@ -201,13 +201,15 @@ variableDefinitionSchema.statics.getDefinitionsForScope = async function (
   appliesTo,
   options = {},
 ) {
-  const query = { appliesTo }; // isActive: true
+  const query = { appliesTo };
   if (!classroomId) {
     throw new Error("classroomId is required");
   }
   query.classroomId = classroomId;
 
-  if (options.includeInactive) {
+  if (!options.includeInactive) {
+    query.isActive = true;
+  } else {
     delete query.isActive;
   }
 
@@ -225,8 +227,10 @@ variableDefinitionSchema.statics.getDefinitionsByClass = async function (
   classroomId,
   options = {},
 ) {
-  const query = { classroomId }; // , isActive: true
-  if (options.includeInactive) {
+  const query = { classroomId };
+  if (!options.includeInactive) {
+    query.isActive = true;
+  } else {
     delete query.isActive;
   }
 
@@ -382,6 +386,81 @@ variableDefinitionSchema.statics.applyDefaults = async function (
   }
 
   return result;
+};
+
+/**
+ * Filter a variables object to only include keys with active definitions.
+ * Used for AI ledger calculations so inactive (soft-deleted) variables
+ * are excluded from the calculation context.
+ *
+ * @param {string} classroomId - Classroom ID
+ * @param {string} appliesTo - "store", "storeType", "scenario", or "submission"
+ * @param {Object} variables - { [key]: value }
+ * @returns {Promise<Object>} Filtered variables (only keys with active definitions)
+ */
+variableDefinitionSchema.statics.filterVariablesByActiveDefinitions =
+  async function (classroomId, appliesTo, variables) {
+    if (!variables || typeof variables !== "object" || Array.isArray(variables)) {
+      return {};
+    }
+    const definitions = await this.getDefinitionsForScope(classroomId, appliesTo);
+    const activeKeys = new Set(definitions.map((d) => d.key));
+    const filtered = {};
+    for (const [key, value] of Object.entries(variables)) {
+      if (activeKeys.has(key)) {
+        filtered[key] = value;
+      }
+    }
+    return filtered;
+  };
+
+/**
+ * Filter all variable collections for AI simulation context.
+ * Store variables are filtered by both "store" and "storeType" (union of active keys).
+ *
+ * @param {string} classroomId - Classroom ID
+ * @param {Object} ctx - { storeVariables, scenarioVariables, submissionVariables, outcomeVariables }
+ * @returns {Promise<Object>} Filtered context with same shape
+ */
+variableDefinitionSchema.statics.filterVariablesForAIContext = async function (
+  classroomId,
+  ctx
+) {
+  if (!classroomId) {
+    return ctx;
+  }
+  const [storeDefs, storeTypeDefs, scenarioDefs, submissionDefs] =
+    await Promise.all([
+      this.getDefinitionsForScope(classroomId, "store"),
+      this.getDefinitionsForScope(classroomId, "storeType"),
+      this.getDefinitionsForScope(classroomId, "scenario"),
+      this.getDefinitionsForScope(classroomId, "submission"),
+    ]);
+  const storeActiveKeys = new Set([
+    ...storeDefs.map((d) => d.key),
+    ...storeTypeDefs.map((d) => d.key),
+  ]);
+  const scenarioActiveKeys = new Set(scenarioDefs.map((d) => d.key));
+  const submissionActiveKeys = new Set(submissionDefs.map((d) => d.key));
+
+  const filterByKeys = (obj, keys) => {
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return {};
+    const out = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (keys.has(k)) out[k] = v;
+    }
+    return out;
+  };
+
+  return {
+    storeVariables: filterByKeys(ctx.storeVariables, storeActiveKeys),
+    scenarioVariables: filterByKeys(ctx.scenarioVariables, scenarioActiveKeys),
+    submissionVariables: filterByKeys(
+      ctx.submissionVariables,
+      submissionActiveKeys
+    ),
+    outcomeVariables: filterByKeys(ctx.outcomeVariables, scenarioActiveKeys),
+  };
 };
 
 /**

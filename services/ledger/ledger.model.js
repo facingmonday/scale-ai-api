@@ -3,7 +3,24 @@ const baseSchema = require("../../lib/baseSchema");
 const openai = require("../../lib/openai");
 const { v4: uuidv4 } = require("uuid");
 const { round2, roundInt } = require("../../lib/number-utils");
+const VariableDefinition = require("../variableDefinition/variableDefinition.model");
 const AI_MODEL = process.env.AI_MODEL || "gpt-5-mini-2025-08-07";
+
+// Store metadata keys (not variable keys) - used when filtering store for AI prompt
+const STORE_METADATA_KEYS = [
+  "studentId",
+  "shopName",
+  "storeType",
+  "storeTypeId",
+  "storeTypeLabel",
+  "storeTypeDescription",
+  "storeDescription",
+  "storeLocation",
+  "startingBalance",
+  "currentDetails",
+  "variablesDetailed",
+  "storeId",
+];
 
 const ledgerEntrySchema = new mongoose.Schema({
   // Store this entry belongs to (useful for store-centric views)
@@ -1008,22 +1025,91 @@ ledgerEntrySchema.statics.buildAISimulationOpenAIRequest = async function (
   context,
   basePromptsOverride = null
 ) {
-  const { scenario, submission, scenarioOutcome } = context || {};
+  const { store, scenario, submission, scenarioOutcome } = context || {};
   const classroomId =
     scenario?.classroomId ||
     submission?.classroomId ||
     scenarioOutcome?.classroomId ||
     null;
 
+  // Build raw variable maps for filtering
+  const storeVariables =
+    store && typeof store === "object"
+      ? Object.fromEntries(
+          Object.entries(store).filter(
+            ([k]) => !STORE_METADATA_KEYS.includes(k)
+          )
+        )
+      : {};
+  const scenarioVariables =
+    scenario?.variables && typeof scenario.variables === "object"
+      ? scenario.variables
+      : {};
+  const submissionVariables =
+    submission?.variables && typeof submission.variables === "object"
+      ? submission.variables
+      : {};
+  const outcomeVariables =
+    scenarioOutcome?.variables &&
+    typeof scenarioOutcome.variables === "object"
+      ? scenarioOutcome.variables
+      : {};
+
+  // Filter to only active variable definitions (exclude soft-deleted variables from AI)
+  const filtered =
+    classroomId
+      ? await VariableDefinition.filterVariablesForAIContext(classroomId, {
+          storeVariables,
+          scenarioVariables,
+          submissionVariables,
+          outcomeVariables,
+        })
+      : {
+          storeVariables,
+          scenarioVariables,
+          submissionVariables,
+          outcomeVariables,
+        };
+
+  // Build filtered store (metadata + only active variable keys)
+  const filteredStore =
+    store && typeof store === "object"
+      ? {
+          ...Object.fromEntries(
+            Object.entries(store).filter(([k]) =>
+              STORE_METADATA_KEYS.includes(k)
+            )
+          ),
+          ...filtered.storeVariables,
+        }
+      : store;
+
+  // Build filtered scenario, submission, scenarioOutcome with filtered variables
+  const filteredScenario =
+    scenario && typeof scenario === "object"
+      ? { ...scenario, variables: filtered.scenarioVariables }
+      : scenario;
+  const filteredSubmission =
+    submission && typeof submission === "object"
+      ? { ...submission, variables: filtered.submissionVariables }
+      : submission;
+  const filteredScenarioOutcome =
+    scenarioOutcome && typeof scenarioOutcome === "object"
+      ? {
+          ...scenarioOutcome,
+          variables: filtered.outcomeVariables,
+        }
+      : scenarioOutcome;
+
   const basePrompts = Array.isArray(basePromptsOverride)
     ? basePromptsOverride
     : await this.getClassroomBasePrompts(classroomId);
   const rawMessages = this.buildAISimulationPrompt(
     basePrompts,
-    context.store,
-    context.scenario,
-    context.scenarioOutcome,
-    context.submission,
+    filteredStore,
+    filteredScenario,
+    filteredScenarioOutcome,
+    filteredSubmission,
     context.ledgerHistory,
     context.inventoryState,
     context.cashBefore
