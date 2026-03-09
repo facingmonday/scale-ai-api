@@ -990,6 +990,7 @@ scenarioSchema.statics.processScenarioExport = async function (
   const Submission = require("../submission/submission.model");
   const LedgerEntry = require("../ledger/ledger.model");
   const Store = require("../store/store.model");
+  const Classroom = require("../classroom/classroom.model");
   const AWS = require("aws-sdk");
   const { Parser } = require("json2csv");
 
@@ -1187,8 +1188,26 @@ scenarioSchema.statics.processScenarioExport = async function (
   const parser = new Parser();
   const csv = parser.parse(csvData);
 
+  const toSlug = (str, wordLimit) =>
+    (str || "")
+      .trim()
+      .split(/\s+/)
+      .slice(0, wordLimit)
+      .map((w) => w.replace(/[^a-zA-Z0-9]/g, ""))
+      .filter(Boolean)
+      .join("-")
+      .toLowerCase();
+
+  const classroom = await Classroom.findById(scenario.classroomId)
+    .select("name")
+    .lean();
+  const classroomSlug = toSlug(classroom?.name || "", 3);
+  const titleSlug = toSlug(scenario.title, 4);
+  const slug =
+    [classroomSlug, titleSlug].filter(Boolean).join("_") ||
+    `scenario-${scenarioId}`;
   const timestamp = Date.now();
-  const fileName = `scenario_${scenarioId}_export_${timestamp}.csv`;
+  const fileName = `${slug}_${timestamp}.csv`;
 
   return {
     csv,

@@ -129,6 +129,7 @@ app.use(
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     optionsSuccessStatus: 204,
+    exposedHeaders: ["Content-Disposition"],
   })
 );
 
