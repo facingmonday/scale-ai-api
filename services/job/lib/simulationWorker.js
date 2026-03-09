@@ -4,6 +4,7 @@ const Scenario = require("../../scenario/scenario.model");
 const ScenarioOutcome = require("../../scenarioOutcome/scenarioOutcome.model");
 const Submission = require("../../submission/submission.model");
 const LedgerEntry = require("../../ledger/ledger.model");
+const VariableDefinition = require("../../variableDefinition/variableDefinition.model");
 const { round2 } = require("../../../lib/number-utils");
 
 /**
@@ -310,7 +311,7 @@ class SimulationWorker {
     const outcomeVariables =
       context.scenarioOutcome?.variables &&
       typeof context.scenarioOutcome.variables === "object"
-        ? context.scenarioOutcome.variables
+        ? { ...context.scenarioOutcome.variables }
         : {};
     // Also include outcome metadata
     if (context.scenarioOutcome) {
@@ -323,12 +324,31 @@ class SimulationWorker {
       }
     }
 
-    // Prepare calculation context for storage
+    // Filter to only active variable definitions (match what was sent to AI)
+    const filtered =
+      job.classroomId
+        ? await VariableDefinition.filterVariablesForAIContext(
+            job.classroomId,
+            {
+              storeVariables,
+              scenarioVariables,
+              submissionVariables,
+              outcomeVariables,
+            }
+          )
+        : {
+            storeVariables,
+            scenarioVariables,
+            submissionVariables,
+            outcomeVariables,
+          };
+
+    // Prepare calculation context for storage (use filtered variables)
     const calculationContext = {
-      storeVariables,
-      scenarioVariables,
-      submissionVariables,
-      outcomeVariables,
+      storeVariables: filtered.storeVariables,
+      scenarioVariables: filtered.scenarioVariables,
+      submissionVariables: filtered.submissionVariables,
+      outcomeVariables: filtered.outcomeVariables,
       priorState: {
         cashBefore: context.cashBefore,
         inventoryState: context.inventoryState || {

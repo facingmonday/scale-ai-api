@@ -44,14 +44,14 @@ exports.createVariableDefinition = async function (req, res) {
     // Validate appliesTo enum
     if (!["store", "scenario", "submission", "storeType"].includes(appliesTo)) {
       throw new Error(
-        "appliesTo must be one of: store, scenario, submission, storeType"
+        "appliesTo must be one of: store, scenario, submission, storeType",
       );
     }
 
     // Validate dataType enum
     if (!["number", "string", "boolean", "select"].includes(dataType)) {
       throw new Error(
-        "dataType must be one of: number, string, boolean, select"
+        "dataType must be one of: number, string, boolean, select",
       );
     }
 
@@ -59,7 +59,7 @@ exports.createVariableDefinition = async function (req, res) {
     await Classroom.validateAdminAccess(
       classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     // Create definition using static method
@@ -79,7 +79,7 @@ exports.createVariableDefinition = async function (req, res) {
         required,
       },
       organizationId,
-      clerkUserId
+      clerkUserId,
     );
 
     res.status(201).json({
@@ -129,13 +129,13 @@ exports.updateVariableDefinition = async function (req, res) {
     await Classroom.validateAdminAccess(
       classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     // Find definition
     const definition = await VariableDefinition.getDefinitionByKey(
       classroomId,
-      key
+      key,
     );
 
     if (!definition) {
@@ -171,6 +171,7 @@ exports.updateVariableDefinition = async function (req, res) {
       "min",
       "max",
       "required",
+      "isActive",
     ];
 
     allowedFields.forEach((field) => {
@@ -223,7 +224,7 @@ exports.getVariableDefinitions = async function (req, res) {
       await Classroom.validateAdminAccess(
         classroomId,
         clerkUserId,
-        organizationId
+        organizationId,
       );
     } catch (adminError) {
       // If not admin, check if enrolled
@@ -234,7 +235,7 @@ exports.getVariableDefinitions = async function (req, res) {
 
       const isEnrolled = await Enrollment.isUserEnrolled(
         classroomId,
-        member._id
+        member._id,
       );
       if (!isEnrolled) {
         return res.status(403).json({
@@ -286,13 +287,13 @@ exports.deleteVariableDefinition = async function (req, res) {
     await Classroom.validateAdminAccess(
       classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     // Find definition
     const definition = await VariableDefinition.getDefinitionByKey(
       classroomId,
-      key
+      key,
     );
 
     if (!definition) {
@@ -304,7 +305,7 @@ exports.deleteVariableDefinition = async function (req, res) {
     if (isInUse) {
       // Still allow soft delete, but warn
       console.warn(
-        `Soft deleting variable definition "${key}" that may be in use`
+        `Soft deleting variable definition "${key}" that may be in use`,
       );
     }
 

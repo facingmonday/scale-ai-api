@@ -81,7 +81,7 @@ variableDefinitionSchema.index(
   {
     unique: true,
     sparse: true, // keep sparse to avoid impacting older docs during transition
-  }
+  },
 );
 variableDefinitionSchema.index({ classroomId: 1, appliesTo: 1 });
 variableDefinitionSchema.index({ classroomId: 1, isActive: 1 });
@@ -102,7 +102,7 @@ variableDefinitionSchema.statics.createDefinition = async function (
   classroomId,
   payload,
   organizationId,
-  clerkUserId
+  clerkUserId,
 ) {
   if (!classroomId) {
     throw new Error("classroomId is required");
@@ -118,7 +118,7 @@ variableDefinitionSchema.statics.createDefinition = async function (
 
   if (existing) {
     throw new Error(
-      `Variable definition with key "${payload.key}" already exists for this class`
+      `Variable definition with key "${payload.key}" already exists for this class`,
     );
   }
 
@@ -136,7 +136,7 @@ variableDefinitionSchema.statics.createDefinition = async function (
     !validCombinations[payload.dataType].includes(payload.inputType)
   ) {
     throw new Error(
-      `Invalid inputType "${payload.inputType}" for dataType "${payload.dataType}"`
+      `Invalid inputType "${payload.inputType}" for dataType "${payload.dataType}"`,
     );
   }
 
@@ -199,15 +199,17 @@ variableDefinitionSchema.statics.createDefinition = async function (
 variableDefinitionSchema.statics.getDefinitionsForScope = async function (
   classroomId,
   appliesTo,
-  options = {}
+  options = {},
 ) {
-  const query = { appliesTo, isActive: true };
+  const query = { appliesTo };
   if (!classroomId) {
     throw new Error("classroomId is required");
   }
   query.classroomId = classroomId;
 
-  if (options.includeInactive) {
+  if (!options.includeInactive) {
+    query.isActive = true;
+  } else {
     delete query.isActive;
   }
 
@@ -223,10 +225,12 @@ variableDefinitionSchema.statics.getDefinitionsForScope = async function (
  */
 variableDefinitionSchema.statics.getDefinitionsByClass = async function (
   classroomId,
-  options = {}
+  options = {},
 ) {
-  const query = { classroomId, isActive: true };
-  if (options.includeInactive) {
+  const query = { classroomId };
+  if (!options.includeInactive) {
+    query.isActive = true;
+  } else {
     delete query.isActive;
   }
 
@@ -244,12 +248,16 @@ variableDefinitionSchema.statics.getDefinitionsByClass = async function (
 variableDefinitionSchema.statics.validateValues = async function (
   classroomId,
   appliesTo,
-  valuesObject
+  valuesObject,
 ) {
   const definitions = await this.getDefinitionsForScope(classroomId, appliesTo);
   const errors = [];
 
-  for (const definition of definitions) {
+  const activeDefinitions = definitions.filter(
+    (definition) => definition.isActive,
+  );
+
+  for (const definition of activeDefinitions) {
     const value = valuesObject[definition.key];
 
     // Check required fields
@@ -356,7 +364,7 @@ variableDefinitionSchema.statics.validateValues = async function (
 variableDefinitionSchema.statics.applyDefaults = async function (
   classroomId,
   appliesTo,
-  valuesObject
+  valuesObject,
 ) {
   const definitions = await this.getDefinitionsForScope(classroomId, appliesTo);
   const result = { ...valuesObject };
@@ -381,6 +389,81 @@ variableDefinitionSchema.statics.applyDefaults = async function (
 };
 
 /**
+ * Filter a variables object to only include keys with active definitions.
+ * Used for AI ledger calculations so inactive (soft-deleted) variables
+ * are excluded from the calculation context.
+ *
+ * @param {string} classroomId - Classroom ID
+ * @param {string} appliesTo - "store", "storeType", "scenario", or "submission"
+ * @param {Object} variables - { [key]: value }
+ * @returns {Promise<Object>} Filtered variables (only keys with active definitions)
+ */
+variableDefinitionSchema.statics.filterVariablesByActiveDefinitions =
+  async function (classroomId, appliesTo, variables) {
+    if (!variables || typeof variables !== "object" || Array.isArray(variables)) {
+      return {};
+    }
+    const definitions = await this.getDefinitionsForScope(classroomId, appliesTo);
+    const activeKeys = new Set(definitions.map((d) => d.key));
+    const filtered = {};
+    for (const [key, value] of Object.entries(variables)) {
+      if (activeKeys.has(key)) {
+        filtered[key] = value;
+      }
+    }
+    return filtered;
+  };
+
+/**
+ * Filter all variable collections for AI simulation context.
+ * Store variables are filtered by both "store" and "storeType" (union of active keys).
+ *
+ * @param {string} classroomId - Classroom ID
+ * @param {Object} ctx - { storeVariables, scenarioVariables, submissionVariables, outcomeVariables }
+ * @returns {Promise<Object>} Filtered context with same shape
+ */
+variableDefinitionSchema.statics.filterVariablesForAIContext = async function (
+  classroomId,
+  ctx
+) {
+  if (!classroomId) {
+    return ctx;
+  }
+  const [storeDefs, storeTypeDefs, scenarioDefs, submissionDefs] =
+    await Promise.all([
+      this.getDefinitionsForScope(classroomId, "store"),
+      this.getDefinitionsForScope(classroomId, "storeType"),
+      this.getDefinitionsForScope(classroomId, "scenario"),
+      this.getDefinitionsForScope(classroomId, "submission"),
+    ]);
+  const storeActiveKeys = new Set([
+    ...storeDefs.map((d) => d.key),
+    ...storeTypeDefs.map((d) => d.key),
+  ]);
+  const scenarioActiveKeys = new Set(scenarioDefs.map((d) => d.key));
+  const submissionActiveKeys = new Set(submissionDefs.map((d) => d.key));
+
+  const filterByKeys = (obj, keys) => {
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return {};
+    const out = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (keys.has(k)) out[k] = v;
+    }
+    return out;
+  };
+
+  return {
+    storeVariables: filterByKeys(ctx.storeVariables, storeActiveKeys),
+    scenarioVariables: filterByKeys(ctx.scenarioVariables, scenarioActiveKeys),
+    submissionVariables: filterByKeys(
+      ctx.submissionVariables,
+      submissionActiveKeys
+    ),
+    outcomeVariables: filterByKeys(ctx.outcomeVariables, scenarioActiveKeys),
+  };
+};
+
+/**
  * Get variable definition by key
  * @param {string} classroomId - Class ID
  * @param {string} key - Variable key
@@ -390,7 +473,7 @@ variableDefinitionSchema.statics.applyDefaults = async function (
 variableDefinitionSchema.statics.getDefinitionByKey = async function (
   classroomId,
   key,
-  options = {}
+  options = {},
 ) {
   const query = { key, isActive: true };
   if (!classroomId) {
@@ -442,7 +525,7 @@ variableDefinitionSchema.methods.isInUse = async function () {
 
 const VariableDefinition = mongoose.model(
   "VariableDefinition",
-  variableDefinitionSchema
+  variableDefinitionSchema,
 );
 
 module.exports = VariableDefinition;

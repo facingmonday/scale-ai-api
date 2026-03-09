@@ -168,6 +168,14 @@ submissionSchema.statics.createSubmission = async function (
     variables
   );
 
+  // Only persist variables with active definitions (exclude soft-deleted variables)
+  const variablesToSave =
+    await VariableDefinition.filterVariablesByActiveDefinitions(
+      classroomId,
+      "submission",
+      variablesWithDefaults
+    );
+
   // Verify scenario is published and not closed
   const scenario = await Scenario.findById(scenarioId);
   if (!scenario) {
@@ -207,8 +215,8 @@ submissionSchema.statics.createSubmission = async function (
   await submission.save();
 
   // Create variable values if provided
-  if (variablesWithDefaults && Object.keys(variablesWithDefaults).length > 0) {
-    const variableEntries = Object.entries(variablesWithDefaults);
+  if (variablesToSave && Object.keys(variablesToSave).length > 0) {
+    const variableEntries = Object.entries(variablesToSave);
     const variableDocs = variableEntries.map(([key, value]) => ({
       classroomId,
       appliesTo: "submission",
@@ -288,6 +296,14 @@ submissionSchema.statics.updateSubmission = async function (
     variables
   );
 
+  // Only persist variables with active definitions (exclude soft-deleted variables)
+  const variablesToSave =
+    await VariableDefinition.filterVariablesByActiveDefinitions(
+      classroomId,
+      "submission",
+      variablesWithDefaults
+    );
+
   // Update submission document
   submission.updatedBy = clerkUserId;
   submission.updatedDate = new Date();
@@ -301,8 +317,8 @@ submissionSchema.statics.updateSubmission = async function (
   });
 
   // Create new variable values if provided
-  if (variablesWithDefaults && Object.keys(variablesWithDefaults).length > 0) {
-    const variableEntries = Object.entries(variablesWithDefaults);
+  if (variablesToSave && Object.keys(variablesToSave).length > 0) {
+    const variableEntries = Object.entries(variablesToSave);
     const variableDocs = variableEntries.map(([key, value]) => ({
       classroomId,
       appliesTo: "submission",
