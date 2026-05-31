@@ -14,7 +14,7 @@ const { ensureJoin } = require("./join.service");
  */
 exports.join = async function join(req, res) {
   try {
-    const { orgId, classroomId } = req.body || {};
+    const { orgId, classroomId, studentId } = req.body || {};
     const clerkUserId = req.clerkUser?.id;
     const member = req.user;
 
@@ -29,11 +29,19 @@ exports.join = async function join(req, res) {
       });
     }
 
+    const clerkUser = req.clerkUser;
+    const primaryEmailObj = clerkUser?.emailAddresses?.find(
+      (email) => email.id === clerkUser?.primaryEmailAddressId
+    );
+    const studentEmail = primaryEmailObj?.emailAddress;
+
     const { organization, classroom, enrollment } = await ensureJoin({
       orgId,
       classroomId,
       clerkUserId,
       member,
+      studentEmail,
+      studentId,
     });
 
     return res.status(200).json({
@@ -57,7 +65,12 @@ exports.join = async function join(req, res) {
     if (error?.statusCode) {
       return res
         .status(error.statusCode)
-        .json({ success: false, error: error.message });
+        .json({
+          success: false,
+          error: error.message,
+          code: error.code,
+          details: error.details,
+        });
     }
 
     return res.status(500).json({

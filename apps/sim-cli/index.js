@@ -30,16 +30,16 @@ const Member = require("../../services/members/member.model");
 const Classroom = require("../../services/classroom/classroom.model");
 const Enrollment = require("../../services/enrollment/enrollment.model");
 const ClassroomTemplate = require("../../services/classroomTemplate/classroomTemplate.model");
-const StoreType = require("../../services/storeType/storeType.model");
-const Store = require("../../services/store/store.model");
-const Scenario = require("../../services/scenario/scenario.model");
-const ScenarioOutcome = require("../../services/scenarioOutcome/scenarioOutcome.model");
+const ProfileType = require("../../services/profileType/profileType.model");
+const Profile = require("../../services/profile/profile.model");
+const Challenge = require("../../services/challenge/challenge.model");
+const Outcome = require("../../services/outcome/outcome.model");
 const LedgerEntry = require("../../services/ledger/ledger.model");
-const Submission = require("../../services/submission/submission.model");
+const Decision = require("../../services/decision/decision.model");
 const VariableDefinition = require("../../services/variableDefinition/variableDefinition.model");
 const {
   generateSubmissionVariablesForStoreType,
-} = require("../../services/submission/autoSubmissionGenerator");
+} = require("../../services/decision/autoDecisionGenerator");
 const JobService = require("../../services/job/lib/jobService");
 const {
   enqueueSimulationBatchSubmit,
@@ -298,10 +298,10 @@ async function generateScenarioOutcomeViaAI({
     organizationName,
     classroomName,
     classroomDescription,
-    storeTypes: storeTypeLabels,
+    profileTypes: storeTypeLabels,
     styleGuide: {
       scope:
-        "GLOBAL campus-wide scenario (not specific to a single store type)",
+        "GLOBAL campus-wide challenge (not specific to a single profile type)",
       include: [
         "Weather conditions",
         "A fictional campus event (sports game, career fair, orientation, concert, etc.)",
@@ -320,12 +320,12 @@ async function generateScenarioOutcomeViaAI({
       {
         role: "system",
         content:
-          "You generate a GLOBAL weekly campus scenario and an instructor outcome summary for a pizza operations simulation. The scenario should reference weather, a fictional campus event, and foot traffic expectations. Return ONLY JSON matching the provided schema.",
+          "You generate a GLOBAL weekly campus challenge and an instructor outcome summary for a pizza operations simulation. The challenge should reference weather, a fictional campus event, and foot traffic expectations. Return ONLY JSON matching the provided schema.",
       },
       {
         role: "user",
         content:
-          "Generate a scenario and outcome for the next week.\n" +
+          "Generate a challenge and outcome for the next week.\n" +
           JSON.stringify(promptPayload, null, 2),
       },
     ],
@@ -422,7 +422,7 @@ function toObjectIdString(v) {
 }
 
 async function autoCreateSubmissionsForUsersAI({
-  scenarioId,
+  challengeId,
   classroomId,
   organizationId,
   clerkUserId,
@@ -445,15 +445,15 @@ async function autoCreateSubmissionsForUsersAI({
     };
   }
 
-  const scenario = await Scenario.findOne({
-    _id: scenarioId,
+  const challenge = await Challenge.findOne({
+    _id: challengeId,
     organization: organizationId,
   });
-  if (!scenario) throw new Error("Scenario not found");
-  if (!scenario.isPublished || scenario.isClosed) {
+  if (!challenge) throw new Error("Challenge not found");
+  if (!challenge.isPublished || challenge.isClosed) {
     return {
       skipped: true,
-      reason: "Scenario not published or already closed",
+      reason: "Challenge not published or already closed",
       created: 0,
       existing: 0,
       missingStore: 0,
@@ -461,8 +461,8 @@ async function autoCreateSubmissionsForUsersAI({
     };
   }
 
-  const hydratedScenario = await Scenario.getScenarioById(
-    scenarioId,
+  const hydratedScenario = await Challenge.getScenarioById(
+    challengeId,
     organizationId
   );
 
@@ -487,28 +487,28 @@ async function autoCreateSubmissionsForUsersAI({
     members.map((m) => [toObjectIdString(m._id), m.clerkUserId])
   );
 
-  // Load stores for the provided users only
-  const stores = await Store.find({
+  // Load profiles for the provided users only
+  const profiles = await Profile.find({
     classroomId,
     userId: { $in: uniqueUserIds },
   })
-    .select("userId storeType")
+    .select("userId profileType")
     .lean();
   const storeByUserId = new Map(
-    stores.map((s) => [toObjectIdString(s.userId), s])
+    profiles.map((s) => [toObjectIdString(s.userId), s])
   );
 
   // Group users by storeTypeId
   const usersByStoreTypeId = new Map(); // storeTypeId -> [{ userId, clerkUserId }]
   let missingStore = 0;
   for (const uid of uniqueUserIds) {
-    const store = storeByUserId.get(uid);
-    if (!store) {
+    const profile = storeByUserId.get(uid);
+    if (!profile) {
       missingStore += 1;
       continue;
     }
     const storeTypeId =
-      store.storeType?.toString?.() || String(store.storeType);
+      profile.profileType?.toString?.() || String(profile.profileType);
     if (!usersByStoreTypeId.has(storeTypeId))
       usersByStoreTypeId.set(storeTypeId, []);
     usersByStoreTypeId.get(storeTypeId).push({
@@ -518,7 +518,7 @@ async function autoCreateSubmissionsForUsersAI({
   }
 
   const storeTypeIds = Array.from(usersByStoreTypeId.keys());
-  const storeTypeDocs = await StoreType.find({
+  const storeTypeDocs = await ProfileType.find({
     _id: { $in: storeTypeIds },
     organization: organizationId,
     isActive: true,
@@ -528,18 +528,18 @@ async function autoCreateSubmissionsForUsersAI({
     storeTypeDocs.map((st) => [toObjectIdString(st._id), st])
   );
 
-  // Generate one vars object per storeType, then reuse for all users of that type
+  // Generate one vars object per profileType, then reuse for all users of that type
   const varsByStoreTypeId = new Map();
   for (const storeTypeId of storeTypeIds) {
     const storeTypeDoc = storeTypeById.get(toObjectIdString(storeTypeId));
     if (!storeTypeDoc) {
-      throw new Error(`StoreType not found or inactive: ${storeTypeId}`);
+      throw new Error(`ProfileType not found or inactive: ${storeTypeId}`);
     }
     const vars = await generateSubmissionVariablesForStoreType({
       classroomId,
       storeTypeKey: storeTypeDoc.key,
       storeTypeVariables: storeTypeDoc.variables || {},
-      scenario: hydratedScenario,
+      challenge: hydratedScenario,
       organizationId,
       clerkUserId,
       model,
@@ -556,9 +556,9 @@ async function autoCreateSubmissionsForUsersAI({
     const vars = varsByStoreTypeId.get(storeTypeId);
     for (const u of users) {
       try {
-        await Submission.createSubmission(
+        await Decision.createSubmission(
           classroomId,
-          scenarioId,
+          challengeId,
           u.userId,
           vars,
           organizationId,
@@ -595,21 +595,21 @@ async function autoCreateSubmissionsForUsersAI({
 }
 
 async function createDefaultSubmissionsForUsers({
-  scenarioId,
+  challengeId,
   classroomId,
   organizationId,
   clerkUserId,
   userIds,
 }) {
-  const scenario = await Scenario.findOne({
-    _id: scenarioId,
+  const challenge = await Challenge.findOne({
+    _id: challengeId,
     organization: organizationId,
   });
-  if (!scenario) throw new Error("Scenario not found");
-  if (!scenario.isPublished || scenario.isClosed) {
+  if (!challenge) throw new Error("Challenge not found");
+  if (!challenge.isPublished || challenge.isClosed) {
     return {
       skipped: true,
-      reason: "Scenario not published or already closed",
+      reason: "Challenge not published or already closed",
       created: 0,
       existing: 0,
       missingStore: 0,
@@ -630,14 +630,14 @@ async function createDefaultSubmissionsForUsers({
     };
   }
 
-  const stores = await Store.find({
+  const profiles = await Profile.find({
     classroomId,
     userId: { $in: uniqueUserIds },
   })
     .select("userId")
     .lean();
   const storeByUserId = new Map(
-    stores.map((s) => [toObjectIdString(s.userId), s])
+    profiles.map((s) => [toObjectIdString(s.userId), s])
   );
 
   let created = 0;
@@ -648,12 +648,12 @@ async function createDefaultSubmissionsForUsers({
   // Apply defaults once (same for all users)
   const varsWithDefaults = await VariableDefinition.applyDefaults(
     classroomId,
-    "submission",
+    "decision",
     {}
   );
   const validation = await VariableDefinition.validateValues(
     classroomId,
-    "submission",
+    "decision",
     varsWithDefaults
   );
   if (!validation.isValid) {
@@ -667,13 +667,13 @@ async function createDefaultSubmissionsForUsers({
       const userIdStr = toObjectIdString(userId);
       if (!storeByUserId.has(userIdStr)) {
         missingStore += 1;
-        errors.push({ userId: userIdStr, error: "No store found for user" });
+        errors.push({ userId: userIdStr, error: "No profile found for user" });
         continue;
       }
 
-      const existingSubmission = await Submission.findOne({
+      const existingSubmission = await Decision.findOne({
         classroomId,
-        scenarioId,
+        challengeId,
         userId,
       }).select("_id");
       if (existingSubmission) {
@@ -681,9 +681,9 @@ async function createDefaultSubmissionsForUsers({
         continue;
       }
 
-      await Submission.createSubmission(
+      await Decision.createSubmission(
         classroomId,
-        scenarioId,
+        challengeId,
         userId,
         varsWithDefaults,
         organizationId,
@@ -708,7 +708,7 @@ async function createDefaultSubmissionsForUsers({
 }
 
 async function createJobsForScenarioForUserIds({
-  scenarioId,
+  challengeId,
   classroomId,
   organizationId,
   clerkUserId,
@@ -721,8 +721,8 @@ async function createJobsForScenarioForUserIds({
   );
   if (uniqueUserIds.length === 0) return [];
 
-  const submissions = await Submission.find({
-    scenarioId,
+  const decisions = await Decision.find({
+    challengeId,
     classroomId,
     userId: { $in: uniqueUserIds },
   })
@@ -730,13 +730,13 @@ async function createJobsForScenarioForUserIds({
     .lean();
 
   const jobs = [];
-  for (const s of submissions) {
+  for (const s of decisions) {
     const job = await JobService.createJob({
       classroomId,
-      scenarioId,
+      challengeId,
       userId: s.userId,
       dryRun,
-      submissionId: s._id,
+      decisionId: s._id,
       organizationId,
       clerkUserId,
       enqueue,
@@ -950,7 +950,7 @@ async function main() {
       ? "manual"
       : await promptChoice(
           rl,
-          "Scenario + outcome: how should they be created?",
+          "Challenge + outcome: how should they be created?",
           [
             {
               label: "Manual (you enter title/description/outcome)",
@@ -967,11 +967,11 @@ async function main() {
         : "defaults"
       : await promptChoice(
           rl,
-          "Submissions: how should we create submissions for the simulated students?",
+          "Decisions: how should we create decisions for the simulated students?",
           [
-            { label: "AI (reuse store-type generation)", value: "ai" },
+            { label: "AI (reuse profile-type generation)", value: "ai" },
             {
-              label: "Defaults (use submission variable definition defaults)",
+              label: "Defaults (use decision variable definition defaults)",
               value: "defaults",
             },
           ],
@@ -982,24 +982,24 @@ async function main() {
       ? null
       : await promptChoice(
           rl,
-          "Outcome: what should we do with missing submissions?",
+          "Outcome: what should we do with missing decisions?",
           [
             {
-              label: "Skip (null) — do nothing for students missing submissions",
+              label: "Skip (null) — do nothing for students missing decisions",
               value: null,
             },
             {
               label:
-                "Defaults (USE_DEFAULTS) — create default submissions for missing students",
+                "Defaults (USE_DEFAULTS) — create default decisions for missing students",
               value: "USE_DEFAULTS",
             },
             {
-              label: "AI (USE_AI) — auto-generate submissions for missing students",
+              label: "AI (USE_AI) — auto-generate decisions for missing students",
               value: "USE_AI",
             },
             {
               label:
-                "Forward previous (FORWARD_PREVIOUS) — copy last submission forward",
+                "Forward previous (FORWARD_PREVIOUS) — copy last decision forward",
               value: "FORWARD_PREVIOUS",
             },
           ],
@@ -1014,15 +1014,15 @@ async function main() {
     let randomEventChancePercent = 0;
 
     if (scenarioMode === "manual") {
-      scenarioTitle = await promptLine(rl, "Scenario title", {
+      scenarioTitle = await promptLine(rl, "Challenge title", {
         defaultValue: scenarioTitle,
       });
-      scenarioDescription = await promptLine(rl, "Scenario description", {
+      scenarioDescription = await promptLine(rl, "Challenge description", {
         defaultValue: scenarioDescription,
       });
       outcomeNotes = await promptLine(
         rl,
-        "Scenario outcome notes (shown to students)",
+        "Challenge outcome notes (shown to students)",
         { defaultValue: outcomeNotes }
       );
       randomEventChancePercent = args.nonInteractive
@@ -1057,15 +1057,15 @@ async function main() {
       }`
     );
     console.log(
-      `- scenario: ${scenarioMode === "ai" ? "AI" : "manual"} (published)`
+      `- challenge: ${scenarioMode === "ai" ? "AI" : "manual"} (published)`
     );
     console.log(
-      `- submissions: ${
+      `- decisions: ${
         submissionMode === "ai" ? "AI" : "defaults"
       } (sim students only)`
     );
     console.log(
-      `- outcome missing submissions: ${
+      `- outcome missing decisions: ${
         missingSubmissionsMode === null
           ? "Skip (null)"
           : String(missingSubmissionsMode)
@@ -1138,7 +1138,7 @@ async function main() {
       clerkUserId: actingAdmin.clerkUserId,
     });
 
-    // 2) Create students + enroll + stores
+    // 2) Create students + enroll + profiles
     const seedPrefix = `sim_${toSafeSlugPart(organizationDoc.name) || "org"}_${randomUUID().slice(0, 8)}`;
 
     let students = [];
@@ -1168,13 +1168,13 @@ async function main() {
         .lean();
     }
 
-    const storeTypes = await StoreType.getStoreTypesByClassroom(
+    const profileTypes = await ProfileType.getStoreTypesByClassroom(
       classroom._id,
       organizationDoc._id
     );
-    if (!storeTypes.length) {
+    if (!profileTypes.length) {
       throw new Error(
-        "No StoreTypes exist for this classroom after template apply. Check ClassroomTemplate payload or template apply."
+        "No ProfileTypes exist for this classroom after template apply. Check ClassroomTemplate payload or template apply."
       );
     }
 
@@ -1182,12 +1182,12 @@ async function main() {
       const storeTypeCounts = new Map(); // storeTypeId -> count
       for (let i = 0; i < students.length; i++) {
         const s = students[i];
-        const st = storeTypes[i % storeTypes.length];
+        const st = profileTypes[i % profileTypes.length];
         storeTypeCounts.set(
           st._id.toString(),
           (storeTypeCounts.get(st._id.toString()) || 0) + 1
         );
-        const createdStore = await Store.createStore(
+        const createdStore = await Profile.createStore(
           classroom._id,
           s._id,
           {
@@ -1195,7 +1195,7 @@ async function main() {
             storeDescription: "Auto-created by simulation CLI.",
             storeLocation: "Sim City",
             studentId: `student_${String(i + 1).padStart(3, "0")}`,
-            storeType: st._id,
+            profileType: st._id,
             variables: {},
           },
           organizationDoc._id,
@@ -1203,28 +1203,23 @@ async function main() {
         );
 
         // Safety check: ensure the "week 0" initial ledger entry exists.
-        // Store.createStore() *should* seed it when creating a brand new store, but if something
+        // Profile.createStore() *should* seed it when creating a brand new profile, but if something
         // ever bypasses that path, the simulation will fall back to startingBalance and can drift.
         const hasInitial = await LedgerEntry.findOne({
           classroomId: classroom._id,
           userId: s._id,
-          scenarioId: null,
+          challengeId: null,
         })
           .select("_id")
           .lean();
 
         if (!hasInitial) {
-          const storeId = createdStore?._id || createdStore?.id;
-          const storeTypeDoc = await StoreType.findById(st._id);
-          if (storeTypeDoc && storeTypeDoc._loadVariables) {
-            await storeTypeDoc._loadVariables();
-          }
-          if (storeId && storeTypeDoc) {
-            await Store.seedInitialLedgerEntry(
-              storeId,
+          const profileId = createdStore?._id || createdStore?.id;
+          if (profileId) {
+            await Profile.seedInitialLedgerEntry(
+              profileId,
               classroom._id,
               s._id,
-              storeTypeDoc,
               organizationDoc._id,
               actingAdmin.clerkUserId
             );
@@ -1232,24 +1227,24 @@ async function main() {
         }
       }
       console.log("\nStoreType distribution (round-robin):");
-      for (const st of storeTypes) {
+      for (const st of profileTypes) {
         const c = storeTypeCounts.get(st._id.toString()) || 0;
         if (c > 0) console.log(`- ${st.label || st.key || st._id}: ${c}`);
       }
     }
 
-    // If AI scenario mode, generate now that we have classroom + store types.
+    // If AI challenge mode, generate now that we have classroom + profile types.
     if (scenarioMode === "ai") {
       const generated = await generateScenarioOutcomeViaAI({
         organizationName: organizationDoc.name,
         classroomName: classroom.name,
         classroomDescription: classroom.description || "",
-        storeTypeLabels: storeTypes
+        storeTypeLabels: profileTypes
           .map((st) => st.label || st.key)
           .filter(Boolean),
       });
 
-      console.log("\nAI generated scenario/outcome:");
+      console.log("\nAI generated challenge/outcome:");
       console.log(color("Title: ", "bold") + generated.title);
       console.log(color("Weather: ", "bold") + (generated.weather || ""));
       console.log(
@@ -1272,15 +1267,15 @@ async function main() {
 
       if (!ok) {
         // Fall back to manual edits
-        scenarioTitle = await promptLine(rl, "Scenario title", {
+        scenarioTitle = await promptLine(rl, "Challenge title", {
           defaultValue: generated.title,
         });
-        scenarioDescription = await promptLine(rl, "Scenario description", {
+        scenarioDescription = await promptLine(rl, "Challenge description", {
           defaultValue: generated.description,
         });
         outcomeNotes = await promptLine(
           rl,
-          "Scenario outcome notes (shown to students)",
+          "Challenge outcome notes (shown to students)",
           { defaultValue: generated.outcomeNotes }
         );
         randomEventChancePercent = await promptInt(
@@ -1300,21 +1295,21 @@ async function main() {
       }
     }
 
-    // 3) Create + publish scenario
-    const scenarioObj = await Scenario.createScenario(
+    // 3) Create + publish challenge
+    const scenarioObj = await Challenge.createScenario(
       classroom._id,
       { title: scenarioTitle, description: scenarioDescription, variables: {} },
       organizationDoc._id,
       actingAdmin.clerkUserId
     );
-    const scenarioId = scenarioObj?._id || scenarioObj?.id;
+    const challengeId = scenarioObj?._id || scenarioObj?.id;
     // IMPORTANT: Do NOT call scenarioDoc.publish() here.
-    // Scenario.publish() triggers a post-save hook that creates "scenario-created" notifications,
+    // Challenge.publish() triggers a post-save hook that creates "challenge-created" notifications,
     // and notification delivery attempts to resolve student email via Clerk (our simulated students
     // have mocked clerkUserId and do not exist in Clerk).
     // We instead "publish" via an update operation that does not run save hooks.
-    await Scenario.updateOne(
-      { _id: scenarioId, organization: organizationDoc._id },
+    await Challenge.updateOne(
+      { _id: challengeId, organization: organizationDoc._id },
       {
         $set: {
           isPublished: true,
@@ -1323,13 +1318,13 @@ async function main() {
         },
       }
     );
-    const scenarioDoc = await Scenario.findById(scenarioId);
+    const scenarioDoc = await Challenge.findById(challengeId);
 
-    // 4) Create submissions (ONLY for the newly-created simulated students)
+    // 4) Create decisions (ONLY for the newly-created simulated students)
     const simStudentIds = students.map((s) => s._id);
     if (submissionMode === "defaults") {
       await createDefaultSubmissionsForUsers({
-        scenarioId: scenarioDoc._id,
+        challengeId: scenarioDoc._id,
         classroomId: classroom._id,
         organizationId: organizationDoc._id,
         clerkUserId: actingAdmin.clerkUserId,
@@ -1337,7 +1332,7 @@ async function main() {
       });
     } else {
       const subGen = await autoCreateSubmissionsForUsersAI({
-        scenarioId: scenarioDoc._id,
+        challengeId: scenarioDoc._id,
         classroomId: classroom._id,
         organizationId: organizationDoc._id,
         clerkUserId: actingAdmin.clerkUserId,
@@ -1346,17 +1341,17 @@ async function main() {
       });
 
       if (subGen?.skipped) {
-        console.log(`Submissions AI generation skipped: ${subGen.reason}`);
+        console.log(`Decisions AI generation skipped: ${subGen.reason}`);
         const useDefaults = args.nonInteractive
           ? true
           : await promptYesNo(
               rl,
-              "Generate submissions with defaults instead?",
+              "Generate decisions with defaults instead?",
               { defaultValue: true }
             );
         if (useDefaults) {
           await createDefaultSubmissionsForUsers({
-            scenarioId: scenarioDoc._id,
+            challengeId: scenarioDoc._id,
             classroomId: classroom._id,
             organizationId: organizationDoc._id,
             clerkUserId: actingAdmin.clerkUserId,
@@ -1366,8 +1361,8 @@ async function main() {
       }
     }
 
-    // 5) Set outcome + create jobs + enqueue batch if configured + close scenario
-    await ScenarioOutcome.createOrUpdateOutcome(
+    // 5) Set outcome + create jobs + enqueue batch if configured + close challenge
+    await Outcome.createOrUpdateOutcome(
       scenarioDoc._id,
       {
         notes: outcomeNotes,
@@ -1379,7 +1374,7 @@ async function main() {
     );
 
     const jobs = await createJobsForScenarioForUserIds({
-      scenarioId: scenarioDoc._id,
+      challengeId: scenarioDoc._id,
       classroomId: classroom._id,
       organizationId: organizationDoc._id,
       clerkUserId: actingAdmin.clerkUserId,
@@ -1390,7 +1385,7 @@ async function main() {
 
     if (useBatch) {
       await enqueueSimulationBatchSubmit({
-        scenarioId: scenarioDoc._id,
+        challengeId: scenarioDoc._id,
         classroomId: classroom._id,
         organizationId: organizationDoc._id,
         clerkUserId: actingAdmin.clerkUserId,
@@ -1404,7 +1399,7 @@ async function main() {
       `Organization: ${organizationDoc.name} (clerk: ${organizationDoc.clerkOrganizationId})`
     );
     console.log(`Classroom: ${classroom._id} (${classroom.name})`);
-    console.log(`Scenario: ${scenarioDoc._id} (published+closed)`);
+    console.log(`Challenge: ${scenarioDoc._id} (published+closed)`);
     console.log(`Students: ${students.length}`);
     console.log(`Jobs created (sim students): ${jobs.length}`);
 

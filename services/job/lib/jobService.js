@@ -10,10 +10,10 @@ class JobService {
    * Create a simulation job
    * @param {Object} params - All inputs needed to create/enqueue a job
    * @param {string} params.classroomId
-   * @param {string} params.scenarioId
+   * @param {string} params.challengeId
    * @param {string} params.userId
    * @param {boolean} [params.dryRun]
-   * @param {string|null} [params.submissionId] - Optional submission ID to link job to
+   * @param {string|null} [params.decisionId] - Optional decision ID to link job to
    * @param {string} params.organizationId
    * @param {string} params.clerkUserId
    * @returns {Promise<Object>} Created job
@@ -22,7 +22,7 @@ class JobService {
     const {
       organizationId,
       clerkUserId,
-      submissionId = null,
+      decisionId = null,
       enqueue = true,
       ...input
     } = params;
@@ -30,19 +30,19 @@ class JobService {
     const job = await SimulationJob.createJob(
       {
         ...input,
-        submissionId,
+        decisionId,
       },
       organizationId,
       clerkUserId
     );
 
-    // Link job to submission if submission exists
+    // Link job to decision if decision exists
     try {
-      const Submission = require("../../submission/submission.model");
-      if (submissionId) {
-        // Avoid fetching the submission: link job via atomic update.
-        const r1 = await Submission.updateOne(
-          { _id: submissionId, processingStatus: "pending" },
+      const Decision = require("../../decision/decision.model");
+      if (decisionId) {
+        // Avoid fetching the decision: link job via atomic update.
+        const r1 = await Decision.updateOne(
+          { _id: decisionId, processingStatus: "pending" },
           {
             $set: { processingStatus: "processing" },
             $addToSet: { jobs: job._id },
@@ -51,24 +51,24 @@ class JobService {
 
         // If not pending (or not found), still ensure job is recorded.
         if (!r1 || r1.matchedCount === 0) {
-          await Submission.updateOne(
-            { _id: submissionId },
+          await Decision.updateOne(
+            { _id: decisionId },
             { $addToSet: { jobs: job._id } }
           );
         }
       } else {
-        // Fallback for older callers: query by classroomId/scenarioId/userId
-        const submission = await Submission.findOne({
+        // Fallback for older callers: query by classroomId/challengeId/userId
+        const decision = await Decision.findOne({
           classroomId: input.classroomId,
-          scenarioId: input.scenarioId,
+          challengeId: input.challengeId,
           userId: input.userId,
         });
-        if (submission) {
-          await submission.addJob(job._id);
+        if (decision) {
+          await decision.addJob(job._id);
         }
       }
     } catch (err) {
-      console.error("Failed to link job to submission:", err);
+      console.error("Failed to link job to decision:", err);
       // Don't throw - job creation should still succeed even if linking fails
     }
 
@@ -81,7 +81,7 @@ class JobService {
           { jobId: job._id },
           {
             // Deduplicate Bull jobs per SimulationJob to avoid accidental queue storms
-            // (e.g., scenario outcome processing retries, admin double-submits, etc.).
+            // (e.g., challenge outcome processing retries, admin double-submits, etc.).
             jobId: `simulation:${String(job._id)}`,
             attempts: 3,
             backoff: { type: "exponential", delay: 1000 },
@@ -100,8 +100,8 @@ class JobService {
   }
 
   /**
-   * Create jobs for all submissions in a scenario
-   * @param {string} scenarioId - Scenario ID
+   * Create jobs for all decisions in a challenge
+   * @param {string} challengeId - Challenge ID
    * @param {string} classroomId - Class ID
    * @param {boolean} dryRun - Whether this is a dry run (preview)
    * @param {string} organizationId - Organization ID
@@ -109,34 +109,34 @@ class JobService {
    * @returns {Promise<Array>} Array of created jobs
    */
   static async createJobsForScenario(
-    scenarioId,
+    challengeId,
     classroomId,
     dryRun = false,
     organizationId,
     clerkUserId,
     options = {}
   ) {
-    const Submission = require("../../submission/submission.model");
+    const Decision = require("../../decision/decision.model");
 
-    // Get lightweight submission refs for this scenario (avoid expensive populates/variable population)
-    const submissions = await Submission.getSubmissionRefsByScenario(scenarioId);
+    // Get lightweight decision refs for this challenge (avoid expensive populates/variable population)
+    const decisions = await Decision.getSubmissionRefsByScenario(challengeId);
 
-    if (submissions.length === 0) {
+    if (decisions.length === 0) {
       return [];
     }
 
-    // Create jobs for each submission (createJob will link them automatically).
+    // Create jobs for each decision (createJob will link them automatically).
     // Process synchronously to keep behavior simple and predictable.
     const enqueue = options.enqueue !== undefined ? options.enqueue : true;
 
     const jobs = [];
-    for (const submission of submissions) {
+    for (const decision of decisions) {
       const job = await this.createJob({
         classroomId,
-        scenarioId,
-        userId: submission.userId,
+        challengeId,
+        userId: decision.userId,
         dryRun,
-        submissionId: submission._id,
+        decisionId: decision._id,
         organizationId,
         clerkUserId,
         enqueue,
@@ -148,12 +148,12 @@ class JobService {
   }
 
   /**
-   * Get jobs for a scenario
-   * @param {string} scenarioId - Scenario ID
+   * Get jobs for a challenge
+   * @param {string} challengeId - Challenge ID
    * @returns {Promise<Array>} Array of jobs
    */
-  static async getJobsByScenario(scenarioId) {
-    return await SimulationJob.getJobsByScenario(scenarioId);
+  static async getJobsByScenario(challengeId) {
+    return await SimulationJob.getJobsByScenario(challengeId);
   }
 
   /**
@@ -177,18 +177,18 @@ class JobService {
   /**
    * Enqueue pending jobs that weren't enqueued to Bull
    * Useful for recovering jobs that were created but not enqueued
-   * @param {string} [scenarioId] - Optional scenario ID to filter by
+   * @param {string} [challengeId] - Optional challenge ID to filter by
    * @returns {Promise<Object>} Result with enqueued count
    */
-  static async enqueuePendingJobs(scenarioId = null) {
+  static async enqueuePendingJobs(challengeId = null) {
     const { queues, ensureQueueReady } = require("../../../lib/queues");
     const {
       enqueueSimulationJob,
     } = require("../../../lib/queues/simulation-worker");
 
     const query = { status: "pending" };
-    if (scenarioId) {
-      query.scenarioId = scenarioId;
+    if (challengeId) {
+      query.challengeId = challengeId;
     }
 
     const pendingJobs = await SimulationJob.find(query);
@@ -217,13 +217,13 @@ class JobService {
   }
 
   /**
-   * Reset all jobs for a scenario (used during reruns)
-   * @param {string} scenarioId - Scenario ID
+   * Reset all jobs for a challenge (used during reruns)
+   * @param {string} challengeId - Challenge ID
    * @returns {Promise<Object>} Update result
    */
-  static async resetJobsForScenario(scenarioId) {
+  static async resetJobsForScenario(challengeId) {
     return await SimulationJob.updateMany(
-      { scenarioId },
+      { challengeId },
       {
         $set: {
           status: "pending",

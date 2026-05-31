@@ -20,12 +20,12 @@ const organizationMembershipSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    // Store publicMetadata as Clerk does - no custom field mapping
+    // Profile publicMetadata as Clerk does - no custom field mapping
     publicMetadata: {
       type: mongoose.Schema.Types.Mixed,
       default: {},
     },
-    // Store minimal organization reference (full org data available via ref)
+    // Profile minimal organization reference (full org data available via ref)
     organization: {
       id: String, // Clerk organization ID
       name: String,
@@ -71,7 +71,7 @@ const memberSchema = new mongoose.Schema(
     primaryPhoneNumberId: String,
     primaryWeb3WalletId: String,
 
-    // Contact arrays (simplified - store key info, full objects available via Clerk API)
+    // Contact arrays (simplified - profile key info, full objects available via Clerk API)
     emailAddresses: [
       {
         id: String,
@@ -200,7 +200,7 @@ const memberSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
-    // Active classroom - stores user's currently selected classroom with their role
+    // Active classroom - profiles user's currently selected classroom with their role
     activeClassroom: {
       classroomId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -605,7 +605,7 @@ memberSchema.statics.findOrCreateForCheckout = async function (
       }
     }
 
-    // Step 2: Handle member found scenarios
+    // Step 2: Handle member found challenges
     if (member && orgMembership) {
       // Member exists and is in organization - return formatted member
       return await this.formatForCheckout(member, orgMembership);
@@ -865,7 +865,7 @@ memberSchema.statics.addMemberToOrganizationInClerk = async function (
       organizationId: clerkOrganizationId,
       userId: clerkUserId,
       role: "org:member",
-      publicMetadata: publicMetadata, // Store exactly as provided
+      publicMetadata: publicMetadata, // Profile exactly as provided
     };
 
     await clerkClient.organizations.createOrganizationMembership(
@@ -993,7 +993,7 @@ memberSchema.statics.formatForCheckout = async function (
 
 /**
  * Populate masked email and phone fields from Clerk data
- * This method fetches the full user profile from Clerk once and stores only masked versions
+ * This method fetches the full user profile from Clerk once and profiles only masked versions
  * @param {String} clerkUserId - Clerk user ID
  * @returns {Promise<Object>} - Updated member with masked fields populated
  */
@@ -1778,7 +1778,7 @@ memberSchema.statics.addUserToOrganization = async function (
   const membershipData = {
     organizationId: clerkOrganizationId,
     userId: clerkUserId,
-    publicMetadata: publicMetadata, // Store exactly as provided
+    publicMetadata: publicMetadata, // Profile exactly as provided
     role: "org:member",
   };
 

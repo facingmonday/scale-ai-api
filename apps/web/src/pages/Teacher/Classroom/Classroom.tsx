@@ -1,0 +1,579 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Dialog } from "primereact/dialog";
+import { Button } from "primereact/button";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
+import type { ClassroomPrompt, ClassroomWithVirtuals } from "@/types/classroom";
+import type { StudentDisplay } from "@/types/components";
+import { useAuth } from "@/context/AuthContext";
+import BasicLayout from "@/components/Layouts/BasicLayout";
+import StudentList from "@/components/StudentList";
+import classroomService from "@/services/classroom";
+import enrollmentService from "@/services/enrollment";
+import Image from "@/components/AIComponents/Image/Image";
+import ClassroomResetVariablesAction from "@/components/ClassroomResetVariablesAction";
+import ClassroomRestoreTemplateAction from "@/components/ClassroomRestoreTemplateAction";
+import ClassroomSaveAsTemplateAction from "@/components/ClassroomSaveAsTemplateAction";
+import ClassroomDeleteAction from "@/components/ClassroomDeleteAction";
+import ClassroomInviteStudentButton from "@/components/ClassroomInviteStudentButton";
+import ClassroomBillingSettings from "@/components/ClassroomBillingSettings";
+import RosterImportPanel from "@/components/RosterImportPanel";
+import LoadingOverlay from "../../../components/LoadingOverlay";
+
+const TeacherClassroom: React.FC = () => {
+  const { userRole, isLoading } = useAuth();
+  const navigate = useNavigate();
+  const { id } = useParams<{ id: string }>();
+  const classroomId = id || "";
+
+  const [classroom, setClassroom] = useState<ClassroomWithVirtuals | null>(
+    null
+  );
+  const [isLoadingClassroom, setIsLoadingClassroom] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const didInitForm = useRef(false);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [prompts, setPrompts] = useState<ClassroomPrompt[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const [rosterRefreshKey, setRosterRefreshKey] = useState(0);
+  const [selectedStudent, setSelectedStudent] = useState<StudentDisplay | null>(
+    null
+  );
+  const [isRemoveStudentDialogOpen, setIsRemoveStudentDialogOpen] =
+    useState(false);
+  const [isRemovingStudent, setIsRemovingStudent] = useState(false);
+  const [removeStudentError, setRemoveStudentError] = useState<string | null>(
+    null
+  );
+
+  useEffect(() => {
+    if (!classroomId) return;
+    let mounted = true;
+    const load = async () => {
+      setIsLoadingClassroom(true);
+      setLoadError(null);
+      try {
+        // We currently don't have a classroom getById service.
+        // Fetch org classrooms and match client-side.
+        const res = await classroomService.getAll();
+        const list = (res?.data ?? res ?? []) as ClassroomWithVirtuals[];
+        const match = Array.isArray(list)
+          ? list.find((c) => {
+              const cid =
+                c._id || (c as ClassroomWithVirtuals & { id?: string }).id;
+              return cid === classroomId;
+            }) ?? null
+          : null;
+
+        if (!mounted) return;
+        setClassroom(match);
+        if (!match) {
+          setLoadError("Classroom not found.");
+        }
+      } catch (e) {
+        console.error("Failed to load classroom:", e);
+        if (!mounted) return;
+        setClassroom(null);
+        const errorMessage =
+          e && typeof e === "object" && "response" in e
+            ? (e as { response?: { data?: { message?: string } } }).response
+                ?.data?.message
+            : undefined;
+        setLoadError(errorMessage || "Failed to load classroom.");
+      } finally {
+        if (mounted) setIsLoadingClassroom(false);
+      }
+    };
+
+    void load();
+    return () => {
+      mounted = false;
+    };
+  }, [classroomId]);
+
+  useEffect(() => {
+    if (!classroom) return;
+    if (didInitForm.current) return;
+    didInitForm.current = true;
+    setName(classroom.name || "");
+    setDescription(classroom.description || "");
+    setImageUrl((classroom as { imageUrl?: string }).imageUrl || "");
+    setPrompts(
+      Array.isArray((classroom as { prompts?: ClassroomPrompt[] }).prompts)
+        ? (classroom as { prompts?: ClassroomPrompt[] }).prompts ?? []
+        : []
+    );
+  }, [classroom]);
+
+  const canSave = useMemo(() => {
+    if (!name.trim()) return false;
+    if (!classroom) return true;
+    const currentImageUrl = (classroom as { imageUrl?: string }).imageUrl || "";
+    const currentPrompts = Array.isArray(
+      (classroom as { prompts?: unknown }).prompts
+    )
+      ? (classroom as { prompts?: ClassroomPrompt[] }).prompts ?? []
+      : [];
+    const promptsChanged =
+      JSON.stringify(prompts ?? []) !== JSON.stringify(currentPrompts);
+    return (
+      name.trim() !== (classroom.name || "").trim() ||
+      description.trim() !== (classroom.description || "").trim() ||
+      imageUrl !== currentImageUrl ||
+      promptsChanged
+    );
+  }, [classroom, description, name, imageUrl, prompts]);
+
+  // Teacher-only page
+  if (isLoading) {
+    return (
+      <div className="page">
+        <LoadingOverlay loading={true} />
+      </div>
+    );
+  }
+
+  if (!classroomId) {
+    return <Navigate to="/classrooms" replace />;
+  }
+
+  if (userRole !== "org:admin") {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  const handleSave = async () => {
+    if (isSaving || !name.trim()) return;
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      await classroomService.update(classroomId, {
+        name: name.trim(),
+        description: description.trim(),
+        imageUrl: imageUrl.trim() || undefined,
+        prompts: (prompts ?? []).filter(
+          (p) =>
+            p && typeof p.content === "string" && p.content.trim().length > 0
+        ),
+      });
+      setClassroom((prev) =>
+        prev
+          ? ({
+              ...prev,
+              name: name.trim(),
+              description: description.trim(),
+              imageUrl: imageUrl.trim() || undefined,
+              prompts: (prompts ?? []).filter(
+                (p) =>
+                  p &&
+                  typeof p.content === "string" &&
+                  p.content.trim().length > 0
+              ),
+            } as ClassroomWithVirtuals & { imageUrl?: string })
+          : prev
+      );
+    } catch (e) {
+      console.error("Failed to update classroom:", e);
+      const errorMessage =
+        e && typeof e === "object" && "response" in e
+          ? (e as { response?: { data?: { message?: string } } }).response?.data
+              ?.message
+          : undefined;
+      setSaveError(
+        errorMessage || "Failed to update classroom. Please try again."
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const openRemoveStudentDialog = (student: StudentDisplay) => {
+    setSelectedStudent(student);
+    setRemoveStudentError(null);
+    setIsRemoveStudentDialogOpen(true);
+  };
+
+  const handleRemoveStudent = async () => {
+    if (!selectedStudent || isRemovingStudent) return;
+    setIsRemovingStudent(true);
+    setRemoveStudentError(null);
+    try {
+      await enrollmentService.removeStudent(classroomId, selectedStudent.id);
+      setIsRemoveStudentDialogOpen(false);
+      setSelectedStudent(null);
+      setRosterRefreshKey((k) => k + 1);
+    } catch (e) {
+      console.error("Failed to remove student:", e);
+      const errorMessage =
+        e && typeof e === "object" && "response" in e
+          ? (e as { response?: { data?: { message?: string } } }).response?.data
+              ?.message
+          : undefined;
+      setRemoveStudentError(
+        errorMessage || "Failed to remove student. Please try again."
+      );
+    } finally {
+      setIsRemovingStudent(false);
+    }
+  };
+
+  // Teacher-only page
+  if (isLoading) {
+    return (
+      <div className="page">
+        <LoadingOverlay loading={isLoading} />
+      </div>
+    );
+  }
+
+  if (!classroomId) {
+    return <Navigate to="/classrooms" replace />;
+  }
+
+  if (userRole !== "org:admin") {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  const updatePrompt = (idx: number, next: ClassroomPrompt) => {
+    setPrompts((prev) => prev.map((p, i) => (i === idx ? next : p)));
+  };
+
+  const addPrompt = () => {
+    setPrompts((prev) => [...prev, { role: "system", content: "" }]);
+  };
+
+  const removePrompt = (idx: number) => {
+    setPrompts((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  return (
+    <BasicLayout>
+      <div className="page">
+        <div className="container">
+          <div className="flex items-start justify-between gap-4 mb-6">
+            <div className="min-w-0">
+              <h1 className="heading-xl truncate">
+                {classroom?.name || "Classroom"}
+              </h1>
+              <p className="text-text-muted">
+                Manage classroom details, students, and maintenance actions.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={() => navigate("/classrooms")}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                className="btn-teal"
+                onClick={() => void handleSave()}
+                disabled={!canSave || isSaving}
+              >
+                {isSaving ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+
+          {isLoadingClassroom ? (
+            <div className="card">
+              <LoadingOverlay loading={true} />
+            </div>
+          ) : loadError ? (
+            <div className="card">
+              <p className="text-danger font-medium">{loadError}</p>
+              <div className="mt-4">
+                <button
+                  type="button"
+                  className="btn-outline"
+                  onClick={() => navigate("/classrooms")}
+                >
+                  Back to classrooms
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="flex flex-col sm:flex-row gap-4 w-full">
+            <div className="card mb-4 sm:w-1/4">
+              <Image
+                src={
+                  imageUrl ||
+                  (classroom as { imageUrl?: string })?.imageUrl ||
+                  ""
+                }
+                context={description || classroom?.description || ""}
+                onAccept={(imageUrl) => {
+                  setImageUrl(imageUrl);
+                }}
+              />
+            </div>
+
+            <div className="card mb-4 w-full">
+              <h2 className="heading-md mb-4">Classroom details</h2>
+              {saveError && (
+                <p className="text-danger text-sm mb-3">{saveError}</p>
+              )}
+              <div className="space-y-4">
+                <div>
+                  <label className="label" htmlFor="classroom-name">
+                    Name
+                  </label>
+                  <input
+                    id="classroom-name"
+                    className="input"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    disabled={isSaving || isLoadingClassroom || !!loadError}
+                  />
+                </div>
+                <div>
+                  <label className="label" htmlFor="classroom-description">
+                    Description
+                  </label>
+                  <textarea
+                    id="classroom-description"
+                    className="textarea-fixed"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    disabled={isSaving || isLoadingClassroom || !!loadError}
+                  />
+                </div>
+                <div>
+                  <p className="text-text-muted text-xs">
+                    Starting balances and startup costs are now configured on
+                    profile types.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="card mt-6">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div className="min-w-0">
+                <h2 className="heading-md">Prompts</h2>
+                <p className="text-text-muted text-sm">
+                  Optional system messages used by the simulation engine for
+                  this classroom.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={addPrompt}
+                disabled={isSaving || isLoadingClassroom || !!loadError}
+              >
+                Add prompt
+              </button>
+            </div>
+
+            {prompts.length === 0 ? (
+              <p className="text-text-muted text-sm">
+                No prompts yet. Add one if you want to provide extra system
+                context.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-4">
+                {prompts.map((prompt, idx) => (
+                  <div
+                    key={idx}
+                    className="rounded-lg border border-ui-border p-4"
+                  >
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <div className="flex items-center gap-3">
+                        <span className="badge badge-muted">
+                          Prompt {idx + 1}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <label
+                            className="label mb-0"
+                            htmlFor={`prompt-role-${idx}`}
+                          >
+                            Role
+                          </label>
+                          <select
+                            id={`prompt-role-${idx}`}
+                            className="input"
+                            value={prompt.role}
+                            onChange={(e) =>
+                              updatePrompt(idx, {
+                                ...prompt,
+                                role: e.target.value as ClassroomPrompt["role"],
+                              })
+                            }
+                            disabled={
+                              isSaving || isLoadingClassroom || !!loadError
+                            }
+                          >
+                            <option value="system">system</option>
+                            <option value="user">user</option>
+                            <option value="assistant">assistant</option>
+                            <option value="developer">developer</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="btn-outline"
+                        onClick={() => removePrompt(idx)}
+                        disabled={isSaving || isLoadingClassroom || !!loadError}
+                      >
+                        Remove
+                      </button>
+                    </div>
+
+                    <div>
+                      <label
+                        className="label"
+                        htmlFor={`prompt-content-${idx}`}
+                      >
+                        Content
+                      </label>
+                      <textarea
+                        id={`prompt-content-${idx}`}
+                        className="textarea"
+                        value={prompt.content}
+                        onChange={(e) =>
+                          updatePrompt(idx, {
+                            ...prompt,
+                            content: e.target.value,
+                          })
+                        }
+                        placeholder="Enter a prompt message..."
+                        disabled={isSaving || isLoadingClassroom || !!loadError}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {classroom && (
+            <div className="mt-6">
+              <ClassroomBillingSettings
+                classroom={classroom}
+                onClassroomUpdated={(updated) => setClassroom(updated)}
+              />
+            </div>
+          )}
+
+          <div className="card mt-6">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <h2 className="heading-md">Students</h2>
+              <ClassroomInviteStudentButton
+                classroomId={classroomId}
+                disabled={isLoadingClassroom || !!loadError}
+                onSuccess={() => setRosterRefreshKey((k) => k + 1)}
+              />
+            </div>
+
+            <StudentList
+              key={`${classroomId}:${rosterRefreshKey}`}
+              classroomId={classroomId}
+              onDelete={(student) => openRemoveStudentDialog(student)}
+            />
+          </div>
+
+          <div className="mt-6">
+            <RosterImportPanel
+              classroomId={classroomId}
+              onImported={() => setRosterRefreshKey((k) => k + 1)}
+            />
+          </div>
+
+          <div className="danger-zone-card mt-6">
+            <h2 className="danger-zone-title">Danger Zone</h2>
+            <p className="text-text-muted text-sm mb-6">
+              These actions are irreversible. Please be certain before
+              proceeding.
+            </p>
+            <div className="flex flex-col gap-4">
+              <ClassroomResetVariablesAction
+                classroomId={classroomId}
+                disabled={isLoadingClassroom || !!loadError}
+              />
+              <ClassroomRestoreTemplateAction
+                classroomId={classroomId}
+                disabled={isLoadingClassroom || !!loadError}
+              />
+              <ClassroomSaveAsTemplateAction
+                classroomId={classroomId}
+                disabled={isLoadingClassroom || !!loadError}
+              />
+              <ClassroomDeleteAction
+                classroomId={classroomId}
+                classroomName={classroom?.name || "Classroom"}
+                disabled={isLoadingClassroom || !!loadError}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Remove Student Dialog */}
+      <Dialog
+        header="Remove Student"
+        visible={isRemoveStudentDialogOpen}
+        onHide={() => !isRemovingStudent && setIsRemoveStudentDialogOpen(false)}
+        modal
+        closable={!isRemovingStudent}
+        dismissableMask={!isRemovingStudent}
+        className="modal w-full max-w-2xl"
+        maskClassName="modal-mask"
+        headerClassName="modal-header"
+        contentClassName="modal-content"
+        pt={{
+          headerTitle: { className: "modal-title" },
+          footer: { className: "modal-footer" },
+        }}
+        footer={
+          <div className="flex gap-2 justify-end">
+            <Button
+              label="Cancel"
+              icon="pi pi-times"
+              onClick={() => setIsRemoveStudentDialogOpen(false)}
+              text
+              disabled={isRemovingStudent}
+            />
+            <Button
+              label="Remove student"
+              icon="pi pi-check"
+              onClick={handleRemoveStudent}
+              severity="danger"
+              loading={isRemovingStudent}
+            />
+          </div>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          {removeStudentError ? (
+            <p className="text-danger font-medium">{removeStudentError}</p>
+          ) : null}
+          <p className="text-text-muted">
+            Remove{" "}
+            <strong>
+              {selectedStudent?.name ||
+                selectedStudent?.email ||
+                "this student"}
+            </strong>{" "}
+            from this classroom? This will revoke their access to this class.
+          </p>
+          <p className="text-danger font-semibold">
+            This action cannot be undone.
+          </p>
+        </div>
+      </Dialog>
+    </BasicLayout>
+  );
+};
+
+export default TeacherClassroom;

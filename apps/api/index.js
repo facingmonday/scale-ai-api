@@ -187,6 +187,7 @@ async function main() {
   try {
     const ClassroomTemplate = require("../../services/classroomTemplate/classroomTemplate.model");
     await ClassroomTemplate.ensureGlobalDefaultTemplate();
+    await ClassroomTemplate.ensureGlobalMarketing101Template();
 
     // Ensure every organization has the default template copied locally.
     // This is safe to run on every startup (idempotent).

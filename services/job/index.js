@@ -17,8 +17,8 @@ const {
 // All routes require org:admin role
 router.use(requireAuth(), checkRole("org:admin"));
 
-// Get jobs for a scenario
-router.get("/scenario/:scenarioId", controller.getJobsByScenario);
+// Get jobs for a challenge
+router.get("/challenge/:challengeId", controller.getJobsByScenario);
 
 // Get job by ID
 router.get("/:jobId", controller.getJobById);

@@ -2,15 +2,15 @@ const openai = require("../../lib/openai");
 const SimulationBatch = require("./simulationBatch.model");
 
 /**
- * Cancel any in-progress OpenAI batch for a scenario.
+ * Cancel any in-progress OpenAI batch for a challenge.
  * Finds the most recent batch in validating/in_progress/finalizing,
  * calls OpenAI batches.cancel, and marks the batch as cancelled locally.
  *
- * @param {string} scenarioId - Scenario ID
+ * @param {string} challengeId - Challenge ID
  * @returns {Promise<{ cancelled: boolean, openaiBatchId?: string }>}
  */
-async function cancelInProgressBatchForScenario(scenarioId) {
-  const batch = await SimulationBatch.findInProgressByScenario(scenarioId);
+async function cancelInProgressBatchForScenario(challengeId) {
+  const batch = await SimulationBatch.findInProgressByScenario(challengeId);
   if (!batch || !batch.openaiBatchId) {
     return { cancelled: false };
   }

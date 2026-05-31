@@ -32,6 +32,7 @@ Instructors can override anything
 
 2. Server Architecture
    apps/
+   ├─ web/          # React frontend (Vite, separate package.json)
    ├─ api/
    │ └─ index.js
    ├─ email-preview/

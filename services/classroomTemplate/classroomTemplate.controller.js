@@ -1,8 +1,9 @@
 const ClassroomTemplate = require("./classroomTemplate.model");
 const Classroom = require("../classroom/classroom.model");
-const StoreType = require("../storeType/storeType.model");
+const ProfileType = require("../profileType/profileType.model");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
 const VariableValue = require("../variableDefinition/variableValue.model");
+const MetricDefinition = require("../metricDefinition/metricDefinition.model");
 
 async function buildTemplatePayloadFromClassroom({
   organizationId,
@@ -16,7 +17,7 @@ async function buildTemplatePayloadFromClassroom({
     .select("prompts")
     .lean();
 
-  const storeTypes = await StoreType.find({
+  const profileTypes = await ProfileType.find({
     organization: organizationId,
     classroomId,
     ...(includeInactive === "true" ? {} : { isActive: true }),
@@ -35,27 +36,28 @@ async function buildTemplatePayloadFromClassroom({
     .lean();
 
   const defsByAppliesTo = {
-    storeType: [],
-    store: [],
-    submission: [],
-    scenario: [],
+    profileType: [],
+    profile: [],
+    decision: [],
+    challenge: [],
+    outcome: [],
   };
   definitions.forEach((d) => {
     if (defsByAppliesTo[d.appliesTo]) defsByAppliesTo[d.appliesTo].push(d);
   });
 
   const storeTypeValuesByStoreTypeKey = {};
-  if (storeTypes.length > 0) {
-    const storeTypeIds = storeTypes.map((st) => st._id);
+  if (profileTypes.length > 0) {
+    const storeTypeIds = profileTypes.map((st) => st._id);
     const values = await VariableValue.find({
       organization: organizationId,
       classroomId,
-      appliesTo: "storeType",
+      appliesTo: "profileType",
       ownerId: { $in: storeTypeIds },
     }).lean();
 
     const keyByStoreTypeId = new Map();
-    storeTypes.forEach((st) => keyByStoreTypeId.set(String(st._id), st.key));
+    profileTypes.forEach((st) => keyByStoreTypeId.set(String(st._id), st.key));
 
     values.forEach((v) => {
       const stKey = keyByStoreTypeId.get(String(v.ownerId));
@@ -67,19 +69,26 @@ async function buildTemplatePayloadFromClassroom({
     });
 
     // ensure keys exist even if no values yet
-    storeTypes.forEach((st) => {
+    profileTypes.forEach((st) => {
       if (!storeTypeValuesByStoreTypeKey[st.key]) {
         storeTypeValuesByStoreTypeKey[st.key] = {};
       }
     });
   }
 
+  const metricDefs = await MetricDefinition.find({
+    classroomId,
+    ...(includeInactive === "true" ? {} : { isActive: true }),
+  })
+    .sort({ sortOrder: 1, label: 1 })
+    .lean();
+
   return {
     prompts:
       Array.isArray(classDoc?.prompts) && classDoc.prompts.length > 0
         ? classDoc.prompts
         : ClassroomTemplate.getDefaultClassroomPrompts(),
-    storeTypes: storeTypes.map((st) => ({
+    profileTypes: profileTypes.map((st) => ({
       key: st.key,
       label: st.label,
       description: st.description || "",
@@ -87,6 +96,19 @@ async function buildTemplatePayloadFromClassroom({
     })),
     variableDefinitionsByAppliesTo: defsByAppliesTo,
     storeTypeValuesByStoreTypeKey,
+    metricDefinitions: metricDefs.map((md) => ({
+      key: md.key,
+      label: md.label,
+      description: md.description || "",
+      dataType: md.dataType,
+      format: md.format,
+      aiPromptRule: md.aiPromptRule || "",
+      aggregation: md.aggregation,
+      displayIn: md.displayIn,
+      defaultInitialValue: md.defaultInitialValue,
+      sortOrder: md.sortOrder || 0,
+      isActive: md.isActive !== false,
+    })),
   };
 }
 
@@ -102,10 +124,16 @@ function validateTemplateVariableDefinition(appliesTo, def) {
   }
   if (!def.dataType) throw new Error("definition.dataType is required");
 
-  const validAppliesTo = ["store", "scenario", "submission", "storeType"];
+  const validAppliesTo = [
+    "profile",
+    "profileType",
+    "challenge",
+    "decision",
+    "outcome",
+  ];
   if (!validAppliesTo.includes(appliesTo)) {
     throw new Error(
-      "appliesTo must be one of: store, scenario, submission, storeType"
+      "appliesTo must be one of: profile, profileType, challenge, decision, outcome"
     );
   }
 

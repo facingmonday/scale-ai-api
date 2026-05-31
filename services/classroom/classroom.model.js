@@ -1,10 +1,10 @@
 const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 const Enrollment = require("../enrollment/enrollment.model");
-const Scenario = require("../scenario/scenario.model");
-const Submission = require("../submission/submission.model");
+const Challenge = require("../challenge/challenge.model");
+const Decision = require("../decision/decision.model");
 const LedgerEntry = require("../ledger/ledger.model");
-const ScenarioOutcome = require("../scenarioOutcome/scenarioOutcome.model");
+const Outcome = require("../outcome/outcome.model");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
 const ClassroomTemplate = require("../classroomTemplate/classroomTemplate.model");
 
@@ -31,7 +31,42 @@ const classroomSchema = new mongoose.Schema({
     type: String,
     required: false,
   },
-  // AI prompt building blocks that do NOT depend on scenario/submission/store data.
+  billingMode: {
+    type: String,
+    enum: [
+      "student_paid",
+      "teacher_paid_open",
+      "teacher_paid_roster",
+      "hybrid",
+      "roster_only",
+      "open_free",
+    ],
+    default: "student_paid",
+    index: true,
+  },
+  joinPolicy: {
+    type: String,
+    enum: ["invite_link", "open", "roster_only", "closed"],
+    default: "invite_link",
+    index: true,
+  },
+  studentPaysAllowed: {
+    type: Boolean,
+    default: true,
+  },
+  allowedDomains: {
+    type: [String],
+    default: [],
+  },
+  accessCode: {
+    type: String,
+    default: "",
+  },
+  allowAnonymousJoin: {
+    type: Boolean,
+    default: true,
+  },
+  // AI prompt building blocks that do NOT depend on challenge/decision/profile data.
   // These are prepended to OpenAI messages for simulations.
   // Example:
   // [{ role: "system", content: "..." }, { role: "user", content: "..." }]
@@ -97,8 +132,8 @@ classroomSchema.statics.getDashboard = async function (
   // Count students (members with role 'member')
   const studentCount = await Enrollment.countByClass(classroomId);
 
-  // Get active scenario
-  const activeScenario = await Scenario.getActiveScenario(classroomId);
+  // Get active challenge
+  const activeScenario = await Challenge.getActiveScenario(classroomId);
   const activeScenarioData = activeScenario
     ? {
         id: activeScenario._id,
@@ -110,78 +145,94 @@ classroomSchema.statics.getDashboard = async function (
       }
     : null;
 
-  // Count completed submissions for active scenario
+  // Count completed decisions for active challenge
   let submissionsCompleted = 0;
   if (activeScenario) {
-    const submissions = await Submission.getSubmissionsByScenario(
+    const decisions = await Decision.getSubmissionsByScenario(
       activeScenario._id
     );
-    submissionsCompleted = submissions.length;
+    submissionsCompleted = decisions.length;
   }
 
-  // Get leaderboard top 10 (by total netProfit across all scenarios in class)
-  // Exclude initial ledger entry (week 0) where scenarioId is null
-  // Only include scenario-based entries (actual profit from operations)
-  // Show store name (shopName) instead of member name
-  const leaderboardTop10 = await LedgerEntry.aggregate([
-    {
-      $match: {
-        classroomId: new mongoose.Types.ObjectId(classroomId),
-        scenarioId: { $ne: null }, // Exclude initial ledger entry (week 0)
-      },
-    },
-    {
-      $group: {
-        _id: "$userId",
-        totalProfit: { $sum: "$netProfit" },
-        classroomId: { $first: "$classroomId" }, // Keep classroomId for store lookup
-      },
-    },
-    { $sort: { totalProfit: -1 } },
-    { $limit: 10 },
-    {
-      $lookup: {
-        from: "stores",
-        let: {
-          userIdField: "$_id",
-          classroomIdField: "$classroomId",
+  const MetricDefinition = require("../metricDefinition/metricDefinition.model");
+  const leaderboardDef = await MetricDefinition.findOne({
+    classroomId: classroomId,
+    isActive: true,
+    dataType: "number",
+    "displayIn.leaderboard": true,
+  }).sort({ sortOrder: 1, label: 1 });
+
+  let leaderboardTop10 = [];
+  let leaderboardMetric = null;
+
+  if (leaderboardDef) {
+    const metricPath = `$metrics.${leaderboardDef.key}`;
+    leaderboardMetric = {
+      key: leaderboardDef.key,
+      label: leaderboardDef.label,
+      format: leaderboardDef.format,
+    };
+
+    leaderboardTop10 = await LedgerEntry.aggregate([
+      {
+        $match: {
+          classroomId: new mongoose.Types.ObjectId(classroomId),
+          challengeId: { $ne: null },
         },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$userId", "$$userIdField"] },
-                  { $eq: ["$classroomId", "$$classroomIdField"] },
-                ],
+      },
+      {
+        $group: {
+          _id: "$userId",
+          metricTotal: { $sum: { $ifNull: [metricPath, 0] } },
+          classroomId: { $first: "$classroomId" },
+        },
+      },
+      { $sort: { metricTotal: -1 } },
+      { $limit: 10 },
+      {
+        $lookup: {
+          from: "profiles",
+          let: {
+            userIdField: "$_id",
+            classroomIdField: "$classroomId",
+          },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$userId", "$$userIdField"] },
+                    { $eq: ["$classroomId", "$$classroomIdField"] },
+                  ],
+                },
               },
             },
-          },
-          {
-            $project: {
-              shopName: 1,
-              studentId: 1,
-              _id: 1,
+            {
+              $project: {
+                shopName: 1,
+                studentId: 1,
+                _id: 1,
+              },
             },
-          },
-        ],
-        as: "store",
+          ],
+          as: "profile",
+        },
       },
-    },
-    { $unwind: { path: "$store", preserveNullAndEmptyArrays: false } }, // Exclude entries where store lookup failed
-    {
-      $project: {
-        userId: "$_id",
-        totalProfit: 1,
-        storeName: "$store.shopName",
-        storeId: "$store._id",
-        studentId: "$store.studentId",
+      { $unwind: { path: "$profile", preserveNullAndEmptyArrays: false } },
+      {
+        $project: {
+          userId: "$_id",
+          metricTotal: 1,
+          profileName: "$profile.shopName",
+          profileId: "$profile._id",
+          studentId: "$profile.studentId",
+        },
       },
-    },
-  ]);
+    ]);
+  }
 
-  // Get pending approvals (published scenarios with outcomes that are not approved)
-  const publishedScenarios = await Scenario.find({
+  // Get pending approvals (published challenges with outcomes that are not approved)
+  const publishedScenarios = await Challenge.find({
     classroomId,
     isPublished: true,
     isClosed: false,
@@ -190,8 +241,8 @@ classroomSchema.statics.getDashboard = async function (
   let pendingApprovals = 0;
   if (publishedScenarios.length > 0) {
     const scenarioIds = publishedScenarios.map((s) => s._id);
-    const pendingOutcomes = await ScenarioOutcome.countDocuments({
-      scenarioId: { $in: scenarioIds },
+    const pendingOutcomes = await Outcome.countDocuments({
+      challengeId: { $in: scenarioIds },
       approved: false,
     });
     pendingApprovals = pendingOutcomes;
@@ -205,6 +256,7 @@ classroomSchema.statics.getDashboard = async function (
     activeScenario: activeScenarioData,
     submissionsCompleted: submissionsCompleted,
     leaderboardTop10: leaderboardTop10,
+    leaderboardMetric: leaderboardMetric,
     pendingApprovals: pendingApprovals,
   };
 };
@@ -221,7 +273,7 @@ classroomSchema.statics.getStudentDashboard = async function (
     throw new Error("Class not found");
   }
 
-  const activeScenario = await Scenario.getActiveScenario(classroomId);
+  const activeScenario = await Challenge.getActiveScenario(classroomId);
   const activeScenarioData = activeScenario
     ? {
         id: activeScenario._id,
@@ -233,18 +285,18 @@ classroomSchema.statics.getStudentDashboard = async function (
       }
     : null;
 
-  // Get the subission for the student for the active scenario
-  const submission = await Submission.getSubmission(
+  // Get the subission for the student for the active challenge
+  const decision = await Decision.getSubmission(
     classroomId,
     activeScenario._id,
     member._id
   );
 
-  const submissionData = submission
+  const submissionData = decision
     ? {
-        ...submission,
-        id: submission._id,
-        variables: submission.variables,
+        ...decision,
+        id: decision._id,
+        variables: decision.variables,
       }
     : null;
 
@@ -253,7 +305,7 @@ classroomSchema.statics.getStudentDashboard = async function (
     classDescription: classDoc.description,
     isActive: classDoc.isActive,
     activeScenario: activeScenarioData,
-    submission: submissionData,
+    decision: submissionData,
   };
 };
 
@@ -394,51 +446,48 @@ classroomSchema.statics.generateJoinLink = function (classroomId) {
 };
 
 /**
- * Get all variable definitions for a classroom, grouped by appliesTo type
- * Includes classroom-scoped definitions (store, scenario, submission, storeType)
- * @param {string} classroomId - Class ID
- * @param {Object} options - Options (includeInactive)
- * @returns {Promise<Object>} Object with variableDefinitions grouped by type: { store: [], scenario: [], submission: [], storeType: [] }
+ * Get all variable definitions for a classroom, grouped by appliesTo type.
+ * Includes classroom-scoped definitions for the new scope set:
+ * profile, profileType, challenge, decision, outcome.
  */
 classroomSchema.statics.getAllVariableDefinitionsForClassroom = async function (
   classroomId,
   options = {}
 ) {
-  // Fetch all classroom-scoped variableDefinitions (store, scenario, submission)
   const classroomVariableDefinitions =
     await VariableDefinition.getDefinitionsByClass(classroomId, options);
 
-  // Fetch classroom-scoped storeType variableDefinitions
-  const storeTypeDefinitions = await VariableDefinition.getDefinitionsForScope(
-    classroomId,
-    "storeType",
-    options
-  );
-
-  // Group variableDefinitions by appliesTo type
   const variableDefinitionsByType = {
-    store: [],
-    scenario: [],
-    submission: [],
-    storeType: [],
+    profile: [],
+    profileType: [],
+    challenge: [],
+    decision: [],
+    outcome: [],
   };
 
-  // Add classroom-scoped definitions
   classroomVariableDefinitions.forEach((def) => {
     if (variableDefinitionsByType[def.appliesTo]) {
       variableDefinitionsByType[def.appliesTo].push(def);
     }
   });
 
-  // Add classroom-scoped storeType definitions
-  variableDefinitionsByType.storeType = storeTypeDefinitions;
-
   return variableDefinitionsByType;
 };
 
 /**
- * Get the canonical submission variable definitions
- * @returns {Array} Array of submission variable definition objects
+ * Get all metric definitions for a classroom (for activeClassroom payload).
+ */
+classroomSchema.statics.getAllMetricDefinitionsForClassroom = async function (
+  classroomId,
+  options = {}
+) {
+  const MetricDefinition = require("../metricDefinition/metricDefinition.model");
+  return await MetricDefinition.getDefinitionsForClassroom(classroomId, options);
+};
+
+/**
+ * Get the canonical decision variable definitions
+ * @returns {Array} Array of decision variable definition objects
  */
 classroomSchema.statics.getDefaultSubmissionVariableDefinitions = function () {
   // Backward-compat wrapper: canonical defaults live on ClassroomTemplate
@@ -446,8 +495,8 @@ classroomSchema.statics.getDefaultSubmissionVariableDefinitions = function () {
 };
 
 /**
- * Canonical classroom-scoped storeType variable definitions.
- * @returns {Array} Array of storeType variable definition objects
+ * Canonical classroom-scoped profileType variable definitions.
+ * @returns {Array} Array of profileType variable definition objects
  */
 classroomSchema.statics.getDefaultStoreTypeVariableDefinitions = function () {
   // Backward-compat wrapper: canonical defaults live on ClassroomTemplate
@@ -455,11 +504,11 @@ classroomSchema.statics.getDefaultStoreTypeVariableDefinitions = function () {
 };
 
 /**
- * Seed classroom-scoped storeType VariableDefinitions + StoreTypes + VariableValues.
+ * Seed classroom-scoped profileType VariableDefinitions + ProfileTypes + VariableValues.
  *
  * - Definitions are classroom-scoped and apply only within this class.
- * - StoreTypes are classroom-scoped and sourced from STORE_TYPE_PRESETS (key/label/description only).
- * - VariableValues are created for each StoreType × Definition using definition.defaultValue.
+ * - ProfileTypes are classroom-scoped and sourced from STORE_TYPE_PRESETS (key/label/description only).
+ * - VariableValues are created for each ProfileType × Definition using definition.defaultValue.
  *   Idempotent: does NOT overwrite existing VariableValues.
  *
  * @param {string} classroomId - Class ID
@@ -510,7 +559,7 @@ classroomSchema.statics.seedStoreTypesAndVariables = async function (
 };
 
 /**
- * Seed submission variable definitions for a classroom
+ * Seed decision variable definitions for a classroom
  * Idempotent: skips variables that already exist
  * @param {string} classroomId - Class ID
  * @param {string} organizationId - Organization ID
@@ -553,7 +602,7 @@ classroomSchema.statics.seedSubmissionVariables = async function (
       stats.created += 1;
     } catch (error) {
       console.error(
-        `Error creating submission variable ${def.key} for classroom ${classroomId}:`,
+        `Error creating decision variable ${def.key} for classroom ${classroomId}:`,
         error.message
       );
       stats.errors += 1;
@@ -599,7 +648,7 @@ classroomSchema.statics.adminDeleteAllVariableDefinitionsForClassroom =
 
 /**
  * Admin: restore a classroom from a template by wiping definitions + values and reapplying.
- * This resets store/scenario/submission values to template defaultValue (if provided).
+ * This resets profile/challenge/decision values to template defaultValue (if provided).
  *
  * @param {string} classroomId
  * @param {string} organizationId
@@ -618,9 +667,9 @@ classroomSchema.statics.adminRestoreTemplateForClassroom = async function (
   const { templateId, templateKey } = options;
 
   const VariableValue = require("../variableDefinition/variableValue.model");
-  const Store = require("../store/store.model");
-  const Scenario = require("../scenario/scenario.model");
-  const Submission = require("../submission/submission.model");
+  const Profile = require("../profile/profile.model");
+  const Challenge = require("../challenge/challenge.model");
+  const Decision = require("../decision/decision.model");
 
   const key = templateKey || ClassroomTemplate.GLOBAL_DEFAULT_KEY;
 
@@ -665,7 +714,7 @@ classroomSchema.statics.adminRestoreTemplateForClassroom = async function (
     classroomId,
   });
 
-  // 2) Apply template (recreates StoreType defs + StoreType values; creates other defs too)
+  // 2) Apply template (recreates ProfileType defs + ProfileType values; creates other defs too)
   const templateApply = await template.applyToClassroom({
     classroomId,
     organizationId,
@@ -681,13 +730,24 @@ classroomSchema.statics.adminRestoreTemplateForClassroom = async function (
     );
   }
 
-  // 3) Reset store/scenario/submission values to defaults (if template provides defs with defaultValue)
+  // 3) Reset profile/challenge/decision values to defaults (if template provides defs with defaultValue)
+  // Support both new and legacy keys to ease the rename transition.
   const defsBy = template.payload?.variableDefinitionsByAppliesTo || {};
-  const storeDefs = Array.isArray(defsBy.store) ? defsBy.store : [];
-  const scenarioDefs = Array.isArray(defsBy.scenario) ? defsBy.scenario : [];
-  const submissionDefs = Array.isArray(defsBy.submission)
-    ? defsBy.submission
-    : [];
+  const storeDefs = Array.isArray(defsBy.profile)
+    ? defsBy.profile
+    : Array.isArray(defsBy.profile)
+      ? defsBy.profile
+      : [];
+  const scenarioDefs = Array.isArray(defsBy.challenge)
+    ? defsBy.challenge
+    : Array.isArray(defsBy.challenge)
+      ? defsBy.challenge
+      : [];
+  const submissionDefs = Array.isArray(defsBy.decision)
+    ? defsBy.decision
+    : Array.isArray(defsBy.decision)
+      ? defsBy.decision
+      : [];
 
   const reseed = async (appliesTo, owners, defs) => {
     const usableDefs = (defs || []).filter(
@@ -721,27 +781,27 @@ classroomSchema.statics.adminRestoreTemplateForClassroom = async function (
     return res?.insertedCount || 0;
   };
 
-  const [stores, scenarios, submissions] = await Promise.all([
-    Store.find({ organization: organizationId, classroomId })
+  const [profiles, challenges, decisions] = await Promise.all([
+    Profile.find({ organization: organizationId, classroomId })
       .select("_id")
       .lean(),
-    Scenario.find({ organization: organizationId, classroomId })
+    Challenge.find({ organization: organizationId, classroomId })
       .select("_id")
       .lean(),
-    Submission.find({ organization: organizationId, classroomId })
+    Decision.find({ organization: organizationId, classroomId })
       .select("_id")
       .lean(),
   ]);
 
-  const storeValuesCreated = await reseed("store", stores, storeDefs);
+  const storeValuesCreated = await reseed("profile", profiles, storeDefs);
   const scenarioValuesCreated = await reseed(
-    "scenario",
-    scenarios,
+    "challenge",
+    challenges,
     scenarioDefs
   );
   const submissionValuesCreated = await reseed(
-    "submission",
-    submissions,
+    "decision",
+    decisions,
     submissionDefs
   );
 
@@ -759,8 +819,8 @@ classroomSchema.statics.adminRestoreTemplateForClassroom = async function (
 
 /**
  * Delete a classroom and all associated data (cascade delete)
- * Deletes: enrollments, scenarios, submissions, scenarioOutcomes, ledgerEntries,
- *          stores, storeTypes, variableDefinitions, variableValues, simulationJobs, notifications
+ * Deletes: enrollments, challenges, decisions, outcomes, ledgerEntries,
+ *          profiles, profileTypes, variableDefinitions, variableValues, simulationJobs, notifications
  *
  * @param {string} classroomId - Classroom ID
  * @param {string} organizationId - Organization ID for validation
@@ -771,8 +831,8 @@ classroomSchema.statics.deleteClassroom = async function (
   organizationId
 ) {
   // Lazy load models to avoid circular dependencies
-  const Store = require("../store/store.model");
-  const StoreType = require("../storeType/storeType.model");
+  const Profile = require("../profile/profile.model");
+  const ProfileType = require("../profileType/profileType.model");
   const SimulationJob = require("../job/job.model");
   const VariableValue = require("../variableDefinition/variableValue.model");
   const Notification = require("../notifications/notifications.model");
@@ -816,30 +876,30 @@ classroomSchema.statics.deleteClassroom = async function (
   const ledgerEntriesResult = await LedgerEntry.deleteMany({ classroomId });
   stats.ledgerEntriesDeleted = ledgerEntriesResult.deletedCount || 0;
 
-  // 4. Delete all submissions for this classroom
-  const submissionsResult = await Submission.deleteMany({ classroomId });
+  // 4. Delete all decisions for this classroom
+  const submissionsResult = await Decision.deleteMany({ classroomId });
   stats.submissionsDeleted = submissionsResult.deletedCount || 0;
 
-  // 5. Delete all scenario outcomes for scenarios in this classroom
-  const scenarios = await Scenario.find({ classroomId }).select("_id").lean();
-  const scenarioIds = scenarios.map((s) => s._id);
+  // 5. Delete all challenge outcomes for challenges in this classroom
+  const challenges = await Challenge.find({ classroomId }).select("_id").lean();
+  const scenarioIds = challenges.map((s) => s._id);
   if (scenarioIds.length > 0) {
-    const scenarioOutcomesResult = await ScenarioOutcome.deleteMany({
-      scenarioId: { $in: scenarioIds },
+    const scenarioOutcomesResult = await Outcome.deleteMany({
+      challengeId: { $in: scenarioIds },
     });
     stats.scenarioOutcomesDeleted = scenarioOutcomesResult.deletedCount || 0;
   }
 
-  // 6. Delete all scenarios for this classroom
-  const scenariosResult = await Scenario.deleteMany({ classroomId });
+  // 6. Delete all challenges for this classroom
+  const scenariosResult = await Challenge.deleteMany({ classroomId });
   stats.scenariosDeleted = scenariosResult.deletedCount || 0;
 
-  // 7. Delete all stores for this classroom
-  const storesResult = await Store.deleteMany({ classroomId });
+  // 7. Delete all profiles for this classroom
+  const storesResult = await Profile.deleteMany({ classroomId });
   stats.storesDeleted = storesResult.deletedCount || 0;
 
-  // 8. Delete all store types for this classroom
-  const storeTypesResult = await StoreType.deleteMany({ classroomId });
+  // 8. Delete all profile types for this classroom
+  const storeTypesResult = await ProfileType.deleteMany({ classroomId });
   stats.storeTypesDeleted = storeTypesResult.deletedCount || 0;
 
   // 9. Delete all variable values for this classroom

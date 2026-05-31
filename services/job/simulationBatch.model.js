@@ -8,9 +8,9 @@ const simulationBatchSchema = new mongoose.Schema({
     required: true,
     index: true,
   },
-  scenarioId: {
+  challengeId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "Scenario",
+    ref: "Challenge",
     required: true,
     index: true,
   },
@@ -78,7 +78,7 @@ const simulationBatchSchema = new mongoose.Schema({
   },
 }).add(baseSchema);
 
-simulationBatchSchema.index({ scenarioId: 1, createdDate: -1 });
+simulationBatchSchema.index({ challengeId: 1, createdDate: -1 });
 simulationBatchSchema.index({ openaiBatchId: 1, status: 1 });
 
 simulationBatchSchema.statics.createBatch = async function (
@@ -88,7 +88,7 @@ simulationBatchSchema.statics.createBatch = async function (
 ) {
   const batch = new this({
     classroomId: input.classroomId,
-    scenarioId: input.scenarioId,
+    challengeId: input.challengeId,
     status: "created",
     jobCount: input.jobCount || 0,
     organization: organizationId,
@@ -148,10 +148,10 @@ simulationBatchSchema.methods.markCancelled = async function (reason) {
 };
 
 simulationBatchSchema.statics.findInProgressByScenario = async function (
-  scenarioId
+  challengeId
 ) {
   return this.findOne({
-    scenarioId,
+    challengeId,
     status: { $in: ["validating", "in_progress", "finalizing"] },
   }).sort({ createdDate: -1 });
 };

@@ -35,3 +35,6 @@ reason-x-4ad8c7d635a1.json
 
 test/rendered-templates
 docker-compose.local.yml
+
+apps/web/node_modules/
+apps/web/dist/

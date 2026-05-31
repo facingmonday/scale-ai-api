@@ -1,0 +1,175 @@
+---
+alwaysApply: false
+globs: apps/web/src/services/**/*.{ts,tsx}
+---
+
+# Services with Clerk Authentication
+
+Services in this application use a centralized TokenHandler for Clerk authentication. This approach ensures that all API requests are properly authenticated without requiring individual components to handle authentication.
+
+## Authentication Flow
+
+1. **Session Initialization**: The Clerk session is initialized once in the `ClerkAuthProvider` component:
+
+   ```tsx
+   // In ClerkAuthProvider.tsx
+   useEffect(() => {
+     if (session) {
+       TokenHandler.setSession(session);
+     }
+   }, [session]);
+   ```
+
+2. **TokenHandler**: The TokenHandler maintains the session and provides authenticated headers:
+
+   ```tsx
+   // TokenHandler.getHeaders() automatically uses the stored session
+   const headers = await TokenHandler.getHeaders();
+   ```
+
+3. **Service Methods**: Service methods use TokenHandler to get auth headers for each request
+
+## Service Pattern
+
+Services should match the following format:
+
+```tsx
+import TokenHandler from "./base";
+import { KIKITS_API_HOST, KIKITS_API_VERSION } from "../config";
+import axios from "axios";
+import { IService, IPaginationModal } from "types/App";
+
+async function fetchAll(paginationModel: IPaginationModal = {}) {
+  const filteredPagination = { ...paginationModel };
+  delete filteredPagination.query;
+  delete filteredPagination.sort;
+
+  const url = new URL(`${KIKITS_API_HOST}/${KIKITS_API_VERSION}/cities`);
+  url.search = new URLSearchParams(filteredPagination).toString();
+
+  const response = await axios.get(url.toString(), {
+    params: { query: paginationModel.query, sort: paginationModel.sort },
+    headers: await TokenHandler.getHeaders(), // TokenHandler provides auth headers
+  });
+  return response.data;
+}
+
+async function fetch(id: string) {
+  const response = await axios.get(
+    `${KIKITS_API_HOST}/${KIKITS_API_VERSION}/cities/${id}`,
+    {
+      headers: await TokenHandler.getHeaders(),
+    }
+  );
+  return response.data;
+}
+
+async function create(data: any) {
+  const response = await axios.post(
+    `${KIKITS_API_HOST}/${KIKITS_API_VERSION}/cities`,
+    data,
+    {
+      headers: await TokenHandler.getHeaders(),
+    }
+  );
+  return response.data;
+}
+
+async function update(id: string, data: any) {
+  const response = await axios.put(
+    `${KIKITS_API_HOST}/${KIKITS_API_VERSION}/cities/${id}`,
+    data,
+    {
+      headers: await TokenHandler.getHeaders(),
+    }
+  );
+  return response.data;
+}
+
+async function remove(id: string) {
+  const response = await axios.delete(
+    `${KIKITS_API_HOST}/${KIKITS_API_VERSION}/cities/${id}`,
+    {
+      headers: await TokenHandler.getHeaders(),
+    }
+  );
+  return response.data;
+}
+
+async function upload(file: File) {
+  let data = new FormData();
+  data.append("file", file);
+  const response = await axios.post(
+    `${KIKITS_API_HOST}/${KIKITS_API_VERSION}/cities/upload`,
+    data,
+    {
+      headers: await TokenHandler.getHeaders(),
+    }
+  );
+  return response.data;
+}
+
+// Example: GET request with query parameters
+async function getStudentSubmissions(params?: {
+  classroomId?: string;
+  scenarioId?: string;
+}) {
+  const url = new URL(`${API_HOST}/${API_VERSION}/student/submissions`);
+
+  if (params?.classroomId) {
+    url.searchParams.append("classroomId", params.classroomId);
+  }
+
+  if (params?.scenarioId) {
+    url.searchParams.append("scenarioId", params.scenarioId);
+  }
+
+  const response = await axios.get(url.toString(), {
+    headers: await TokenHandler.getHeaders(),
+  });
+  return response.data;
+}
+
+const citiesService: IService = {
+  fetch,
+  fetchAll,
+  create,
+  update,
+  remove,
+  upload,
+};
+
+export default citiesService;
+```
+
+## Using Services in Components
+
+To use services in components, just import the service and call its methods:
+
+```tsx
+import React, { useEffect, useState } from "react";
+import citiesService from "services/cities";
+
+function CitiesList() {
+  const [cities, setCities] = useState([]);
+
+  useEffect(() => {
+    async function loadCities() {
+      const response = await citiesService.fetchAll();
+      setCities(response.data);
+    }
+    loadCities();
+  }, []);
+
+  // Component rendering...
+}
+```
+
+The TokenHandler handles authentication automatically, so components don't need to worry about setting up auth for API calls.
+
+## Important Notes
+
+1. Always use `await TokenHandler.getHeaders()` in service methods
+2. Don't implement authentication logic in components
+3. The TokenHandler is initialized at the application level in the ClerkAuthProvider
+4. Service methods should always return `response.data` for consistency

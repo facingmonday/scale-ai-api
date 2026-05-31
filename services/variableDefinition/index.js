@@ -2,7 +2,7 @@
  * VariableDefinition Service Routes
  * 
  * Provides endpoints for managing dynamic variable definitions.
- * Variables define the structure of questions/inputs for stores, scenarios, submissions, and outcomes.
+ * Variables define the structure of questions/inputs for profiles, challenges, decisions, and outcomes.
  * Admin routes require org:admin role.
  * Mounted at: /v1/admin/variables
  */

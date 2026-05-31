@@ -1,9 +1,11 @@
 /**
  * Ledger Service Routes
  *
- * Provides endpoints for managing ledger entries (historical business results for students).
- * All routes require org:admin role.
+ * Provides endpoints for managing ledger entries (historical results for students).
  * Mounted at: /v1/admin/ledger
+ *
+ * The ledger entry now profiles a dynamic `metrics` map keyed by MetricDefinition
+ * records for the classroom, rather than a fixed set of fields.
  */
 const express = require("express");
 const controller = require("./ledger.controller");
@@ -19,17 +21,17 @@ router.get(
   controller.getLedgerHistory
 );
 
-// Get ledger entries for a scenario
+// Get ledger entries for a challenge
 router.get(
-  "/scenario/:scenarioId",
+  "/challenge/:challengeId",
   requireAuth(),
   checkRole("org:admin"),
-  controller.getLedgerEntriesByScenario
+  controller.getLedgerEntriesByChallenge
 );
 
-// Get ledger entry for a specific scenario and user
+// Get ledger entry for a specific challenge and user
 router.get(
-  "/scenario/:scenarioId/user/:userId",
+  "/challenge/:challengeId/user/:userId",
   requireAuth(),
   checkRole("org:admin"),
   controller.getLedgerEntry

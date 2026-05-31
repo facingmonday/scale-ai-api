@@ -2,6 +2,9 @@ const Classroom = require("./classroom.model");
 const Member = require("../members/member.model");
 const Enrollment = require("../enrollment/enrollment.model");
 const { sendEmail } = require("../../lib/sendGrid/sendEmail");
+const {
+  requireCanCreateClassroom,
+} = require("../licensing/licensing.service");
 
 /**
  * Create a new class
@@ -9,7 +12,18 @@ const { sendEmail } = require("../../lib/sendGrid/sendEmail");
  */
 exports.createClass = async function (req, res) {
   try {
-    const { name, description, imageUrl, templateId } = req.body;
+    const {
+      name,
+      description,
+      imageUrl,
+      templateId,
+      billingMode,
+      joinPolicy,
+      studentPaysAllowed,
+      allowedDomains,
+      accessCode,
+      allowAnonymousJoin,
+    } = req.body;
     const memberId = req.user._id;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
@@ -21,6 +35,8 @@ exports.createClass = async function (req, res) {
     if (!name) {
       return res.status(400).json({ error: "Class name is required" });
     }
+
+    await requireCanCreateClassroom({ organization: req.organization });
 
     // If a templateId was provided, validate it belongs to this organization before creating the class
     let templateToApply = null;
@@ -42,6 +58,12 @@ exports.createClass = async function (req, res) {
       description: description || "",
       imageUrl: imageUrl || null,
       isActive: true,
+      billingMode: billingMode || "student_paid",
+      joinPolicy: joinPolicy || "invite_link",
+      studentPaysAllowed: studentPaysAllowed !== false,
+      allowedDomains: Array.isArray(allowedDomains) ? allowedDomains : [],
+      accessCode: accessCode || "",
+      allowAnonymousJoin: allowAnonymousJoin !== false,
       ownership: memberId, // Set ownership to the creator
       organization: organizationId,
       createdBy: clerkUserId,
@@ -95,7 +117,7 @@ exports.createClass = async function (req, res) {
         });
 
         // Persist template prompts onto the classroom (create-only).
-        // Prompts are used to build OpenAI messages and should exist even if no store/scenario exists yet.
+        // Prompts are used to build OpenAI messages and should exist even if no profile/challenge exists yet.
         const prompts = templateToApply.payload?.prompts;
         if (
           Array.isArray(prompts) &&
@@ -154,6 +176,13 @@ exports.createClass = async function (req, res) {
     console.error("Error creating class:", error);
     if (error.name === "ValidationError") {
       return res.status(400).json({ error: error.message });
+    }
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+        code: error.code,
+        details: error.details,
+      });
     }
     res.status(500).json({ error: error.message });
   }
@@ -227,7 +256,19 @@ exports.getStudentDashboard = async function (req, res) {
 exports.updateClass = async function (req, res) {
   try {
     const { classroomId } = req.params;
-    const { name, description, imageUrl, isActive, prompts } = req.body;
+    const {
+      name,
+      description,
+      imageUrl,
+      isActive,
+      prompts,
+      billingMode,
+      joinPolicy,
+      studentPaysAllowed,
+      allowedDomains,
+      accessCode,
+      allowAnonymousJoin,
+    } = req.body;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
@@ -250,6 +291,26 @@ exports.updateClass = async function (req, res) {
     }
     if (isActive !== undefined) {
       classroom.isActive = isActive;
+    }
+    if (billingMode !== undefined) {
+      classroom.billingMode = billingMode;
+    }
+    if (joinPolicy !== undefined) {
+      classroom.joinPolicy = joinPolicy;
+    }
+    if (studentPaysAllowed !== undefined) {
+      classroom.studentPaysAllowed = !!studentPaysAllowed;
+    }
+    if (allowedDomains !== undefined) {
+      classroom.allowedDomains = Array.isArray(allowedDomains)
+        ? allowedDomains.map((domain) => String(domain).trim().toLowerCase()).filter(Boolean)
+        : [];
+    }
+    if (accessCode !== undefined) {
+      classroom.accessCode = accessCode || "";
+    }
+    if (allowAnonymousJoin !== undefined) {
+      classroom.allowAnonymousJoin = !!allowAnonymousJoin;
     }
 
     // Update classroom prompts (optional)
@@ -311,6 +372,13 @@ exports.updateClass = async function (req, res) {
     }
     if (error.name === "ValidationError") {
       return res.status(400).json({ error: error.message });
+    }
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+        code: error.code,
+        details: error.details,
+      });
     }
     res.status(500).json({ error: error.message });
   }
@@ -488,8 +556,11 @@ exports.inviteStudent = async function (req, res) {
       organizationId
     );
 
-    // Generate join link
-    const joinLink = Classroom.generateJoinLink(classroomId);
+    // Generate join link for the canonical auth/join flow.
+    const baseUrl = process.env.SCALE_APP_HOST || "http://localhost:5173";
+    const joinLink = `${baseUrl}/?orgId=${encodeURIComponent(
+      req.organization.clerkOrganizationId
+    )}&classroomId=${encodeURIComponent(classroomId)}`;
 
     // Get sender info
     const senderMember = await Member.findOne({ clerkUserId });

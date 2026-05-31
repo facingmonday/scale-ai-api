@@ -7,14 +7,14 @@ const simulationJobSchema = new mongoose.Schema({
     ref: "Classroom",
     required: true,
   },
-  scenarioId: {
+  challengeId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "Scenario",
+    ref: "Challenge",
     required: true,
   },
-  submissionId: {
+  decisionId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "Submission",
+    ref: "Decision",
     required: false,
     default: null,
   },
@@ -65,22 +65,12 @@ const simulationJobSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
-  // Expected continuity values (used to correct AI responses during ingestion)
-  expectedCashBefore: {
-    type: Number,
-    default: null,
-  },
-  expectedInventoryState: {
-    refrigeratedUnits: { type: Number, default: null },
-    ambientUnits: { type: Number, default: null },
-    notForResaleUnits: { type: Number, default: null },
-  },
-  // Snapshot of variables/prior state used to write ledger entries later during batch ingestion
+  // Snapshot of variables/prior metric state used to write ledger entries later during batch ingestion
   calculationContextSnapshot: {
     type: mongoose.Schema.Types.Mixed,
     default: null,
   },
-  // Batch tracking (one job item within a scenario-level batch)
+  // Batch tracking (one job item within a challenge-level batch)
   batch: {
     openaiBatchId: { type: String, default: null, index: true },
     inputFileId: { type: String, default: null },
@@ -97,12 +87,12 @@ const simulationJobSchema = new mongoose.Schema({
 }).add(baseSchema);
 
 // Compound indexes for performance
-simulationJobSchema.index({ scenarioId: 1, userId: 1 }, { unique: true });
+simulationJobSchema.index({ challengeId: 1, userId: 1 }, { unique: true });
 simulationJobSchema.index({ status: 1 });
-simulationJobSchema.index({ scenarioId: 1, status: 1 });
+simulationJobSchema.index({ challengeId: 1, status: 1 });
 simulationJobSchema.index({ classroomId: 1, userId: 1 });
-simulationJobSchema.index({ organization: 1, scenarioId: 1 });
-simulationJobSchema.index({ submissionId: 1 });
+simulationJobSchema.index({ organization: 1, challengeId: 1 });
+simulationJobSchema.index({ decisionId: 1 });
 simulationJobSchema.index({ "batch.openaiBatchId": 1, status: 1 });
 
 // Static methods
@@ -121,7 +111,7 @@ simulationJobSchema.statics.createJob = async function (
 ) {
   // Check if job already exists
   const existing = await this.findOne({
-    scenarioId: input.scenarioId,
+    challengeId: input.challengeId,
     userId: input.userId,
   });
 
@@ -137,12 +127,6 @@ simulationJobSchema.statics.createJob = async function (
     existing.openaiRequest = null;
     existing.openaiRequestRawMessages = null;
     existing.openaiRequestPreparedAt = null;
-    existing.expectedCashBefore = null;
-    existing.expectedInventoryState = {
-      refrigeratedUnits: null,
-      ambientUnits: null,
-      notForResaleUnits: null,
-    };
     existing.calculationContextSnapshot = null;
     existing.batch = {
       openaiBatchId: null,
@@ -153,9 +137,9 @@ simulationJobSchema.statics.createJob = async function (
       completedAt: null,
     };
     existing.ledgerEntryId = null;
-    // Persist/refresh submission link if provided
-    if (input.submissionId) {
-      existing.submissionId = input.submissionId;
+    // Persist/refresh decision link if provided
+    if (input.decisionId) {
+      existing.decisionId = input.decisionId;
     }
     existing.updatedBy = clerkUserId;
     await existing.save();
@@ -164,8 +148,8 @@ simulationJobSchema.statics.createJob = async function (
 
   const job = new this({
     classroomId: input.classroomId,
-    scenarioId: input.scenarioId,
-    submissionId: input.submissionId || null,
+    challengeId: input.challengeId,
+    decisionId: input.decisionId || null,
     userId: input.userId,
     status: "pending",
     attempts: 0,
@@ -183,12 +167,12 @@ simulationJobSchema.statics.createJob = async function (
 };
 
 /**
- * Get jobs for a scenario
- * @param {string} scenarioId - Scenario ID
+ * Get jobs for a challenge
+ * @param {string} challengeId - Challenge ID
  * @returns {Promise<Array>} Array of jobs
  */
-simulationJobSchema.statics.getJobsByScenario = async function (scenarioId) {
-  return await this.find({ scenarioId })
+simulationJobSchema.statics.getJobsByScenario = async function (challengeId) {
+  return await this.find({ challengeId })
     .populate("userId", "_id firstName lastName")
     .sort({ userId: 1 });
 };
@@ -265,12 +249,6 @@ simulationJobSchema.methods.reset = async function () {
   this.openaiRequest = null;
   this.openaiRequestRawMessages = null;
   this.openaiRequestPreparedAt = null;
-  this.expectedCashBefore = null;
-  this.expectedInventoryState = {
-    refrigeratedUnits: null,
-    ambientUnits: null,
-    notForResaleUnits: null,
-  };
   this.calculationContextSnapshot = null;
   this.batch = {
     openaiBatchId: null,

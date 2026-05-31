@@ -2,6 +2,9 @@ const { clerkClient } = require("@clerk/express");
 const Organization = require("../organizations/organization.model");
 const Classroom = require("../classroom/classroom.model");
 const Enrollment = require("../enrollment/enrollment.model");
+const {
+  claimSeatOrRequireCheckout,
+} = require("../licensing/licensing.service");
 
 async function ensureOrganizationByClerkId(clerkOrganizationId) {
   let organization = await Organization.findByClerkId(clerkOrganizationId);
@@ -80,6 +83,18 @@ async function getOrCreateClerkOrgMembership(clerkOrganizationId, clerkUserId) {
   }
 }
 
+async function getExistingClerkOrgMembership(clerkOrganizationId, clerkUserId) {
+  const memberships =
+    await clerkClient.organizations.getOrganizationMembershipList({
+      organizationId: clerkOrganizationId,
+      userId: clerkUserId,
+    });
+
+  return memberships?.data?.find(
+    (m) => m.publicUserData?.userId === clerkUserId
+  );
+}
+
 async function syncMemberOrgMembership(member, organization, clerkMembership) {
   if (!member || !organization || !clerkMembership) return;
 
@@ -144,7 +159,7 @@ async function ensureEnrollment({
 /**
  * Ensures the final state is valid (auth/org/classroom/membership/enrollment) and returns it.
  */
-async function ensureJoin({ orgId, classroomId, clerkUserId, member }) {
+async function ensureJoin({ orgId, classroomId, clerkUserId, member, studentEmail, studentId }) {
   const [organization, classroom] = await Promise.all([
     ensureOrganizationByClerkId(orgId),
     Classroom.findById(classroomId),
@@ -170,19 +185,36 @@ async function ensureJoin({ orgId, classroomId, clerkUserId, member }) {
     throw err;
   }
 
-  const clerkMembership = await getOrCreateClerkOrgMembership(orgId, clerkUserId);
-  await syncMemberOrgMembership(member, organization, clerkMembership);
+  const existingClerkMembership = await getExistingClerkOrgMembership(
+    orgId,
+    clerkUserId
+  );
 
   // Determine classroom role:
   // - org:admin => classroom admin
   // - classroom owner => classroom admin
   // - otherwise member
-  const isOrgAdmin = clerkMembership?.role === "org:admin";
+  const isOrgAdmin = existingClerkMembership?.role === "org:admin";
   const isOwner =
     classroom.ownership?.toString?.() &&
     member?._id?.toString?.() &&
     classroom.ownership.toString() === member._id.toString();
   const role = isOrgAdmin || isOwner ? "admin" : "member";
+
+  if (role === "member") {
+    await claimSeatOrRequireCheckout({
+      classroom,
+      organization,
+      member,
+      clerkUserId,
+      studentEmail,
+      studentId,
+    });
+  }
+
+  const clerkMembership = await getOrCreateClerkOrgMembership(orgId, clerkUserId);
+  await syncMemberOrgMembership(member, organization, clerkMembership);
+
   const enrollment = await ensureEnrollment({
     classroomId: classroom._id,
     memberId: member._id,

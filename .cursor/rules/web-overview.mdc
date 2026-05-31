@@ -1,0 +1,459 @@
+---
+alwaysApply: false
+globs: apps/web/**/*
+---
+
+# SCALE.ai Frontend Developer Guide
+
+## React Application Specification
+
+This document explains **how the SCALE.ai application works** from a frontend perspective.  
+It is intended to be used by a **React frontend developer** building the student and instructor dashboards.
+
+If I refer to Students or Student I am referring to users with the role org:member
+If I refer to Teachers or Teacher I am referring to users with the role org:admin
+
+This is a **rules-of-the-road document**. If something is unclear, assume the backend is the source of truth and do not invent logic on the frontend.
+
+---
+
+## 1. What SCALE.ai Is
+
+SCALE.ai is a **classroom-based supply chain simulation game** using a pizza shop scenario.
+
+Students:
+
+- Create one pizza business per class
+- Make simple weekly decisions
+- See AI-simulated outcomes
+
+Instructors (Admins):
+
+- Create weekly scenarios
+- Define what actually happened that week
+- Preview and approve outcomes
+- View leaderboards and student progress
+
+There are **only two roles**:
+
+- `admin` – instructor or TA
+- `member` – student
+
+There is:
+
+- No grading
+- No failing
+- No bankruptcy lockout
+- Students can go negative and continue
+
+---
+
+## 2. Core Mental Model (Very Important)
+
+Every week operates in **three layers**:
+
+### Layer 1: Student Decisions
+
+Students answer a small set of questions such as:
+
+- How many pizzas to prepare
+- Staffing level
+- Inventory strategy
+
+Students **never calculate results**.
+
+---
+
+### Layer 2: Scenario + Global Outcome (Admin)
+
+Admins define:
+
+- The scenario context for the week
+- What students expect
+- What actually happened
+
+The outcome applies to **all students**, but affects each store differently.
+
+---
+
+### Layer 3: AI Simulation
+
+The backend AI combines:
+
+- Store configuration
+- Student decisions
+- Scenario variables
+- Global outcome
+- Optional random events
+
+AI produces:
+
+- Sales
+- Waste
+- Profit or loss
+- Updated balance
+- Narrative explanation
+
+This result is written to the **ledger**.
+
+---
+
+## 3. Authentication and Identity
+
+Authentication is handled by **Clerk**.
+
+Frontend receives:
+
+- `userId`
+- `role` (`admin` or `member`)
+
+Rules:
+
+- All API calls require authentication
+- Backend enforces authorization
+- Frontend must handle 403 and 409 responses gracefully
+
+---
+
+## 4. Student Experience (Frontend Responsibilities)
+
+### 4.1 Student Dashboard
+
+Purpose:
+
+- Primary landing page
+
+Shows:
+
+- Store summary
+- Current balance
+- Active scenario
+- Submission status
+- Latest results
+- Leaderboard snapshot
+
+Behavior:
+
+- No store → prompt store setup
+- Scenario active + not submitted → show submission CTA
+- Submitted + not approved → waiting state
+- Approved → show results
+
+---
+
+### 4.2 Store Setup (One Time)
+
+Students create **one store per class**.
+
+Inputs:
+
+- Shop name
+- Store type (indoor, outdoor, food truck)
+- Capacity-related fields
+- Admin-defined variables (dynamic)
+
+Rules:
+
+- Store is immutable after creation
+- Variables are driven by backend definitions
+- Do not hard-code fields
+
+---
+
+### 4.3 Scenario View
+
+Displays:
+
+- Scenario title
+- Scenario description
+- Instructor-provided context
+
+Students cannot see:
+
+- Global outcome
+- Results before approval
+- Other students' submissions
+
+---
+
+### 4.4 Weekly Submission Form
+
+Students submit weekly decisions.
+
+Rules:
+
+- Questions are dynamic
+- One submission per scenario
+- Cannot edit after submission
+- Must submit in order
+
+Frontend must:
+
+- Disable submit after completion
+- Clearly show submitted state
+
+---
+
+### 4.5 Results View
+
+After approval, students see:
+
+- Sales
+- Waste
+- Profit or loss
+- Updated balance
+- Narrative summary
+- Random events (if any)
+
+All data is **read-only**.
+
+---
+
+### 4.6 Ledger History
+
+Displays:
+
+- Week-by-week results
+- Balance over time
+- Historical performance
+
+Students:
+
+- Can view raw numbers and summaries
+- Cannot export data
+
+---
+
+### 4.7 Leaderboard
+
+Leaderboard shows rankings by:
+
+- Total profit
+- Weekly profit
+- Efficiency metrics (optional)
+
+Rules:
+
+- Class-scoped
+- Read-only
+- Updates after scenario approval
+
+---
+
+## 5. Admin Experience (Frontend Responsibilities)
+
+### 5.1 Admin Dashboard
+
+Shows:
+
+- Active class
+- Current scenario state
+- Submission completion count
+- Leaderboard preview
+
+---
+
+### 5.2 Scenario Creation
+
+Admins define:
+
+- Title
+- Description
+- Scenario variables (dynamic)
+
+Scenarios start as drafts and must be published.
+
+---
+
+### 5.3 Global Outcome Entry
+
+Admins define:
+
+- Actual weather
+- Demand shift
+- Random event toggle
+- Notes
+
+This outcome applies to all students.
+
+---
+
+### 5.4 Preview Outcomes
+
+Admins can:
+
+- Run AI in preview mode
+- View per-student results
+- Make adjustments before approval
+
+Preview does not write data.
+
+---
+
+### 5.5 Approve Outcomes
+
+Approval:
+
+- Runs AI for all students
+- Writes ledger entries
+- Locks the scenario
+
+This action is irreversible without rerun.
+
+---
+
+### 5.6 Rerun Scenario
+
+Admins may rerun:
+
+- Deletes existing ledger entries
+- Recalculates results
+
+Frontend must:
+
+- Clearly warn user
+- Require confirmation
+
+---
+
+## 6. Dynamic Variable System (Critical)
+
+The frontend **must not hard-code forms**.
+
+Variables come from the backend and include:
+
+- key
+- label
+- data type
+- required
+- min/max
+- default
+
+Variables exist for:
+
+- Store setup
+- Scenario setup
+- Student submissions
+
+Frontend must:
+
+- Render forms dynamically
+- Perform basic client-side validation
+- Trust backend for final validation
+
+---
+
+## 7. API Interaction Rules
+
+### Submissions
+
+- One per student per scenario
+- Locked immediately after submit
+- API returns 409 if duplicate
+
+### Scenarios
+
+- Only one active scenario at a time
+- Students cannot see outcomes before approval
+
+### Ledger
+
+- Ledger entries are written only by backend
+- Admins may override entries
+
+---
+
+## 8. Error Handling Expectations
+
+Frontend must handle:
+
+- 403 Forbidden
+- 409 Conflict
+- 400 Validation Errors
+- 500 Server Errors
+
+Never assume a happy path.
+
+---
+
+## 9. State Management Guidance
+
+Recommended state:
+
+- Auth state
+- Active class
+- Active scenario
+- Store existence
+- Submission status
+
+Avoid:
+
+- Storing calculated values
+- Re-implementing backend logic
+
+---
+
+## 10. Things the Frontend Must Never Do
+
+- Calculate profit
+- Predict outcomes
+- Modify ledger data
+- Expose AI prompts
+- Infer other students' data
+
+The frontend is **input and presentation only**.
+
+---
+
+## 11. Example Student Flow
+
+1. Login
+2. Join class
+3. Create store
+4. View scenario
+5. Submit weekly decisions
+6. Wait
+7. View results
+8. Check leaderboard
+9. Repeat
+
+---
+
+## 12. Example Admin Flow
+
+1. Login
+2. Create class
+3. Create scenario
+4. Publish scenario
+5. Monitor submissions
+6. Enter global outcome
+7. Preview results
+8. Approve outcomes
+9. Review leaderboard
+
+---
+
+## 13. Design Philosophy
+
+The app should feel:
+
+- Clear
+- Simple
+- Educational
+- Lightly game-like
+- Never overwhelming
+
+The complexity lives in the simulation, not the UI.
+
+---
+
+## 14. Final Guidance
+
+When in doubt:
+
+- Ask the API
+- Render dynamically
+- Do not invent rules
+- Trust backend validation
+
+This document defines the contract between frontend and backend.

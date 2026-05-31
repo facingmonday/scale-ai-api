@@ -1,80 +1,33 @@
 const SimulationJob = require("../job.model");
-const Store = require("../../store/store.model");
-const Scenario = require("../../scenario/scenario.model");
-const ScenarioOutcome = require("../../scenarioOutcome/scenarioOutcome.model");
-const Submission = require("../../submission/submission.model");
+const Profile = require("../../profile/profile.model");
+const Challenge = require("../../challenge/challenge.model");
+const Outcome = require("../../outcome/outcome.model");
+const Decision = require("../../decision/decision.model");
 const LedgerEntry = require("../../ledger/ledger.model");
 const VariableDefinition = require("../../variableDefinition/variableDefinition.model");
-const { round2 } = require("../../../lib/number-utils");
+const MetricDefinition = require("../../metricDefinition/metricDefinition.model");
 
 /**
- * Simulation Worker
- * Processes individual simulation jobs
+ * Simulation Worker - processes individual simulation jobs and writes
+ * dynamic metric-driven ledger entries.
  */
 class SimulationWorker {
-  /**
-   * Process a single simulation job
-   * @param {string} jobId - Job ID
-   * @param {Object} [options]
-   * @param {boolean} [options.isFinalAttempt=true] - If false, job will be reset to pending to allow Bull retry
-   * @returns {Promise<Object>} Job result
-   */
   static async processJob(jobId, options = {}) {
     const { isFinalAttempt = true } = options;
     const job = await SimulationJob.findById(jobId);
-    if (!job) {
-      throw new Error(`Job not found: ${jobId}`);
-    }
-
+    if (!job) throw new Error(`Job not found: ${jobId}`);
     if (job.status !== "pending") {
       throw new Error(`Job is not pending: ${job.status}`);
     }
 
     try {
-      // Mark job as running
       await job.markRunning();
-
-      // Fetch required data
       const context = await this.fetchJobContext(job);
-
-      // Run AI simulation
       const aiResult = await LedgerEntry.runAISimulation(context);
 
-      // Validate and correct cashBefore if needed
-      // The AI should calculate this from ledger history, but we ensure continuity
-      const expectedCashBefore = context.cashBefore;
-      if (Math.abs(aiResult.cashBefore - expectedCashBefore) > 0.01) {
-        console.warn(
-          `AI cashBefore (${aiResult.cashBefore}) doesn't match expected (${expectedCashBefore}). Correcting...`
-        );
-        // Adjust cashAfter to maintain continuity
-        const adjustment = expectedCashBefore - aiResult.cashBefore;
-        aiResult.cashBefore = expectedCashBefore;
-        aiResult.cashAfter = aiResult.cashAfter + adjustment;
-      }
-
-      // Always recalculate netProfit to ensure cash continuity
-      // This fixes cases where AI returns inconsistent cashAfter/netProfit values
-      // even when cashBefore is correct
-      const expectedNetProfit = aiResult.cashAfter - aiResult.cashBefore;
-      if (Math.abs(aiResult.netProfit - expectedNetProfit) > 0.01) {
-        console.warn(
-          `AI netProfit (${aiResult.netProfit}) doesn't match cashAfter - cashBefore (${expectedNetProfit}). Correcting...`
-        );
-        aiResult.netProfit = expectedNetProfit;
-      }
-
-      // Stabilize currency formatting (cents) to prevent float drift in persisted ledger values
-      aiResult.cashBefore = round2(aiResult.cashBefore);
-      aiResult.cashAfter = round2(aiResult.cashAfter);
-      aiResult.netProfit = round2(aiResult.cashAfter - aiResult.cashBefore);
-      aiResult.cashAfter = round2(aiResult.cashBefore + aiResult.netProfit);
-
-      // If not a dry run, write to ledger
       if (!job.dryRun) {
         await this.writeLedgerEntry(job, aiResult, context);
       } else {
-        // Create a safe copy for logging (without circular references)
         const logSafeResult = { ...aiResult };
         if (logSafeResult.aiMetadata) {
           logSafeResult.aiMetadata = {
@@ -86,385 +39,256 @@ class SimulationWorker {
         console.log(`Dry run: ${JSON.stringify(logSafeResult, null, 2)}`);
       }
 
-      // Mark job as completed
       await job.markCompleted();
-
-      // Update submission status
       await this.updateSubmissionStatus(job, "completed");
 
       return {
         success: true,
         job: job.toObject(),
-        result: job.dryRun ? aiResult : null, // Return result for dry runs
+        result: job.dryRun ? aiResult : null,
       };
     } catch (error) {
       console.error(`Error processing job ${jobId}:`, error);
-
       if (isFinalAttempt) {
-        // Mark job as failed (only when retries are exhausted)
         await job.markFailed(error.message);
-
-        // Update submission status
         await this.updateSubmissionStatus(job, "failed").catch((err) => {
-          console.error(`Error updating submission status:`, err);
+          console.error(`Error updating decision status:`, err);
         });
       } else {
-        // Reset job back to pending so Bull can retry it.
-        // Keep the latest error for visibility.
         job.status = "pending";
         job.error = error.message;
         job.startedAt = null;
         job.completedAt = null;
         await job.save();
-        // Do NOT mark submission failed; it should remain "processing" while retries are in-flight.
       }
-
       throw error;
     }
   }
 
   /**
-   * Fetch all required data for a job
-   * @param {Object} job - Job document
-   * @returns {Promise<Object>} Context object
+   * Fetch all required data for a job. Builds the new metric-driven context
+   * shape (`profile`, `challenge`, `outcome`, `decision`, `priorMetrics`).
    */
   static async fetchJobContext(job) {
-    // Fetch store (use getStoreForSimulation to get flattened structure for AI)
-    const store = await Store.getStoreForSimulation(
+    const profile = await Profile.getStoreForSimulation(
       job.classroomId,
       job.userId
     );
-    if (!store) {
+    if (!profile) {
       throw new Error(
-        `Store not found for user ${job.userId} in class ${job.classroomId}`
+        `Profile not found for user ${job.userId} in class ${job.classroomId}`
       );
     }
 
-    // Fetch scenario with variables populated
-    const scenario = await Scenario.getScenarioById(job.scenarioId);
-    if (!scenario) {
-      throw new Error(`Scenario not found: ${job.scenarioId}`);
+    const challenge = await Challenge.getScenarioById(job.challengeId);
+    if (!challenge) {
+      throw new Error(`Challenge not found: ${job.challengeId}`);
     }
 
-    // Fetch scenario outcome
-    const scenarioOutcome = await ScenarioOutcome.getOutcomeByScenario(
-      job.scenarioId
-    );
-    if (!scenarioOutcome) {
+    const outcome = await Outcome.getOutcomeByScenario(job.challengeId);
+    if (!outcome) {
       throw new Error(
-        `Scenario outcome not found for scenario ${job.scenarioId}`
+        `Outcome not found for challenge ${job.challengeId}`
       );
     }
 
-    // Fetch submission
-    const submission = await Submission.getSubmission(
+    const decision = await Decision.getSubmission(
       job.classroomId,
-      job.scenarioId,
+      job.challengeId,
       job.userId
     );
-    if (!submission) {
+    if (!decision) {
       throw new Error(
-        `Submission not found for user ${job.userId} and scenario ${job.scenarioId}`
+        `Decision not found for user ${job.userId} and challenge ${job.challengeId}`
       );
     }
 
-    // Fetch ledger history (prior entries, excluding current scenario for reruns)
     const ledgerHistory = await LedgerEntry.getLedgerHistory(
       job.classroomId,
       job.userId,
-      job.scenarioId // Exclude current scenario to avoid including old entries during reruns
+      job.challengeId
     );
 
-    // Determine cashBefore and inventoryState from ledger history
-    // startingBalance is now in variables, but getStoreForSimulation flattens it
-    let cashBefore = store.startingBalance || 0;
-    let inventoryState = {
-      refrigeratedUnits: 0,
-      ambientUnits: 0,
-      notForResaleUnits: 0,
-    };
+    // Build prior metrics from the most recent ledger entry, or fall back to
+    // each MetricDefinition.defaultInitialValue when there's no history.
+    let priorMetrics = {};
     if (ledgerHistory.length > 0) {
-      // Get the most recent ledger entry
       const lastEntry = ledgerHistory[ledgerHistory.length - 1];
-      cashBefore = lastEntry.cashAfter;
-      // Get inventoryState from last entry, or use defaults if not present (for backward compatibility)
-      if (lastEntry.inventoryState) {
-        inventoryState = {
-          refrigeratedUnits: lastEntry.inventoryState.refrigeratedUnits || 0,
-          ambientUnits: lastEntry.inventoryState.ambientUnits || 0,
-          notForResaleUnits: lastEntry.inventoryState.notForResaleUnits || 0,
-        };
+      const map = lastEntry.metrics;
+      if (map instanceof Map) {
+        priorMetrics = Object.fromEntries(map);
+      } else if (map && typeof map === "object") {
+        priorMetrics = { ...map };
       }
     } else {
-      // For initial entries, use starting inventory from store preset
-      // Handle both number (legacy) and object (new bucket-based) formats
-      const startingInventory =
-        store.startingInventory !== undefined &&
-        store.startingInventory !== null
-          ? store.startingInventory
-          : {
-              refrigeratedUnits:
-                Number(store.startingInventoryRefrigeratedUnits) || 0,
-              ambientUnits: Number(store.startingInventoryAmbientUnits) || 0,
-              notForResaleUnits:
-                Number(store.startingInventoryNotForResaleUnits) || 0,
-            };
-
-      // Normalize to object format
-      if (
-        typeof startingInventory === "object" &&
-        startingInventory !== null &&
-        !Array.isArray(startingInventory)
-      ) {
-        inventoryState = {
-          refrigeratedUnits: startingInventory.refrigeratedUnits || 0,
-          ambientUnits: startingInventory.ambientUnits || 0,
-          notForResaleUnits: startingInventory.notForResaleUnits || 0,
-        };
-      } else {
-        // Legacy number format: all inventory in refrigerated
-        inventoryState = {
-          refrigeratedUnits: Number(startingInventory) || 0,
-          ambientUnits: 0,
-          notForResaleUnits: 0,
-        };
+      const defs = await MetricDefinition.getActive(job.classroomId);
+      for (const def of defs) {
+        if (def.defaultInitialValue !== null && def.defaultInitialValue !== undefined) {
+          priorMetrics[def.key] = def.defaultInitialValue;
+        }
       }
     }
 
-    // Stabilize expected input values (cents + integer units) so the model and checks are consistent
-    cashBefore = Math.round((Number(cashBefore) + Number.EPSILON) * 100) / 100;
-    inventoryState = {
-      refrigeratedUnits: Math.round(
-        Number(inventoryState.refrigeratedUnits) || 0
-      ),
-      ambientUnits: Math.round(Number(inventoryState.ambientUnits) || 0),
-      notForResaleUnits: Math.round(
-        Number(inventoryState.notForResaleUnits) || 0
-      ),
-    };
-
-    // Jus send the latest ledger entry
-    const latestLedgerEntry = [...ledgerHistory].reverse()[0];
-
     return {
-      store,
-      scenario,
-      scenarioOutcome,
-      submission,
-      latestLedgerEntry,
-      cashBefore,
-      inventoryState,
+      profile,
+      challenge,
+      outcome,
+      decision,
+      ledgerHistory,
+      priorMetrics,
     };
   }
 
   /**
-   * Write ledger entry from AI result
-   * @param {Object} job - Job document
-   * @param {Object} aiResult - AI simulation result
-   * @param {Object} context - Calculation context (store, scenario, submission, etc.)
-   * @returns {Promise<Object>} Created ledger entry
+   * Write a ledger entry from an AI result with a dynamic `metrics` map.
    */
   static async writeLedgerEntry(job, aiResult, context) {
-    // Get organization from job
     const organizationId = job.organization;
 
-    // Extract variables from each context object
-    // Store: getStoreForSimulation returns flattened object, variables are at top level
-    // We need to extract only variable keys (exclude store metadata like shopName, storeType, etc.)
-    const storeMetadataKeys = [
+    const metricDefs = await MetricDefinition.getActive(job.classroomId);
+    const metrics = LedgerEntry.extractMetricsFromAIResult(
+      aiResult,
+      metricDefs
+    );
+
+    // Collect variable maps from context, then filter by active definitions.
+    const profileMetadataKeys = [
       "studentId",
       "shopName",
-      "storeType",
+      "profileType",
+      "profileTypeId",
+      "profileTypeLabel",
+      "profileTypeDescription",
+      "profileDescription",
+      "profileLocation",
+      "profileId",
+      "profileId",
+      "profileType",
       "storeTypeId",
+      "storeTypeLabel",
+      "storeTypeDescription",
       "storeDescription",
       "storeLocation",
       "startingBalance",
       "currentDetails",
       "variablesDetailed",
     ];
-    const storeVariables = {};
-    if (context.store) {
-      Object.keys(context.store).forEach((key) => {
-        if (!storeMetadataKeys.includes(key)) {
-          storeVariables[key] = context.store[key];
-        }
-      });
+    const profileVariables = {};
+    if (context.profile) {
+      for (const [k, v] of Object.entries(context.profile)) {
+        if (!profileMetadataKeys.includes(k)) profileVariables[k] = v;
+      }
     }
 
-    const storeId = context.store.storeId;
+    const profileId = context.profile?.profileId || context.profile?.profileId || null;
 
-    // Scenario: variables are in .variables property (from plugin)
-    const scenarioVariables =
-      context.scenario?.variables &&
-      typeof context.scenario.variables === "object"
-        ? context.scenario.variables
+    const challengeVariables =
+      context.challenge?.variables &&
+      typeof context.challenge.variables === "object"
+        ? context.challenge.variables
         : {};
 
-    // Submission: variables are in .variables property (from plugin)
-    const submissionVariables =
-      context.submission?.variables &&
-      typeof context.submission.variables === "object"
-        ? context.submission.variables
+    const decisionVariables =
+      context.decision?.variables &&
+      typeof context.decision.variables === "object"
+        ? context.decision.variables
         : {};
 
-    // Outcome: may have variables, plus random event chance + notes
     const outcomeVariables =
-      context.scenarioOutcome?.variables &&
-      typeof context.scenarioOutcome.variables === "object"
-        ? { ...context.scenarioOutcome.variables }
+      context.outcome?.variables && typeof context.outcome.variables === "object"
+        ? { ...context.outcome.variables }
         : {};
-    // Also include outcome metadata
-    if (context.scenarioOutcome) {
-      if (context.scenarioOutcome.randomEventChancePercent !== undefined) {
-        outcomeVariables.randomEventChancePercent =
-          context.scenarioOutcome.randomEventChancePercent;
-      }
-      if (context.scenarioOutcome.notes) {
-        outcomeVariables.notes = context.scenarioOutcome.notes;
-      }
-    }
 
-    // Filter to only active variable definitions (match what was sent to AI)
-    const filtered =
-      job.classroomId
-        ? await VariableDefinition.filterVariablesForAIContext(
-            job.classroomId,
-            {
-              storeVariables,
-              scenarioVariables,
-              submissionVariables,
-              outcomeVariables,
-            }
-          )
-        : {
-            storeVariables,
-            scenarioVariables,
-            submissionVariables,
-            outcomeVariables,
-          };
+    const filtered = job.classroomId
+      ? await VariableDefinition.filterVariablesForAIContext(job.classroomId, {
+          profileVariables,
+          challengeVariables,
+          decisionVariables,
+          outcomeVariables,
+        })
+      : {
+          profileVariables,
+          challengeVariables,
+          decisionVariables,
+          outcomeVariables,
+        };
 
-    // Prepare calculation context for storage (use filtered variables)
     const calculationContext = {
-      storeVariables: filtered.storeVariables,
-      scenarioVariables: filtered.scenarioVariables,
-      submissionVariables: filtered.submissionVariables,
+      profileVariables: filtered.profileVariables,
+      challengeVariables: filtered.challengeVariables,
+      decisionVariables: filtered.decisionVariables,
       outcomeVariables: filtered.outcomeVariables,
-      priorState: {
-        cashBefore: context.cashBefore,
-        inventoryState: context.inventoryState || {
-          refrigeratedUnits: 0,
-          ambientUnits: 0,
-          notForResaleUnits: 0,
-        },
-        ledgerHistory: (context.ledgerHistory || []).map((entry) => ({
-          scenarioId: entry.scenarioId?._id || entry.scenarioId || null,
-          scenarioTitle: entry.scenarioId?.title || "Initial Setup",
-          netProfit: entry.netProfit,
-          cashAfter: entry.cashAfter,
-          inventoryState: entry.inventoryState || {
-            refrigeratedUnits: 0,
-            ambientUnits: 0,
-            notForResaleUnits: 0,
-          },
-        })),
-      },
+      priorMetrics: context.priorMetrics || {},
+      ledgerHistorySummary: (context.ledgerHistory || []).map((entry) => ({
+        challengeId: entry.challengeId?._id || entry.challengeId || null,
+        challengeTitle: entry.challengeId?.title || "Initial Setup",
+        metrics:
+          entry.metrics instanceof Map
+            ? Object.fromEntries(entry.metrics)
+            : entry.metrics || {},
+      })),
       prompt: aiResult.aiMetadata?.prompt
         ? JSON.stringify(aiResult.aiMetadata.prompt, null, 2)
         : null,
     };
 
-    // Prepare ledger entry input
     const ledgerInput = {
-      storeId: storeId,
+      profileId,
       classroomId: job.classroomId,
-      scenarioId: job.scenarioId,
-      submissionId: job.submissionId || null,
+      challengeId: job.challengeId,
+      decisionId: job.decisionId || null,
       userId: job.userId,
-      sales: aiResult.sales,
-      revenue: aiResult.revenue,
-      costs: aiResult.costs,
-      waste: aiResult.waste,
-      cashBefore: aiResult.cashBefore,
-      cashAfter: aiResult.cashAfter,
-      inventoryState: aiResult.inventoryState || {
-        refrigeratedUnits: 0,
-        ambientUnits: 0,
-        notForResaleUnits: 0,
-      },
-      netProfit: aiResult.netProfit,
+      metrics,
       randomEvent: aiResult.randomEvent,
       summary: aiResult.summary,
-      education: aiResult.education,
       aiMetadata: aiResult.aiMetadata,
       calculationContext,
     };
 
-    // Create ledger entry
     const entry = await LedgerEntry.createLedgerEntry(
       ledgerInput,
       organizationId,
       job.createdBy
     );
 
-    // Attach ledger entry to submission (if available)
     try {
-      if (job.submissionId) {
-        await Submission.updateOne(
-          { _id: job.submissionId },
-          {
-            $set: { ledgerEntryId: entry._id },
-          }
+      if (job.decisionId) {
+        await Decision.updateOne(
+          { _id: job.decisionId },
+          { $set: { ledgerEntryId: entry._id } }
         );
       } else {
-        // Fallback for older jobs without submissionId
-        await Submission.updateOne(
+        await Decision.updateOne(
           {
             classroomId: job.classroomId,
-            scenarioId: job.scenarioId,
+            challengeId: job.challengeId,
             userId: job.userId,
           },
-          {
-            $set: { ledgerEntryId: entry._id },
-          }
+          { $set: { ledgerEntryId: entry._id } }
         );
       }
     } catch (err) {
-      console.error("Failed to attach ledger entry to submission:", err);
-      // Don't throw - ledger entry creation succeeded
+      console.error("Failed to attach ledger entry to decision:", err);
     }
 
     return entry;
   }
 
-  /**
-   * Update submission status based on job status
-   * @param {Object} job - Job document
-   * @param {string} jobStatus - Job status ("completed" or "failed")
-   * @returns {Promise<void>}
-   */
   static async updateSubmissionStatus(job, jobStatus) {
-    const Submission = require("../../submission/submission.model");
-
-    const submission = await Submission.findOne({
+    const SubmissionLocal = require("../../decision/decision.model");
+    const decision = await SubmissionLocal.findOne({
       classroomId: job.classroomId,
-      scenarioId: job.scenarioId,
+      challengeId: job.challengeId,
       userId: job.userId,
     });
-
-    if (submission) {
-      await submission.updateProcessingStatus(jobStatus);
+    if (decision) {
+      await decision.updateProcessingStatus(jobStatus);
     }
   }
 
-  /**
-   * Process multiple pending jobs
-   * @param {number} limit - Maximum number of jobs to process
-   * @returns {Promise<Array>} Array of results
-   */
   static async processPendingJobs(limit = 10) {
     const jobs = await SimulationJob.getPendingJobs(limit);
     const results = [];
-
     for (const job of jobs) {
       try {
         const result = await this.processJob(job._id);
@@ -478,23 +302,15 @@ class SimulationWorker {
         });
       }
     }
-
     return results;
   }
 
-  /**
-   * Process all pending jobs for a specific scenario
-   * @param {string} scenarioId - Scenario ID
-   * @returns {Promise<Array>} Array of results
-   */
-  static async processPendingJobsForScenario(scenarioId) {
+  static async processPendingJobsForScenario(challengeId) {
     const jobs = await SimulationJob.find({
-      scenarioId,
+      challengeId,
       status: "pending",
     }).sort({ createdDate: 1 });
-
     const results = [];
-
     for (const job of jobs) {
       try {
         const result = await this.processJob(job._id);
@@ -508,7 +324,6 @@ class SimulationWorker {
         });
       }
     }
-
     return results;
   }
 }

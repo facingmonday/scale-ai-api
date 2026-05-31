@@ -191,11 +191,11 @@ enrollmentSchema.statics.requireAdmin = async function (classroomId, userId) {
 /**
  * Get class roster
  * @param {string} classroomId - Class ID
- * @returns {Promise<Array>} Roster array with user info and store (only org:member role)
+ * @returns {Promise<Array>} Roster array with user info and profile (only org:member role)
  */
 enrollmentSchema.statics.getClassRoster = async function (classroomId) {
   const Classroom = require("../classroom/classroom.model");
-  const Store = require("../store/store.model");
+  const Profile = require("../profile/profile.model");
 
   // Get classroom to access organization
   const classroom = await Classroom.findById(classroomId);
@@ -229,17 +229,17 @@ enrollmentSchema.statics.getClassRoster = async function (classroomId) {
     return !!orgMembership;
   });
 
-  // Get all stores for this classroom
-  const stores = await Store.getStoresByClass(classroomId);
+  // Get all profiles for this classroom
+  const profiles = await Profile.getStoresByClass(classroomId);
 
-  // Create a map of userId -> store for quick lookup
+  // Create a map of userId -> profile for quick lookup
   const storeMap = new Map();
-  stores.forEach((store) => {
+  profiles.forEach((profile) => {
     // getStoresByClass already returns plain objects, but userId might be ObjectId
-    const userId = store.userId?.toString
-      ? store.userId.toString()
-      : String(store.userId);
-    storeMap.set(userId, store);
+    const userId = profile.userId?.toString
+      ? profile.userId.toString()
+      : String(profile.userId);
+    storeMap.set(userId, profile);
   });
 
   return filteredEnrollments.map((enrollment) => {
@@ -248,8 +248,8 @@ enrollmentSchema.statics.getClassRoster = async function (classroomId) {
       ? `${member.firstName || ""} ${member.lastName || ""}`.trim() || "Unknown"
       : "Unknown";
 
-    // Get store for this user
-    const store = member?._id
+    // Get profile for this user
+    const profile = member?._id
       ? storeMap.get(member._id.toString()) || null
       : null;
 
@@ -263,7 +263,7 @@ enrollmentSchema.statics.getClassRoster = async function (classroomId) {
       lastName: member?.lastName || "",
       role: enrollment.role,
       joinedAt: enrollment.joinedAt,
-      store,
+      profile,
     };
   });
 };
@@ -376,43 +376,43 @@ enrollmentSchema.statics.processRosterExport = async function (
 
   // Build a strict, safe export shape (no ObjectIds / no Clerk ids / no internal metadata)
   const csvRows = roster.map((item) => {
-    const store = item.store || null;
-    const storeType =
-      store && typeof store.storeType === "object" && store.storeType
-        ? store.storeType
+    const profile = item.profile || null;
+    const profileType =
+      profile && typeof profile.profileType === "object" && profile.profileType
+        ? profile.profileType
         : null;
 
-    // StoreType label/description should come from the populated storeType doc when available,
+    // ProfileType label/description should come from the populated profileType doc when available,
     // else fall back to the backward-compatible top-level storeTypeLabel/storeTypeKey.
     const storeTypeLabel =
-      (storeType && storeType.label !== undefined && storeType.label !== null
-        ? storeType.label
-        : store?.storeTypeLabel || store?.storeTypeKey) || "";
+      (profileType && profileType.label !== undefined && profileType.label !== null
+        ? profileType.label
+        : profile?.storeTypeLabel || profile?.storeTypeKey) || "";
     const storeTypeDescription =
-      storeType &&
-      storeType.description !== undefined &&
-      storeType.description !== null
-        ? storeType.description
+      profileType &&
+      profileType.description !== undefined &&
+      profileType.description !== null
+        ? profileType.description
         : "";
     const storeTypeKey =
-      (storeType && storeType.key !== undefined && storeType.key !== null
-        ? storeType.key
-        : store?.storeTypeKey) || "";
+      (profileType && profileType.key !== undefined && profileType.key !== null
+        ? profileType.key
+        : profile?.storeTypeKey) || "";
 
     const storeVariables =
-      store && store.variables && typeof store.variables === "object"
-        ? store.variables
+      profile && profile.variables && typeof profile.variables === "object"
+        ? profile.variables
         : null;
     const storeTypeVariables =
-      storeType && storeType.variables && typeof storeType.variables === "object"
-        ? storeType.variables
+      profileType && profileType.variables && typeof profileType.variables === "object"
+        ? profileType.variables
         : null;
 
     return {
-      // Store (priority order)
-      storeStudentId: asString(store?.studentId),
-      storeShopName: asString(store?.shopName),
-      storeDescription: asString(store?.storeDescription),
+      // Profile (priority order)
+      storeStudentId: asString(profile?.studentId),
+      storeShopName: asString(profile?.shopName),
+      storeDescription: asString(profile?.storeDescription),
       storeTypeLabel: asString(storeTypeLabel),
       storeTypeDescription: asString(storeTypeDescription),
 
@@ -426,9 +426,9 @@ enrollmentSchema.statics.processRosterExport = async function (
       enrollmentRole: asString(item.role),
       enrollmentJoinedAt: asIsoDate(item.joinedAt),
 
-      // Other store info
-      storeLocation: asString(store?.storeLocation),
-      storeImageUrl: asString(store?.imageUrl),
+      // Other profile info
+      storeLocation: asString(profile?.storeLocation),
+      storeImageUrl: asString(profile?.imageUrl),
       storeTypeKey: asString(storeTypeKey),
 
       // Variable maps (kept as JSON to avoid exploding columns and to prevent ObjectId leakage)
@@ -439,11 +439,11 @@ enrollmentSchema.statics.processRosterExport = async function (
 
   // Generate CSV with explicit, ordered columns (prevents ObjectId -> *_buffer_* leakage)
   const fields = [
-    { label: "store.studentId", value: "storeStudentId" },
-    { label: "store.shopName", value: "storeShopName" },
-    { label: "store.storeDescription", value: "storeDescription" },
-    { label: "storeType.label", value: "storeTypeLabel" },
-    { label: "storeType.description", value: "storeTypeDescription" },
+    { label: "profile.studentId", value: "storeStudentId" },
+    { label: "profile.shopName", value: "storeShopName" },
+    { label: "profile.storeDescription", value: "storeDescription" },
+    { label: "profileType.label", value: "storeTypeLabel" },
+    { label: "profileType.description", value: "storeTypeDescription" },
 
     { label: "member.firstName", value: "memberFirstName" },
     { label: "member.lastName", value: "memberLastName" },
@@ -453,12 +453,12 @@ enrollmentSchema.statics.processRosterExport = async function (
     { label: "enrollment.role", value: "enrollmentRole" },
     { label: "enrollment.joinedAt", value: "enrollmentJoinedAt" },
 
-    { label: "store.storeLocation", value: "storeLocation" },
-    { label: "store.imageUrl", value: "storeImageUrl" },
-    { label: "storeType.key", value: "storeTypeKey" },
+    { label: "profile.storeLocation", value: "storeLocation" },
+    { label: "profile.imageUrl", value: "storeImageUrl" },
+    { label: "profileType.key", value: "storeTypeKey" },
 
-    { label: "store.variablesJson", value: "storeVariablesJson" },
-    { label: "storeType.variablesJson", value: "storeTypeVariablesJson" },
+    { label: "profile.variablesJson", value: "storeVariablesJson" },
+    { label: "profileType.variablesJson", value: "storeTypeVariablesJson" },
   ];
 
   const parser = new Parser({

@@ -1,9 +1,10 @@
 const mongoose = require("mongoose");
 
-const StoreType = require("../storeType/storeType.model");
+const ProfileType = require("../profileType/profileType.model");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
 const VariableValue = require("../variableDefinition/variableValue.model");
-const { STORE_TYPE_PRESETS } = require("../store/storeTypePresets");
+const MetricDefinition = require("../metricDefinition/metricDefinition.model");
+const { STORE_TYPE_PRESETS } = require("../profile/profileTypePresets");
 
 const classroomTemplateSchema = new mongoose.Schema(
   {
@@ -84,7 +85,7 @@ classroomTemplateSchema.index({ organization: 1, isActive: 1 });
 // ----------------------------
 
 /**
- * Default submission variable definitions (template blueprint).
+ * Default decision variable definitions (template blueprint).
  * Sourced from prior Classroom seed builder.
  */
 classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
@@ -95,7 +96,7 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
         label: "How busy do you expect this week to be?",
         description:
           "Your overall expectation of customer demand for the upcoming week.",
-        appliesTo: "submission",
+        appliesTo: "decision",
         dataType: "string",
         inputType: "dropdown",
         options: ["LOW", "AVERAGE", "HIGH"],
@@ -110,7 +111,7 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
         label: "Which outcome worries you more this week?",
         description:
           "Choose whether you are more concerned about running out of product or ending the week with leftovers.",
-        appliesTo: "submission",
+        appliesTo: "decision",
         dataType: "string",
         inputType: "selectbutton",
         options: ["STOCKOUT_AVERSION", "BALANCED", "OVERSTOCK_AVERSION"],
@@ -124,8 +125,8 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
         key: "reorder-intensity-refrigerated",
         label: "How aggressively are you restocking cold ingredients?",
         description:
-          "Cold inventory is costly to store and prone to waste if over-ordered. Scale: 0 = Very Conservative, 50 = Balanced, 100 = Very Aggressive.",
-        appliesTo: "submission",
+          "Cold inventory is costly to profile and prone to waste if over-ordered. Scale: 0 = Very Conservative, 50 = Balanced, 100 = Very Aggressive.",
+        appliesTo: "decision",
         dataType: "number",
         inputType: "slider",
         options: [],
@@ -140,7 +141,7 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
         label: "What's your plan for shelf-stable supplies?",
         description:
           "Shelf-stable inventory is cheaper to hold but still ties up cash. Scale: 0 = Very Conservative, 50 = Balanced, 100 = Very Aggressive.",
-        appliesTo: "submission",
+        appliesTo: "decision",
         dataType: "number",
         inputType: "knob",
         options: [],
@@ -156,7 +157,7 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
           "How cautious are you about running out of everyday operating supplies?",
         description:
           "Operating supplies don't generate revenue but can limit production if they run out. Scale: 0 = Very Conservative, 50 = Balanced, 100 = Very Aggressive.",
-        appliesTo: "submission",
+        appliesTo: "decision",
         dataType: "number",
         inputType: "knob",
         options: [],
@@ -171,7 +172,7 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
         label: "How hard are you pushing production this week?",
         description:
           "Pushing production can increase sales or lead to waste if demand is lower than expected. Scale: 0 = Limited, 50 = Normal, 100 = Maximize.",
-        appliesTo: "submission",
+        appliesTo: "decision",
         dataType: "number",
         inputType: "slider",
         options: [],
@@ -186,7 +187,7 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
         label: "How strict is your team about minimizing waste?",
         description:
           "Stricter waste discipline reduces spoilage but may slow down operations. Scale: 0 = Loose, 50 = Standard, 100 = Strict.",
-        appliesTo: "submission",
+        appliesTo: "decision",
         dataType: "number",
         inputType: "slider",
         options: [],
@@ -200,8 +201,8 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
         key: "pricing-multiplier",
         label: "Pricing Adjustment",
         description:
-          "Adjust your pricing relative to your store's baseline price. 0.90 = 10% discount, 1.05 = 5% premium, 1.15 = aggressive pricing. This affects demand and revenue.",
-        appliesTo: "submission",
+          "Adjust your pricing relative to your profile's baseline price. 0.90 = 10% discount, 1.05 = 5% premium, 1.15 = aggressive pricing. This affects demand and revenue.",
+        appliesTo: "decision",
         dataType: "number",
         inputType: "slider",
         options: [],
@@ -216,7 +217,7 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
         label: "What matters more to you this week?",
         description:
           "Balancing cost control versus fulfilling every possible customer order.",
-        appliesTo: "submission",
+        appliesTo: "decision",
         dataType: "string",
         inputType: "dropdown",
         options: ["COST_FOCUSED", "BALANCED", "SERVICE_FOCUSED"],
@@ -230,7 +231,7 @@ classroomTemplateSchema.statics.getDefaultSubmissionVariableDefinitions =
   };
 
 /**
- * Default storeType variable definitions (template blueprint).
+ * Default profileType variable definitions (template blueprint).
  * Sourced from prior Classroom seed builder.
  */
 classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
@@ -240,8 +241,8 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         key: "capacity-units-refrigerated",
         label: "Capacity Units (Refrigerated)",
         description:
-          "The maximum number of refrigerated inventory units you can store. Think of one unit as a bundle of cold ingredients like cheese, meat, and produce. Example: With a capacity of 40 units and 2.5 finished goods per unit, you can make up to 100 finished goods (40 × 2.5) from refrigerated inventory. This limit shows up in your ledger as inventoryState.refrigeratedUnits and you can never exceed it.",
-        appliesTo: "storeType",
+          "The maximum number of refrigerated inventory units you can profile. Think of one unit as a bundle of cold ingredients like cheese, meat, and produce. Example: With a capacity of 40 units and 2.5 finished goods per unit, you can make up to 100 finished goods (40 × 2.5) from refrigerated inventory. This limit shows up in your ledger as inventoryState.refrigeratedUnits and you can never exceed it.",
+        appliesTo: "profileType",
         dataType: "number",
         inputType: "number",
         options: [],
@@ -255,8 +256,8 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         key: "starting-units-refrigerated",
         label: "Starting Inventory Units (Refrigerated)",
         description:
-          "How many refrigerated inventory units you start with when opening your store. Example: Starting with 24 units and 2.5 finished goods per unit means you can make 60 finished goods (24 × 2.5) before needing to order more. This must be less than your capacity (40 units). This number appears in your first ledger entry as inventoryState.refrigeratedUnits.",
-        appliesTo: "storeType",
+          "How many refrigerated inventory units you start with when opening your profile. Example: Starting with 24 units and 2.5 finished goods per unit means you can make 60 finished goods (24 × 2.5) before needing to order more. This must be less than your capacity (40 units). This number appears in your first ledger entry as inventoryState.refrigeratedUnits.",
+        appliesTo: "profileType",
         dataType: "number",
         inputType: "number",
         options: [],
@@ -271,7 +272,7 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         label: "Goods per Unit (Refrigerated)",
         description:
           "How many finished goods you can make from one refrigerated inventory unit. Example: If this is 2.5, then one unit of cold ingredients makes 2.5 finished goods. With a unit cost of $9.50, each finished good costs $3.80 from refrigerated ingredients ($9.50 ÷ 2.5). This shows up in your results as costPerGoodRefrigerated. With a capacity of 40 units, you can make up to 100 finished goods (40 × 2.5) from refrigerated inventory.",
-        appliesTo: "storeType",
+        appliesTo: "profileType",
         dataType: "number",
         inputType: "number",
         options: [],
@@ -286,7 +287,7 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         label: "Avg Unit Cost (Refrigerated)",
         description:
           "How much it costs to buy one refrigerated inventory unit (cold ingredients like cheese, meat, produce). Example: At $9.50 per unit and 2.5 finished goods per unit, each finished good costs $3.80 from refrigerated ingredients ($9.50 ÷ 2.5). This shows up in your results as costPerGoodRefrigerated and is part of your total ingredientCost. If you sell finished goods for $16, you make $12.20 profit per finished good from refrigerated ingredients ($16 - $3.80).",
-        appliesTo: "storeType",
+        appliesTo: "profileType",
         dataType: "number",
         inputType: "number",
         options: [],
@@ -301,7 +302,7 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         label: "Holding Cost per Unit per Week (Refrigerated)",
         description:
           "How much it costs each week to keep one refrigerated inventory unit in storage (electricity for refrigeration, storage space, etc.). Example: If you end the week with 20 units in storage and holding cost is $0.75 per unit, you pay $15 in holding costs that week (20 × $0.75). This shows up in your ledger as costBreakdown.holdingCost. Higher holding costs mean it's more expensive to keep inventory, so you'll want to order less and more often.",
-        appliesTo: "storeType",
+        appliesTo: "profileType",
         dataType: "number",
         inputType: "number",
         options: [],
@@ -315,8 +316,8 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         key: "capacity-units-ambient",
         label: "Capacity Units (Ambient)",
         description:
-          "The maximum number of ambient inventory units you can store. Think of one unit as a bundle of dry ingredients like flour, canned goods, and dry spices. Example: With a capacity of 80 units and 5 finished goods per unit, you can make up to 400 finished goods (80 × 5) from ambient inventory. This limit shows up in your ledger as inventoryState.ambientUnits and you can never exceed it.",
-        appliesTo: "storeType",
+          "The maximum number of ambient inventory units you can profile. Think of one unit as a bundle of dry ingredients like flour, canned goods, and dry spices. Example: With a capacity of 80 units and 5 finished goods per unit, you can make up to 400 finished goods (80 × 5) from ambient inventory. This limit shows up in your ledger as inventoryState.ambientUnits and you can never exceed it.",
+        appliesTo: "profileType",
         dataType: "number",
         inputType: "number",
         options: [],
@@ -330,8 +331,8 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         key: "starting-units-ambient",
         label: "Starting Inventory Units (Ambient)",
         description:
-          "How many ambient inventory units you start with when opening your store. Example: Starting with 45 units and 5 finished goods per unit means you can make 225 finished goods (45 × 5) before needing to order more. This must be less than your capacity (80 units). This number appears in your first ledger entry as inventoryState.ambientUnits.",
-        appliesTo: "storeType",
+          "How many ambient inventory units you start with when opening your profile. Example: Starting with 45 units and 5 finished goods per unit means you can make 225 finished goods (45 × 5) before needing to order more. This must be less than your capacity (80 units). This number appears in your first ledger entry as inventoryState.ambientUnits.",
+        appliesTo: "profileType",
         dataType: "number",
         inputType: "number",
         options: [],
@@ -346,7 +347,7 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         label: "Goods per Unit (Ambient)",
         description:
           "How many finished goods you can make from one ambient inventory unit. Example: If this is 5, then one unit of dry ingredients makes 5 finished goods. With a unit cost of $4.25, each finished good costs $0.85 from ambient ingredients ($4.25 ÷ 5). This shows up in your results as costPerGoodAmbient. With a capacity of 80 units, you can make up to 400 finished goods (80 × 5) from ambient inventory.",
-        appliesTo: "storeType",
+        appliesTo: "profileType",
         dataType: "number",
         inputType: "number",
         options: [],
@@ -361,7 +362,7 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         label: "Avg Unit Cost (Ambient)",
         description:
           "How much it costs to buy one ambient inventory unit (dry ingredients like flour, canned goods, spices). Example: At $4.25 per unit and 5 finished goods per unit, each finished good costs $0.85 from ambient ingredients ($4.25 ÷ 5). This shows up in your results as costPerGoodAmbient and is part of your total ingredientCost. If you sell finished goods for $16, you make $15.15 profit per finished good from ambient ingredients ($16 - $0.85).",
-        appliesTo: "storeType",
+        appliesTo: "profileType",
         dataType: "number",
         inputType: "number",
         options: [],
@@ -376,7 +377,7 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         label: "Holding Cost per Unit per Week (Ambient)",
         description:
           "How much it costs each week to keep one ambient inventory unit in storage (storage space, management, etc.). Example: If you end the week with 50 units in storage and holding cost is $0.25 per unit, you pay $12.50 in holding costs that week (50 × $0.25). This shows up in your ledger as costBreakdown.holdingCost. Since ambient items don't need refrigeration, this is usually cheaper than refrigerated holding costs.",
-        appliesTo: "storeType",
+        appliesTo: "profileType",
         dataType: "number",
         inputType: "number",
         options: [],
@@ -390,8 +391,8 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         key: "capacity-units-operating-supply",
         label: "Capacity Units (Operating Supplies)",
         description:
-          "The maximum number of operating supply inventory units you can store. Think of one unit as a bundle of supplies like packaging, napkins, cleaning supplies, and other items you need to run the business (but don't sell). Example: With a capacity of 60 units and 12 finished goods per unit, you can make up to 720 finished goods (60 × 12) from operating supplies. This limit shows up in your ledger as inventoryState.notForResaleUnits and you can never exceed it.",
-        appliesTo: "storeType",
+          "The maximum number of operating supply inventory units you can profile. Think of one unit as a bundle of supplies like packaging, napkins, cleaning supplies, and other items you need to run the business (but don't sell). Example: With a capacity of 60 units and 12 finished goods per unit, you can make up to 720 finished goods (60 × 12) from operating supplies. This limit shows up in your ledger as inventoryState.notForResaleUnits and you can never exceed it.",
+        appliesTo: "profileType",
         dataType: "number",
         inputType: "number",
         options: [],
@@ -405,8 +406,8 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         key: "starting-units-operating-supply",
         label: "Starting Inventory Units (Operating Supplies)",
         description:
-          "How many operating supply inventory units you start with when opening your store. Example: Starting with 35 units and 12 finished goods per unit means you can make 420 finished goods (35 × 12) before needing to order more supplies. This must be less than your capacity (60 units). This number appears in your first ledger entry as inventoryState.notForResaleUnits.",
-        appliesTo: "storeType",
+          "How many operating supply inventory units you start with when opening your profile. Example: Starting with 35 units and 12 finished goods per unit means you can make 420 finished goods (35 × 12) before needing to order more supplies. This must be less than your capacity (60 units). This number appears in your first ledger entry as inventoryState.notForResaleUnits.",
+        appliesTo: "profileType",
         dataType: "number",
         inputType: "number",
         options: [],
@@ -421,7 +422,7 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         label: "Goods per Unit (Operating Supplies)",
         description:
           "How many finished goods you can make from one operating supply inventory unit. Example: If this is 12, then one unit of supplies (packaging, napkins, etc.) supports 12 finished goods. With a unit cost of $1.75, each finished good costs $0.15 from operating supplies ($1.75 ÷ 12). This shows up in your results as costPerGoodOperatingSupply. With a capacity of 60 units, you can make up to 720 finished goods (60 × 12) from operating supplies.",
-        appliesTo: "storeType",
+        appliesTo: "profileType",
         dataType: "number",
         inputType: "number",
         options: [],
@@ -436,7 +437,7 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         label: "Avg Unit Cost (Operating Supplies)",
         description:
           "How much it costs to buy one operating supply inventory unit (packaging, napkins, cleaning supplies, etc.). Example: At $1.75 per unit and 12 finished goods per unit, each finished good costs $0.15 from operating supplies ($1.75 ÷ 12). This shows up in your results as costPerGoodOperatingSupply and is part of your total ingredientCost. If you sell finished goods for $16, you make $15.85 profit per finished good from operating supplies ($16 - $0.15).",
-        appliesTo: "storeType",
+        appliesTo: "profileType",
         dataType: "number",
         inputType: "number",
         options: [],
@@ -451,7 +452,7 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         label: "Holding Cost per Unit per Week (Operating Supplies)",
         description:
           "How much it costs each week to keep one operating supply inventory unit in storage (storage space, management, etc.). Example: If you end the week with 30 units in storage and holding cost is $0.15 per unit, you pay $4.50 in holding costs that week (30 × $0.15). This shows up in your ledger as costBreakdown.holdingCost. Operating supplies usually have the lowest holding costs since they don't need refrigeration or special storage.",
-        appliesTo: "storeType",
+        appliesTo: "profileType",
         dataType: "number",
         inputType: "number",
         options: [],
@@ -465,8 +466,8 @@ classroomTemplateSchema.statics.getDefaultStoreTypeVariableDefinitions =
         key: "avg-selling-price-per-unit",
         label: "Average Selling Price per Unit",
         description:
-          "The normal selling price for one finished good at this type of store. Example: If this is $16, that's your baseline price. Students can adjust this with a pricing-multiplier (like 0.90 for 10% off or 1.10 for 10% more). The actual price you charge shows up in your results as realizedUnitPrice. Your revenue = number of finished goods sold × realizedUnitPrice. Example: If total cost per finished good is $4.80 ($3.80 refrigerated + $0.85 ambient + $0.15 supplies) and you sell for $16, you make $11.20 profit per finished good. This profit shows up in your ledger as netProfit.",
-        appliesTo: "storeType",
+          "The normal selling price for one finished good at this type of profile. Example: If this is $16, that's your baseline price. Students can adjust this with a pricing-multiplier (like 0.90 for 10% off or 1.10 for 10% more). The actual price you charge shows up in your results as realizedUnitPrice. Your revenue = number of finished goods sold × realizedUnitPrice. Example: If total cost per finished good is $4.80 ($3.80 refrigerated + $0.85 ambient + $0.15 supplies) and you sell for $16, you make $11.20 profit per finished good. This profit shows up in your ledger as netProfit.",
+        appliesTo: "profileType",
         dataType: "number",
         inputType: "number",
         options: [],
@@ -488,11 +489,11 @@ classroomTemplateSchema.statics.GLOBAL_DEFAULT_KEY = "default_supply_chain_101";
 const DEFAULT_COST_GUARDRAILS_PROMPT = `
 COST GUARDRAILS AND REALISM CONSTRAINTS
 
-All operating costs must remain realistic, proportional, and capacity-aware. These costs should generally be low relative to revenue, but may vary based on store type, scenario conditions, and scenario outcome.
+All operating costs must remain realistic, proportional, and capacity-aware. These costs should generally be low relative to revenue, but may vary based on profile type, challenge conditions, and challenge outcome.
 
 1. Labor Cost
 - Labor cost MUST scale with sales volume and operational intensity.
-- Labor cost MUST remain within plausible bounds for the store type.
+- Labor cost MUST remain within plausible bounds for the profile type.
 - Labor cost should increase under conditions such as:
   - High sales volume
   - Overtime or rush conditions
@@ -504,7 +505,7 @@ All operating costs must remain realistic, proportional, and capacity-aware. The
 - Logistics cost represents delivery, expediting, or supplier-related friction.
 - Logistics cost should be near zero in normal conditions.
 - Logistics cost may increase modestly when:
-  - Scenario outcome includes supply disruption
+  - Challenge outcome includes supply disruption
   - Inventory is expedited to avoid stockouts
 - Logistics cost MUST be small relative to ingredient costs.
 - Logistics cost MUST NOT exceed a reasonable fraction of total inventory purchasing cost.
@@ -532,7 +533,7 @@ All operating costs must remain realistic, proportional, and capacity-aware. The
 - Disposal cost applies only when waste occurs.
 - Disposal cost should be a small add-on to waste cost.
 - Disposal cost may increase slightly under:
-  - Environmental regulation scenarios
+  - Environmental regulation challenges
   - Large waste volumes
 - Disposal cost MUST remain minor compared to waste cost itself.
 
@@ -547,9 +548,9 @@ All operating costs must remain realistic, proportional, and capacity-aware. The
 - Other cost MUST remain a small fraction of total costs.
 
 7. Global Cost Constraints
-- No single cost category may dominate total costs unless explicitly justified by the scenario outcome.
+- No single cost category may dominate total costs unless explicitly justified by the challenge outcome.
 - Total operating costs MUST scale sensibly with sales and capacity.
-- Costs MUST NOT increase without a clear operational or scenario-driven cause.
+- Costs MUST NOT increase without a clear operational or challenge-driven cause.
 - If costs exceed plausible bounds, adjust them downward to the nearest realistic level.
 `;
 
@@ -568,9 +569,26 @@ function ensureDefaultCostGuardrailsPrompt(prompts) {
 
 /**
  * Default classroom prompts (prepended to OpenAI messages).
- * These prompts do NOT depend on scenario/submission/store data.
+ * These are GENERIC across all classroom types — domain-specific prompts
+ * live in template payloads (e.g. pizza-shop supply-chain warehouse rules).
  */
 classroomTemplateSchema.statics.getDefaultClassroomPrompts = function () {
+  return [
+    {
+      role: "system",
+      content:
+        "You are a learning-simulation engine. Given a profile configuration, a challenge, a global outcome, the student's decisions, and the prior ledger entry, compute the metrics listed in metrics_to_calculate. " +
+        "For each metric, follow its aiPromptRule when present. Use the dataType to determine the value type. " +
+        "Return ONLY valid JSON matching the provided schema. Always include `summary` (string) and `randomEvent` (string or null).",
+    },
+  ];
+};
+
+/**
+ * Pizza-shop supply-chain warehouse + cost prompts. Used as the seed prompts
+ * for the `default_supply_chain_101` template payload.
+ */
+classroomTemplateSchema.statics.getPizzaShopPrompts = function () {
   const warehouseRules = `
 WAREHOUSE RULES - YOU MUST OBEY THESE RULES. Outputs that violate these rules are invalid.
 
@@ -639,7 +657,7 @@ Total holding cost = sum across all buckets.
 You MUST NEVER:
 - Create inventory without receipt
 - Use inventory that does not exist
-- Store inventory outside buckets
+- Profile inventory outside buckets
 - Exceed capacity without overflow handling
 - Adjust inventory to force profitability
 
@@ -659,7 +677,7 @@ cold inventory → higher holding cost
 Narratives may NOT contradict inventory math.
 
 11. INVENTORY ORDERING (REQUIRED)
-You MUST calculate receivedUnits for each bucket based on the student's reorder policy and submission decisions:
+You MUST calculate receivedUnits for each bucket based on the student's reorder policy and decision decisions:
 
 REORDER_POINT:
 - Order when: beginUnits < (capacityUnits × reorderPointPercent / 100) for that bucket
@@ -710,11 +728,11 @@ SAFETY STOCK REQUIREMENT:
 CRITICAL: receivedUnits must be > 0 for buckets where ordering is triggered OR where beginUnits = 0. Do NOT set all receivedUnits to 0 unless the student explicitly chose to order nothing.
 
 12. PRICING CALCULATION (REQUIRED)
-Pricing is explicit and calculated from store type baseline and student decisions.
+Pricing is explicit and calculated from profile type baseline and student decisions.
 
 BASELINE PRICE:
-- Store type provides: avg-selling-price-per-unit (baseline, expected price for this store type)
-- This is NOT a student decision - it's part of the store's identity
+- Profile type provides: avg-selling-price-per-unit (baseline, expected price for this profile type)
+- This is NOT a student decision - it's part of the profile's identity
 - Examples: campus kiosk ~$10.50, casual dine-in ~$16, fine dining ~$28
 
 STUDENT PRICING DECISION:
@@ -726,8 +744,8 @@ CALCULATION:
 realizedUnitPrice = avgSellingPricePerUnit × pricing-multiplier
 
 SCENARIO EFFECTS:
-- Apply scenario context (cost volatility, market sensitivity, competitive pressure) to adjust demand elasticity
-- Higher prices may reduce demand more in price-sensitive scenarios
+- Apply challenge context (cost volatility, market sensitivity, competitive pressure) to adjust demand elasticity
+- Higher prices may reduce demand more in price-sensitive challenges
 - Cost spikes may justify price increases, but customers may resist
 - Market conditions affect how much pricing changes impact volume
 
@@ -759,17 +777,283 @@ Before returning output:
     {
       role: "system",
       content:
-        "You are the SCALE.ai simulation engine for a supply chain class using a pizza shop game. Calculate outcomes for one student based on store configuration, scenario context, global outcome, and the student's decisions. Apply realistic business logic and environmental effects.\n\n" +
-        "Return ONLY valid JSON matching the provided schema. You may invent reasonable intermediate numbers when needed. Also compute the required education metrics so instructors can explain results (service level, stockouts/lost sales, by-bucket material flow, and cost breakdown).",
+        "You are the SCALE.ai simulation engine for a supply chain class using a pizza shop game. " +
+        "Compute the metrics listed in metrics_to_calculate based on the profile configuration, challenge, global outcome, and the student's decisions. " +
+        "Apply realistic business logic and environmental effects. Return ONLY valid JSON matching the provided schema.",
     },
     { role: "system", content: warehouseRules },
     { role: "system", content: DEFAULT_COST_GUARDRAILS_PROMPT },
   ];
 };
 
+/**
+ * Default metric definitions for the pizza-shop supply-chain template.
+ */
+classroomTemplateSchema.statics.getPizzaShopMetricDefinitions = function () {
+  return [
+    {
+      key: "sales",
+      label: "Sales",
+      description: "Units sold during this challenge.",
+      dataType: "number",
+      format: "count",
+      aggregation: "sum",
+      aiPromptRule:
+        "Whole-number units of finished goods sold this period, bounded by demand and inventory available for sale.",
+      displayIn: { table: true, kpi: true, chart: true, leaderboard: false, detail: true },
+      sortOrder: 10,
+    },
+    {
+      key: "revenue",
+      label: "Revenue",
+      description: "Total revenue earned this challenge.",
+      dataType: "number",
+      format: "currency",
+      aggregation: "sum",
+      aiPromptRule:
+        "revenue = sales * realizedUnitPrice, rounded to cents. realizedUnitPrice = avgSellingPricePerUnit * (pricing-multiplier from decisions, default 1).",
+      displayIn: { table: true, kpi: true, chart: true, leaderboard: true, detail: true },
+      sortOrder: 20,
+    },
+    {
+      key: "costs",
+      label: "Costs",
+      description: "Total operating costs this challenge.",
+      dataType: "number",
+      format: "currency",
+      aggregation: "sum",
+      aiPromptRule:
+        "Total of ingredient, labor, logistics, holding, overflow, waste-disposal and other costs (see COST GUARDRAILS).",
+      displayIn: { table: true, kpi: true, chart: true, leaderboard: false, detail: true },
+      sortOrder: 30,
+    },
+    {
+      key: "waste",
+      label: "Waste",
+      description: "Cost of wasted/spoiled inventory.",
+      dataType: "number",
+      format: "currency",
+      aggregation: "sum",
+      aiPromptRule:
+        "Cost of inventory wasted this period (wasteUnits × unit cost across buckets).",
+      displayIn: { table: true, kpi: false, chart: true, leaderboard: false, detail: true },
+      sortOrder: 40,
+    },
+    {
+      key: "netProfit",
+      label: "Net Profit",
+      description: "revenue - costs.",
+      dataType: "number",
+      format: "currency",
+      aggregation: "sum",
+      aiPromptRule:
+        "netProfit = revenue - costs, rounded to cents. Must equal cashAfter - cashBefore.",
+      displayIn: { table: true, kpi: true, chart: true, leaderboard: true, detail: true },
+      sortOrder: 50,
+    },
+    {
+      key: "cashBefore",
+      label: "Cash Before",
+      description: "Cash balance entering this challenge.",
+      dataType: "number",
+      format: "currency",
+      aggregation: "last",
+      aiPromptRule:
+        "Carry-forward: this MUST equal the previous ledger entry's cashAfter (or the starting balance for the first entry). Do not modify.",
+      displayIn: { table: false, kpi: false, chart: false, leaderboard: false, detail: true },
+      sortOrder: 60,
+    },
+    {
+      key: "cashAfter",
+      label: "Cash Balance",
+      description: "Cash balance after this challenge.",
+      dataType: "number",
+      format: "currency",
+      aggregation: "last",
+      aiPromptRule:
+        "cashAfter = cashBefore + netProfit, rounded to cents.",
+      displayIn: { table: true, kpi: true, chart: true, leaderboard: true, detail: true },
+      sortOrder: 70,
+    },
+  ];
+};
+
+/**
+ * Default metric definitions for the marketing-101 template.
+ */
+classroomTemplateSchema.statics.getMarketing101MetricDefinitions = function () {
+  return [
+    {
+      key: "instagramFollowers",
+      label: "Instagram Followers",
+      description: "Total Instagram followers at end of period.",
+      dataType: "number",
+      format: "count",
+      aggregation: "last",
+      aiPromptRule:
+        "Carry-forward integer count. Increase based on engagement, ad spend, and outcome conditions. Decrease modestly only under negative outcomes.",
+      displayIn: { table: true, kpi: true, chart: true, leaderboard: true, detail: true },
+      sortOrder: 10,
+    },
+    {
+      key: "tiktokFollowers",
+      label: "TikTok Followers",
+      description: "Total TikTok followers at end of period.",
+      dataType: "number",
+      format: "count",
+      aggregation: "last",
+      aiPromptRule:
+        "Carry-forward integer count. Influenced by content cadence and TikTok-specific outcome variables.",
+      displayIn: { table: true, kpi: true, chart: true, leaderboard: false, detail: true },
+      sortOrder: 20,
+    },
+    {
+      key: "emailSubscribers",
+      label: "Email Subscribers",
+      description: "Total email list subscribers at end of period.",
+      dataType: "number",
+      format: "count",
+      aggregation: "last",
+      aiPromptRule:
+        "Carry-forward integer count. Increase based on lead-magnet investment and conversions; decrease modestly when unsubscribes are likely.",
+      displayIn: { table: true, kpi: true, chart: true, leaderboard: false, detail: true },
+      sortOrder: 30,
+    },
+    {
+      key: "impressions",
+      label: "Impressions",
+      description: "Ad/content impressions delivered this period.",
+      dataType: "number",
+      format: "count",
+      aggregation: "sum",
+      aiPromptRule:
+        "Period total integer. Scale with ad spend and channel performance multipliers from outcome.",
+      displayIn: { table: true, kpi: false, chart: true, leaderboard: false, detail: true },
+      sortOrder: 40,
+    },
+    {
+      key: "engagementRate",
+      label: "Engagement Rate",
+      description: "Average engagement rate across channels.",
+      dataType: "number",
+      format: "percent",
+      aggregation: "avg",
+      aiPromptRule:
+        "Decimal 0-1 (e.g. 0.045 = 4.5%). Reflects content quality and audience match.",
+      displayIn: { table: true, kpi: true, chart: true, leaderboard: false, detail: true },
+      sortOrder: 50,
+    },
+    {
+      key: "conversionRate",
+      label: "Conversion Rate",
+      description: "Visitor-to-customer conversion rate.",
+      dataType: "number",
+      format: "percent",
+      aggregation: "avg",
+      aiPromptRule:
+        "Decimal 0-1. Depends on funnel quality, offer strength, and outcome conditions.",
+      displayIn: { table: true, kpi: true, chart: true, leaderboard: false, detail: true },
+      sortOrder: 60,
+    },
+    {
+      key: "adSpend",
+      label: "Ad Spend",
+      description: "Total ad spend this period.",
+      dataType: "number",
+      format: "currency",
+      aggregation: "sum",
+      aiPromptRule:
+        "Sum of all ad investments this period, rounded to cents. Bounded by the student's decided budget.",
+      displayIn: { table: true, kpi: false, chart: true, leaderboard: false, detail: true },
+      sortOrder: 70,
+    },
+  ];
+};
+
+/**
+ * Default decision variable definitions for the marketing-101 template.
+ */
+classroomTemplateSchema.statics.getMarketing101DecisionVariableDefinitions =
+  function () {
+    return [
+      {
+        key: "ad-budget",
+        label: "Weekly ad budget",
+        description: "How much to spend on paid acquisition this week.",
+        appliesTo: "decision",
+        dataType: "number",
+        inputType: "slider",
+        min: 0,
+        max: 5000,
+        defaultValue: 500,
+        required: true,
+        isActive: true,
+      },
+      {
+        key: "channel-focus",
+        label: "Primary channel focus",
+        description:
+          "Where you concentrate your marketing efforts this week.",
+        appliesTo: "decision",
+        dataType: "string",
+        inputType: "selectbutton",
+        options: ["INSTAGRAM", "TIKTOK", "EMAIL", "MIXED"],
+        defaultValue: "MIXED",
+        required: true,
+        isActive: true,
+      },
+      {
+        key: "content-cadence",
+        label: "Content cadence",
+        description: "How aggressively you publish content this week.",
+        appliesTo: "decision",
+        dataType: "string",
+        inputType: "dropdown",
+        options: ["LOW", "AVERAGE", "HIGH"],
+        defaultValue: "AVERAGE",
+        required: true,
+        isActive: true,
+      },
+    ];
+  };
+
+/**
+ * Default outcome variable definitions for the marketing-101 template.
+ */
+classroomTemplateSchema.statics.getMarketing101OutcomeVariableDefinitions =
+  function () {
+    return [
+      {
+        key: "platform-algorithm-shift",
+        label: "Platform algorithm shift",
+        description: "Realized change in platform algorithm reach this period.",
+        appliesTo: "outcome",
+        dataType: "string",
+        inputType: "selectbutton",
+        options: ["NEGATIVE", "NEUTRAL", "POSITIVE"],
+        defaultValue: "NEUTRAL",
+        required: true,
+        isActive: true,
+      },
+      {
+        key: "ad-cpm-multiplier",
+        label: "Ad CPM multiplier",
+        description: "Multiplier applied to ad cost-per-thousand impressions.",
+        appliesTo: "outcome",
+        dataType: "number",
+        inputType: "slider",
+        min: 0.5,
+        max: 3,
+        defaultValue: 1,
+        required: false,
+        isActive: true,
+      },
+    ];
+  };
+
 function buildDefaultStoreTypeValuesByStoreTypeKey() {
   // These values are intended to be small, classroom-friendly “abstract units”
-  // while still reflecting meaningful differences between store types.
+  // while still reflecting meaningful differences between profile types.
   const defaultsByKey = {
     "capacity-units-refrigerated": 40,
     "starting-units-refrigerated": 24,
@@ -956,10 +1240,10 @@ classroomTemplateSchema.statics.ensureGlobalDefaultTemplate =
           : {};
 
       if (
-        !Array.isArray(payload.storeTypes) ||
-        payload.storeTypes.length === 0
+        !Array.isArray(payload.profileTypes) ||
+        payload.profileTypes.length === 0
       ) {
-        payload.storeTypes = Object.keys(STORE_TYPE_PRESETS || {}).map((k) => ({
+        payload.profileTypes = Object.keys(STORE_TYPE_PRESETS || {}).map((k) => ({
           key: k,
           label: STORE_TYPE_PRESETS[k]?.label || k,
           description: STORE_TYPE_PRESETS[k]?.description || "",
@@ -970,7 +1254,7 @@ classroomTemplateSchema.statics.ensureGlobalDefaultTemplate =
         }));
       } else {
         // Backfill startingBalance / initialStartupCost for older templates
-        payload.storeTypes = payload.storeTypes.map((st) => {
+        payload.profileTypes = payload.profileTypes.map((st) => {
           if (!st || !st.key) return st;
           const preset = STORE_TYPE_PRESETS?.[st.key] || {};
           return {
@@ -998,9 +1282,13 @@ classroomTemplateSchema.statics.ensureGlobalDefaultTemplate =
       }
 
       if (!Array.isArray(payload.prompts) || payload.prompts.length === 0) {
-        payload.prompts = this.getDefaultClassroomPrompts();
+        payload.prompts = this.getPizzaShopPrompts();
       } else {
         payload.prompts = ensureDefaultCostGuardrailsPrompt(payload.prompts);
+      }
+
+      if (!Array.isArray(payload.metricDefinitions)) {
+        payload.metricDefinitions = this.getPizzaShopMetricDefinitions();
       }
 
       existing.payload = payload;
@@ -1010,7 +1298,7 @@ classroomTemplateSchema.statics.ensureGlobalDefaultTemplate =
     }
 
     const payload = {
-      storeTypes: Object.keys(STORE_TYPE_PRESETS || {}).map((key) => ({
+      profileTypes: Object.keys(STORE_TYPE_PRESETS || {}).map((key) => ({
         key,
         label: STORE_TYPE_PRESETS[key]?.label || key,
         description: STORE_TYPE_PRESETS[key]?.description || "",
@@ -1020,14 +1308,16 @@ classroomTemplateSchema.statics.ensureGlobalDefaultTemplate =
         isActive: true,
       })),
       variableDefinitionsByAppliesTo: {
-        storeType: this.getDefaultStoreTypeVariableDefinitions(),
-        store: [],
-        submission: this.getDefaultSubmissionVariableDefinitions(),
-        scenario: [],
+        profileType: this.getDefaultStoreTypeVariableDefinitions(),
+        profile: [],
+        decision: this.getDefaultSubmissionVariableDefinitions(),
+        challenge: [],
+        outcome: [],
       },
       storeTypeValuesByStoreTypeKey:
         buildDefaultStoreTypeValuesByStoreTypeKey(),
-      prompts: this.getDefaultClassroomPrompts(),
+      metricDefinitions: this.getPizzaShopMetricDefinitions(),
+      prompts: this.getPizzaShopPrompts(),
     };
 
     const doc = new this({
@@ -1036,6 +1326,85 @@ classroomTemplateSchema.statics.ensureGlobalDefaultTemplate =
       label: "Supply Chain 101 (Default)",
       description:
         "Default developer-managed template for SCALE.ai Supply Chain 101 simulation.",
+      isActive: true,
+      version: 1,
+      payload,
+      createdBy: "system_startup",
+      updatedBy: "system_startup",
+    });
+
+    await doc.save();
+    return doc;
+  };
+
+classroomTemplateSchema.statics.MARKETING_101_KEY = "default_marketing_101";
+
+/**
+ * Ensure the global marketing-101 template exists. Idempotent.
+ */
+classroomTemplateSchema.statics.ensureGlobalMarketing101Template =
+  async function () {
+    const key = this.MARKETING_101_KEY;
+    const existing = await this.findOne({ organization: null, key });
+    if (existing) return existing;
+
+    const payload = {
+      profileTypes: [
+        {
+          key: "solo_creator",
+          label: "Solo Creator",
+          description: "An individual creator running their own brand.",
+          startingBalance: 0,
+          initialStartupCost: 0,
+          isActive: true,
+        },
+        {
+          key: "small_brand",
+          label: "Small Brand",
+          description:
+            "A small but growing brand with a small content + marketing team.",
+          startingBalance: 0,
+          initialStartupCost: 0,
+          isActive: true,
+        },
+        {
+          key: "agency",
+          label: "Marketing Agency",
+          description:
+            "A marketing agency managing campaigns for client accounts.",
+          startingBalance: 0,
+          initialStartupCost: 0,
+          isActive: true,
+        },
+      ],
+      variableDefinitionsByAppliesTo: {
+        profileType: [],
+        profile: [],
+        decision: this.getMarketing101DecisionVariableDefinitions(),
+        challenge: [],
+        outcome: this.getMarketing101OutcomeVariableDefinitions(),
+      },
+      storeTypeValuesByStoreTypeKey: {
+        solo_creator: {},
+        small_brand: {},
+        agency: {},
+      },
+      metricDefinitions: this.getMarketing101MetricDefinitions(),
+      prompts: [
+        {
+          role: "system",
+          content:
+            "You are a learning-simulation engine for a marketing course. Compute the metrics in metrics_to_calculate based on the brand profile, the challenge, the realized outcome, and the student's decisions. Reflect realistic platform dynamics: algorithm shifts, ad CPM swings, and audience response. Return ONLY valid JSON matching the provided schema.",
+        },
+      ],
+    };
+
+    const doc = new this({
+      organization: null,
+      key,
+      label: "Marketing 101 (Default)",
+      description:
+        "Default developer-managed template for SCALE.ai Marketing 101 simulation. Demonstrates dynamic metrics with non-supply-chain outputs.",
       isActive: true,
       version: 1,
       payload,
@@ -1079,7 +1448,20 @@ classroomTemplateSchema.statics.copyGlobalToOrganization = async function (
     // Backfill prompts if missing
     if (!Array.isArray(payload.prompts) || payload.prompts.length === 0) {
       payload.prompts =
-        globalTemplate.payload?.prompts || this.getDefaultClassroomPrompts();
+        globalTemplate.payload?.prompts || this.getPizzaShopPrompts();
+      existingOrgTemplate.payload = payload;
+      existingOrgTemplate.updatedBy = clerkUserId;
+      await existingOrgTemplate.save();
+    }
+
+    // Backfill metricDefinitions if missing
+    if (
+      !Array.isArray(payload.metricDefinitions) ||
+      payload.metricDefinitions.length === 0
+    ) {
+      payload.metricDefinitions =
+        globalTemplate.payload?.metricDefinitions ||
+        this.getPizzaShopMetricDefinitions();
       existingOrgTemplate.payload = payload;
       existingOrgTemplate.updatedBy = clerkUserId;
       await existingOrgTemplate.save();
@@ -1096,12 +1478,12 @@ classroomTemplateSchema.statics.copyGlobalToOrganization = async function (
       }
     }
 
-    // Backfill storeTypes financial fields (startingBalance, initialStartupCost) if missing
-    if (Array.isArray(payload.storeTypes) && payload.storeTypes.length > 0) {
+    // Backfill profileTypes financial fields (startingBalance, initialStartupCost) if missing
+    if (Array.isArray(payload.profileTypes) && payload.profileTypes.length > 0) {
       const byKey = new Map(
-        (globalTemplate.payload?.storeTypes || []).map((st) => [st.key, st])
+        (globalTemplate.payload?.profileTypes || []).map((st) => [st.key, st])
       );
-      const patched = payload.storeTypes.map((st) => {
+      const patched = payload.profileTypes.map((st) => {
         if (!st || !st.key) return st;
         const globalSt = byKey.get(st.key) || {};
         return {
@@ -1117,7 +1499,7 @@ classroomTemplateSchema.statics.copyGlobalToOrganization = async function (
               : Number(globalSt.initialStartupCost) || 0,
         };
       });
-      payload.storeTypes = patched;
+      payload.profileTypes = patched;
       existingOrgTemplate.payload = payload;
       existingOrgTemplate.updatedBy = clerkUserId;
       await existingOrgTemplate.save();
@@ -1148,11 +1530,29 @@ classroomTemplateSchema.statics.copyGlobalToOrganization = async function (
 
 function normalizeVariableDefinitionsByAppliesTo(payload) {
   const src = payload?.variableDefinitionsByAppliesTo || {};
+  // Accept both new and legacy keys to ease the rename transition.
   return {
-    storeType: Array.isArray(src.storeType) ? src.storeType : [],
-    store: Array.isArray(src.store) ? src.store : [],
-    submission: Array.isArray(src.submission) ? src.submission : [],
-    scenario: Array.isArray(src.scenario) ? src.scenario : [],
+    profileType: Array.isArray(src.profileType)
+      ? src.profileType
+      : Array.isArray(src.profileType)
+        ? src.profileType
+        : [],
+    profile: Array.isArray(src.profile)
+      ? src.profile
+      : Array.isArray(src.profile)
+        ? src.profile
+        : [],
+    decision: Array.isArray(src.decision)
+      ? src.decision
+      : Array.isArray(src.decision)
+        ? src.decision
+        : [],
+    challenge: Array.isArray(src.challenge)
+      ? src.challenge
+      : Array.isArray(src.challenge)
+        ? src.challenge
+        : [],
+    outcome: Array.isArray(src.outcome) ? src.outcome : [],
   };
 }
 
@@ -1171,12 +1571,17 @@ classroomTemplateSchema.methods.applyToClassroom = async function ({
     variableDefinitionsSkipped: 0,
     variableValuesCreated: 0,
     variableValuesSkipped: 0,
+    metricDefinitionsCreated: 0,
+    metricDefinitionsSkipped: 0,
   };
 
   const payload = this.payload || {};
   const defsByScope = normalizeVariableDefinitionsByAppliesTo(payload);
-  const storeTypesPayload = Array.isArray(payload.storeTypes)
-    ? payload.storeTypes
+  const metricDefsPayload = Array.isArray(payload.metricDefinitions)
+    ? payload.metricDefinitions
+    : [];
+  const storeTypesPayload = Array.isArray(payload.profileTypes)
+    ? payload.profileTypes
     : [];
   const storeTypeValuesByKey =
     payload.storeTypeValuesByStoreTypeKey &&
@@ -1184,11 +1589,11 @@ classroomTemplateSchema.methods.applyToClassroom = async function ({
       ? payload.storeTypeValuesByStoreTypeKey
       : {};
 
-  // 1) Create StoreTypes (classroom-scoped)
+  // 1) Create ProfileTypes (classroom-scoped)
   const storeTypeDocs = [];
   for (const st of storeTypesPayload) {
     if (!st || !st.key) continue;
-    const existing = await StoreType.findOne({
+    const existing = await ProfileType.findOne({
       organization: organizationId,
       classroomId,
       key: st.key,
@@ -1198,7 +1603,7 @@ classroomTemplateSchema.methods.applyToClassroom = async function ({
       continue;
     }
 
-    const doc = new StoreType({
+    const doc = new ProfileType({
       organization: organizationId,
       classroomId,
       key: st.key,
@@ -1221,10 +1626,10 @@ classroomTemplateSchema.methods.applyToClassroom = async function ({
     stats.storeTypesCreated += 1;
   }
 
-  // If template didn't include store types, we still may want values/defs; store types are required for values.
+  // If template didn't include profile types, we still may want values/defs; profile types are required for values.
   const allStoreTypesInClass = storeTypeDocs.length
     ? storeTypeDocs
-    : await StoreType.find({
+    : await ProfileType.find({
         organization: organizationId,
         classroomId,
         isActive: true,
@@ -1232,10 +1637,11 @@ classroomTemplateSchema.methods.applyToClassroom = async function ({
 
   // 2) Create VariableDefinitions (classroom-scoped, create-only)
   const allDefs = [
-    ...defsByScope.storeType,
-    ...defsByScope.store,
-    ...defsByScope.submission,
-    ...defsByScope.scenario,
+    ...defsByScope.profileType,
+    ...defsByScope.profile,
+    ...defsByScope.decision,
+    ...defsByScope.challenge,
+    ...defsByScope.outcome,
   ];
 
   for (const def of allDefs) {
@@ -1261,8 +1667,8 @@ classroomTemplateSchema.methods.applyToClassroom = async function ({
     stats.variableDefinitionsCreated += 1;
   }
 
-  // 3) Create storeType VariableValues for each storeType × storeType definition (create-only)
-  const storeTypeDefs = defsByScope.storeType;
+  // 3) Create profileType VariableValues for each profileType × profileType definition (create-only)
+  const storeTypeDefs = defsByScope.profileType;
   if (allStoreTypesInClass.length > 0 && storeTypeDefs.length > 0) {
     const storeTypeIds = allStoreTypesInClass.map((s) => s._id);
     const defKeys = storeTypeDefs.map((d) => d.key);
@@ -1270,7 +1676,7 @@ classroomTemplateSchema.methods.applyToClassroom = async function ({
     const existing = await VariableValue.find({
       organization: organizationId,
       classroomId,
-      appliesTo: "storeType",
+      appliesTo: "profileType",
       ownerId: { $in: storeTypeIds },
       variableKey: { $in: defKeys },
     }).select("ownerId variableKey");
@@ -1303,7 +1709,7 @@ classroomTemplateSchema.methods.applyToClassroom = async function ({
             document: {
               organization: organizationId,
               classroomId,
-              appliesTo: "storeType",
+              appliesTo: "profileType",
               ownerId: st._id,
               variableKey: def.key,
               value,
@@ -1318,6 +1724,53 @@ classroomTemplateSchema.methods.applyToClassroom = async function ({
     if (ops.length > 0) {
       const res = await VariableValue.bulkWrite(ops, { ordered: false });
       stats.variableValuesCreated += res?.insertedCount || 0;
+    }
+  }
+
+  // 4) Create MetricDefinitions
+  if (metricDefsPayload.length > 0) {
+    const existingMetricKeys = new Set(
+      (
+        await MetricDefinition.find({
+          classroomId,
+        }).select("key")
+      ).map((d) => d.key)
+    );
+
+    for (const md of metricDefsPayload) {
+      if (!md || !md.key) continue;
+      if (existingMetricKeys.has(md.key)) {
+        stats.metricDefinitionsSkipped += 1;
+        continue;
+      }
+      try {
+        await MetricDefinition.create({
+          classroomId,
+          key: md.key,
+          label: md.label || md.key,
+          description: md.description || "",
+          dataType: md.dataType || "number",
+          format: md.format || "count",
+          aiPromptRule: md.aiPromptRule || "",
+          aggregation: md.aggregation || "last",
+          displayIn: md.displayIn || {
+            table: true,
+            kpi: false,
+            chart: false,
+            leaderboard: false,
+            detail: true,
+          },
+          defaultInitialValue:
+            md.defaultInitialValue !== undefined ? md.defaultInitialValue : null,
+          sortOrder: typeof md.sortOrder === "number" ? md.sortOrder : 0,
+          isActive: md.isActive !== false,
+          createdBy: clerkUserId,
+          updatedBy: clerkUserId,
+        });
+        stats.metricDefinitionsCreated += 1;
+      } catch (e) {
+        stats.metricDefinitionsSkipped += 1;
+      }
     }
   }
 

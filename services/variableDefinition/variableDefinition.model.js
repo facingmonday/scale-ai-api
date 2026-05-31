@@ -23,7 +23,7 @@ const variableDefinitionSchema = new mongoose.Schema({
   },
   appliesTo: {
     type: String,
-    enum: ["store", "scenario", "submission", "storeType"],
+    enum: ["profile", "profileType", "challenge", "decision", "outcome"],
     required: true,
     index: true,
   },
@@ -192,7 +192,7 @@ variableDefinitionSchema.statics.createDefinition = async function (
 /**
  * Get variable definitions for a specific scope
  * @param {string} classroomId - Class ID
- * @param {string} appliesTo - Scope ("store", "scenario", "submission", "storeType")
+ * @param {string} appliesTo - Scope ("profile", "challenge", "decision", "profileType")
  * @param {Object} options - Options (includeInactive)
  * @returns {Promise<Array>} Array of variable definitions
  */
@@ -240,8 +240,8 @@ variableDefinitionSchema.statics.getDefinitionsByClass = async function (
 
 /**
  * Validate values against definitions
- * @param {string} classroomId - Class ID (required for store/scenario/submission)
- * @param {string} appliesTo - Scope ("store", "scenario", "submission", "storeType")
+ * @param {string} classroomId - Class ID (required for profile/challenge/decision)
+ * @param {string} appliesTo - Scope ("profile", "challenge", "decision", "profileType")
  * @param {Object} valuesObject - Values to validate
  * @returns {Promise<Object>} Validation result with errors array
  */
@@ -313,7 +313,7 @@ variableDefinitionSchema.statics.validateValues = async function (
 
       case "select":
         // Support both primitive options (["a","b"]) and structured options ([{label,value}])
-        // because UI layers often store select options as objects.
+        // because UI layers often profile select options as objects.
         {
           const rawOptions = Array.isArray(definition.options)
             ? definition.options
@@ -356,8 +356,8 @@ variableDefinitionSchema.statics.validateValues = async function (
 
 /**
  * Apply default values to an object based on definitions
- * @param {string} classroomId - Class ID (required for store/scenario/submission)
- * @param {string} appliesTo - Scope ("store", "scenario", "submission", "storeType")
+ * @param {string} classroomId - Class ID (required for profile/challenge/decision)
+ * @param {string} appliesTo - Scope ("profile", "challenge", "decision", "profileType")
  * @param {Object} valuesObject - Values object to apply defaults to
  * @returns {Promise<Object>} Values object with defaults applied
  */
@@ -394,7 +394,7 @@ variableDefinitionSchema.statics.applyDefaults = async function (
  * are excluded from the calculation context.
  *
  * @param {string} classroomId - Classroom ID
- * @param {string} appliesTo - "store", "storeType", "scenario", or "submission"
+ * @param {string} appliesTo - "profile", "profileType", "challenge", or "decision"
  * @param {Object} variables - { [key]: value }
  * @returns {Promise<Object>} Filtered variables (only keys with active definitions)
  */
@@ -416,10 +416,10 @@ variableDefinitionSchema.statics.filterVariablesByActiveDefinitions =
 
 /**
  * Filter all variable collections for AI simulation context.
- * Store variables are filtered by both "store" and "storeType" (union of active keys).
+ * Profile variables are filtered by both "profile" and "profileType" (union of active keys).
  *
  * @param {string} classroomId - Classroom ID
- * @param {Object} ctx - { storeVariables, scenarioVariables, submissionVariables, outcomeVariables }
+ * @param {Object} ctx - { profileVariables, challengeVariables, decisionVariables, outcomeVariables }
  * @returns {Promise<Object>} Filtered context with same shape
  */
 variableDefinitionSchema.statics.filterVariablesForAIContext = async function (
@@ -429,19 +429,21 @@ variableDefinitionSchema.statics.filterVariablesForAIContext = async function (
   if (!classroomId) {
     return ctx;
   }
-  const [storeDefs, storeTypeDefs, scenarioDefs, submissionDefs] =
+  const [profileDefs, profileTypeDefs, challengeDefs, decisionDefs, outcomeDefs] =
     await Promise.all([
-      this.getDefinitionsForScope(classroomId, "store"),
-      this.getDefinitionsForScope(classroomId, "storeType"),
-      this.getDefinitionsForScope(classroomId, "scenario"),
-      this.getDefinitionsForScope(classroomId, "submission"),
+      this.getDefinitionsForScope(classroomId, "profile"),
+      this.getDefinitionsForScope(classroomId, "profileType"),
+      this.getDefinitionsForScope(classroomId, "challenge"),
+      this.getDefinitionsForScope(classroomId, "decision"),
+      this.getDefinitionsForScope(classroomId, "outcome"),
     ]);
-  const storeActiveKeys = new Set([
-    ...storeDefs.map((d) => d.key),
-    ...storeTypeDefs.map((d) => d.key),
+  const profileActiveKeys = new Set([
+    ...profileDefs.map((d) => d.key),
+    ...profileTypeDefs.map((d) => d.key),
   ]);
-  const scenarioActiveKeys = new Set(scenarioDefs.map((d) => d.key));
-  const submissionActiveKeys = new Set(submissionDefs.map((d) => d.key));
+  const challengeActiveKeys = new Set(challengeDefs.map((d) => d.key));
+  const decisionActiveKeys = new Set(decisionDefs.map((d) => d.key));
+  const outcomeActiveKeys = new Set(outcomeDefs.map((d) => d.key));
 
   const filterByKeys = (obj, keys) => {
     if (!obj || typeof obj !== "object" || Array.isArray(obj)) return {};
@@ -453,13 +455,10 @@ variableDefinitionSchema.statics.filterVariablesForAIContext = async function (
   };
 
   return {
-    storeVariables: filterByKeys(ctx.storeVariables, storeActiveKeys),
-    scenarioVariables: filterByKeys(ctx.scenarioVariables, scenarioActiveKeys),
-    submissionVariables: filterByKeys(
-      ctx.submissionVariables,
-      submissionActiveKeys
-    ),
-    outcomeVariables: filterByKeys(ctx.outcomeVariables, scenarioActiveKeys),
+    profileVariables: filterByKeys(ctx.profileVariables, profileActiveKeys),
+    challengeVariables: filterByKeys(ctx.challengeVariables, challengeActiveKeys),
+    decisionVariables: filterByKeys(ctx.decisionVariables, decisionActiveKeys),
+    outcomeVariables: filterByKeys(ctx.outcomeVariables, outcomeActiveKeys),
   };
 };
 
@@ -514,11 +513,11 @@ variableDefinitionSchema.methods.restore = async function (clerkUserId) {
 
 /**
  * Check if definition is in use (has values stored)
- * This is a placeholder - actual implementation would check Store/Submission/Scenario models
+ * This is a placeholder - actual implementation would check Profile/Decision/Challenge models
  * @returns {Promise<boolean>} True if in use
  */
 variableDefinitionSchema.methods.isInUse = async function () {
-  // TODO: Check if any Store/Submission/Scenario has values for this variable
+  // TODO: Check if any Profile/Decision/Challenge has values for this variable
   // For now, return false to allow deletion
   return false;
 };
