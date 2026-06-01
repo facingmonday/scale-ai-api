@@ -6,6 +6,7 @@ import type {
   StudentDashboardResponse,
 } from "../types/dashboard";
 import type { BillingMode, JoinPolicy } from "../types/licensing";
+import type { ClassroomAutomationSettings } from "../types/classroom";
 
 async function create(data: {
   name: string;
@@ -87,6 +88,7 @@ async function update(
     allowedDomains: string[];
     accessCode: string;
     allowAnonymousJoin: boolean;
+    automationSettings: ClassroomAutomationSettings;
   }>
 ) {
   const response = await axios.put(

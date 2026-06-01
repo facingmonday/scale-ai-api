@@ -86,6 +86,50 @@ const classroomSchema = new mongoose.Schema({
     ],
     default: [],
   },
+  automationSettings: {
+    enabled: {
+      type: Boolean,
+      default: false,
+    },
+    timezone: {
+      type: String,
+      default: "America/Chicago",
+    },
+    defaultReleaseDay: {
+      type: String,
+      default: "Monday",
+    },
+    defaultReleaseTime: {
+      type: String,
+      default: "08:00",
+    },
+    defaultDueDay: {
+      type: String,
+      default: "Friday",
+    },
+    defaultDueTime: {
+      type: String,
+      default: "23:59",
+    },
+    defaultCloseDelayHours: {
+      type: Number,
+      default: 0,
+    },
+    defaultProcessDelayHours: {
+      type: Number,
+      default: 0,
+    },
+    defaultFeedbackReleaseMode: {
+      type: String,
+      enum: ["IMMEDIATE", "DELAYED", "MANUAL"],
+      default: "IMMEDIATE",
+    },
+    missingSubmissionPolicy: {
+      type: String,
+      enum: ["FORWARD_PREVIOUS", "USE_DEFAULTS", "SKIP"],
+      default: "USE_DEFAULTS",
+    },
+  },
 }).add(baseSchema);
 
 // Indexes for performance

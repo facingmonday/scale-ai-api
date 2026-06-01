@@ -193,6 +193,17 @@ async function exportSubmissions(
   };
 }
 
+async function releaseFeedback(challengeId: string) {
+  const response = await axios.post(
+    `${API_HOST}/${API_VERSION}/admin/challenges/${challengeId}/release-feedback`,
+    {},
+    {
+      headers: await TokenHandler.getHeaders(),
+    }
+  );
+  return response.data;
+}
+
 const challengeService = {
   create,
   update,
@@ -202,6 +213,7 @@ const challengeService = {
   approve,
   rerun,
   cancelBatchAndRerun,
+  releaseFeedback,
   getCurrent,
   getCurrentAdmin,
   getAll,

@@ -123,6 +123,11 @@ class ServiceRunner {
       return runScenarioLifecycleCheck(options);
     }
 
+    if (workerType === "nightly-lesson-prep") {
+      const { runNightlyLessonPrep } = require("../ai/nightlyLessonPrep.service");
+      return runNightlyLessonPrep(options);
+    }
+
     throw new Error(`Unknown worker type: ${workerType}`);
   }
 

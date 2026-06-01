@@ -19,6 +19,12 @@ const {
 const SCHEDULE_FIELDS = [
   "publishAt",
   "submissionDeadlineAt",
+  "closeSubmissionsAt",
+  "processAt",
+  "feedbackReleaseAt",
+  "feedbackReleaseMode",
+  "allowLateSubmissions",
+  "lateSubmissionPolicy",
   "automationMode",
   "missingSubmissionPolicy",
   "punishAbsentStudents",
@@ -48,6 +54,30 @@ function normalizeScheduleInput(body) {
       body.submissionDeadlineAt,
       "submissionDeadlineAt"
     );
+  }
+  if (body.closeSubmissionsAt !== undefined) {
+    schedule.closeSubmissionsAt = parseOptionalDate(
+      body.closeSubmissionsAt,
+      "closeSubmissionsAt"
+    );
+  }
+  if (body.processAt !== undefined) {
+    schedule.processAt = parseOptionalDate(body.processAt, "processAt");
+  }
+  if (body.feedbackReleaseAt !== undefined) {
+    schedule.feedbackReleaseAt = parseOptionalDate(
+      body.feedbackReleaseAt,
+      "feedbackReleaseAt"
+    );
+  }
+  if (body.feedbackReleaseMode !== undefined) {
+    schedule.feedbackReleaseMode = body.feedbackReleaseMode || "IMMEDIATE";
+  }
+  if (body.allowLateSubmissions !== undefined) {
+    schedule.allowLateSubmissions = !!body.allowLateSubmissions;
+  }
+  if (body.lateSubmissionPolicy !== undefined) {
+    schedule.lateSubmissionPolicy = body.lateSubmissionPolicy;
   }
   if (body.automationMode !== undefined) {
     schedule.automationMode = body.automationMode || "MANUAL";
@@ -85,8 +115,12 @@ function nextAutomationStatus(challenge, scheduleUpdates = {}) {
       ? scheduleUpdates.automationMode
       : challenge.automationMode;
   if (automationMode !== "FULL") return "UNSCHEDULED";
-  if (challenge.isClosed) return "COMPLETED";
-  if (challenge.isPublished) return "PUBLISHED";
+  if (challenge.isClosed) {
+    return challenge.feedbackReleaseMode === "IMMEDIATE" ? "feedbackReleased" : "processed";
+  }
+  if (challenge.isPublished) {
+    return challenge.isLockedForStudents ? "submissionsClosed" : "acceptingSubmissions";
+  }
 
   const publishAt =
     scheduleUpdates.publishAt !== undefined
@@ -1125,3 +1159,62 @@ exports.exportScenario = async function (req, res) {
     return res.status(500).json({ error: error.message });
   }
 };
+
+/**
+ * Release feedback manually
+ * POST /api/admin/challenges/:challengeId/release-feedback
+ */
+exports.releaseFeedbackScenario = async function (req, res) {
+  try {
+    const { challengeId } = req.params;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    // Find challenge as Mongoose document
+    const challenge = await Challenge.findOne({
+      _id: challengeId,
+      organization: organizationId,
+    });
+
+    if (!challenge) {
+      return res.status(404).json({ error: "Challenge not found" });
+    }
+
+    // Verify admin access
+    await Classroom.validateAdminAccess(
+      challenge.classroomId,
+      clerkUserId,
+      organizationId
+    );
+
+    if (challenge.isFeedbackReleased) {
+      return res.status(400).json({
+        error: "Feedback is already released",
+      });
+    }
+
+    challenge.isFeedbackReleased = true;
+    challenge.automationStatus = "feedbackReleased";
+    challenge.automationLastCheckedAt = new Date();
+    await challenge.save();
+
+    // Trigger student notifications in bulk
+    await LedgerEntry.sendResultsNotifications(challenge._id);
+
+    res.json({
+      success: true,
+      message: "Feedback released successfully and notifications sent.",
+      data: challenge,
+    });
+  } catch (error) {
+    console.error("Error releasing feedback:", error);
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+};
+

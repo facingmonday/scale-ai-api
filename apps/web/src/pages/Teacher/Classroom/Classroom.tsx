@@ -39,6 +39,18 @@ const TeacherClassroom: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  // Automation Settings States
+  const [automationEnabled, setAutomationEnabled] = useState(false);
+  const [timezone, setTimezone] = useState("America/Chicago");
+  const [defaultReleaseDay, setDefaultReleaseDay] = useState("Monday");
+  const [defaultReleaseTime, setDefaultReleaseTime] = useState("08:00");
+  const [defaultDueDay, setDefaultDueDay] = useState("Friday");
+  const [defaultDueTime, setDefaultDueTime] = useState("23:59");
+  const [defaultCloseDelayHours, setDefaultCloseDelayHours] = useState(0);
+  const [defaultProcessDelayHours, setDefaultProcessDelayHours] = useState(0);
+  const [defaultFeedbackReleaseMode, setDefaultFeedbackReleaseMode] = useState<"IMMEDIATE" | "DELAYED" | "MANUAL">("IMMEDIATE");
+  const [missingSubmissionPolicy, setMissingSubmissionPolicy] = useState<"FORWARD_PREVIOUS" | "USE_DEFAULTS" | "SKIP">("USE_DEFAULTS");
+
   const [rosterRefreshKey, setRosterRefreshKey] = useState(0);
   const [selectedStudent, setSelectedStudent] = useState<StudentDisplay | null>(
     null
@@ -107,6 +119,17 @@ const TeacherClassroom: React.FC = () => {
         ? (classroom as { prompts?: ClassroomPrompt[] }).prompts ?? []
         : []
     );
+    const automation = (classroom as any).automationSettings || {};
+    setAutomationEnabled(automation.enabled || false);
+    setTimezone(automation.timezone || "America/Chicago");
+    setDefaultReleaseDay(automation.defaultReleaseDay || "Monday");
+    setDefaultReleaseTime(automation.defaultReleaseTime || "08:00");
+    setDefaultDueDay(automation.defaultDueDay || "Friday");
+    setDefaultDueTime(automation.defaultDueTime || "23:59");
+    setDefaultCloseDelayHours(automation.defaultCloseDelayHours || 0);
+    setDefaultProcessDelayHours(automation.defaultProcessDelayHours || 0);
+    setDefaultFeedbackReleaseMode(automation.defaultFeedbackReleaseMode || "IMMEDIATE");
+    setMissingSubmissionPolicy(automation.missingSubmissionPolicy || "USE_DEFAULTS");
   }, [classroom]);
 
   const canSave = useMemo(() => {
@@ -120,13 +143,44 @@ const TeacherClassroom: React.FC = () => {
       : [];
     const promptsChanged =
       JSON.stringify(prompts ?? []) !== JSON.stringify(currentPrompts);
+
+    const currentAutomation = (classroom as any).automationSettings || {};
+    const automationChanged =
+      automationEnabled !== (currentAutomation.enabled || false) ||
+      timezone !== (currentAutomation.timezone || "America/Chicago") ||
+      defaultReleaseDay !== (currentAutomation.defaultReleaseDay || "Monday") ||
+      defaultReleaseTime !== (currentAutomation.defaultReleaseTime || "08:00") ||
+      defaultDueDay !== (currentAutomation.defaultDueDay || "Friday") ||
+      defaultDueTime !== (currentAutomation.defaultDueTime || "23:59") ||
+      Number(defaultCloseDelayHours) !== (currentAutomation.defaultCloseDelayHours || 0) ||
+      Number(defaultProcessDelayHours) !== (currentAutomation.defaultProcessDelayHours || 0) ||
+      defaultFeedbackReleaseMode !== (currentAutomation.defaultFeedbackReleaseMode || "IMMEDIATE") ||
+      missingSubmissionPolicy !== (currentAutomation.missingSubmissionPolicy || "USE_DEFAULTS");
+
     return (
       name.trim() !== (classroom.name || "").trim() ||
       description.trim() !== (classroom.description || "").trim() ||
       imageUrl !== currentImageUrl ||
-      promptsChanged
+      promptsChanged ||
+      automationChanged
     );
-  }, [classroom, description, name, imageUrl, prompts]);
+  }, [
+    classroom,
+    description,
+    name,
+    imageUrl,
+    prompts,
+    automationEnabled,
+    timezone,
+    defaultReleaseDay,
+    defaultReleaseTime,
+    defaultDueDay,
+    defaultDueTime,
+    defaultCloseDelayHours,
+    defaultProcessDelayHours,
+    defaultFeedbackReleaseMode,
+    missingSubmissionPolicy,
+  ]);
 
   // Teacher-only page
   if (isLoading) {
@@ -158,6 +212,18 @@ const TeacherClassroom: React.FC = () => {
           (p) =>
             p && typeof p.content === "string" && p.content.trim().length > 0
         ),
+        automationSettings: {
+          enabled: automationEnabled,
+          timezone,
+          defaultReleaseDay,
+          defaultReleaseTime,
+          defaultDueDay,
+          defaultDueTime,
+          defaultCloseDelayHours: Number(defaultCloseDelayHours),
+          defaultProcessDelayHours: Number(defaultProcessDelayHours),
+          defaultFeedbackReleaseMode,
+          missingSubmissionPolicy,
+        },
       });
       setClassroom((prev) =>
         prev
@@ -172,6 +238,18 @@ const TeacherClassroom: React.FC = () => {
                   typeof p.content === "string" &&
                   p.content.trim().length > 0
               ),
+              automationSettings: {
+                enabled: automationEnabled,
+                timezone,
+                defaultReleaseDay,
+                defaultReleaseTime,
+                defaultDueDay,
+                defaultDueTime,
+                defaultCloseDelayHours: Number(defaultCloseDelayHours),
+                defaultProcessDelayHours: Number(defaultProcessDelayHours),
+                defaultFeedbackReleaseMode,
+                missingSubmissionPolicy,
+              },
             } as ClassroomWithVirtuals & { imageUrl?: string })
           : prev
       );
@@ -353,6 +431,182 @@ const TeacherClassroom: React.FC = () => {
                 </div>
               </div>
             </div>
+          </div>
+
+          <div className="card mt-6">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div>
+                <h2 className="heading-md">Classroom Automation Settings</h2>
+                <p className="text-text-muted text-sm">
+                  Preconfigure schedules and policies to automatically run the entire semester.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-text cursor-pointer" htmlFor="automation-enabled-toggle">
+                  Enable Automation
+                </label>
+                <input
+                  id="automation-enabled-toggle"
+                  type="checkbox"
+                  className="rounded border-ui-border text-teal-600 focus:ring-teal-500 w-5 h-5 cursor-pointer"
+                  checked={automationEnabled}
+                  onChange={(e) => setAutomationEnabled(e.target.checked)}
+                />
+              </div>
+            </div>
+
+            {automationEnabled && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6 pt-4 border-t border-ui-border">
+                {/* Timezone */}
+                <div>
+                  <label className="label" htmlFor="timezone-picker">
+                    Course Timezone
+                  </label>
+                  <select
+                    id="timezone-picker"
+                    className="input"
+                    value={timezone}
+                    onChange={(e) => setTimezone(e.target.value)}
+                  >
+                    <option value="America/New_York">Eastern Time (US & Canada)</option>
+                    <option value="America/Chicago">Central Time (US & Canada)</option>
+                    <option value="America/Denver">Mountain Time (US & Canada)</option>
+                    <option value="America/Los_Angeles">Pacific Time (US & Canada)</option>
+                    <option value="Europe/London">London / GMT</option>
+                    <option value="UTC">UTC / Coordinated Universal Time</option>
+                  </select>
+                </div>
+
+                {/* Release Schedule */}
+                <div className="border border-ui-border rounded-lg p-4 bg-ui-bg-hover">
+                  <h3 className="font-semibold text-sm mb-3 text-teal">Default Release Schedule</h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="label text-xs" htmlFor="release-day">Day of Week</label>
+                      <select
+                        id="release-day"
+                        className="input text-sm"
+                        value={defaultReleaseDay}
+                        onChange={(e) => setDefaultReleaseDay(e.target.value)}
+                      >
+                        {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(day => (
+                          <option key={day} value={day}>{day}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label text-xs" htmlFor="release-time">Time (HH:MM)</label>
+                      <input
+                        id="release-time"
+                        type="time"
+                        className="input text-sm"
+                        value={defaultReleaseTime}
+                        onChange={(e) => setDefaultReleaseTime(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Due Schedule */}
+                <div className="border border-ui-border rounded-lg p-4 bg-ui-bg-hover">
+                  <h3 className="font-semibold text-sm mb-3 text-orange-500">Default Submission Due</h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="label text-xs" htmlFor="due-day">Day of Week</label>
+                      <select
+                        id="due-day"
+                        className="input text-sm"
+                        value={defaultDueDay}
+                        onChange={(e) => setDefaultDueDay(e.target.value)}
+                      >
+                        {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(day => (
+                          <option key={day} value={day}>{day}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label text-xs" htmlFor="due-time">Time (HH:MM)</label>
+                      <input
+                        id="due-time"
+                        type="time"
+                        className="input text-sm"
+                        value={defaultDueTime}
+                        onChange={(e) => setDefaultDueTime(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Delay configurations */}
+                <div>
+                  <label className="label" htmlFor="close-delay">
+                    Lock Grace Period (Hours)
+                  </label>
+                  <input
+                    id="close-delay"
+                    type="number"
+                    min="0"
+                    className="input"
+                    value={defaultCloseDelayHours}
+                    onChange={(e) => setDefaultCloseDelayHours(parseInt(e.target.value) || 0)}
+                  />
+                  <p className="text-xs text-text-muted mt-1">
+                    Hours between the due date and locking student edits.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="label" htmlFor="process-delay">
+                    Outcome Calculation Delay (Hours)
+                  </label>
+                  <input
+                    id="process-delay"
+                    type="number"
+                    min="0"
+                    className="input"
+                    value={defaultProcessDelayHours}
+                    onChange={(e) => setDefaultProcessDelayHours(parseInt(e.target.value) || 0)}
+                  />
+                  <p className="text-xs text-text-muted mt-1">
+                    Hours to wait after lock before background workers run calculations.
+                  </p>
+                </div>
+
+                {/* Feedback Release Mode */}
+                <div>
+                  <label className="label" htmlFor="feedback-mode">
+                    Feedback Release Mode
+                  </label>
+                  <select
+                    id="feedback-mode"
+                    className="input"
+                    value={defaultFeedbackReleaseMode}
+                    onChange={(e) => setDefaultFeedbackReleaseMode(e.target.value as any)}
+                  >
+                    <option value="IMMEDIATE">Immediate (upon calculation)</option>
+                    <option value="DELAYED">Delayed (scheduled date/time)</option>
+                    <option value="MANUAL">Manual (teacher triggers release)</option>
+                  </select>
+                </div>
+
+                {/* Missing Submission Policy */}
+                <div>
+                  <label className="label" htmlFor="missing-policy">
+                    Absent Student Policy
+                  </label>
+                  <select
+                    id="missing-policy"
+                    className="input"
+                    value={missingSubmissionPolicy}
+                    onChange={(e) => setMissingSubmissionPolicy(e.target.value as any)}
+                  >
+                    <option value="USE_DEFAULTS">Use Default Variables</option>
+                    <option value="FORWARD_PREVIOUS">Repeat Previous Submission</option>
+                    <option value="SKIP">Skip Scenario (No ledger entry)</option>
+                  </select>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="card mt-6">

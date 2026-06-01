@@ -19,3 +19,4 @@ export { default as jobService } from "./job";
 export { default as filesService } from "./files";
 export { default as foldersService } from "./folders";
 export { default as joinService } from "./join";
+export { default as aiService } from "./ai";

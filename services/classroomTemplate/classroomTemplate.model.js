@@ -5,6 +5,7 @@ const VariableDefinition = require("../variableDefinition/variableDefinition.mod
 const VariableValue = require("../variableDefinition/variableValue.model");
 const MetricDefinition = require("../metricDefinition/metricDefinition.model");
 const { STORE_TYPE_PRESETS } = require("../profile/profileTypePresets");
+const defaultTemplatesData = require("./defaultTemplatesData");
 
 const classroomTemplateSchema = new mongoose.Schema(
   {
@@ -1416,112 +1417,660 @@ classroomTemplateSchema.statics.ensureGlobalMarketing101Template =
     return doc;
   };
 
+// Helpers for dynamic course template generation
+function getLabelForKey(key) {
+  const result = key.replace(/([A-Z])/g, " $1");
+  return (result.charAt(0).toUpperCase() + result.slice(1)).trim();
+}
+
+function getMetricFormatAndAggregation(key) {
+  const lower = key.toLowerCase();
+  let format = "count";
+  if (
+    lower.endsWith("rate") ||
+    lower.endsWith("percent") ||
+    lower.endsWith("ratio") ||
+    lower.endsWith("probability") ||
+    lower.endsWith("elasticity")
+  ) {
+    format = "percent";
+  } else if (
+    lower.startsWith("cost") ||
+    lower.startsWith("price") ||
+    lower.startsWith("budget") ||
+    lower.startsWith("revenue") ||
+    lower.startsWith("profit") ||
+    lower.includes("spend") ||
+    lower.includes("cost") ||
+    lower.includes("revenue") ||
+    lower.includes("profit") ||
+    lower.includes("income") ||
+    lower.includes("expense") ||
+    lower.includes("asset") ||
+    lower.includes("liabilit") ||
+    lower.includes("equity") ||
+    lower.includes("balance") ||
+    lower.includes("funding") ||
+    lower.includes("fee") ||
+    lower.includes("price") ||
+    lower.includes("value") ||
+    lower.includes("valuation") ||
+    lower.includes("tax") ||
+    lower.includes("worth") ||
+    lower.includes("savings") ||
+    lower.includes("fund") ||
+    lower.includes("paid") ||
+    lower.includes("sales") ||
+    lower.includes("capital") ||
+    lower.includes("margin") ||
+    lower.includes("ticket")
+  ) {
+    format = "currency";
+  }
+
+  let aggregation = "sum";
+  if (format === "percent") {
+    aggregation = "avg";
+  } else if (
+    lower.endsWith("followers") ||
+    lower.endsWith("subscribers") ||
+    lower.endsWith("score") ||
+    lower.endsWith("trust") ||
+    lower.endsWith("morale") ||
+    lower.endsWith("capacity") ||
+    lower.endsWith("runway") ||
+    lower.endsWith("months") ||
+    lower.endsWith("level") ||
+    lower.endsWith("inventory") ||
+    lower.endsWith("balance") ||
+    lower.endsWith("worth") ||
+    lower.endsWith("density") ||
+    lower.endsWith("index") ||
+    lower.endsWith("size") ||
+    lower.endsWith("value") ||
+    lower.endsWith("valuation") ||
+    lower.endsWith("fund") ||
+    lower.endsWith("savings") ||
+    lower.endsWith("satisfaction") ||
+    lower.endsWith("morale") ||
+    lower.endsWith("demand") ||
+    lower.endsWith("awareness") ||
+    lower.endsWith("efficiency") ||
+    lower.endsWith("utilization") ||
+    lower.endsWith("exposure") ||
+    lower.endsWith("progress") ||
+    lower.endsWith("stability") ||
+    lower.endsWith("availability") ||
+    lower.endsWith("alignment") ||
+    lower.endsWith("quality") ||
+    lower.endsWith("health")
+  ) {
+    aggregation = "last";
+  }
+
+  return { format, aggregation };
+}
+
+function getAiPromptRule(key, label, format, aggregation) {
+  if (format === "percent") {
+    return `Decimal value between 0 and 1 (e.g., 0.05 for 5%) representing the ${label.toLowerCase()}. Scale dynamically based on decisions, challenges, and profile constraints.`;
+  }
+  if (format === "currency") {
+    if (aggregation === "last") {
+      return `Carry-forward currency value representing the current ${label.toLowerCase()} balance. Add revenues/funding and subtract costs/expenses.`;
+    }
+    return `Currency value representing the total ${label.toLowerCase()} for this period. Compute based on operations, pricing, and event outcomes.`;
+  }
+  if (aggregation === "last") {
+    return `Carry-forward count/value representing the latest ${label.toLowerCase()} at the end of this period.`;
+  }
+  return `Total count representing the ${label.toLowerCase()} accumulated during this period.`;
+}
+
+function getVariablesForTemplate(templateKey) {
+  const customVars = {
+    default_digital_marketing_101: {
+      decision: [
+        { key: "ad-budget", label: "Weekly ad budget", description: "How much to spend on paid acquisition this week.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 10000, defaultValue: 1000, required: true, isActive: true },
+        { key: "seo-focus", label: "SEO priority focus", description: "Where to focus organic SEO optimization.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["CONTENT", "TECHNICAL", "BACKLINKS", "BALANCED"], defaultValue: "BALANCED", required: true, isActive: true },
+        { key: "pricing-multiplier", label: "Pricing multiplier", description: "Adjust baseline product prices.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0.5, max: 2.0, defaultValue: 1.0, required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "ad-cpm-multiplier", label: "Ad CPM multiplier", description: "Ad cost fluctuation this period.", appliesTo: "outcome", dataType: "number", inputType: "slider", min: 0.5, max: 3.0, defaultValue: 1.0, required: false, isActive: true },
+        { key: "search-engine-algorithm-shift", label: "Search algorithm shift", description: "Google organic search reach change.", appliesTo: "outcome", dataType: "string", inputType: "selectbutton", options: ["NEGATIVE", "NEUTRAL", "POSITIVE"], defaultValue: "NEUTRAL", required: false, isActive: true }
+      ]
+    },
+    default_entrepreneurship_101: {
+      decision: [
+        { key: "pricing-multiplier", label: "Pricing multiplier", description: "Adjust baseline pricing.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0.5, max: 2.0, defaultValue: 1.0, required: true, isActive: true },
+        { key: "marketing-spend", label: "Marketing spend", description: "Customer acquisition budget.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 15000, defaultValue: 1500, required: true, isActive: true },
+        { key: "rd-investment", label: "R&D investment", description: "Product research and development spend.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 10000, defaultValue: 1000, required: true, isActive: true },
+        { key: "staff-hiring", label: "Staff hires count", description: "Number of staff to hire this period.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 5, defaultValue: 0, required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "market-demand-shift", label: "Market demand shift", description: "Change in macro customer demand.", appliesTo: "outcome", dataType: "string", inputType: "selectbutton", options: ["LOW", "NORMAL", "HIGH"], defaultValue: "NORMAL", required: false, isActive: true },
+        { key: "competitor-action", label: "Competitor aggressiveness", description: "Aggressiveness of competitors.", appliesTo: "outcome", dataType: "string", inputType: "selectbutton", options: ["PASSIVE", "AGGRESSIVE"], defaultValue: "PASSIVE", required: false, isActive: true }
+      ]
+    },
+    default_intro_to_business_101: {
+      decision: [
+        { key: "pricing-multiplier", label: "Pricing multiplier", description: "Pricing adjustment relative to baseline.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0.5, max: 2.0, defaultValue: 1.0, required: true, isActive: true },
+        { key: "marketing-budget", label: "Marketing budget", description: "Brand awareness spend.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 5000, defaultValue: 500, required: true, isActive: true },
+        { key: "operational-spending", label: "Operational spending", description: "Equipment upgrade investment.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 10000, defaultValue: 1000, required: true, isActive: true },
+        { key: "employee-wages", label: "Employee wage rate", description: "Hourly wage offered to staff.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 10, max: 50, defaultValue: 20, required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "economic-condition", label: "Economic condition", description: "General market status.", appliesTo: "outcome", dataType: "string", inputType: "selectbutton", options: ["RECESSION", "STABLE", "BOOM"], defaultValue: "STABLE", required: false, isActive: true }
+      ]
+    },
+    default_accounting_101: {
+      decision: [
+        { key: "inventory-purchase", label: "Inventory purchase", description: "Spending on new inventory.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 10000, defaultValue: 2000, required: true, isActive: true },
+        { key: "pricing-multiplier", label: "Pricing multiplier", description: "Product pricing adjustments.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0.5, max: 2.0, defaultValue: 1.0, required: true, isActive: true },
+        { key: "credit-terms-offered", label: "Credit terms offered", description: "Customer invoice payment timeline.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["NONE", "NET_30", "NET_60"], defaultValue: "NET_30", required: true, isActive: true },
+        { key: "depreciation-method", label: "Depreciation method", description: "Asset depreciation accounting choice.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["STRAIGHT_LINE", "DOUBLE_DECLINING"], defaultValue: "STRAIGHT_LINE", required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "customer-default-rate", label: "Customer default rate", description: "Uncollectible receivables rate.", appliesTo: "outcome", dataType: "number", inputType: "slider", min: 0, max: 0.2, defaultValue: 0.02, required: false, isActive: true }
+      ]
+    },
+    default_finance_101: {
+      decision: [
+        { key: "capital-expenditure", label: "Capital expenditure (CapEx)", description: "Long-term fixed asset investments.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 50000, defaultValue: 5000, required: true, isActive: true },
+        { key: "debt-funding-raised", label: "Debt funding raised", description: "Amount of new debt financing raised.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 100000, defaultValue: 0, required: true, isActive: true },
+        { key: "dividend-payout-rate", label: "Dividend payout rate", description: "Percentage of profit returned to shareholders.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 1.0, defaultValue: 0.1, required: true, isActive: true },
+        { key: "pricing-multiplier", label: "Pricing multiplier", description: "Pricing adjustment relative to baseline.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0.5, max: 2.0, defaultValue: 1.0, required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "interest-rate-change", label: "Interest rate change", description: "Federal Reserve interest rate adjustment.", appliesTo: "outcome", dataType: "number", inputType: "slider", min: -0.02, max: 0.05, defaultValue: 0.0, required: false, isActive: true },
+        { key: "market-beta", label: "Market beta", description: "Volatility coefficient indicator.", appliesTo: "outcome", dataType: "number", inputType: "slider", min: 0.5, max: 2.0, defaultValue: 1.0, required: false, isActive: true }
+      ]
+    },
+    default_personal_finance_101: {
+      decision: [
+        { key: "savings-allocation-rate", label: "Savings rate", description: "Ratio of net income allocated to savings.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 0.8, defaultValue: 0.15, required: true, isActive: true },
+        { key: "debt-repayment-extra", label: "Extra debt payment", description: "Additional monthly payments to outstanding debts.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 2000, defaultValue: 100, required: true, isActive: true },
+        { key: "investment-risk-profile", label: "Investment risk profile", description: "Asset allocation risk tier.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["CONSERVATIVE", "MODERATE", "AGGRESSIVE"], defaultValue: "MODERATE", required: true, isActive: true },
+        { key: "discretionary-spending", label: "Discretionary spending", description: "Budget for entertainment and non-essentials.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 2000, defaultValue: 400, required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "market-return-rate", label: "Market return rate", description: "S&P 500 return percentage for this period.", appliesTo: "outcome", dataType: "number", inputType: "slider", min: -0.15, max: 0.25, defaultValue: 0.08, required: false, isActive: true },
+        { key: "unexpected-expense", label: "Emergency expense", description: "Unforeseen medical or repair expense.", appliesTo: "outcome", dataType: "number", inputType: "slider", min: 0, max: 5000, defaultValue: 0, required: false, isActive: true }
+      ]
+    },
+    default_economics_101: {
+      decision: [
+        { key: "price-set", label: "Set price", description: "Selling price set by the firm.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 1, max: 100, defaultValue: 10, required: true, isActive: true },
+        { key: "production-quantity", label: "Production quantity", description: "Target supply volume produced.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 5000, defaultValue: 500, required: true, isActive: true },
+        { key: "wage-rate", label: "Labor wage rate", description: "Hourly salary offered to labor.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 5, max: 40, defaultValue: 15, required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "market-demand-elasticity", label: "Market demand elasticity", description: "Price sensitivity index of customers.", appliesTo: "outcome", dataType: "number", inputType: "slider", min: 0.5, max: 3.0, defaultValue: 1.0, required: false, isActive: true },
+        { key: "tax-rate-change", label: "Corporate tax rate shift", description: "Corporate tax adjustment percentage.", appliesTo: "outcome", dataType: "number", inputType: "slider", min: -0.05, max: 0.10, defaultValue: 0.0, required: false, isActive: true }
+      ]
+    },
+    default_operations_management_101: {
+      decision: [
+        { key: "production-target", label: "Production target", description: "Units targeted for manufacturing.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 10000, defaultValue: 1000, required: true, isActive: true },
+        { key: "staff-level", label: "Staff level count", description: "Active operations crew size.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 1, max: 50, defaultValue: 10, required: true, isActive: true },
+        { key: "quality-control-budget", label: "QC budget", description: "Quality assurance inspection spend.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 5000, defaultValue: 500, required: true, isActive: true },
+        { key: "maintenance-frequency", label: "Maintenance level", description: "Machine preventative maintenance checks.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["LOW", "MEDIUM", "HIGH"], defaultValue: "MEDIUM", required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "machine-breakdown-count", label: "Machine breakdowns", description: "Number of assembly breakdowns.", appliesTo: "outcome", dataType: "number", inputType: "slider", min: 0, max: 5, defaultValue: 0, required: false, isActive: true },
+        { key: "supply-defect-rate", label: "Supplier defect rate", description: "Defect percentage in incoming raw parts.", appliesTo: "outcome", dataType: "number", inputType: "slider", min: 0, max: 0.1, defaultValue: 0.02, required: false, isActive: true }
+      ]
+    },
+    default_logistics_101: {
+      decision: [
+        { key: "shipping-carrier", label: "Shipping mode", description: "Shipping delivery tier chosen.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["STANDARD", "EXPRESS", "ECO_FRIENDLY"], defaultValue: "STANDARD", required: true, isActive: true },
+        { key: "warehouse-safety-stock", label: "Safety stock level", description: "Buffer inventory levels maintained.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 5000, defaultValue: 500, required: true, isActive: true },
+        { key: "delivery-routes-count", label: "Routes count", description: "Active truck dispatch routes.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 1, max: 10, defaultValue: 3, required: true, isActive: true },
+        { key: "driver-incentive-bonus", label: "Driver bonus rate", description: "Bonus incentive offered to courier drivers.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 500, defaultValue: 0, required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "fuel-price-multiplier", label: "Fuel price index", description: "Fuel cost fluctuation factor.", appliesTo: "outcome", dataType: "number", inputType: "slider", min: 0.7, max: 2.0, defaultValue: 1.0, required: false, isActive: true },
+        { key: "weather-delay-severity", label: "Weather severity", description: "Transit delays due to storm fronts.", appliesTo: "outcome", dataType: "string", inputType: "selectbutton", options: ["NONE", "MODERATE", "SEVERE"], defaultValue: "NONE", required: false, isActive: true }
+      ]
+    },
+    default_hospitality_management_101: {
+      decision: [
+        { key: "pricing-multiplier", label: "Pricing multiplier", description: "Adjust menu prices relative to baseline.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0.5, max: 2.0, defaultValue: 1.0, required: true, isActive: true },
+        { key: "staffing-ratio", label: "Staffing level multiplier", description: "Service staff roster size factor.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0.5, max: 2.0, defaultValue: 1.0, required: true, isActive: true },
+        { key: "ingredient-quality-tier", label: "Ingredient quality tier", description: "Quality rating of food supplies ordered.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["STANDARD", "PREMIUM", "ORGANIC"], defaultValue: "STANDARD", required: true, isActive: true },
+        { key: "marketing-spend", label: "Local marketing spend", description: "Local coupon and social ad spend.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 3000, defaultValue: 300, required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "critic-review-score", label: "Critic review score", description: "Published local food critic rating (1-5).", appliesTo: "outcome", dataType: "number", inputType: "slider", min: 1, max: 5, defaultValue: 4, required: false, isActive: true },
+        { key: "no-show-rate", label: "Reservation cancel rate", description: "Percentage of bookings who cancel last minute.", appliesTo: "outcome", dataType: "number", inputType: "slider", min: 0, max: 0.3, defaultValue: 0.1, required: false, isActive: true }
+      ]
+    },
+    default_event_management_101: {
+      decision: [
+        { key: "ticket-price", label: "Ticket price", description: "Registration ticket fee.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 10, max: 500, defaultValue: 50, required: true, isActive: true },
+        { key: "marketing-budget", label: "Promo budget", description: "Event promotional spending.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 10000, defaultValue: 1000, required: true, isActive: true },
+        { key: "security-staff-count", label: "Security team size", description: "Active safety officers rostered.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 1, max: 50, defaultValue: 5, required: true, isActive: true },
+        { key: "catering-spend-per-guest", label: "Catering cost per guest", description: "Food & beverage allocation per head.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 5, max: 100, defaultValue: 20, required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "weather-condition", label: "Weather forecast", description: "Disrupted turnout risk.", appliesTo: "outcome", dataType: "string", inputType: "selectbutton", options: ["SUNNY", "RAINY", "STORMY"], defaultValue: "SUNNY", required: false, isActive: true }
+      ]
+    },
+    default_agribusiness_101: {
+      decision: [
+        { key: "crop-selection", label: "Crop selection", description: "Principal crop planted this season.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["CORN", "SOYBEANS", "WHEAT", "ORGANIC_VEG"], defaultValue: "CORN", required: true, isActive: true },
+        { key: "fertilizer-usage-level", label: "Fertilizer amount", description: "Soil nitrogen booster application level.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["LOW", "RECOMMENDED", "HIGH"], defaultValue: "RECOMMENDED", required: true, isActive: true },
+        { key: "water-irrigation-allocation", label: "Irrigation water allocation", description: "Acre-feet of water pumped.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 10000, defaultValue: 5000, required: true, isActive: true },
+        { key: "crop-insurance-coverage", label: "Crop insurance level", description: "Disaster protection plan payout tier.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["NONE", "50_PERCENT", "80_PERCENT"], defaultValue: "NONE", required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "pest-outbreak-severity", label: "Pest infestation severity", description: "Yield impact from crop pests.", appliesTo: "outcome", dataType: "string", inputType: "selectbutton", options: ["NONE", "MILD", "SEVERE"], defaultValue: "NONE", required: false, isActive: true },
+        { key: "rainfall-deviation", label: "Rainfall deviation percent", description: "Water index deviation from average.", appliesTo: "outcome", dataType: "number", inputType: "slider", min: -50, max: 50, defaultValue: 0, required: false, isActive: true }
+      ]
+    },
+    default_environmental_science_101: {
+      decision: [
+        { key: "renewable-energy-ratio", label: "Renewable energy share", description: "Ratio of power sourced from solar/wind.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 1.0, defaultValue: 0.1, required: true, isActive: true },
+        { key: "waste-recycling-target", label: "Recycling diversion target", description: "Percentage of solid waste diverted to recycling.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 1.0, defaultValue: 0.3, required: true, isActive: true },
+        { key: "compliance-audit-budget", label: "Audit budget", description: "EPA standard compliance checks.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 5000, defaultValue: 500, required: true, isActive: true },
+        { key: "sustainability-initiative", label: "Sustainability plan", description: "Specific eco-program active.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["NONE", "CARBON_OFFSET", "WATER_CONSERVATION"], defaultValue: "NONE", required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "regulatory-standards-strictness", label: "EPA policy strictness", description: "Environmental standard severity tier.", appliesTo: "outcome", dataType: "string", inputType: "selectbutton", options: ["STANDARD", "STRICT", "VERY_STRICT"], defaultValue: "STANDARD", required: false, isActive: true }
+      ]
+    },
+    default_public_administration_101: {
+      decision: [
+        { key: "program-funding-allocation", label: "Program funding allocation", description: "Grants or budget allocated to department operations.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 100000, defaultValue: 10000, required: true, isActive: true },
+        { key: "department-staffing-level", label: "Staffing headcount", description: "Active public workers rostered.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 1, max: 100, defaultValue: 10, required: true, isActive: true },
+        { key: "service-outreach-focus", label: "Service outreach focus", description: "Regional prioritization for service dispatch.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["URBAN", "RURAL", "EQUAL"], defaultValue: "EQUAL", required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "citizen-satisfaction-variance", label: "Citizen sentiment variance", description: "Public approval swing factor.", appliesTo: "outcome", dataType: "number", inputType: "slider", min: -20, max: 20, defaultValue: 0, required: false, isActive: true }
+      ]
+    },
+    default_civics_government_101: {
+      decision: [
+        { key: "tax-rate-income", label: "Income tax rate", description: "Flat tax rate on citizen incomes.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0.1, max: 0.5, defaultValue: 0.25, required: true, isActive: true },
+        { key: "education-budget-share", label: "Education budget share", description: "Percentage of revenue assigned to public schools.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0.1, max: 0.4, defaultValue: 0.2, required: true, isActive: true },
+        { key: "public-safety-funding", label: "Public safety funding share", description: "Percentage of revenue assigned to first responders.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0.05, max: 0.3, defaultValue: 0.15, required: true, isActive: true },
+        { key: "infrastructure-spending", label: "Infrastructure share", description: "Percentage of revenue assigned to road and grid repair.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0.05, max: 0.3, defaultValue: 0.15, required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "voter-sentiment-index", label: "Voter sentiment index", description: "Aggregated approval index score.", appliesTo: "outcome", dataType: "number", inputType: "slider", min: 30, max: 100, defaultValue: 60, required: false, isActive: true }
+      ]
+    },
+    default_healthcare_administration_101: {
+      decision: [
+        { key: "nurse-to-patient-ratio", label: "Staff-to-patient ratio", description: "Rostered nurse coverage density.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0.1, max: 0.5, defaultValue: 0.2, required: true, isActive: true },
+        { key: "medical-supplies-order", label: "Medical supplies spend", description: "Order budget for surgical/PPE equipment.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 1000, max: 50000, defaultValue: 5000, required: true, isActive: true },
+        { key: "telehealth-expansion", label: "Telehealth system active", description: "Offer remote medical visits.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["NO", "YES"], defaultValue: "NO", required: true, isActive: true },
+        { key: "pricing-multiplier", label: "Pricing multiplier", description: "Clinic copay price adjustments.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0.5, max: 2.0, defaultValue: 1.0, required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "influenza-outbreak-level", label: "Influenza breakout wave", description: "Severity of seasonal flu cases.", appliesTo: "outcome", dataType: "string", inputType: "selectbutton", options: ["NONE", "MODERATE", "SEVERE"], defaultValue: "NONE", required: false, isActive: true }
+      ]
+    },
+    default_public_health_101: {
+      decision: [
+        { key: "campaign-funding", label: "Outreach funding", description: "Outreach health awareness program budget.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 20000, defaultValue: 2000, required: true, isActive: true },
+        { key: "vaccine-procurement-units", label: "Vaccine batches ordered", description: "Immunization supply batch count.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 10000, defaultValue: 1000, required: true, isActive: true },
+        { key: "mask-mandate-active", label: "Public health guidelines", description: "Implement strict indoor rules.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["NO", "YES"], defaultValue: "NO", required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "epidemic-transmission-rate", label: "Transmission rate (R0)", description: "Infection transmission severity factor.", appliesTo: "outcome", dataType: "number", inputType: "slider", min: 0.5, max: 4.0, defaultValue: 1.2, required: false, isActive: true }
+      ]
+    },
+    default_project_management_101: {
+      decision: [
+        { key: "sprint-velocity-target", label: "Velocity target", description: "Committed story points for the sprint.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 10, max: 100, defaultValue: 40, required: true, isActive: true },
+        { key: "quality-assurance-focus", label: "QA focus level", description: "Sprint hours allocated to test coverage validation.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["LOW", "NORMAL", "HIGH"], defaultValue: "NORMAL", required: true, isActive: true },
+        { key: "resource-allocation-buffer", label: "Scope buffer percentage", description: "Schedule slack percentage for contingencies.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 0.3, defaultValue: 0.1, required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "scope-creep-intensity", label: "Scope creep intensity", description: "Unplanned client feature requests.", appliesTo: "outcome", dataType: "string", inputType: "selectbutton", options: ["NONE", "LOW", "HIGH"], defaultValue: "NONE", required: false, isActive: true }
+      ]
+    },
+    default_software_development_101: {
+      decision: [
+        { key: "feature-points-committed", label: "Sprint story points target", description: "Product features committed for release.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 5, max: 80, defaultValue: 30, required: true, isActive: true },
+        { key: "refactoring-time-allocation", label: "Refactor time ratio", description: "Sprint hours dedicated to cleaning technical debt.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 0.5, defaultValue: 0.15, required: true, isActive: true },
+        { key: "testing-rigor-level", label: "Testing rigor", description: "Code testing depth.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["MINIMAL", "STANDARD", "COMPREHENSIVE"], defaultValue: "STANDARD", required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "api-service-outage", label: "Cloud service outage", description: "System downtime due to hosting outage.", appliesTo: "outcome", dataType: "string", inputType: "selectbutton", options: ["NO", "YES"], defaultValue: "NO", required: false, isActive: true }
+      ]
+    },
+    default_cybersecurity_101: {
+      decision: [
+        { key: "security-awareness-training-frequency", label: "Training frequency", description: "Phishing test and training cycle speed.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["ANNUAL", "QUARTERLY", "MONTHLY"], defaultValue: "QUARTERLY", required: true, isActive: true },
+        { key: "patch-cycle-speed", label: "Patch cycle speed", description: "Software security patch deployment protocol.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["STANDARD", "EXPEDITED", "IMMEDIATE"], defaultValue: "STANDARD", required: true, isActive: true },
+        { key: "firewall-strictness", label: "Firewall strictness", description: "Rule restrictiveness for web network traffic.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["LOW", "MEDIUM", "HIGH"], defaultValue: "MEDIUM", required: true, isActive: true },
+        { key: "backup-frequency", label: "Data backup cycle", description: "Corporate server backup cadence.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["WEEKLY", "DAILY", "HOURLY"], defaultValue: "DAILY", required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "phishing-campaign-intensity", label: "Hacker phishing density", description: "Email attack campaign severity.", appliesTo: "outcome", dataType: "string", inputType: "selectbutton", options: ["LOW", "MEDIUM", "HIGH"], defaultValue: "MEDIUM", required: false, isActive: true },
+        { key: "zero-day-vulnerability-discovered", label: "Zero-day vulnerability", description: "Critical unpatched exploit threat.", appliesTo: "outcome", dataType: "string", inputType: "selectbutton", options: ["NO", "YES"], defaultValue: "NO", required: false, isActive: true }
+      ]
+    },
+    default_human_resources_101: {
+      decision: [
+        { key: "employee-bonus-percent", label: "Annual bonus percentage", description: "Incentive bonus percent offered to staff.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 0.3, defaultValue: 0.05, required: true, isActive: true },
+        { key: "training-hours-per-employee", label: "Training hours allocation", description: "Hours dedicated to training and education programs.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 40, defaultValue: 8, required: true, isActive: true },
+        { key: "diversity-hiring-focus", label: "Diversity hiring focus", description: "Prioritize target hiring outreach programs.", appliesTo: "string", inputType: "selectbutton", options: ["STANDARD", "ENHANCED"], defaultValue: "STANDARD", required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "industry-hiring-competition", label: "Recruiter poaching index", description: "Industry talent recruitment difficulty.", appliesTo: "outcome", dataType: "string", inputType: "selectbutton", options: ["LOW", "MEDIUM", "HIGH"], defaultValue: "MEDIUM", required: false, isActive: true }
+      ]
+    },
+    default_education_administration_101: {
+      decision: [
+        { key: "teacher-professional-dev-budget", label: "Teacher training budget", description: "Funding for professional certification programs.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 5000, defaultValue: 1000, required: true, isActive: true },
+        { key: "student-counseling-ratio", label: "Guidance counselor ratio", description: "Counselors to students percentage target.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0.01, max: 0.05, defaultValue: 0.02, required: true, isActive: true },
+        { key: "after-school-programs-active", label: "After school programs", description: "Activate student enrichment courses.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["NO", "YES"], defaultValue: "YES", required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "funding-grant-awarded", label: "Title I grant award", description: "Receiving additional state grants.", appliesTo: "outcome", dataType: "string", inputType: "selectbutton", options: ["NO", "YES"], defaultValue: "NO", required: false, isActive: true }
+      ]
+    },
+    default_nonprofit_management_101: {
+      decision: [
+        { key: "fundraising-spend", label: "Fundraising campaign budget", description: "Promotional spending to secure donations.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 10000, defaultValue: 1000, required: true, isActive: true },
+        { key: "volunteer-coordinator-salary", label: "Volunteer manager wage", description: "Salary assigned to the volunteer recruiting coordinator.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 5000, defaultValue: 2500, required: true, isActive: true },
+        { key: "program-expansion-rate", label: "Community program growth", description: "Target scope increase for aid programs.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 0.5, defaultValue: 0.1, required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "major-donor-contribution", label: "Major donor windfall", description: "Unrestricted large estate gift received.", appliesTo: "outcome", dataType: "number", inputType: "slider", min: 0, max: 50000, defaultValue: 0, required: false, isActive: true }
+      ]
+    },
+    default_construction_management_101: {
+      decision: [
+        { key: "safety-compliance-rigor", label: "Safety protocols level", description: "Site inspection frequency rules.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["STANDARD", "STRICT"], defaultValue: "STANDARD", required: true, isActive: true },
+        { key: "subcontractor-quality-tier", label: "Subcontractor selection", description: "Experience level of hired specialty teams.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["BASIC", "STANDARD", "PREMIUM"], defaultValue: "STANDARD", required: true, isActive: true },
+        { key: "overtime-hours-authorized", label: "Overtime hours cap", description: "Max hours crew can work beyond normal shifts.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 20, defaultValue: 0, required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "material-supply-shortage", label: "Subcontractor delay", description: "Material or supply delays on site.", appliesTo: "outcome", dataType: "string", inputType: "selectbutton", options: ["NO", "YES"], defaultValue: "NO", required: false, isActive: true },
+        { key: "weather-delay-days", label: "Weather stoppage days", description: "Days lost to precipitation or extreme cold.", appliesTo: "outcome", dataType: "number", inputType: "slider", min: 0, max: 5, defaultValue: 0, required: false, isActive: true }
+      ]
+    },
+    default_manufacturing_101: {
+      decision: [
+        { key: "raw-material-order-volume", label: "Raw inventory batch order", description: "Batches of raw ingredients purchased.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 10000, defaultValue: 2000, required: true, isActive: true },
+        { key: "machine-speed-percent", label: "Assembly belt speed", description: "Speed modifier for production lines.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0.8, max: 1.2, defaultValue: 1.0, required: true, isActive: true },
+        { key: "preventative-maintenance-hours", label: "Maintenance downtime hours", description: "Hours machines are offline for cleaning.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 10, defaultValue: 2, required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "defect-surge", label: "Calibration drift surge", description: "Sudden tool misalignment defect surge.", appliesTo: "outcome", dataType: "string", inputType: "selectbutton", options: ["NO", "YES"], defaultValue: "NO", required: false, isActive: true }
+      ]
+    },
+    default_real_estate_101: {
+      decision: [
+        { key: "asking-rent-multiplier", label: "Asking rent multiplier", description: "Adjust unit rent relative to average baseline market rate.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0.8, max: 1.2, defaultValue: 1.0, required: true, isActive: true },
+        { key: "maintenance-spending-percent", label: "Maintenance spending ratio", description: "Ratio of rental income spent on property repairs.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0.05, max: 0.20, defaultValue: 0.10, required: true, isActive: true },
+        { key: "tenant-screening-strictness", label: "Tenant screening rules", description: "Credit score and history requirements for leasing.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["LOW", "MEDIUM", "HIGH"], defaultValue: "MEDIUM", required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "local-economic-growth-rate", label: "Local job growth index", description: "Local hiring market multiplier swing.", appliesTo: "outcome", dataType: "number", inputType: "slider", min: -0.05, max: 0.05, defaultValue: 0.02, required: false, isActive: true }
+      ]
+    },
+    default_media_content_creation_101: {
+      decision: [
+        { key: "content-post-frequency", label: "Weekly publish frequency", description: "Number of videos/articles published.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 1, max: 14, defaultValue: 3, required: true, isActive: true },
+        { key: "production-quality-spend", label: "Production quality budget", description: "Camera, sound, and editor spending.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 5000, defaultValue: 500, required: true, isActive: true },
+        { key: "sponsor-ad-load", label: "Ad sponsor density", description: "Ad load frequency on audience videos.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["NONE", "LIGHT", "HEAVY"], defaultValue: "LIGHT", required: true, isActive: true }
+      ],
+      outcome: [
+        { key: "viral-video-multiplier", label: "Algorithm recommendation boost", description: "Unexpected organic discovery boost (viral factor).", appliesTo: "outcome", dataType: "number", inputType: "slider", min: 1, max: 10, defaultValue: 1, required: false, isActive: true }
+      ]
+    }
+  };
+
+  const defaultFallback = {
+    decision: [
+      { key: "pricing-multiplier", label: "Pricing multiplier", description: "Pricing adjustment relative to baseline.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0.5, max: 2.0, defaultValue: 1.0, required: true, isActive: true },
+      { key: "operating-budget", label: "Operating budget", description: "Budget allocated for operations this period.", appliesTo: "decision", dataType: "number", inputType: "slider", min: 0, max: 10000, defaultValue: 1000, required: true, isActive: true },
+      { key: "strategic-focus", label: "Strategic focus", description: "Strategic focus for this period.", appliesTo: "decision", dataType: "string", inputType: "selectbutton", options: ["GROWTH", "EFFICIENCY", "QUALITY", "BALANCED"], defaultValue: "BALANCED", required: true, isActive: true }
+    ],
+    outcome: [
+      { key: "market-condition-factor", label: "Market condition factor", description: "Market condition fluctuation factor.", appliesTo: "outcome", dataType: "number", inputType: "slider", min: 0.5, max: 1.5, defaultValue: 1.0, required: false, isActive: true }
+    ]
+  };
+
+  return customVars[templateKey] || defaultFallback;
+}
+
+classroomTemplateSchema.statics.ensureGlobalCourseTemplate = async function (templateData) {
+  const key = templateData.key;
+  const existing = await this.findOne({ organization: null, key });
+
+  const metricDefinitions = templateData.metrics.map((metricInput, index) => {
+    const isObject = metricInput && typeof metricInput === "object";
+    const metricKey = isObject ? metricInput.key : metricInput;
+    const label = isObject && metricInput.label ? metricInput.label : getLabelForKey(metricKey);
+    const { format: autoFormat, aggregation: autoAggregation } = getMetricFormatAndAggregation(metricKey);
+
+    const format = isObject && metricInput.format ? metricInput.format : autoFormat;
+    const aggregation = isObject && metricInput.aggregation ? metricInput.aggregation : autoAggregation;
+    const description = isObject && metricInput.description ? metricInput.description : `Computed ${label.toLowerCase()} for the period.`;
+
+    const defaultRule = getAiPromptRule(metricKey, label, format, aggregation);
+    const aiPromptRule = isObject && metricInput.aiPromptRule ? metricInput.aiPromptRule : defaultRule;
+    const displayIn = isObject && metricInput.displayIn ? metricInput.displayIn : { table: true, kpi: true, chart: true, leaderboard: true, detail: true };
+
+    return {
+      key: metricKey,
+      label,
+      description,
+      dataType: "number",
+      format,
+      aggregation,
+      aiPromptRule,
+      displayIn,
+      sortOrder: (index + 1) * 10,
+    };
+  });
+
+  const { decision: decisionVars, outcome: outcomeVars } = getVariablesForTemplate(key);
+
+  const payload = {
+    profileTypes: templateData.profileTypes.map(pt => ({
+      key: pt.key,
+      label: pt.label,
+      description: pt.description,
+      startingBalance: Number(pt.startingBalance) || 0,
+      initialStartupCost: Number(pt.initialStartupCost) || 0,
+      isActive: pt.isActive !== false,
+    })),
+    variableDefinitionsByAppliesTo: {
+      profileType: [],
+      profile: [],
+      decision: decisionVars,
+      challenge: [],
+      outcome: outcomeVars,
+    },
+    storeTypeValuesByStoreTypeKey: templateData.profileTypes.reduce((acc, pt) => {
+      acc[pt.key] = {};
+      return acc;
+    }, {}),
+    metricDefinitions,
+    prompts: [
+      {
+        role: "system",
+        content:
+          `You are a learning-simulation engine for a ${templateData.label} course. ` +
+          `Compute the metrics in metrics_to_calculate based on the active profile, the challenge, the realized outcome, and the student's decisions. ` +
+          `Reflect realistic dynamics and domain-specific constraints relevant to ${templateData.label}. ` +
+          `Return ONLY valid JSON matching the provided schema. Always include \`summary\` (string) and \`randomEvent\` (string or null).`
+      }
+    ],
+  };
+
+  if (existing) {
+    existing.payload = payload;
+    existing.label = templateData.label;
+    existing.description = templateData.description;
+    existing.updatedBy = "system_startup";
+    await existing.save();
+    return existing;
+  }
+
+  const doc = new this({
+    organization: null,
+    key,
+    label: templateData.label,
+    description: templateData.description,
+    isActive: true,
+    version: 1,
+    payload,
+    createdBy: "system_startup",
+    updatedBy: "system_startup",
+  });
+
+  await doc.save();
+  return doc;
+};
+
+classroomTemplateSchema.statics.ensureAllGlobalTemplates = async function () {
+  await this.ensureGlobalDefaultTemplate();
+  await this.ensureGlobalMarketing101Template();
+
+  for (const templateData of defaultTemplatesData) {
+    try {
+      await this.ensureGlobalCourseTemplate(templateData);
+    } catch (e) {
+      console.error(`⚠️  Failed ensuring global template ${templateData.key}:`, e?.message || e);
+    }
+  }
+};
+
 classroomTemplateSchema.statics.copyGlobalToOrganization = async function (
   organizationId,
   clerkUserId
 ) {
-  const globalTemplate = await this.ensureGlobalDefaultTemplate();
-  const existingOrgTemplate = await this.findOne({
-    organization: organizationId,
-    key: globalTemplate.key,
+  // Find all active global templates
+  const globalTemplates = await this.find({
+    organization: null,
+    isActive: true,
   });
-  if (existingOrgTemplate) {
-    // Backfill missing values on org templates created before storeTypeValues existed
-    const payload =
-      existingOrgTemplate.payload &&
-      typeof existingOrgTemplate.payload === "object"
-        ? existingOrgTemplate.payload
-        : {};
 
-    if (
-      !payload.storeTypeValuesByStoreTypeKey ||
-      typeof payload.storeTypeValuesByStoreTypeKey !== "object" ||
-      Object.keys(payload.storeTypeValuesByStoreTypeKey).length === 0
-    ) {
-      payload.storeTypeValuesByStoreTypeKey =
-        globalTemplate.payload?.storeTypeValuesByStoreTypeKey || {};
-      existingOrgTemplate.payload = payload;
-      existingOrgTemplate.updatedBy = clerkUserId;
-      await existingOrgTemplate.save();
-    }
+  const copiedTemplates = [];
 
-    // Backfill prompts if missing
-    if (!Array.isArray(payload.prompts) || payload.prompts.length === 0) {
-      payload.prompts =
-        globalTemplate.payload?.prompts || this.getPizzaShopPrompts();
-      existingOrgTemplate.payload = payload;
-      existingOrgTemplate.updatedBy = clerkUserId;
-      await existingOrgTemplate.save();
-    }
+  for (const globalTemplate of globalTemplates) {
+    const existingOrgTemplate = await this.findOne({
+      organization: organizationId,
+      key: globalTemplate.key,
+    });
 
-    // Backfill metricDefinitions if missing
-    if (
-      !Array.isArray(payload.metricDefinitions) ||
-      payload.metricDefinitions.length === 0
-    ) {
-      payload.metricDefinitions =
-        globalTemplate.payload?.metricDefinitions ||
-        this.getPizzaShopMetricDefinitions();
-      existingOrgTemplate.payload = payload;
-      existingOrgTemplate.updatedBy = clerkUserId;
-      await existingOrgTemplate.save();
-    }
+    if (existingOrgTemplate) {
+      // Sync/Backfill missing payload sections from global template (idempotent)
+      const payload =
+        existingOrgTemplate.payload &&
+        typeof existingOrgTemplate.payload === "object"
+          ? existingOrgTemplate.payload
+          : {};
 
-    // Ensure cost guardrails exist (idempotent)
-    if (Array.isArray(payload.prompts) && payload.prompts.length > 0) {
-      const patchedPrompts = ensureDefaultCostGuardrailsPrompt(payload.prompts);
-      if (patchedPrompts.length !== payload.prompts.length) {
-        payload.prompts = patchedPrompts;
+      let hasChanges = false;
+
+      if (
+        !payload.storeTypeValuesByStoreTypeKey ||
+        typeof payload.storeTypeValuesByStoreTypeKey !== "object" ||
+        Object.keys(payload.storeTypeValuesByStoreTypeKey).length === 0
+      ) {
+        payload.storeTypeValuesByStoreTypeKey =
+          globalTemplate.payload?.storeTypeValuesByStoreTypeKey || {};
+        hasChanges = true;
+      }
+
+      // Backfill prompts if missing
+      if (!Array.isArray(payload.prompts) || payload.prompts.length === 0) {
+        payload.prompts = globalTemplate.payload?.prompts || [];
+        hasChanges = true;
+      } else {
+        // Ensure cost guardrails exist if it is the supply chain template
+        if (globalTemplate.key === this.GLOBAL_DEFAULT_KEY) {
+          const patchedPrompts = ensureDefaultCostGuardrailsPrompt(payload.prompts);
+          if (patchedPrompts.length !== payload.prompts.length) {
+            payload.prompts = patchedPrompts;
+            hasChanges = true;
+          }
+        }
+      }
+
+      // Backfill metricDefinitions if missing
+      if (
+        !Array.isArray(payload.metricDefinitions) ||
+        payload.metricDefinitions.length === 0
+      ) {
+        payload.metricDefinitions = globalTemplate.payload?.metricDefinitions || [];
+        hasChanges = true;
+      }
+
+      // Backfill profileTypes financial fields (startingBalance, initialStartupCost) if missing
+      if (Array.isArray(payload.profileTypes) && payload.profileTypes.length > 0) {
+        const byKey = new Map(
+          (globalTemplate.payload?.profileTypes || []).map((st) => [st.key, st])
+        );
+        let profileTypesChanged = false;
+        const patched = payload.profileTypes.map((st) => {
+          if (!st || !st.key) return st;
+          const globalSt = byKey.get(st.key) || {};
+          const startingBalance =
+            st.startingBalance !== undefined && st.startingBalance !== null
+              ? Number(st.startingBalance)
+              : Number(globalSt.startingBalance) || 0;
+          const initialStartupCost =
+            st.initialStartupCost !== undefined &&
+            st.initialStartupCost !== null
+              ? Number(st.initialStartupCost)
+              : Number(globalSt.initialStartupCost) || 0;
+
+          if (st.startingBalance !== startingBalance || st.initialStartupCost !== initialStartupCost) {
+            profileTypesChanged = true;
+          }
+
+          return {
+            ...st,
+            startingBalance,
+            initialStartupCost,
+          };
+        });
+        if (profileTypesChanged) {
+          payload.profileTypes = patched;
+          hasChanges = true;
+        }
+      }
+
+      if (hasChanges) {
         existingOrgTemplate.payload = payload;
         existingOrgTemplate.updatedBy = clerkUserId;
         await existingOrgTemplate.save();
       }
-    }
 
-    // Backfill profileTypes financial fields (startingBalance, initialStartupCost) if missing
-    if (Array.isArray(payload.profileTypes) && payload.profileTypes.length > 0) {
-      const byKey = new Map(
-        (globalTemplate.payload?.profileTypes || []).map((st) => [st.key, st])
-      );
-      const patched = payload.profileTypes.map((st) => {
-        if (!st || !st.key) return st;
-        const globalSt = byKey.get(st.key) || {};
-        return {
-          ...st,
-          startingBalance:
-            st.startingBalance !== undefined && st.startingBalance !== null
-              ? Number(st.startingBalance)
-              : Number(globalSt.startingBalance) || 0,
-          initialStartupCost:
-            st.initialStartupCost !== undefined &&
-            st.initialStartupCost !== null
-              ? Number(st.initialStartupCost)
-              : Number(globalSt.initialStartupCost) || 0,
-        };
+      copiedTemplates.push(existingOrgTemplate);
+    } else {
+      // Create a brand new copy of this global template for the organization
+      const orgTemplate = new this({
+        organization: organizationId,
+        key: globalTemplate.key,
+        label: globalTemplate.label,
+        description: globalTemplate.description,
+        version: globalTemplate.version,
+        isActive: true,
+        sourceTemplateId: globalTemplate._id,
+        payload: globalTemplate.payload,
+        createdBy: clerkUserId,
+        updatedBy: clerkUserId,
       });
-      payload.profileTypes = patched;
-      existingOrgTemplate.payload = payload;
-      existingOrgTemplate.updatedBy = clerkUserId;
-      await existingOrgTemplate.save();
+
+      await orgTemplate.save();
+      copiedTemplates.push(orgTemplate);
     }
-    return existingOrgTemplate;
   }
 
-  const orgTemplate = new this({
-    organization: organizationId,
-    key: globalTemplate.key,
-    label: globalTemplate.label,
-    description: globalTemplate.description,
-    version: globalTemplate.version,
-    isActive: true,
-    sourceTemplateId: globalTemplate._id,
-    payload: globalTemplate.payload,
-    createdBy: clerkUserId,
-    updatedBy: clerkUserId,
-  });
-
-  await orgTemplate.save();
-  return orgTemplate;
+  // Return the first copied/synced template (or the global default one if present) for backward compatibility
+  const defaultTemplate = copiedTemplates.find(t => t.key === this.GLOBAL_DEFAULT_KEY);
+  return defaultTemplate || copiedTemplates[0];
 };
 
 // ----------------------------

@@ -11,6 +11,19 @@ export interface ClassroomPrompt {
   content: string;
 }
 
+export interface ClassroomAutomationSettings {
+  enabled: boolean;
+  timezone: string;
+  defaultReleaseDay: string;
+  defaultReleaseTime: string;
+  defaultDueDay: string;
+  defaultDueTime: string;
+  defaultCloseDelayHours: number;
+  defaultProcessDelayHours: number;
+  defaultFeedbackReleaseMode: "IMMEDIATE" | "DELAYED" | "MANUAL";
+  missingSubmissionPolicy: "FORWARD_PREVIOUS" | "USE_DEFAULTS" | "SKIP";
+}
+
 /**
  * Classroom model
  */
@@ -41,6 +54,7 @@ export interface Classroom extends BaseSchema {
    * Present when reading/updating an existing classroom.
    */
   prompts?: ClassroomPrompt[];
+  automationSettings?: ClassroomAutomationSettings;
 }
 
 /**

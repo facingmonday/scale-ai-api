@@ -14,3 +14,5 @@ export { default as profileTypes } from "./ProfileTypes";
 export { default as profileType } from "./ProfileType/ProfileType";
 export { default as ledgerEntry } from "./LedgerEntry/LedgerEntry";
 export { default as ledgerEntries } from "./LedgerEntries";
+export { default as aiCoach } from "./AICoach";
+export { default as vault } from "./Vault";

@@ -115,6 +115,26 @@ export default function Header() {
                         Challenges
                       </button>
 
+                      <button
+                        className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-ui-muted"
+                        onClick={() => {
+                          navigate("/ai-coach");
+                          setOpenMobileMenu(false);
+                        }}
+                      >
+                        {userRole === "org:admin" ? "AI Assistant" : "AI Coach"}
+                      </button>
+
+                      <button
+                        className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-ui-muted"
+                        onClick={() => {
+                          navigate("/vault");
+                          setOpenMobileMenu(false);
+                        }}
+                      >
+                        {userRole === "org:admin" ? "Classroom Vault" : "File Vault"}
+                      </button>
+
                       {userRole === "org:admin" && (
                         <button
                           className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-ui-muted"
@@ -295,6 +315,26 @@ export default function Header() {
                         }}
                       >
                         Challenges
+                      </button>
+
+                      <button
+                        className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-ui-muted"
+                        onClick={() => {
+                          navigate("/ai-coach");
+                          setOpenUserMenu(false);
+                        }}
+                      >
+                        {userRole === "org:admin" ? "AI Assistant" : "AI Coach"}
+                      </button>
+
+                      <button
+                        className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-ui-muted"
+                        onClick={() => {
+                          navigate("/vault");
+                          setOpenUserMenu(false);
+                        }}
+                      >
+                        {userRole === "org:admin" ? "Classroom Vault" : "File Vault"}
                       </button>
 
                       {userRole === "org:admin" && (

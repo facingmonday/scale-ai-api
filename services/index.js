@@ -13,6 +13,7 @@ router.use("/members", require("./members"));
 router.use("/organizations", require("./organizations"));
 router.use("/notifications", require("./notifications"));
 router.use("/openai", require("./openai")); // Remove direct access to openai
+router.use("/ai", require("./ai"));
 router.use("/licensing", require("./licensing"));
 //router.use("/workers", require("./workers"));
 

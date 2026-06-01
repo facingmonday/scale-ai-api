@@ -22,19 +22,21 @@ export interface Challenge extends BaseSchema {
   isClosed: boolean;
   publishAt?: string | Date | null;
   submissionDeadlineAt?: string | Date | null;
+  closeSubmissionsAt?: string | Date | null;
+  processAt?: string | Date | null;
+  feedbackReleaseAt?: string | Date | null;
+  feedbackReleaseMode?: "IMMEDIATE" | "DELAYED" | "MANUAL";
+  isFeedbackReleased?: boolean;
+  allowLateSubmissions?: boolean;
+  lateSubmissionPolicy?: {
+    penaltyPercentPerDay: number;
+  };
   automationMode?: "MANUAL" | "FULL";
-  automationStatus?:
-    | "UNSCHEDULED"
-    | "SCHEDULED"
-    | "PUBLISHED"
-    | "PROCESSING"
-    | "COMPLETED"
-    | "BLOCKED"
-    | "FAILED";
+  automationStatus?: string;
   automationError?: string | null;
   automationLastCheckedAt?: string | Date | null;
   automatedProcessedAt?: string | Date | null;
-  missingSubmissionPolicy?: "FORWARD_PREVIOUS" | "SKIP";
+  missingSubmissionPolicy?: "FORWARD_PREVIOUS" | "USE_DEFAULTS" | "SKIP";
   punishAbsentStudents?: "high" | "medium" | "low" | "none";
   decision?: Decision;
   ledgerEntry?: LedgerEntry;

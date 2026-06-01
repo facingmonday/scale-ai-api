@@ -67,6 +67,14 @@ router.post(
 );
 
 router.post(
+  "/admin/challenges/:challengeId/release-feedback",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.releaseFeedbackScenario
+);
+
+
+router.post(
   "/admin/challenges/:challengeId/export",
   requireAuth(),
   checkRole("org:admin"),

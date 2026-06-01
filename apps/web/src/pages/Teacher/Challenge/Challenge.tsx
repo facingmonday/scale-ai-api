@@ -54,8 +54,16 @@ const Challenge: React.FC = () => {
     imageUrl?: string;
     publishAt?: string;
     submissionDeadlineAt?: string;
+    closeSubmissionsAt?: string;
+    processAt?: string;
+    feedbackReleaseAt?: string;
+    feedbackReleaseMode: "IMMEDIATE" | "DELAYED" | "MANUAL";
+    allowLateSubmissions: boolean;
+    lateSubmissionPolicy: {
+      penaltyPercentPerDay: number;
+    };
     automationMode: "MANUAL" | "FULL";
-    missingSubmissionPolicy: "FORWARD_PREVIOUS" | "SKIP";
+    missingSubmissionPolicy: "FORWARD_PREVIOUS" | "USE_DEFAULTS" | "SKIP";
     punishAbsentStudents: "high" | "medium" | "low" | "none";
     variables: Record<string, unknown>;
   }>({
@@ -65,6 +73,14 @@ const Challenge: React.FC = () => {
       imageUrl: "",
       publishAt: "",
       submissionDeadlineAt: "",
+      closeSubmissionsAt: "",
+      processAt: "",
+      feedbackReleaseAt: "",
+      feedbackReleaseMode: "IMMEDIATE",
+      allowLateSubmissions: false,
+      lateSubmissionPolicy: {
+        penaltyPercentPerDay: 0,
+      },
       automationMode: "MANUAL",
       missingSubmissionPolicy: "SKIP",
       punishAbsentStudents: "none",
@@ -129,6 +145,14 @@ const Challenge: React.FC = () => {
             submissionDeadlineAt: toDateTimeLocalValue(
               next.submissionDeadlineAt
             ),
+            closeSubmissionsAt: toDateTimeLocalValue(next.closeSubmissionsAt),
+            processAt: toDateTimeLocalValue(next.processAt),
+            feedbackReleaseAt: toDateTimeLocalValue(next.feedbackReleaseAt),
+            feedbackReleaseMode: next.feedbackReleaseMode || "IMMEDIATE",
+            allowLateSubmissions: !!next.allowLateSubmissions,
+            lateSubmissionPolicy: {
+              penaltyPercentPerDay: next.lateSubmissionPolicy?.penaltyPercentPerDay ?? 0,
+            },
             automationMode: next.automationMode || "MANUAL",
             missingSubmissionPolicy: next.missingSubmissionPolicy || "SKIP",
             punishAbsentStudents: next.punishAbsentStudents || "none",
@@ -208,6 +232,8 @@ const Challenge: React.FC = () => {
   const watchedVariables = form.watch("variables");
   const watchedImageUrl = form.watch("imageUrl");
   const watchedDescription = form.watch("description");
+  const watchedAllowLateSubmissions = form.watch("allowLateSubmissions");
+  const watchedFeedbackReleaseMode = form.watch("feedbackReleaseMode");
 
   const onSave = form.handleSubmit(async (values) => {
     if (!id) return;
@@ -224,6 +250,14 @@ const Challenge: React.FC = () => {
         imageUrl: values.imageUrl?.trim() || undefined,
         publishAt: values.publishAt || null,
         submissionDeadlineAt: values.submissionDeadlineAt || null,
+        closeSubmissionsAt: values.closeSubmissionsAt || null,
+        processAt: values.processAt || null,
+        feedbackReleaseAt: values.feedbackReleaseAt || null,
+        feedbackReleaseMode: values.feedbackReleaseMode || "IMMEDIATE",
+        allowLateSubmissions: values.allowLateSubmissions,
+        lateSubmissionPolicy: {
+          penaltyPercentPerDay: Number(values.lateSubmissionPolicy?.penaltyPercentPerDay ?? 0),
+        },
         automationMode: values.automationMode || "MANUAL",
         missingSubmissionPolicy: values.missingSubmissionPolicy || "SKIP",
         punishAbsentStudents: values.punishAbsentStudents || "none",
@@ -265,6 +299,14 @@ const Challenge: React.FC = () => {
           imageUrl: currentValues.imageUrl?.trim() || undefined,
           publishAt: currentValues.publishAt || null,
           submissionDeadlineAt: currentValues.submissionDeadlineAt || null,
+          closeSubmissionsAt: currentValues.closeSubmissionsAt || null,
+          processAt: currentValues.processAt || null,
+          feedbackReleaseAt: currentValues.feedbackReleaseAt || null,
+          feedbackReleaseMode: currentValues.feedbackReleaseMode || "IMMEDIATE",
+          allowLateSubmissions: currentValues.allowLateSubmissions,
+          lateSubmissionPolicy: {
+            penaltyPercentPerDay: Number(currentValues.lateSubmissionPolicy?.penaltyPercentPerDay ?? 0),
+          },
           automationMode: currentValues.automationMode || "MANUAL",
           missingSubmissionPolicy:
             currentValues.missingSubmissionPolicy || "SKIP",
@@ -403,6 +445,20 @@ const Challenge: React.FC = () => {
                               submissionDeadlineAt: toDateTimeLocalValue(
                                 challenge.submissionDeadlineAt
                               ),
+                              closeSubmissionsAt: toDateTimeLocalValue(
+                                challenge.closeSubmissionsAt
+                              ),
+                              processAt: toDateTimeLocalValue(
+                                challenge.processAt
+                              ),
+                              feedbackReleaseAt: toDateTimeLocalValue(
+                                challenge.feedbackReleaseAt
+                              ),
+                              feedbackReleaseMode: challenge.feedbackReleaseMode || "IMMEDIATE",
+                              allowLateSubmissions: !!challenge.allowLateSubmissions,
+                              lateSubmissionPolicy: {
+                                penaltyPercentPerDay: challenge.lateSubmissionPolicy?.penaltyPercentPerDay ?? 0,
+                              },
                               automationMode:
                                 challenge.automationMode || "MANUAL",
                               missingSubmissionPolicy:
@@ -566,6 +622,131 @@ const Challenge: React.FC = () => {
                         />
 
                         <Controller
+                          name="closeSubmissionsAt"
+                          control={form.control}
+                          render={({ field }) => (
+                            <label className="flex flex-col gap-2">
+                              <span className="label">Submissions lock date</span>
+                              <input
+                                type="datetime-local"
+                                className="input"
+                                value={field.value || ""}
+                                onChange={(event) =>
+                                  field.onChange(event.target.value)
+                                }
+                                disabled={!isEditing}
+                              />
+                            </label>
+                          )}
+                        />
+
+                        <Controller
+                          name="processAt"
+                          control={form.control}
+                          render={({ field }) => (
+                            <label className="flex flex-col gap-2">
+                              <span className="label">Outcome calculation date</span>
+                              <input
+                                type="datetime-local"
+                                className="input"
+                                value={field.value || ""}
+                                onChange={(event) =>
+                                  field.onChange(event.target.value)
+                                }
+                                disabled={!isEditing}
+                              />
+                            </label>
+                          )}
+                        />
+
+                        <Controller
+                          name="feedbackReleaseMode"
+                          control={form.control}
+                          render={({ field }) => (
+                            <label className="flex flex-col gap-2">
+                              <span className="label">Feedback release mode</span>
+                              <select
+                                className="input"
+                                value={field.value || "IMMEDIATE"}
+                                onChange={(event) =>
+                                  field.onChange(event.target.value)
+                                }
+                                disabled={!isEditing}
+                              >
+                                <option value="IMMEDIATE">Immediate (on process)</option>
+                                <option value="DELAYED">Delayed (scheduled)</option>
+                                <option value="MANUAL">Manual release</option>
+                              </select>
+                            </label>
+                          )}
+                        />
+
+                        {watchedFeedbackReleaseMode === "DELAYED" && (
+                          <Controller
+                            name="feedbackReleaseAt"
+                            control={form.control}
+                            render={({ field }) => (
+                              <label className="flex flex-col gap-2">
+                                <span className="label">Feedback release date</span>
+                                <input
+                                  type="datetime-local"
+                                  className="input"
+                                  value={field.value || ""}
+                                  onChange={(event) =>
+                                    field.onChange(event.target.value)
+                                  }
+                                  disabled={!isEditing}
+                                />
+                              </label>
+                            )}
+                          />
+                        )}
+
+                        <Controller
+                          name="allowLateSubmissions"
+                          control={form.control}
+                          render={({ field }) => (
+                            <label className="flex flex-col gap-2">
+                              <span className="label">Allow late submissions</span>
+                              <select
+                                className="input"
+                                value={field.value ? "true" : "false"}
+                                onChange={(event) =>
+                                  field.onChange(event.target.value === "true")
+                                }
+                                disabled={!isEditing}
+                              >
+                                <option value="false">No</option>
+                                <option value="true">Yes</option>
+                              </select>
+                            </label>
+                          )}
+                        />
+
+                        {watchedAllowLateSubmissions && (
+                          <Controller
+                            name="lateSubmissionPolicy.penaltyPercentPerDay"
+                            control={form.control}
+                            render={({ field }) => (
+                              <label className="flex flex-col gap-2">
+                                <span className="label">Penalty % per day</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  className="input"
+                                  value={field.value ?? 0}
+                                  onChange={(event) =>
+                                    field.onChange(Number(event.target.value))
+                                  }
+                                  disabled={!isEditing}
+                                />
+                              </label>
+                            )}
+                          />
+                        )}
+
+                        <Controller
                           name="automationMode"
                           control={form.control}
                           render={({ field }) => (
@@ -605,6 +786,9 @@ const Challenge: React.FC = () => {
                                 <option value="SKIP">Skip week</option>
                                 <option value="FORWARD_PREVIOUS">
                                   Forward previous
+                                </option>
+                                <option value="USE_DEFAULTS">
+                                  Use defaults
                                 </option>
                               </select>
                             </label>

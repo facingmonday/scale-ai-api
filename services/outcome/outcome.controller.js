@@ -259,6 +259,13 @@ exports.getScenarioOutcome = async function (req, res) {
       return res.status(200).json({ success: true, data: null });
     }
 
+    if (req.originalUrl?.includes("/student/")) {
+      const isReleased = challenge.isFeedbackReleased || (challenge.isClosed && !challenge.feedbackReleaseMode);
+      if (!isReleased) {
+        return res.status(200).json({ success: true, data: null });
+      }
+    }
+
     const data = req.originalUrl?.includes("/student/")
       ? {
           ...outcome.toObject(),

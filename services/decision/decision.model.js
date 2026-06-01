@@ -187,6 +187,9 @@ submissionSchema.statics.createSubmission = async function (
   if (challenge.isClosed) {
     throw new Error("Challenge is closed");
   }
+  if (challenge.isLockedForStudents && (!createOptions?.generation || createOptions.generation.method === "MANUAL")) {
+    throw new Error("Submissions are closed for this challenge");
+  }
 
   // Create decision document
   const decision = new this({
@@ -276,6 +279,9 @@ submissionSchema.statics.updateSubmission = async function (
   }
   if (challenge.isClosed) {
     throw new Error("Challenge is closed");
+  }
+  if (challenge.isLockedForStudents) {
+    throw new Error("Submissions are closed for this challenge");
   }
 
   // Validate variables

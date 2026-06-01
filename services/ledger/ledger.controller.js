@@ -24,6 +24,26 @@ exports.getLedgerHistory = async function (req, res) {
 
     let historyData = history.map((entry) => entry.toObject());
 
+    // Filter out ledger entries for unreleased feedback if the requester is a student
+    const callingClerkUserId = req.clerkUser?.id;
+    const isSelf = callingClerkUserId === clerkUserId;
+    const callerMember = await Member.findOne({ clerkUserId: callingClerkUserId }).lean();
+    const isOrgAdmin = callerMember?.organizationMemberships?.some(
+      (m) =>
+        m.organizationId?.toString() === req.organization?._id?.toString() &&
+        m.role === "org:admin"
+    );
+    const isStudent = isSelf && !isOrgAdmin;
+
+    if (isStudent) {
+      historyData = historyData.filter((entry) => {
+        const chal = entry.challengeId;
+        if (!chal) return true; // Initial entry (week 0) has no challengeId, always visible
+        const isReleased = chal.isFeedbackReleased || (chal.isClosed && !chal.feedbackReleaseMode);
+        return isReleased === true;
+      });
+    }
+
     if (includeCalculationDetails) {
       const detailsPromises = history.map((entry) =>
         LedgerEntry.getCalculationDetails(entry._id)

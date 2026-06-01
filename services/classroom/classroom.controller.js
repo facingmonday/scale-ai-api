@@ -268,6 +268,7 @@ exports.updateClass = async function (req, res) {
       allowedDomains,
       accessCode,
       allowAnonymousJoin,
+      automationSettings,
     } = req.body;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
@@ -311,6 +312,9 @@ exports.updateClass = async function (req, res) {
     }
     if (allowAnonymousJoin !== undefined) {
       classroom.allowAnonymousJoin = !!allowAnonymousJoin;
+    }
+    if (automationSettings !== undefined) {
+      classroom.automationSettings = automationSettings;
     }
 
     // Update classroom prompts (optional)

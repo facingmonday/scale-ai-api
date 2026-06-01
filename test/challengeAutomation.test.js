@@ -46,3 +46,31 @@ test("challenge outcome drafts preserve hidden notes and skip policy", async () 
   assert.equal(outcome.hiddenNotes, "Instructor-only automation context");
   assert.equal(outcome.autoGenerateSubmissionsOnOutcome, "SKIP");
 });
+
+test("new challenge automation fields are validated successfully", async () => {
+  const challenge = new Challenge({
+    classroomId: "507f1f77bcf86cd799439011",
+    title: "Week 4",
+    publishAt: new Date(),
+    submissionDeadlineAt: new Date(),
+    closeSubmissionsAt: new Date(),
+    processAt: new Date(),
+    feedbackReleaseAt: new Date(),
+    feedbackReleaseMode: "DELAYED",
+    isFeedbackReleased: false,
+    isLockedForStudents: true,
+    allowLateSubmissions: true,
+    lateSubmissionPolicy: { penaltyPercentPerDay: 5 },
+    organization: "507f1f77bcf86cd799439012",
+    createdBy: "test",
+    updatedBy: "test",
+  });
+
+  await challenge.validate();
+
+  assert.equal(challenge.feedbackReleaseMode, "DELAYED");
+  assert.equal(challenge.isLockedForStudents, true);
+  assert.equal(challenge.allowLateSubmissions, true);
+  assert.equal(challenge.lateSubmissionPolicy.penaltyPercentPerDay, 5);
+});
+

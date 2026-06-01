@@ -171,12 +171,32 @@ ledgerEntrySchema.index({ decisionId: 1 });
 ledgerEntrySchema.post("save", async function (doc) {
   try {
     if (doc._wasNew && doc.challengeId) {
+      const Challenge = require("../challenge/challenge.model");
+      const challenge = await Challenge.findById(doc.challengeId).select("feedbackReleaseMode").lean();
+      if (challenge && (challenge.feedbackReleaseMode === "DELAYED" || challenge.feedbackReleaseMode === "MANUAL")) {
+        // Skip notification now; it will be sent in bulk when feedback is released
+        return;
+      }
       await createLedgerCreatedNotification(doc);
     }
   } catch (error) {
     console.error("Error creating ledger notification:", error);
   }
 });
+
+/**
+ * Send results notifications for all ledger entries of a challenge
+ */
+ledgerEntrySchema.statics.sendResultsNotifications = async function (challengeId) {
+  const entries = await this.find({ challengeId });
+  for (const entry of entries) {
+    try {
+      await createLedgerCreatedNotification(entry);
+    } catch (err) {
+      console.error(`Failed to send results notification for ledger ${entry._id}:`, err);
+    }
+  }
+};
 
 async function createLedgerCreatedNotification(ledgerEntry) {
   const Notification = require("../notifications/notifications.model");
@@ -925,7 +945,7 @@ ledgerEntrySchema.statics.getLedgerHistory = async function (
     .sort({ createdDate: 1 })
     .populate({
       path: "challengeId",
-      select: "title",
+      select: "title isClosed isFeedbackReleased feedbackReleaseMode feedbackReleaseAt",
       options: { strictPopulate: false },
     });
 };

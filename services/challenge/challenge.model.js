@@ -35,6 +35,41 @@ const scenarioSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  closeSubmissionsAt: {
+    type: Date,
+    default: null,
+  },
+  processAt: {
+    type: Date,
+    default: null,
+  },
+  feedbackReleaseAt: {
+    type: Date,
+    default: null,
+  },
+  feedbackReleaseMode: {
+    type: String,
+    enum: ["IMMEDIATE", "DELAYED", "MANUAL"],
+    default: "IMMEDIATE",
+  },
+  isFeedbackReleased: {
+    type: Boolean,
+    default: false,
+  },
+  isLockedForStudents: {
+    type: Boolean,
+    default: false,
+  },
+  allowLateSubmissions: {
+    type: Boolean,
+    default: false,
+  },
+  lateSubmissionPolicy: {
+    penaltyPercentPerDay: {
+      type: Number,
+      default: 0,
+    },
+  },
   automationMode: {
     type: String,
     enum: ["MANUAL", "FULL"],
@@ -50,6 +85,12 @@ const scenarioSchema = new mongoose.Schema({
       "COMPLETED",
       "BLOCKED",
       "FAILED",
+      "DRAFT",
+      "acceptingSubmissions",
+      "submissionsClosed",
+      "queuedForProcessing",
+      "processed",
+      "feedbackReleased",
     ],
     default: "UNSCHEDULED",
   },
@@ -67,7 +108,7 @@ const scenarioSchema = new mongoose.Schema({
   },
   missingSubmissionPolicy: {
     type: String,
-    enum: ["FORWARD_PREVIOUS", "SKIP"],
+    enum: ["FORWARD_PREVIOUS", "USE_DEFAULTS", "SKIP"],
     default: "SKIP",
   },
   punishAbsentStudents: {
@@ -163,6 +204,12 @@ scenarioSchema.statics.createScenario = async function (
     imageUrl,
     publishAt,
     submissionDeadlineAt,
+    closeSubmissionsAt,
+    processAt,
+    feedbackReleaseAt,
+    feedbackReleaseMode,
+    allowLateSubmissions,
+    lateSubmissionPolicy,
     automationMode,
     automationStatus,
     missingSubmissionPolicy,
@@ -173,6 +220,12 @@ scenarioSchema.statics.createScenario = async function (
   const scheduleFields = {
     publishAt: publishAt || null,
     submissionDeadlineAt: submissionDeadlineAt || null,
+    closeSubmissionsAt: closeSubmissionsAt || null,
+    processAt: processAt || null,
+    feedbackReleaseAt: feedbackReleaseAt || null,
+    feedbackReleaseMode: feedbackReleaseMode || "IMMEDIATE",
+    allowLateSubmissions: allowLateSubmissions || false,
+    lateSubmissionPolicy: lateSubmissionPolicy || { penaltyPercentPerDay: 0 },
     automationMode: automationMode || "MANUAL",
     automationStatus:
       automationStatus ||
@@ -425,7 +478,7 @@ scenarioSchema.methods.publish = async function (clerkUserId) {
 
   this.isPublished = true;
   if (this.automationMode === "FULL") {
-    this.automationStatus = "PUBLISHED";
+    this.automationStatus = "acceptingSubmissions";
     this.automationError = null;
   }
   this.updatedBy = clerkUserId;
@@ -458,9 +511,14 @@ scenarioSchema.methods.unpublish = async function (clerkUserId) {
 scenarioSchema.methods.close = async function (clerkUserId) {
   this.isClosed = true;
   if (this.automationMode === "FULL") {
-    this.automationStatus = "COMPLETED";
     this.automatedProcessedAt = this.automatedProcessedAt || new Date();
     this.automationError = null;
+    if (this.feedbackReleaseMode === "IMMEDIATE") {
+      this.isFeedbackReleased = true;
+      this.automationStatus = "feedbackReleased";
+    } else {
+      this.automationStatus = "processed";
+    }
   }
   this.updatedBy = clerkUserId;
   await this.save();
@@ -474,8 +532,10 @@ scenarioSchema.methods.close = async function (clerkUserId) {
  */
 scenarioSchema.methods.open = async function (clerkUserId) {
   this.isClosed = false;
+  this.isLockedForStudents = false;
+  this.isFeedbackReleased = false;
   if (this.automationMode === "FULL") {
-    this.automationStatus = this.isPublished ? "PUBLISHED" : "SCHEDULED";
+    this.automationStatus = this.isPublished ? "acceptingSubmissions" : "SCHEDULED";
     this.automatedProcessedAt = null;
     this.automationError = null;
   }

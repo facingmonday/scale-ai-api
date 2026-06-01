@@ -186,8 +186,7 @@ async function main() {
   // This is safe to run on every startup (idempotent).
   try {
     const ClassroomTemplate = require("../../services/classroomTemplate/classroomTemplate.model");
-    await ClassroomTemplate.ensureGlobalDefaultTemplate();
-    await ClassroomTemplate.ensureGlobalMarketing101Template();
+    await ClassroomTemplate.ensureAllGlobalTemplates();
 
     // Ensure every organization has the default template copied locally.
     // This is safe to run on every startup (idempotent).

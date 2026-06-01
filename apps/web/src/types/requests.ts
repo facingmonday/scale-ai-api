@@ -50,8 +50,16 @@ export interface CreateScenarioRequest {
   variables?: Record<string, unknown>;
   publishAt?: string | null;
   submissionDeadlineAt?: string | null;
+  closeSubmissionsAt?: string | null;
+  processAt?: string | null;
+  feedbackReleaseAt?: string | null;
+  feedbackReleaseMode?: "IMMEDIATE" | "DELAYED" | "MANUAL";
+  allowLateSubmissions?: boolean;
+  lateSubmissionPolicy?: {
+    penaltyPercentPerDay: number;
+  };
   automationMode?: "MANUAL" | "FULL";
-  missingSubmissionPolicy?: "FORWARD_PREVIOUS" | "SKIP";
+  missingSubmissionPolicy?: "FORWARD_PREVIOUS" | "USE_DEFAULTS" | "SKIP";
   punishAbsentStudents?: "high" | "medium" | "low" | "none";
 }
 
