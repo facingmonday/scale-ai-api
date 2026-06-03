@@ -4,6 +4,12 @@ const VariableDefinition = require("../variableDefinition/variableDefinition.mod
 const Challenge = require("../challenge/challenge.model");
 const VariableValue = require("../variableDefinition/variableValue.model");
 const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
+const mapWithConcurrency = require("./lib/mapWithConcurrency");
+const coerceValue = require("./lib/coerceValue");
+const clampNumber = require("./lib/clampNumber");
+const buildJsonSchemaFromDefinitions = require("./lib/buildJsonSchemaFromDefinitions");
+const fillMissingWithDefaults = require("./lib/fillMissingWithDefaults");
+const normalizeSelectAllowedValues = require("./lib/normalizeSelectAllowedValues");
 
 const submissionSchema = new mongoose.Schema({
   classroomId: {
@@ -582,6 +588,755 @@ submissionSchema.statics.getSubmissionsByUser = async function (
       submissionObj.processingStatus || "pending";
     return submissionObj;
   });
+};
+
+/**
+ * Auto-create a Decision for every enrolled student in the class for a published challenge.
+ * Uses one LLM call per profileType, then reuses the generated values for all students of that type.
+ */
+submissionSchema.statics.autoCreateDecisionsForChallenge = async function ({
+  challengeId,
+  organizationId,
+  clerkUserId,
+  options = {},
+  punishAbsentStudents,
+}) {
+  const Enrollment = require("../enrollment/enrollment.model");
+  const Profile = require("../profile/profile.model");
+  const Member = require("../members/member.model");
+  const ProfileType = require("../profileType/profileType.model");
+
+  const {
+    model = process.env.AUTO_SUBMISSION_MODEL || "gpt-4o-mini",
+    concurrency = 10,
+    includeExisting = false,
+  } = options;
+
+  if (!process.env.OPENAI_API_KEY) {
+    return {
+      skipped: true,
+      reason: "OPENAI_API_KEY not set",
+      created: 0,
+      existing: 0,
+      missingStore: 0,
+      errors: [],
+    };
+  }
+
+  const challenge = await Challenge.findOne({
+    _id: challengeId,
+    organization: organizationId,
+  });
+  if (!challenge) {
+    throw new Error("Challenge not found");
+  }
+  if (!challenge.isPublished || challenge.isClosed) {
+    return {
+      skipped: true,
+      reason: "Challenge not published or already closed",
+      created: 0,
+      existing: 0,
+      missingStore: 0,
+      errors: [],
+    };
+  }
+
+  const classroomId = challenge.classroomId;
+  const hydratedScenario = await Challenge.getScenarioById(
+    challengeId,
+    organizationId
+  );
+
+  const enrollments = await Enrollment.findByClassAndRole(
+    classroomId,
+    "member"
+  );
+  if (!enrollments || enrollments.length === 0) {
+    return {
+      skipped: false,
+      created: 0,
+      existing: 0,
+      missingStore: 0,
+      errors: [],
+    };
+  }
+
+  const studentIds = enrollments.map((e) => e.userId);
+  const members = await Member.find({ _id: { $in: studentIds } })
+    .select("_id clerkUserId")
+    .lean();
+  const clerkByMemberId = new Map(
+    members.map((m) => [m._id.toString(), m.clerkUserId])
+  );
+
+  const profiles = await Profile.find({ classroomId, userId: { $in: studentIds } })
+    .select("userId profileType")
+    .lean();
+  const storeByUserId = new Map(profiles.map((s) => [s.userId.toString(), s]));
+
+  const studentsByStoreTypeId = new Map();
+  let missingStore = 0;
+
+  for (const enrollment of enrollments) {
+    const uid = enrollment.userId.toString();
+    const profile = storeByUserId.get(uid);
+    if (!profile) {
+      missingStore += 1;
+      continue;
+    }
+    const storeTypeId =
+      profile.profileType?.toString?.() || String(profile.profileType);
+    if (!studentsByStoreTypeId.has(storeTypeId))
+      studentsByStoreTypeId.set(storeTypeId, []);
+    studentsByStoreTypeId.get(storeTypeId).push({
+      userId: enrollment.userId,
+      clerkUserId: clerkByMemberId.get(uid) || clerkUserId,
+    });
+  }
+
+  let absentPunishmentLevel = null;
+
+  const generatedByStoreType = new Map();
+  const storeTypeIds = Array.from(studentsByStoreTypeId.keys());
+  const storeTypeDocs = await ProfileType.find({
+    _id: { $in: storeTypeIds },
+    organization: organizationId,
+    isActive: true,
+  });
+  await Promise.all(storeTypeDocs.map((st) => st._loadVariables()));
+  const storeTypeById = new Map(
+    storeTypeDocs.map((st) => [st._id.toString(), st])
+  );
+
+  for (const [storeTypeId] of studentsByStoreTypeId) {
+    const storeTypeDoc = storeTypeById.get(storeTypeId);
+    if (!storeTypeDoc) {
+      throw new Error(`ProfileType not found or inactive: ${storeTypeId}`);
+    }
+    const vars = await this.generateSubmissionVariablesForStoreType({
+      classroomId,
+      storeTypeKey: storeTypeDoc.key,
+      storeTypeVariables: storeTypeDoc.variables || {},
+      challenge: hydratedScenario,
+      organizationId,
+      clerkUserId,
+      model,
+      absentPunishmentLevel,
+    });
+    generatedByStoreType.set(storeTypeId, vars);
+  }
+
+  const tasks = [];
+  for (const [storeTypeId, students] of studentsByStoreTypeId) {
+    for (const s of students) tasks.push({ storeTypeId, ...s });
+  }
+
+  let created = 0;
+  let existing = 0;
+  const errors = [];
+
+  await mapWithConcurrency(tasks, concurrency, async (task) => {
+    const vars = generatedByStoreType.get(task.storeTypeId);
+    try {
+      await this.createSubmission(
+        classroomId,
+        challengeId,
+        task.userId,
+        vars,
+        organizationId,
+        task.clerkUserId,
+        {
+          generation: {
+            method: "AI",
+            meta: {
+              model,
+              absentPunishmentLevel,
+              note: "Auto-created on challenge outcome (USE_AI)",
+            },
+          },
+        }
+      );
+      created += 1;
+    } catch (e) {
+      if (String(e?.message || "").includes("Decision already exists")) {
+        existing += 1;
+        return;
+      }
+      if (includeExisting) {
+        existing += 1;
+        return;
+      }
+      errors.push({
+        userId: task.userId?.toString?.() || String(task.userId),
+        storeTypeId: task.storeTypeId,
+        error: e?.message || String(e),
+      });
+    }
+  });
+
+  return {
+    skipped: false,
+    created,
+    existing,
+    missingStore,
+    errors,
+    storeTypeIds: Array.from(studentsByStoreTypeId.keys()),
+  };
+};
+
+/**
+ * Forward previous decisions for missing students in a challenge.
+ */
+submissionSchema.statics.forwardPreviousDecisionsForChallenge = async function ({
+  challengeId,
+  organizationId,
+  clerkUserId,
+  punishAbsentStudents,
+}) {
+  const Profile = require("../profile/profile.model");
+  const ProfileType = require("../profileType/profileType.model");
+
+  const challenge = await Challenge.findOne({
+    _id: challengeId,
+    organization: organizationId,
+  });
+  if (!challenge) {
+    throw new Error("Challenge not found");
+  }
+
+  if (!challenge.isPublished || challenge.isClosed) {
+    return {
+      skipped: true,
+      reason: "Challenge not published or already closed",
+      created: 0,
+      existing: 0,
+      missingPrevious: 0,
+      errors: [],
+    };
+  }
+
+  const classroomId = challenge.classroomId;
+
+  const missingUserIds = await this.getMissingSubmissions(
+    classroomId,
+    challengeId
+  );
+
+  if (missingUserIds.length === 0) {
+    return {
+      skipped: false,
+      created: 0,
+      existing: 0,
+      missingPrevious: 0,
+      errors: [],
+    };
+  }
+
+  const allScenarios = await Challenge.find({ classroomId })
+    .sort({ week: 1 })
+    .lean();
+
+  const currentScenarioIndex = allScenarios.findIndex(
+    (s) => s._id.toString() === challengeId.toString()
+  );
+
+  if (currentScenarioIndex === -1) {
+    throw new Error("Current challenge not found in classroom challenges");
+  }
+
+  const previousScenarios = allScenarios.slice(0, currentScenarioIndex);
+
+  let created = 0;
+  let existing = 0;
+  let missingPrevious = 0;
+  const errors = [];
+
+  for (const userId of missingUserIds) {
+    try {
+      const existingSubmission = await this.findOne({
+        classroomId,
+        challengeId,
+        userId,
+      });
+
+      if (existingSubmission) {
+        existing += 1;
+        continue;
+      }
+
+      let previousSubmission = null;
+
+      for (let i = previousScenarios.length - 1; i >= 0; i--) {
+        const prevScenario = previousScenarios[i];
+        const decision = await this.getSubmission(
+          classroomId,
+          prevScenario._id,
+          userId
+        );
+
+        if (decision && decision.variables) {
+          previousSubmission = decision;
+          break;
+        }
+      }
+
+      if (!previousSubmission || !previousSubmission.variables) {
+        let absentPunishmentLevel = null;
+
+        if (punishAbsentStudents) {
+          const normalized =
+            typeof punishAbsentStudents === "string"
+              ? punishAbsentStudents.toLowerCase()
+              : String(punishAbsentStudents).toLowerCase();
+          if (
+            normalized !== "none" &&
+            normalized !== null &&
+            normalized !== undefined
+          ) {
+            absentPunishmentLevel = normalized;
+          }
+        }
+
+        try {
+          const profile = await Profile.findOne({
+            classroomId,
+            userId,
+          })
+            .select("profileType")
+            .lean();
+
+          if (!profile) {
+            missingPrevious += 1;
+            errors.push({
+              userId: userId.toString(),
+              error:
+                "No previous decision found and no profile found for AI fallback",
+            });
+            continue;
+          }
+
+          const storeTypeDoc = await ProfileType.findOne({
+            _id: profile.profileType,
+            organization: organizationId,
+            isActive: true,
+          });
+          if (!storeTypeDoc) {
+            missingPrevious += 1;
+            errors.push({
+              userId: userId.toString(),
+              error:
+                "No previous decision found and no profileType found for AI fallback",
+            });
+            continue;
+          }
+          await storeTypeDoc._loadVariables();
+
+          const hydratedScenario = await Challenge.getScenarioById(
+            challengeId,
+            organizationId
+          );
+
+          const aiVars = await this.generateSubmissionVariablesForStoreType({
+            classroomId,
+            storeTypeKey: storeTypeDoc.key,
+            storeTypeVariables: storeTypeDoc.variables || {},
+            challenge: hydratedScenario,
+            organizationId,
+            clerkUserId,
+            model: process.env.AUTO_SUBMISSION_MODEL || "gpt-4o-mini",
+            absentPunishmentLevel,
+          });
+
+          await this.createSubmission(
+            classroomId,
+            challengeId,
+            userId,
+            aiVars,
+            organizationId,
+            clerkUserId,
+            {
+              generation: {
+                method: "AI_FALLBACK",
+                meta: {
+                  model: process.env.AUTO_SUBMISSION_MODEL || "gpt-4o-mini",
+                  absentPunishmentLevel,
+                  reason: "NO_PREVIOUS_SUBMISSION",
+                  note: "Forward-previous mode fell back to AI",
+                },
+              },
+            }
+          );
+
+          created += 1;
+          console.log(
+            `Used AI fallback for user ${userId} (no previous decision)${
+              absentPunishmentLevel
+                ? ` with ${absentPunishmentLevel} absence punishment`
+                : ""
+            }`
+          );
+        } catch (fallbackError) {
+          missingPrevious += 1;
+          errors.push({
+            userId: userId.toString(),
+            error: `No previous decision found and AI fallback failed: ${
+              fallbackError.message || String(fallbackError)
+            }`,
+          });
+        }
+        continue;
+      }
+
+      const previousVars = previousSubmission.variables;
+      const varsObject = {};
+
+      if (Array.isArray(previousVars)) {
+        for (const varDef of previousVars) {
+          if (varDef.key && varDef.value !== undefined) {
+            varsObject[varDef.key] = varDef.value;
+          }
+        }
+      } else if (typeof previousVars === "object" && previousVars !== null) {
+        Object.assign(varsObject, previousVars);
+      }
+
+      const varsWithDefaults = await VariableDefinition.applyDefaults(
+        classroomId,
+        "decision",
+        varsObject
+      );
+
+      const validation = await VariableDefinition.validateValues(
+        classroomId,
+        "decision",
+        varsWithDefaults
+      );
+
+      if (!validation.isValid) {
+        errors.push({
+          userId: userId.toString(),
+          error: `Validation failed: ${validation.errors.map((e) => e.message).join(", ")}`,
+        });
+        continue;
+      }
+
+      await this.createSubmission(
+        classroomId,
+        challengeId,
+        userId,
+        varsWithDefaults,
+        organizationId,
+        clerkUserId,
+        {
+          generation: {
+            method: "FORWARDED_PREVIOUS",
+            forwardedFromScenarioId: previousSubmission.challengeId || null,
+            forwardedFromSubmissionId: previousSubmission._id || null,
+            meta: {
+              note: "Auto-created on challenge outcome (FORWARD_PREVIOUS)",
+            },
+          },
+        }
+      );
+
+      created += 1;
+    } catch (error) {
+      if (error.message && error.message.includes("already exists")) {
+        existing += 1;
+      } else {
+        errors.push({
+          userId: userId.toString(),
+          error: error.message || String(error),
+        });
+      }
+    }
+  }
+
+  return {
+    skipped: false,
+    created,
+    existing,
+    missingPrevious,
+    errors,
+  };
+};
+
+/**
+ * Create decisions for missing students using variable definition defaults.
+ */
+submissionSchema.statics.useDefaultsForDecisions = async function ({
+  challengeId,
+  organizationId,
+  clerkUserId,
+}) {
+  const Profile = require("../profile/profile.model");
+
+  const challenge = await Challenge.findOne({
+    _id: challengeId,
+    organization: organizationId,
+  });
+  if (!challenge) {
+    throw new Error("Challenge not found");
+  }
+
+  if (!challenge.isPublished || challenge.isClosed) {
+    return {
+      skipped: true,
+      reason: "Challenge not published or already closed",
+      created: 0,
+      existing: 0,
+      missingStore: 0,
+      errors: [],
+    };
+  }
+
+  const classroomId = challenge.classroomId;
+
+  const missingUserIds = await this.getMissingSubmissions(
+    classroomId,
+    challengeId
+  );
+
+  if (missingUserIds.length === 0) {
+    return {
+      skipped: false,
+      created: 0,
+      existing: 0,
+      missingStore: 0,
+      errors: [],
+    };
+  }
+
+  const profiles = await Profile.find({
+    classroomId,
+    userId: { $in: missingUserIds },
+  })
+    .select("userId")
+    .lean();
+
+  const storeByUserId = new Map(profiles.map((s) => [s.userId.toString(), s]));
+
+  let created = 0;
+  let existing = 0;
+  let missingStore = 0;
+  const errors = [];
+
+  for (const userId of missingUserIds) {
+    try {
+      const existingSubmission = await this.findOne({
+        classroomId,
+        challengeId,
+        userId,
+      });
+
+      if (existingSubmission) {
+        existing += 1;
+        continue;
+      }
+
+      const userIdStr = userId.toString();
+      if (!storeByUserId.has(userIdStr)) {
+        missingStore += 1;
+        errors.push({
+          userId: userIdStr,
+          error: "No profile found for user",
+        });
+        continue;
+      }
+
+      const varsWithDefaults = await VariableDefinition.applyDefaults(
+        classroomId,
+        "decision",
+        {}
+      );
+
+      const validation = await VariableDefinition.validateValues(
+        classroomId,
+        "decision",
+        varsWithDefaults
+      );
+
+      if (!validation.isValid) {
+        errors.push({
+          userId: userIdStr,
+          error: `Validation failed: ${validation.errors.map((e) => e.message).join(", ")}`,
+        });
+        continue;
+      }
+
+      await this.createSubmission(
+        classroomId,
+        challengeId,
+        userId,
+        varsWithDefaults,
+        organizationId,
+        clerkUserId,
+        {
+          generation: {
+            method: "DEFAULTS",
+            meta: {
+              note: "Auto-created on challenge outcome (USE_DEFAULTS)",
+            },
+          },
+        }
+      );
+
+      created += 1;
+    } catch (error) {
+      console.error("Error creating decision with defaults:", error);
+      if (error.message && error.message.includes("already exists")) {
+        existing += 1;
+      } else {
+        errors.push({
+          userId: userId.toString(),
+          error: error.message || String(error),
+        });
+      }
+    }
+  }
+
+  return {
+    skipped: false,
+    created,
+    existing,
+    missingStore,
+    errors,
+  };
+};
+
+/**
+ * Generate a fully-filled decision variables object for a given profileType + challenge.
+ * Uses a cheap OpenAI model with structured JSON schema output.
+ */
+submissionSchema.statics.generateSubmissionVariablesForStoreType = async function ({
+  classroomId,
+  storeTypeKey,
+  storeTypeVariables,
+  challenge,
+  organizationId,
+  clerkUserId,
+  model,
+  absentPunishmentLevel,
+}) {
+  const openai = require("../../lib/openai");
+  const VariableDefinition = require("../variableDefinition/variableDefinition.model");
+
+  const definitions = await VariableDefinition.getDefinitionsForScope(
+    classroomId,
+    "decision"
+  );
+
+  if (!definitions || definitions.length === 0) {
+    throw new Error("No decision variable definitions found for classroom");
+  }
+
+  const jsonSchema = buildJsonSchemaFromDefinitions(definitions);
+
+  const promptPayload = {
+    profileType: storeTypeKey,
+    storeTypeVariables: storeTypeVariables
+      ? {
+          startingBalance: storeTypeVariables.startingBalance,
+          startingInventory: storeTypeVariables.startingInventory,
+          maxDailyCapacity: storeTypeVariables.maxDailyCapacity,
+          weeklyRent: storeTypeVariables.weeklyRent,
+          fulfillmentModel: storeTypeVariables.fulfillmentModel,
+        }
+      : null,
+    challenge: challenge
+      ? {
+          title: challenge.title,
+          week: challenge.week,
+          variables: challenge.variables || {},
+        }
+      : null,
+    submissionVariablesToFill: definitions.map((d) => ({
+      key: d.key,
+      dataType: d.dataType,
+      min: d.min,
+      max: d.max,
+      options:
+        d.dataType === "select" ? normalizeSelectAllowedValues(d) : undefined,
+      description: d.description || d.label || "",
+    })),
+    ...(absentPunishmentLevel && {
+      studentWasAbsent: true,
+      absencePunishmentLevel: absentPunishmentLevel,
+    }),
+  };
+
+  let systemMessages = [
+    "You generate realistic, conservative weekly student decisions (decision variables) for a SCALE.ai learning simulation.",
+    "Return ONLY JSON that matches the provided schema.",
+    "Values must be plausible and within min/max constraints and enums.",
+  ];
+
+  if (absentPunishmentLevel) {
+    const punishmentGuidance = {
+      high: "The student was absent; simulate severe mismanagement. Generate decisions that reliably lead to large stockouts AND/or large waste/spoilage, plus service failures. Examples: staffing at/near the minimum, production plan badly mismatched to expected demand (either too low causing stockouts or too high causing spoilage), reorders far too low for key ingredients, late/forgotten replenishment, poor inventory planning choices. Make the overall set of decisions clearly worse than a typical week.",
+      medium:
+        "The student was absent; simulate noticeable mismanagement. Generate decisions that tend to cause below-average outcomes: slightly insufficient staffing, reorders that are too low or poorly timed, and a production plan that modestly misses demand. Include at least one clear operational mistake (e.g., under-ordering, not scaling staffing with demand, overproducing perishables).",
+      low: "The student was absent; simulate mild mismanagement. Generate decisions that are still plausible but slightly worse than average: a bit understaffed, slightly conservative/low reorders, and a production plan that leaves some demand unmet or causes some waste.",
+    };
+
+    systemMessages.push(
+      `IMPORTANT: The student was ABSENT for this challenge. ${punishmentGuidance[absentPunishmentLevel] || punishmentGuidance.medium}`
+    );
+  }
+
+  const system = systemMessages.join("\n");
+
+  const response = await openai.chat.completions.create({
+    model: model || process.env.AUTO_SUBMISSION_MODEL || "gpt-4o-mini",
+    temperature: 0.2,
+    max_tokens: 600,
+    messages: [
+      { role: "system", content: system },
+      {
+        role: "user",
+        content:
+          "Generate decision variable values for ONE student based on the following context:\n" +
+          JSON.stringify(promptPayload, null, 2),
+      },
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "submission_variables",
+        schema: jsonSchema,
+      },
+    },
+  });
+
+  const content = response.choices?.[0]?.message?.content || "{}";
+  let parsed;
+  try {
+    parsed = JSON.parse(content);
+  } catch (e) {
+    throw new Error(`Failed to parse OpenAI decision JSON: ${e.message}`);
+  }
+
+  const coerced = {};
+  for (const def of definitions) {
+    coerced[def.key] = clampNumber(def, coerceValue(def, parsed[def.key]));
+  }
+
+  const filled = fillMissingWithDefaults(definitions, coerced);
+
+  const validation = await VariableDefinition.validateValues(
+    classroomId,
+    "decision",
+    filled
+  );
+  if (!validation.isValid) {
+    throw new Error(
+      `Auto-decision generation failed validation: ${validation.errors
+        .map((e) => e.message)
+        .join(", ")}`
+    );
+  }
+
+  return filled;
 };
 
 // Instance methods

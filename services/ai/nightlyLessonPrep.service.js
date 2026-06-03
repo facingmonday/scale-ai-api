@@ -1,4 +1,4 @@
-const { LlmAgent, Runner } = require("@google/adk");
+const { LlmAgent, InMemoryRunner, stringifyContent } = require("@google/adk");
 const Classroom = require("../classroom/classroom.model");
 const Challenge = require("../challenge/challenge.model");
 const LedgerEntry = require("../ledger/ledger.model");
@@ -103,13 +103,25 @@ async function runNightlyLessonPrep(options = {}) {
 
       const prompt = `Here is the simulation data for the closed round:\n${JSON.stringify(inputPayload, null, 2)}`;
 
-      const runner = new Runner();
-      const response = await runner.run({
+      const runner = new InMemoryRunner({
         agent: lessonPrepAgent,
-        prompt
+        appName: "NightlyLessonPrepRunner",
       });
 
-      const responseText = await response.text();
+      const eventStream = runner.runEphemeral({
+        userId: "system",
+        newMessage: {
+          role: "user",
+          parts: [{ text: prompt }]
+        }
+      });
+
+      let responseText = "";
+      for await (const event of eventStream) {
+        if (event.author === "model") {
+          responseText += stringifyContent(event);
+        }
+      }
 
       // Clean up response text in case it wrapped it in markdown code blocks
       let cleanJsonText = responseText.trim();

@@ -12,9 +12,7 @@ const {
 const {
   cancelInProgressBatchForScenario,
 } = require("../job/simulationBatch.service");
-const {
-  autoCreateDecisionsForChallenge,
-} = require("../decision/autoCreateDecisionsForChallenge");
+
 
 const SCHEDULE_FIELDS = [
   "publishAt",
@@ -225,6 +223,17 @@ exports.createScenario = async function (req, res) {
       clerkUserId
     );
 
+    // Trigger challenge created tasks asynchronously (do not block the response)
+    const AutomationTaskService = require("../ai/automationTask.service");
+    AutomationTaskService.trigger("AFTER_CHALLENGE_CREATED", {
+      classroomId: challenge.classroomId,
+      challengeId: challenge._id,
+      organizationId,
+      clerkUserId,
+    }).catch((err) => {
+      console.error("Error triggering AFTER_CHALLENGE_CREATED tasks:", err);
+    });
+
     res.status(201).json({
       success: true,
       message: "Challenge created successfully",
@@ -422,7 +431,7 @@ exports.publishScenario = async function (req, res) {
     ).toLowerCase();
     if (autoEnabled === "true") {
       try {
-        autoSubmissionResult = await autoCreateDecisionsForChallenge({
+        autoSubmissionResult = await Decision.autoCreateDecisionsForChallenge({
           challengeId: challenge._id,
           organizationId,
           clerkUserId,

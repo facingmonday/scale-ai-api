@@ -13,4 +13,11 @@ router.post("/chat", requireAuth(), requireActiveClassroom(), controller.chat);
 router.get("/chat/history", requireAuth(), requireActiveClassroom(), controller.getChatHistory);
 router.get("/reports", requireAuth(), requireActiveClassroom(), controller.getClassroomReports);
 
+// Automation Task Management Endpoints
+router.get("/automation-tasks", requireAuth(), requireActiveClassroom(), controller.getAutomationTasks);
+router.post("/automation-tasks", requireAuth(), requireActiveClassroom(), controller.createAutomationTask);
+router.put("/automation-tasks/:id", requireAuth(), requireActiveClassroom(), controller.updateAutomationTask);
+router.delete("/automation-tasks/:id", requireAuth(), requireActiveClassroom(), controller.deleteAutomationTask);
+router.get("/automation-tasks/runs", requireAuth(), requireActiveClassroom(), controller.getAutomationTaskRuns);
+
 module.exports = router;

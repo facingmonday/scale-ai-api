@@ -41,6 +41,7 @@ class SimulationWorker {
 
       await job.markCompleted();
       await this.updateSubmissionStatus(job, "completed");
+      await this.checkAndTriggerChallengeClosed(job);
 
       return {
         success: true,
@@ -54,6 +55,7 @@ class SimulationWorker {
         await this.updateSubmissionStatus(job, "failed").catch((err) => {
           console.error(`Error updating decision status:`, err);
         });
+        await this.checkAndTriggerChallengeClosed(job);
       } else {
         job.status = "pending";
         job.error = error.message;
@@ -325,6 +327,31 @@ class SimulationWorker {
       }
     }
     return results;
+  }
+
+  static async checkAndTriggerChallengeClosed(job) {
+    try {
+      const pendingOrRunningCount = await SimulationJob.countDocuments({
+        challengeId: job.challengeId,
+        status: { $in: ["pending", "running"] },
+      });
+
+      if (pendingOrRunningCount === 0) {
+        console.log(`All simulation jobs completed/failed for challenge ${job.challengeId}. Triggering AFTER_CHALLENGE_CLOSED.`);
+        const AutomationTaskService = require("../../ai/automationTask.service");
+        const challenge = await Challenge.findById(job.challengeId).lean();
+        if (challenge) {
+          await AutomationTaskService.trigger("AFTER_CHALLENGE_CLOSED", {
+            classroomId: challenge.classroomId,
+            challengeId: challenge._id,
+            organizationId: challenge.organization,
+            clerkUserId: challenge.updatedBy || challenge.createdBy || "system",
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Error triggering AFTER_CHALLENGE_CLOSED tasks in direct mode:", err);
+    }
   }
 }
 

@@ -16,7 +16,7 @@ const classroomReportSchema = new mongoose.Schema({
   },
   reportType: {
     type: String,
-    enum: ["NIGHTLY_LESSON_PREP"],
+    enum: ["NIGHTLY_LESSON_PREP", "CUSTOM_TASK_OUTPUT"],
     default: "NIGHTLY_LESSON_PREP",
   },
   payload: {

@@ -1,13 +1,7 @@
 const {
-  analyzeImage,
   completion,
-  generateImage,
-  transcribeAudio,
 } = require("./lib");
-const { deleteFile } = require("../../lib/spaces");
 const openai = require("../../lib/openai");
-const axios = require("axios");
-const sharp = require("sharp");
 const { v4: uuidv4 } = require("uuid");
 const AWS = require("aws-sdk");
 
@@ -89,69 +83,5 @@ exports.generateImage = async function (req, res) {
   } catch (error) {
     console.error(error);
     res.status(500).send("Error generating news article");
-  }
-};
-
-exports.analyzeImage = async function (req, res) {
-  try {
-    const { prompt = "Summarize this image", responseFormat = "text" } =
-      req.body;
-    const { file } = req;
-
-    if (!file) {
-      return res.status(400).send("Image is required");
-    }
-    const imageUrl = file.location;
-    if (!imageUrl) {
-      return res.status(400).send("Image URL is required");
-    }
-    const image =
-      !imageUrl.indexOf("http") > -1 ? `https://${imageUrl}` : imageUrl;
-
-    const data = await analyzeImage(image, prompt, responseFormat);
-
-    res.status(200).json({ data });
-  } catch (error) {
-    console.error(error);
-    res
-      .status(500)
-      .send(error?.message ? error.message : "Error analyzing image");
-  }
-};
-
-// Function to transcribe audio using open ai
-exports.transcribeAudio = async function (req, res) {
-  try {
-    const { file } = req;
-
-    if (!file) {
-      return res.status(400).send("Audio is required");
-    }
-    const audioUrl = file.location;
-    if (!audioUrl) {
-      return res.status(400).send("Audio URL is required");
-    }
-    const audio =
-      audioUrl.indexOf("http") < 0 ? `https://${audioUrl}` : audioUrl;
-
-    const text = await transcribeAudio(audio);
-
-    if (!text) {
-      throw new Error("No text returned");
-    }
-
-    // Delete the audio file from storage
-    try {
-      await deleteFile(process.env.SPACES_BUCKET, file.key);
-    } catch (error) {
-      console.error("Error deleting audio file", error);
-    }
-
-    res.status(200).json({ text });
-  } catch (error) {
-    console.error(error);
-    res
-      .status(500)
-      .send(error?.message ? error.message : "Error transcribing audio");
   }
 };

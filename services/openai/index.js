@@ -15,19 +15,6 @@ const { requireAuth, checkRole } = require("../../middleware/auth");
 
 router.post("/completion", requireAuth(), controller.completion);
 router.post("/generate", requireAuth(), controller.generateImage);
-router.post(
-  "/analyze-image",
-  requireAuth(),
-  checkRole("org:admin"),
-  upload("garbage").single("file"),
-  controller.analyzeImage
-);
-router.post(
-  "/transcribe-audio",
-  requireAuth(),
-  checkRole("org:admin"),
-  upload("garbage").single("file"),
-  controller.transcribeAudio
-);
+
 
 module.exports = router;

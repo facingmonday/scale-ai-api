@@ -1,6 +1,8 @@
-const { LlmAgent, Runner } = require("@google/adk");
+const { LlmAgent, InMemoryRunner, createEvent, stringifyContent } = require("@google/adk");
 const ChatMessage = require("./chat.model");
 const ClassroomReport = require("./classroomReport.model");
+const AutomationTask = require("./automationTask.model");
+const AutomationTaskRun = require("./automationTaskRun.model");
 const tools = require("./ai.tools");
 
 // Define Student Agent (Tutor)
@@ -91,18 +93,50 @@ exports.chat = async function (req, res) {
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
 
-    const runner = new Runner();
-    const eventStream = runner.runAsync({
+    const runner = new InMemoryRunner({
       agent,
-      history,
+      appName: "AIChatRunner",
+    });
+
+    const session = await runner.sessionService.createSession({
+      appName: "AIChatRunner",
+      userId: userId.toString(),
+    });
+
+    // Populate history (except the last message, which we will pass as newMessage)
+    for (let i = 0; i < history.length - 1; i++) {
+      const msg = history[i];
+      await runner.sessionService.appendEvent({
+        session,
+        event: createEvent({
+          author: msg.role === "model" ? "model" : "user",
+          content: {
+            role: msg.role === "model" ? "model" : "user",
+            parts: [{ text: msg.content }]
+          }
+        })
+      });
+    }
+
+    const lastMsg = history[history.length - 1];
+    const eventStream = runner.runAsync({
+      userId: userId.toString(),
+      sessionId: session.id,
+      newMessage: {
+        role: "user",
+        parts: [{ text: lastMsg.content }]
+      }
     });
 
     let fullResponse = "";
 
     for await (const event of eventStream) {
-      if (event.type === "text") {
-        fullResponse += event.text;
-        res.write(`data: ${JSON.stringify({ text: event.text })}\n\n`);
+      if (event.partial) {
+        const text = stringifyContent(event);
+        if (text) {
+          fullResponse += text;
+          res.write(`data: ${JSON.stringify({ text })}\n\n`);
+        }
       }
     }
 
@@ -166,6 +200,132 @@ exports.getClassroomReports = async function (req, res) {
     res.status(200).json({ reports: formattedReports });
   } catch (error) {
     console.error("Error fetching classroom reports:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// GET /v1/ai/automation-tasks
+exports.getAutomationTasks = async function (req, res) {
+  try {
+    const classroomId = req.activeClassroom._id;
+    const tasks = await AutomationTask.find({ classroomId }).sort({ createdDate: -1 }).lean();
+    res.status(200).json({ success: true, tasks });
+  } catch (error) {
+    console.error("Error fetching automation tasks:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// POST /v1/ai/automation-tasks
+exports.createAutomationTask = async function (req, res) {
+  try {
+    if (req.classroomRole !== "admin") {
+      return res.status(403).json({ error: "Only admins/teachers can manage automation tasks" });
+    }
+
+    const classroomId = req.activeClassroom._id;
+    const { name, trigger, promptTemplate, isActive, actionType, config } = req.body;
+
+    if (!name || !trigger || !promptTemplate) {
+      return res.status(400).json({ error: "name, trigger, and promptTemplate are required" });
+    }
+
+    const task = new AutomationTask({
+      classroomId,
+      name,
+      trigger,
+      promptTemplate,
+      isActive: isActive !== undefined ? isActive : true,
+      actionType: actionType || "CUSTOM_PROMPT",
+      config: config || {},
+      organization: req.organization?._id || null,
+      createdBy: req.clerkUser.id,
+      updatedBy: req.clerkUser.id,
+    });
+
+    await task.save();
+    res.status(201).json({ success: true, task });
+  } catch (error) {
+    console.error("Error creating automation task:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// PUT /v1/ai/automation-tasks/:id
+exports.updateAutomationTask = async function (req, res) {
+  try {
+    if (req.classroomRole !== "admin") {
+      return res.status(403).json({ error: "Only admins/teachers can manage automation tasks" });
+    }
+
+    const { id } = req.params;
+    const classroomId = req.activeClassroom._id;
+
+    const task = await AutomationTask.findOne({ _id: id, classroomId });
+    if (!task) {
+      return res.status(404).json({ error: "Automation task not found" });
+    }
+
+    const updatableFields = ["name", "trigger", "promptTemplate", "isActive", "actionType", "config"];
+    updatableFields.forEach((field) => {
+      if (req.body[field] !== undefined) {
+        task[field] = req.body[field];
+      }
+    });
+
+    task.updatedBy = req.clerkUser.id;
+    task.updatedDate = new Date();
+
+    await task.save();
+    res.status(200).json({ success: true, task });
+  } catch (error) {
+    console.error("Error updating automation task:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// DELETE /v1/ai/automation-tasks/:id
+exports.deleteAutomationTask = async function (req, res) {
+  try {
+    if (req.classroomRole !== "admin") {
+      return res.status(403).json({ error: "Only admins/teachers can manage automation tasks" });
+    }
+
+    const { id } = req.params;
+    const classroomId = req.activeClassroom._id;
+
+    const result = await AutomationTask.deleteOne({ _id: id, classroomId });
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ error: "Automation task not found" });
+    }
+
+    // Clean up associated task runs
+    await AutomationTaskRun.deleteMany({ automationTaskId: id });
+
+    res.status(200).json({ success: true, message: "Automation task deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting automation task:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// GET /v1/ai/automation-tasks/runs
+exports.getAutomationTaskRuns = async function (req, res) {
+  try {
+    if (req.classroomRole !== "admin") {
+      return res.status(403).json({ error: "Only admins/teachers can view task runs" });
+    }
+
+    const classroomId = req.activeClassroom._id;
+    const runs = await AutomationTaskRun.find({ classroomId })
+      .populate("automationTaskId", "name trigger actionType")
+      .populate("challengeId", "title")
+      .sort({ runTime: -1 })
+      .lean();
+
+    res.status(200).json({ success: true, runs });
+  } catch (error) {
+    console.error("Error fetching automation task runs:", error);
     res.status(500).json({ error: error.message });
   }
 };
