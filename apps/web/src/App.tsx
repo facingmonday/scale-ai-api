@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   ClerkLoaded,
   ClerkLoading,
@@ -58,6 +59,7 @@ const RootRedirect = () => {
     authError,
     refetchMe,
     logout,
+    userRole,
   } = useAuth();
 
   // 1. Hard stop while anything auth-related is still loading
@@ -84,6 +86,9 @@ const RootRedirect = () => {
 
   // 5. Has org but no active classroom yet
   if (!activeClassroom) {
+    if (userRole === "org:admin") {
+      return <Navigate to="/dashboard" replace />;
+    }
     return <Navigate to="/classrooms" replace />;
   }
 
@@ -215,58 +220,60 @@ const DynamicRoutes = () => {
 
 export default function App() {
   return (
-    <GlobalContextProvider>
-      <ThemeProvider>
-        <ScrollToTop />
-        <div className="h-screen w-full">
-          <ClerkLoading>
-            <LoadingOverlay loading={true} />
-          </ClerkLoading>
+    <TooltipProvider>
+      <GlobalContextProvider>
+        <ThemeProvider>
+          <ScrollToTop />
+          <div className="h-screen w-full">
+            <ClerkLoading>
+              <LoadingOverlay loading={true} />
+            </ClerkLoading>
 
-          <ClerkLoaded>
-            <SignedOut>
-              <Routes>
-                <Route path="/join" element={<JoinPathRedirect />} />
-                <Route path="*" element={<AuthPage />} />
-              </Routes>
-            </SignedOut>
-
-            <SignedIn>
-              <AuthProvider>
+            <ClerkLoaded>
+              <SignedOut>
                 <Routes>
-                  <Route path="/" element={<RootEntry />} />
                   <Route path="/join" element={<JoinPathRedirect />} />
-                  <Route
-                    path="/classrooms/:id"
-                    element={
-                      <Suspense fallback={<LoadingScreen />}>
-                        <ClassroomLinkLanding />
-                      </Suspense>
-                    }
-                  />
-                  <Route
-                    path="/join-organization"
-                    element={
-                      <Suspense fallback={<LoadingOverlay loading={true} />}>
-                        <JoinOrganization />
-                      </Suspense>
-                    }
-                  />
-                  <Route
-                    path="/classroom/:id"
-                    element={
-                      <Suspense fallback={<LoadingOverlay loading={true} />}>
-                        <TeacherClassroom />
-                      </Suspense>
-                    }
-                  />
-                  <Route path="/*" element={<DynamicRoutes />} />
+                  <Route path="*" element={<AuthPage />} />
                 </Routes>
-              </AuthProvider>
-            </SignedIn>
-          </ClerkLoaded>
-        </div>
-      </ThemeProvider>
-    </GlobalContextProvider>
+              </SignedOut>
+
+              <SignedIn>
+                <AuthProvider>
+                  <Routes>
+                    <Route path="/" element={<RootEntry />} />
+                    <Route path="/join" element={<JoinPathRedirect />} />
+                    <Route
+                      path="/classrooms/:id"
+                      element={
+                        <Suspense fallback={<LoadingScreen />}>
+                          <ClassroomLinkLanding />
+                        </Suspense>
+                      }
+                    />
+                    <Route
+                      path="/join-organization"
+                      element={
+                        <Suspense fallback={<LoadingOverlay loading={true} />}>
+                          <JoinOrganization />
+                        </Suspense>
+                      }
+                    />
+                    <Route
+                      path="/classroom/:id"
+                      element={
+                        <Suspense fallback={<LoadingOverlay loading={true} />}>
+                          <TeacherClassroom />
+                        </Suspense>
+                      }
+                    />
+                    <Route path="/*" element={<DynamicRoutes />} />
+                  </Routes>
+                </AuthProvider>
+              </SignedIn>
+            </ClerkLoaded>
+          </div>
+        </ThemeProvider>
+      </GlobalContextProvider>
+    </TooltipProvider>
   );
 }

@@ -10,7 +10,53 @@ const clampNumber = require("./lib/clampNumber");
 const buildJsonSchemaFromDefinitions = require("./lib/buildJsonSchemaFromDefinitions");
 const fillMissingWithDefaults = require("./lib/fillMissingWithDefaults");
 const normalizeSelectAllowedValues = require("./lib/normalizeSelectAllowedValues");
-
+/**
+ * @openapi
+ * components:
+ *   schemas:
+ *     Decision:
+ *       type: object
+ *       required:
+ *         - classroomId
+ *         - challengeId
+ *         - userId
+ *       properties:
+ *         _id:
+ *           type: string
+ *         classroomId:
+ *           type: string
+ *         challengeId:
+ *           type: string
+ *         userId:
+ *           type: string
+ *         generation:
+ *           type: object
+ *           properties:
+ *             method:
+ *               type: string
+ *               enum: [MANUAL, AI, FORWARDED_PREVIOUS, AI_FALLBACK, DEFAULTS]
+ *             forwardedFromScenarioId:
+ *               type: string
+ *             forwardedFromSubmissionId:
+ *               type: string
+ *             meta:
+ *               type: object
+ *         submittedAt:
+ *           type: string
+ *           format: date-time
+ *         ledgerEntryId:
+ *           type: string
+ *         jobs:
+ *           type: array
+ *           items:
+ *             type: string
+ *         processingStatus:
+ *           type: string
+ *           enum: [pending, processing, completed, failed]
+ *         variables:
+ *           type: object
+ *           description: Map of student decision variable values.
+ */
 const submissionSchema = new mongoose.Schema({
   classroomId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -363,55 +409,55 @@ submissionSchema.statics.updateSubmission = async function (
 * @returns {Promise<Array>} Array of normalized decision objects
 */
 submissionSchema.statics.getSubmissionsByScenario = async function (
- challengeId
+  challengeId
 ) {
- const decisions = await this.find({ challengeId })
-   .populate({
-     path: "userId",
-     select: "_id clerkUserId firstName lastName maskedEmail",
-   })
-   .populate({
-     path: "jobs",
-     select: "_id status error attempts startedAt completedAt dryRun",
-   })
-   .populate({
-     path: "ledgerEntryId",
-     select: "_id metrics randomEvent summary",
-   });
+  const decisions = await this.find({ challengeId })
+    .populate({
+      path: "userId",
+      select: "_id clerkUserId firstName lastName maskedEmail",
+    })
+    .populate({
+      path: "jobs",
+      select: "_id status error attempts startedAt completedAt dryRun",
+    })
+    .populate({
+      path: "ledgerEntryId",
+      select: "_id metrics randomEvent summary",
+    });
 
- // Use plugin's efficient batch population
- await this.populateVariablesForMany(decisions);
+  // Use plugin's efficient batch population
+  await this.populateVariablesForMany(decisions);
 
- // Variables are automatically included via plugin (already in array format with full definitions)
- return decisions.map((decision) => {
-   const submissionObj = decision.toObject();
-   // Ensure legacy decisions (created before generation metadata existed) still expose a method.
-   const generation =
-     submissionObj.generation && typeof submissionObj.generation === "object"
-       ? {
-           ...submissionObj.generation,
-           method: submissionObj.generation.method || "MANUAL",
-         }
-       : { method: "MANUAL" };
+  // Variables are automatically included via plugin (already in array format with full definitions)
+  return decisions.map((decision) => {
+    const submissionObj = decision.toObject();
+    // Ensure legacy decisions (created before generation metadata existed) still expose a method.
+    const generation =
+      submissionObj.generation && typeof submissionObj.generation === "object"
+        ? {
+          ...submissionObj.generation,
+          method: submissionObj.generation.method || "MANUAL",
+        }
+        : { method: "MANUAL" };
 
-   return {
-     ...submissionObj,
-     generation,
-     member: decision.userId
-       ? {
-           _id: decision.userId._id,
-           clerkUserId: decision.userId.clerkUserId,
-           email: decision.userId.maskedEmail,
-           firstName: decision.userId.firstName,
-           lastName: decision.userId.lastName,
-         }
-       : null,
-     variables: submissionObj.variables || [],
-     submittedAt: submissionObj.submittedAt,
-     jobs: submissionObj.jobs || [],
-     processingStatus: submissionObj.processingStatus || "pending",
-   };
- });
+    return {
+      ...submissionObj,
+      generation,
+      member: decision.userId
+        ? {
+          _id: decision.userId._id,
+          clerkUserId: decision.userId.clerkUserId,
+          email: decision.userId.maskedEmail,
+          firstName: decision.userId.firstName,
+          lastName: decision.userId.lastName,
+        }
+        : null,
+      variables: submissionObj.variables || [],
+      submittedAt: submissionObj.submittedAt,
+      jobs: submissionObj.jobs || [],
+      processingStatus: submissionObj.processingStatus || "pending",
+    };
+  });
 };
 
 /**
@@ -422,9 +468,9 @@ submissionSchema.statics.getSubmissionsByScenario = async function (
 * @returns {Promise<Array<{_id: ObjectId, userId: ObjectId}>>}
 */
 submissionSchema.statics.getSubmissionRefsByScenario = async function (
- challengeId
+  challengeId
 ) {
- return await this.find({ challengeId }).select("_id userId").lean();
+  return await this.find({ challengeId }).select("_id userId").lean();
 };
 
 /**
@@ -539,9 +585,9 @@ submissionSchema.statics.getSubmission = async function (
   submissionObj.generation =
     submissionObj.generation && typeof submissionObj.generation === "object"
       ? {
-          ...submissionObj.generation,
-          method: submissionObj.generation.method || "MANUAL",
-        }
+        ...submissionObj.generation,
+        method: submissionObj.generation.method || "MANUAL",
+      }
       : { method: "MANUAL" };
   // Ensure _id is included (should be by default, but make it explicit)
   submissionObj._id = decision._id;
@@ -579,9 +625,9 @@ submissionSchema.statics.getSubmissionsByUser = async function (
     submissionObj.generation =
       submissionObj.generation && typeof submissionObj.generation === "object"
         ? {
-            ...submissionObj.generation,
-            method: submissionObj.generation.method || "MANUAL",
-          }
+          ...submissionObj.generation,
+          method: submissionObj.generation.method || "MANUAL",
+        }
         : { method: "MANUAL" };
     submissionObj.jobs = submissionObj.jobs || [];
     submissionObj.processingStatus =
@@ -969,19 +1015,17 @@ submissionSchema.statics.forwardPreviousDecisionsForChallenge = async function (
 
           created += 1;
           console.log(
-            `Used AI fallback for user ${userId} (no previous decision)${
-              absentPunishmentLevel
-                ? ` with ${absentPunishmentLevel} absence punishment`
-                : ""
+            `Used AI fallback for user ${userId} (no previous decision)${absentPunishmentLevel
+              ? ` with ${absentPunishmentLevel} absence punishment`
+              : ""
             }`
           );
         } catch (fallbackError) {
           missingPrevious += 1;
           errors.push({
             userId: userId.toString(),
-            error: `No previous decision found and AI fallback failed: ${
-              fallbackError.message || String(fallbackError)
-            }`,
+            error: `No previous decision found and AI fallback failed: ${fallbackError.message || String(fallbackError)
+              }`,
           });
         }
         continue;
@@ -1236,19 +1280,19 @@ submissionSchema.statics.generateSubmissionVariablesForStoreType = async functio
     profileType: storeTypeKey,
     storeTypeVariables: storeTypeVariables
       ? {
-          startingBalance: storeTypeVariables.startingBalance,
-          startingInventory: storeTypeVariables.startingInventory,
-          maxDailyCapacity: storeTypeVariables.maxDailyCapacity,
-          weeklyRent: storeTypeVariables.weeklyRent,
-          fulfillmentModel: storeTypeVariables.fulfillmentModel,
-        }
+        startingBalance: storeTypeVariables.startingBalance,
+        startingInventory: storeTypeVariables.startingInventory,
+        maxDailyCapacity: storeTypeVariables.maxDailyCapacity,
+        weeklyRent: storeTypeVariables.weeklyRent,
+        fulfillmentModel: storeTypeVariables.fulfillmentModel,
+      }
       : null,
     challenge: challenge
       ? {
-          title: challenge.title,
-          week: challenge.week,
-          variables: challenge.variables || {},
-        }
+        title: challenge.title,
+        week: challenge.week,
+        variables: challenge.variables || {},
+      }
       : null,
     submissionVariablesToFill: definitions.map((d) => ({
       key: d.key,
@@ -1266,7 +1310,7 @@ submissionSchema.statics.generateSubmissionVariablesForStoreType = async functio
   };
 
   let systemMessages = [
-    "You generate realistic, conservative weekly student decisions (decision variables) for a SCALE.ai learning simulation.",
+    "You generate realistic, conservative weekly student decisions (decision variables) for a SCALE LXP learning simulation.",
     "Return ONLY JSON that matches the provided schema.",
     "Values must be plausible and within min/max constraints and enums.",
   ];

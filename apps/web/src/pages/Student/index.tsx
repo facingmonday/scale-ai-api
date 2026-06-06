@@ -6,5 +6,4 @@ export { default as settings } from "./Settings";
 export { default as profile } from "./Profile/Profile";
 export { default as ledgerEntries } from "./LedgerEntries";
 export { default as ledgerEntry } from "./LedgerEntry/LedgerEntry";
-export { default as aiCoach } from "./AICoach";
 export { default as vault } from "./Vault";

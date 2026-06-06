@@ -1,4 +1,4 @@
-# SCALE.ai Web App
+# SCALE LXP Web App
 
 React + TypeScript + Vite frontend for student and instructor dashboards.
 

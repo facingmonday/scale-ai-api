@@ -4,7 +4,6 @@ import { useAuth } from "../../../context/AuthContext";
 import challengeService from "../../../services/challenge";
 import outcomeService from "../../../services/outcome";
 import { useGlobalContext } from "../../../context/GlobalContext";
-import ScenarioCreateForm from "../../../components/ChallengeCreateForm";
 import ScenarioSummaryRow from "../../../components/ChallengeSummaryRow";
 import { useNavigate } from "react-router-dom";
 import LoadingOverlay from "../../../components/LoadingOverlay";
@@ -127,7 +126,6 @@ const Challenges: React.FC = () => {
     );
   };
   const [error, setError] = useState<string | null>(null);
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const navigate = useNavigate();
 
   const fetchScenarios = useCallback(async () => {
@@ -184,7 +182,7 @@ const Challenges: React.FC = () => {
             <h1 className="heading-xl">Teacher Challenges</h1>
             <button
               className="btn-teal"
-              onClick={() => setIsCreateDialogOpen(true)}
+              onClick={() => navigate("/challenges/new")}
               disabled={!activeClassroom?._id}
             >
               + Create Challenge
@@ -212,7 +210,7 @@ const Challenges: React.FC = () => {
               </p>
               <button
                 className="btn-teal"
-                onClick={() => setIsCreateDialogOpen(true)}
+                onClick={() => navigate("/challenges/new")}
                 disabled={!activeClassroom?._id}
               >
                 Create Your First Challenge
@@ -368,16 +366,7 @@ const Challenges: React.FC = () => {
         </div>
       </div>
 
-      {activeClassroom?._id && (
-        <ScenarioCreateForm
-          visible={isCreateDialogOpen}
-          onHide={() => setIsCreateDialogOpen(false)}
-          classroomId={activeClassroom._id}
-          onSuccess={(challengeId) => {
-            navigate(`/challenges/${challengeId}`);
-          }}
-        />
-      )}
+
     </BasicLayout>
   );
 };

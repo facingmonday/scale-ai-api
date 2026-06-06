@@ -3,7 +3,37 @@ const baseSchema = require("../../lib/baseSchema");
 const VariableValue = require("../variableDefinition/variableValue.model");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
 const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
-
+/**
+ * @openapi
+ * components:
+ *   schemas:
+ *     ProfileType:
+ *       type: object
+ *       required:
+ *         - classroomId
+ *         - key
+ *         - label
+ *       properties:
+ *         _id:
+ *           type: string
+ *         classroomId:
+ *           type: string
+ *         key:
+ *           type: string
+ *         label:
+ *           type: string
+ *         description:
+ *           type: string
+ *         startingBalance:
+ *           type: number
+ *         initialStartupCost:
+ *           type: number
+ *         isActive:
+ *           type: boolean
+ *         variables:
+ *           type: object
+ *           description: Map of preset variables for this profile type.
+ */
 const storeTypeSchema = new mongoose.Schema({
   classroomId: {
     type: mongoose.Schema.Types.ObjectId,

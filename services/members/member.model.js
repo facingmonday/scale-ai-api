@@ -47,6 +47,61 @@ const organizationMembershipSchema = new mongoose.Schema(
   }
 );
 
+/**
+ * @openapi
+ * components:
+ *   schemas:
+ *     Member:
+ *       type: object
+ *       required:
+ *         - clerkUserId
+ *         - createdAt
+ *       properties:
+ *         _id:
+ *           type: string
+ *         clerkUserId:
+ *           type: string
+ *           description: Unique user ID from Clerk.
+ *         firstName:
+ *           type: string
+ *         lastName:
+ *           type: string
+ *         username:
+ *           type: string
+ *         imageUrl:
+ *           type: string
+ *         hasImage:
+ *           type: boolean
+ *         emailAddresses:
+ *           type: array
+ *           items:
+ *             type: object
+ *         phoneNumbers:
+ *           type: array
+ *           items:
+ *             type: object
+ *         organizationMemberships:
+ *           type: array
+ *           items:
+ *             type: object
+ *         activeClassroom:
+ *           type: object
+ *           properties:
+ *             classroomId:
+ *               type: string
+ *             role:
+ *               type: string
+ *               enum: [admin, member]
+ *             setAt:
+ *               type: string
+ *               format: date-time
+ *         createdAt:
+ *           type: string
+ *           format: date-time
+ *         updatedAt:
+ *           type: string
+ *           format: date-time
+ */
 // Schema that mirrors Clerk's User object structure
 const memberSchema = new mongoose.Schema(
   {

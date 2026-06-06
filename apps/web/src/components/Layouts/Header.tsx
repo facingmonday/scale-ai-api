@@ -118,16 +118,6 @@ export default function Header() {
                       <button
                         className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-ui-muted"
                         onClick={() => {
-                          navigate("/ai-coach");
-                          setOpenMobileMenu(false);
-                        }}
-                      >
-                        {userRole === "org:admin" ? "AI Assistant" : "AI Coach"}
-                      </button>
-
-                      <button
-                        className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-ui-muted"
-                        onClick={() => {
                           navigate("/vault");
                           setOpenMobileMenu(false);
                         }}
@@ -315,16 +305,6 @@ export default function Header() {
                         }}
                       >
                         Challenges
-                      </button>
-
-                      <button
-                        className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-ui-muted"
-                        onClick={() => {
-                          navigate("/ai-coach");
-                          setOpenUserMenu(false);
-                        }}
-                      >
-                        {userRole === "org:admin" ? "AI Assistant" : "AI Coach"}
                       </button>
 
                       <button

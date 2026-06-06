@@ -11,6 +11,9 @@ import { useGlobalContext } from "@/context/GlobalContext";
 import classroomService from "@/services/classroom";
 import challengeService from "@/services/challenge";
 import enrollmentService from "@/services/enrollment";
+import type { ClassroomWithVirtuals } from "@/types/classroom";
+import CreateClassroomModal from "@/components/CreateClassroomModal";
+
 import {
   TeacherCurrentChallengeCard,
   TeacherActionRequired,
@@ -29,10 +32,100 @@ import { Button } from "primereact/button";
 import { getErrorMessage } from "@/utils/error";
 import LoadingOverlay from "../../../components/LoadingOverlay";
 
+const PLAN_LABELS: Record<string, string> = {
+  student_class_pass: "Student Class Pass",
+  teacher_seat_pack_30: "Teacher Seat Pack - 30",
+  teacher_seat_pack_100: "Teacher Seat Pack - 100",
+  institution_enterprise: "Institution Enterprise",
+};
+
 const Dashboard: React.FC = () => {
-  const { activeClassroom } = useAuth();
+  const { activeClassroom, userRole, billing, setNewActiveClassroom } = useAuth();
   const navigate = useNavigate();
   const globalContext = useGlobalContext();
+
+  // Multi-classroom workspace states
+  const [myClassrooms, setMyClassrooms] = useState<ClassroomWithVirtuals[]>([]);
+  const [allOrgClassrooms, setAllOrgClassrooms] = useState<ClassroomWithVirtuals[]>([]);
+  const [classDashboards, setClassDashboards] = useState<Record<string, ClassDashboard>>({});
+  const [isFetchingMultiClass, setIsFetchingMultiClass] = useState(false);
+  const [multiClassError, setMultiClassError] = useState<string | null>(null);
+
+  // Create classroom modal states
+  const [showCreateModal, setShowCreateModal] = useState(false);
+
+
+  const fetchMultiClassData = useCallback(async () => {
+    setIsFetchingMultiClass(true);
+    setMultiClassError(null);
+    try {
+      const myClassesData = await enrollmentService.getMyClasses();
+      const myClasses = myClassesData.data || [];
+      setMyClassrooms(myClasses);
+
+      const orgClassroomsData = await classroomService.getAll();
+      const allOrg = orgClassroomsData.data || orgClassroomsData || [];
+
+      const enrolledIds = myClasses.map(
+        (c: ClassroomWithVirtuals) => c._id
+      );
+      const availableClassrooms = allOrg.filter(
+        (c: ClassroomWithVirtuals) => !enrolledIds.includes(c._id)
+      );
+      setAllOrgClassrooms(availableClassrooms);
+
+      const dashboardsMap: Record<string, ClassDashboard> = {};
+      await Promise.all(
+        myClasses.map(async (cls: ClassroomWithVirtuals) => {
+          try {
+            const db = await classroomService.getAdminDashboard(cls._id);
+            dashboardsMap[cls._id] = db;
+          } catch (e) {
+            console.error(`Failed to fetch dashboard for classroom ${cls._id}:`, e);
+          }
+        })
+      );
+      setClassDashboards(dashboardsMap);
+    } catch (err) {
+      console.error("Failed to load classrooms and dashboards:", err);
+      setMultiClassError("Failed to load your classrooms.");
+    } finally {
+      setIsFetchingMultiClass(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!activeClassroom && userRole === "org:admin") {
+      void fetchMultiClassData();
+    }
+  }, [activeClassroom, userRole, fetchMultiClassData]);
+
+
+
+  const handleClassroomSelect = async (classroom: ClassroomWithVirtuals) => {
+    try {
+      globalContext?.setIsLoading(true);
+      await setNewActiveClassroom(classroom);
+      globalContext?.setIsLoading(false);
+    } catch (err) {
+      console.error("Failed to select classroom:", err);
+      globalContext?.showToast?.("Failed to select classroom. Please try again.", "error");
+      globalContext?.setIsLoading(false);
+    }
+  };
+
+  const handleJoinClassroom = async (classroom: ClassroomWithVirtuals) => {
+    try {
+      globalContext?.setIsLoading(true);
+      await enrollmentService.joinClass(classroom._id);
+      await setNewActiveClassroom(classroom);
+      globalContext?.setIsLoading(false);
+    } catch (err) {
+      console.error("Failed to join classroom:", err);
+      globalContext?.showToast?.("Failed to join classroom. Please try again.", "error");
+      globalContext?.setIsLoading(false);
+    }
+  };
 
   const classroomId = activeClassroom?._id || null;
   const [dashboard, setDashboard] = useState<ClassDashboard | null>(null);
@@ -89,7 +182,7 @@ const Dashboard: React.FC = () => {
   );
 
   // Fetch dashboard once; pass it to child components that need it.
-  const fetchDashboard = useCallback(async () => {
+  const fetchDashboard = useCallback(async (silent = false) => {
     if (!classroomId) {
       setDashboard(null);
       return;
@@ -97,8 +190,10 @@ const Dashboard: React.FC = () => {
 
     cancelledRef.current = false;
 
-    try {
+    if (!silent) {
       setIsLoadingDashboard(true);
+    }
+    try {
       const data = await classroomService.getAdminDashboard(classroomId);
       if (cancelledRef.current) return;
       setDashboard(data);
@@ -107,7 +202,7 @@ const Dashboard: React.FC = () => {
       console.error("Failed to fetch dashboard:", err);
       setDashboard(null);
     } finally {
-      if (!cancelledRef.current) {
+      if (!silent && !cancelledRef.current) {
         setIsLoadingDashboard(false);
       }
     }
@@ -209,7 +304,7 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     const handleFocus = () => {
       if (classroomId) {
-        void fetchDashboard(); // Refresh on focus
+        void fetchDashboard(true); // Refresh dashboard on focus (silent)
         void fetchScenarios(true); // Refresh challenges on focus (silent)
       }
     };
@@ -249,7 +344,272 @@ const Dashboard: React.FC = () => {
     return <span className="badge badge-success">Open</span>;
   };
 
-  if (!activeClassroom) return <div>No classroom found</div>;
+  if (!activeClassroom) {
+    const seatPools = billing?.seatPools || [];
+    const totalSeats = seatPools.reduce(
+      (sum, pool) => sum + (pool.totalSeats ?? 0),
+      0
+    );
+    const usedSeats = seatPools.reduce((sum, pool) => sum + (pool.usedSeats || 0), 0);
+    const remainingSeats = Math.max(totalSeats - usedSeats, 0);
+
+    return (
+      <BasicLayout>
+        <LoadingOverlay loading={isFetchingMultiClass} />
+        <div className="page">
+          <div className="container py-8">
+            {/* Workspace Header */}
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
+              <div>
+                <h1 className="heading-xl text-3xl font-extrabold tracking-tight">Teacher Workspace</h1>
+                <p className="text-text-muted mt-1 text-sm">
+                  Manage your classes, monitor student progress, and check billing status.
+                </p>
+              </div>
+              <div className="mt-4 md:mt-0 flex gap-3">
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="btn-blue text-white flex items-center gap-2"
+                >
+                  <span>+ New Classroom</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Error banner */}
+            {multiClassError && (
+              <div className="alert alert-error mb-6">
+                {multiClassError}
+                <button onClick={() => void fetchMultiClassData()} className="btn-outline btn-xs ml-4">
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {/* Layout Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full">
+              {/* Classrooms List */}
+              <div className="lg:col-span-2 space-y-6">
+                <div className="card">
+                  <div className="flex items-center justify-between border-b border-ui-border pb-4 mb-4">
+                    <h2 className="heading-lg font-bold">My Classrooms</h2>
+                    <span className="badge bg-brand-teal/10 text-brand-teal px-2.5 py-0.5 text-xs font-semibold rounded-full">
+                      {myClassrooms.length} Active
+                    </span>
+                  </div>
+
+                  {isFetchingMultiClass ? (
+                    <div className="flex justify-center items-center py-12">
+                      <i className="pi pi-spin pi-spinner text-brand-teal text-3xl" />
+                    </div>
+                  ) : myClassrooms.length === 0 ? (
+                    <div className="text-center py-12">
+                      <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-brand-teal/10 text-brand-teal mb-4">
+                        <i className="pi pi-school text-xl" />
+                      </div>
+                      <h3 className="heading-md font-semibold text-text-primary mb-1">No Classrooms Yet</h3>
+                      <p className="text-text-muted text-sm max-w-sm mx-auto mb-6">
+                        Get started by creating your first classroom. You can use templates to prefill scenarios and variable configurations.
+                      </p>
+                      <button
+                        onClick={() => setShowCreateModal(true)}
+                        className="btn-teal"
+                      >
+                        Create Classroom
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {myClassrooms.map((cls) => {
+                        const db = classDashboards[cls._id];
+                        const activeScenarioTitle = db?.activeScenario?.title || "No Active Scenario";
+                        const studentCount = db?.students ?? 0;
+                        const pendingApprovals = db?.pendingApprovals ?? 0;
+
+                        return (
+                          <div
+                            key={cls._id}
+                            className="group border border-ui-border rounded-xl p-5 hover:border-brand-teal/50 hover:shadow-md transition-all duration-200 bg-ui-surface flex flex-col md:flex-row md:items-center md:justify-between gap-4"
+                          >
+                            <div className="space-y-2 flex-1">
+                              <div className="flex items-center gap-3">
+                                <h3 className="text-lg font-bold text-text-primary group-hover:text-brand-teal transition-colors">
+                                  {cls.name}
+                                </h3>
+                                {cls.isActive ? (
+                                  <span className="badge badge-success px-2 py-0.5 text-xs rounded-full">Active</span>
+                                ) : (
+                                  <span className="badge bg-ui-muted text-text-secondary px-2 py-0.5 text-xs rounded-full">Inactive</span>
+                                )}
+                              </div>
+                              {cls.description && (
+                                <p className="text-sm text-text-muted line-clamp-1">{cls.description}</p>
+                              )}
+
+                              {/* Stats Row */}
+                              <div className="flex flex-wrap items-center gap-y-2 gap-x-4 pt-1 text-xs text-text-muted">
+                                <span className="flex items-center gap-1.5 bg-ui-surface-hover px-2.5 py-1 rounded-md">
+                                  <i className="pi pi-users text-brand-teal" />
+                                  <strong>{studentCount}</strong> students
+                                </span>
+                                <span className="flex items-center gap-1.5 bg-ui-surface-hover px-2.5 py-1 rounded-md">
+                                  <i className="pi pi-play text-brand-blue" />
+                                  Active Challenge: <strong className="text-text-primary">{activeScenarioTitle}</strong>
+                                </span>
+                                {pendingApprovals > 0 && (
+                                  <span className="flex items-center gap-1.5 bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2.5 py-1 rounded-md font-medium">
+                                    <i className="pi pi-exclamation-triangle" />
+                                    <strong>{pendingApprovals}</strong> pending reviews
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 self-end md:self-center">
+                              <button
+                                onClick={() => void handleClassroomSelect(cls)}
+                                className="btn-teal py-1.5 px-4 text-sm font-medium whitespace-nowrap"
+                              >
+                                Enter Class
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Organization Classes to Join */}
+                {allOrgClassrooms.length > 0 && (
+                  <div className="card">
+                    <div className="flex items-center justify-between border-b border-ui-border pb-4 mb-4">
+                      <h2 className="heading-lg font-bold">Other Classes in Organization</h2>
+                      <span className="text-xs text-text-muted">{allOrgClassrooms.length} available</span>
+                    </div>
+                    <div className="space-y-3">
+                      {allOrgClassrooms.map((cls) => (
+                        <div
+                          key={cls._id}
+                          className="border border-ui-border/60 rounded-xl p-4 bg-ui-surface/50 flex items-center justify-between gap-4"
+                        >
+                          <div>
+                            <h3 className="font-semibold text-text-primary">{cls.name}</h3>
+                            {cls.description && (
+                              <p className="text-xs text-text-muted line-clamp-1">{cls.description}</p>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => void handleJoinClassroom(cls)}
+                            className="btn-outline py-1 px-3 text-xs"
+                          >
+                            Join as Teacher
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Sidebar Account Status */}
+              <div className="space-y-6">
+                <div className="card space-y-4">
+                  <h2 className="heading-lg font-bold border-b border-ui-border pb-3">Workspace Status</h2>
+
+                  {/* Plan details */}
+                  <div className="space-y-1">
+                    <p className="text-xs text-text-muted uppercase tracking-wider font-semibold">Active Plan</p>
+                    <h3 className="text-xl font-extrabold text-brand-teal">
+                      {billing?.plans?.[0]?.planKey
+                        ? PLAN_LABELS[billing.plans[0].planKey] || billing.plans[0].planKey
+                        : "Free Teacher Workspace"}
+                    </h3>
+                    {billing?.plans?.[0]?.status && (
+                      <span className="inline-flex items-center rounded-full bg-emerald-500/10 text-emerald-500 px-2 py-0.5 text-xs font-semibold uppercase">
+                        {billing.plans[0].status}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Classroom limit */}
+                  <div className="space-y-1 pt-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-text-muted">Classroom Limit Usage</span>
+                      <span className="font-bold text-text-primary">
+                        {myClassrooms.length} / {billing?.freeTeacherLimits?.classroomLimit ?? 3} Classes
+                      </span>
+                    </div>
+                    <div className="w-full bg-ui-border rounded-full h-2 overflow-hidden mt-1">
+                      <div
+                        className="bg-brand-teal h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${Math.min(
+                            (myClassrooms.length / (billing?.freeTeacherLimits?.classroomLimit ?? 3)) * 100,
+                            100
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Seats status */}
+                  <div className="space-y-3 pt-2 border-t border-ui-border/60">
+                    <div>
+                      <p className="text-xs text-text-muted uppercase tracking-wider font-semibold mb-1">Student Seats</p>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="bg-ui-surface-hover rounded-lg p-2 border border-ui-border/40">
+                          <p className="text-xs text-text-muted">Total</p>
+                          <p className="text-lg font-bold text-text-primary">{totalSeats}</p>
+                        </div>
+                        <div className="bg-ui-surface-hover rounded-lg p-2 border border-ui-border/40">
+                          <p className="text-xs text-text-muted">Claimed</p>
+                          <p className="text-lg font-bold text-brand-blue">{usedSeats}</p>
+                        </div>
+                        <div className="bg-ui-surface-hover rounded-lg p-2 border border-ui-border/40">
+                          <p className="text-xs text-text-muted">Available</p>
+                          <p className="text-lg font-bold text-brand-teal">{remainingSeats}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {totalSeats > 0 && (
+                      <div className="w-full bg-ui-border rounded-full h-2 overflow-hidden">
+                        <div
+                          className="bg-brand-blue h-full rounded-full transition-all duration-500"
+                          style={{
+                            width: `${Math.min((usedSeats / totalSeats) * 100, 100)}%`,
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Info helper */}
+                  <div className="bg-brand-blue/5 border border-brand-blue/10 rounded-xl p-4 text-sm space-y-2 mt-4">
+                    <h4 className="font-semibold text-text-primary flex items-center gap-1.5">
+                      <i className="pi pi-info-circle text-brand-blue" />
+                      Workspace Management
+                    </h4>
+                    <p className="text-text-muted text-xs leading-relaxed">
+                      Need more classrooms or student seats? You can provision additional seat packs or upgrade your subscription from the <a href="/settings?tab=billing" className="text-brand-blue hover:underline font-semibold">Billing Settings</a> page.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Create Classroom Modal */}
+        <CreateClassroomModal
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+        />
+
+      </BasicLayout>
+    );
+  }
 
   return (
     <BasicLayout>

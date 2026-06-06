@@ -63,8 +63,17 @@ export interface RosterSeat {
   status: "reserved" | "claimed" | "revoked" | "invalid";
 }
 
+export interface BillingSubscription {
+  _id: string;
+  planKey: string;
+  status: "active" | "trialing" | "past_due" | "canceled" | "incomplete" | "expired" | "manual";
+  purchaserScope: "user" | "organization";
+  purchaserUserId?: string;
+  purchaserOrganizationId?: string;
+}
+
 export interface BillingSummary {
-  plans: unknown[];
+  plans: BillingSubscription[];
   seatPools: SeatPool[];
   classroomUsage: Array<{
     classroomId: string;

@@ -9,8 +9,6 @@ const LedgerEntry = require("../ledger/ledger.model");
 const Profile = require("../profile/profile.model");
 const MetricDefinition = require("../metricDefinition/metricDefinition.model");
 const SimulationJob = require("../job/job.model");
-const { enqueueAutomationTaskRun } = require("../../lib/queues/automation-task-worker");
-
 class AutomationTaskService {
   /**
    * Trigger automation tasks of a specific lifecycle type
@@ -19,6 +17,7 @@ class AutomationTaskService {
    */
   static async trigger(triggerType, data) {
     try {
+      const { enqueueAutomationTaskRun } = require("../../lib/queues/automation-task-worker");
       const { classroomId, challengeId, decisionId, userId, organizationId, clerkUserId } = data;
       if (!classroomId || !challengeId) {
         throw new Error("classroomId and challengeId are required to trigger automation tasks");
@@ -51,7 +50,7 @@ class AutomationTaskService {
           decisionId: decisionId || null,
           userId: userId || null,
           status: "pending",
-          organization: organizationId || null,
+          organization: organizationId || task.organization,
           createdBy: clerkUserId || "system",
           updatedBy: clerkUserId || "system",
         });
@@ -123,6 +122,7 @@ class AutomationTaskService {
               updatedDate: new Date(),
             },
             $setOnInsert: {
+              organization: run.organization || task.organization,
               createdBy: task._id.toString(), // Store task reference here
               createdDate: new Date(),
             },

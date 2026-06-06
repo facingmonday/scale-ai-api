@@ -245,7 +245,7 @@ function ChallengeCreatedEmail(props) {
                 backgroundColor: "#fff",
               }}
             >
-              <Text style={{ margin: "6px 0" }}>© SCALE.ai</Text>
+              <Text style={{ margin: "6px 0" }}>© SCALE LXP</Text>
               {organization?.name ? (
                 <Text style={{ margin: "6px 0" }}>{organization.name}</Text>
               ) : null}

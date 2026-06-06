@@ -11,8 +11,9 @@
     "dev:api": "nodemon apps/api/index.js",
     "dev:webhooks": "nodemon apps/webhooks/index.js",
     "dev:workers": "nodemon apps/workers/index.js",
-    "dev": "concurrently -k -n api,web -c blue,cyan \"npm:dev:api\" \"npm:dev:web\"",
-    "dev:all": "concurrently -k -n api,webhooks,workers,web -c blue,green,magenta,cyan \"npm:dev:api\" \"npm:dev:webhooks\" \"npm:dev:workers\" \"npm:dev:web\"",
+    "dev:docs": "npm run docs:generate-spec && vitepress dev apps/docs",
+    "dev": "concurrently -k -n api,web,docs -c blue,cyan,yellow \"npm:dev:api\" \"npm:dev:web\" \"npm:dev:docs\"",
+    "dev:all": "concurrently -k -n api,webhooks,workers,web,docs -c blue,green,magenta,cyan,yellow \"npm:dev:api\" \"npm:dev:webhooks\" \"npm:dev:workers\" \"npm:dev:web\" \"npm:dev:docs\"",
     "start:all": "concurrently -k -n api,webhooks,workers,web -c blue,green,magenta,cyan \"npm:start:api\" \"npm:start:webhooks\" \"npm:start:workers\" \"npm:start:web\"",
     "postinstall": "if [ \"$SKIP_PUPPETEER_INSTALL\" != \"1\" ]; then npx puppeteer browsers install; fi",
     "ngrok": "ngrok start --config ~/.ngrok/ngrok.yml --all",
@@ -25,7 +26,10 @@
     "build:web": "npm --prefix apps/web run build",
     "preview:web": "npm --prefix apps/web run preview",
     "lint:web": "npm --prefix apps/web run lint",
-    "test": "node --test"
+    "test": "node --test",
+    "docs:generate-spec": "node scripts/generate-swagger-json.js",
+    "docs:build": "npm run docs:generate-spec && vitepress build apps/docs",
+    "docs:preview": "vitepress preview apps/docs"
   },
   "keywords": [],
   "author": "",
@@ -118,6 +122,8 @@
     "livereload": "^0.10.3",
     "mongodb-memory-server": "^8.16.1",
     "nodemon": "^3.1.10",
-    "puppeteer-core": "^23.7.0"
+    "puppeteer-core": "^23.7.0",
+    "swagger-jsdoc": "^6.3.0",
+    "vitepress": "^1.6.4"
   }
 }

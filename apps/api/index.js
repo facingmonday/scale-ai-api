@@ -9,6 +9,8 @@ const cors = require("cors");
 const path = require("path");
 const fs = require("fs");
 const { clerkMiddleware } = require("@clerk/express");
+const swaggerJsdoc = require("swagger-jsdoc");
+const swaggerUi = require("swagger-ui-express");
 const { verifyRedisConnectivity } = require("../../lib/queues");
 // Import all models before any other imports that might use them
 require("../../models");
@@ -141,6 +143,51 @@ app.use((err, req, res, next) => {
   next(err);
 });
 
+// Swagger API documentation
+const swaggerOptions = {
+  definition: {
+    openapi: "3.0.0",
+    info: {
+      title: "SCALE LXP API",
+      version: "1.0.0",
+      description: "API documentation for the SCALE LXP supply chain simulation platform.",
+    },
+    servers: [
+      {
+        url: `http://localhost:${process.env.PORT || 1337}`,
+        description: "Development Server",
+      },
+    ],
+    components: {
+      securitySchemes: {
+        BearerAuth: {
+          type: "http",
+          scheme: "bearer",
+          bearerFormat: "JWT",
+          description: "Enter your Clerk JWT session token to access the protected endpoints.",
+        },
+      },
+      schemas: {
+        ErrorResponse: {
+          type: "object",
+          properties: {
+            error: {
+              type: "string",
+              description: "Error message explaining what went wrong.",
+            },
+          },
+        },
+      },
+    },
+  },
+  apis: [
+    path.join(__dirname, "index.js"),
+    path.join(__dirname, "../../services/**/*.js"),
+  ],
+};
+const swaggerSpec = swaggerJsdoc(swaggerOptions);
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
 // Public join endpoint alias for backwards/contract compatibility.
 // This mounts ONLY the join route at /api/join (without exposing the entire /v1 surface under /api).
 app.use("/api/join", require("../../services/join"));
@@ -152,7 +199,24 @@ const HealthChecker = require("../../lib/health-checks");
 const healthChecker = new HealthChecker("api");
 const healthMiddleware = healthChecker.createHealthCheckMiddleware();
 
-// Expanded health endpoints
+/**
+ * @openapi
+ * /health-check:
+ *   get:
+ *     summary: Health status check
+ *     description: Returns a simple status indicating the API instance is healthy and running.
+ *     responses:
+ *       200:
+ *         description: Service is healthy
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: healthy
+ */
 app.get("/health-check", healthMiddleware.basic);
 
 // Start the server

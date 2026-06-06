@@ -1,6 +1,66 @@
 const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 
+/**
+ * @openapi
+ * components:
+ *   schemas:
+ *     VariableDefinition:
+ *       type: object
+ *       properties:
+ *         _id:
+ *           type: string
+ *           description: The Mongoose ObjectId of the variable definition.
+ *         classroomId:
+ *           type: string
+ *           description: The associated classroom ID.
+ *         organization:
+ *           type: string
+ *           description: The associated organization ID.
+ *         key:
+ *           type: string
+ *           description: Unique variable identifier key.
+ *           example: price_elasticity
+ *         label:
+ *           type: string
+ *           description: Human-readable label for the variable.
+ *           example: Price Elasticity
+ *         description:
+ *           type: string
+ *           description: Description of the variable's function.
+ *         appliesTo:
+ *           type: string
+ *           enum: [profile, profileType, challenge, decision, outcome]
+ *           description: Scope of application.
+ *         dataType:
+ *           type: string
+ *           enum: [number, string, boolean, select]
+ *           description: The raw data type of the variable.
+ *         inputType:
+ *           type: string
+ *           enum: [text, number, slider, dropdown, checkbox, knob, selectbutton, switch, multiple-choice]
+ *           description: The input field type displayed in the UI.
+ *         options:
+ *           type: array
+ *           items:
+ *             type: object
+ *           description: List of options for select data types.
+ *         defaultValue:
+ *           type: object
+ *           description: Default value.
+ *         min:
+ *           type: number
+ *           description: Minimum numeric range.
+ *         max:
+ *           type: number
+ *           description: Maximum numeric range.
+ *         required:
+ *           type: boolean
+ *           description: Whether this variable is required to submit decisions/outcomes.
+ *         isActive:
+ *           type: boolean
+ *           description: Soft deletion indicator flag.
+ */
 const variableDefinitionSchema = new mongoose.Schema({
   classroomId: {
     type: mongoose.Schema.Types.ObjectId,

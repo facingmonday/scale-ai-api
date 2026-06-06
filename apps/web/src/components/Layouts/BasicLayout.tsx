@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 import Header from "./Header";
 import Footer from "./Footer";
+import FloatingChat from "../AIComponents/FloatingChat";
 
 interface Props {
   children?: ReactNode;
@@ -35,6 +36,7 @@ const BasicLayout: React.FC<Props> = ({ children }: Props) => {
         </main>
       </div>
       <Footer />
+      <FloatingChat />
     </>
   );
 };

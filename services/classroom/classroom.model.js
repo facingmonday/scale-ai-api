@@ -7,7 +7,86 @@ const LedgerEntry = require("../ledger/ledger.model");
 const Outcome = require("../outcome/outcome.model");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
 const ClassroomTemplate = require("../classroomTemplate/classroomTemplate.model");
-
+/**
+ * @openapi
+ * components:
+ *   schemas:
+ *     Classroom:
+ *       type: object
+ *       required:
+ *         - name
+ *         - ownership
+ *       properties:
+ *         _id:
+ *           type: string
+ *           description: The Mongoose ObjectId of the classroom.
+ *         name:
+ *           type: string
+ *           description: Classroom name.
+ *         description:
+ *           type: string
+ *           description: Classroom description.
+ *         isActive:
+ *           type: boolean
+ *           description: Active status of the classroom.
+ *         ownership:
+ *           type: string
+ *           description: The owner Member ObjectId.
+ *         imageUrl:
+ *           type: string
+ *           description: Optional header image URL.
+ *         billingMode:
+ *           type: string
+ *           enum: [student_paid, teacher_paid_open, teacher_paid_roster, hybrid, roster_only, open_free]
+ *         joinPolicy:
+ *           type: string
+ *           enum: [invite_link, open, roster_only, closed]
+ *         studentPaysAllowed:
+ *           type: boolean
+ *         allowedDomains:
+ *           type: array
+ *           items:
+ *             type: string
+ *         accessCode:
+ *           type: string
+ *         allowAnonymousJoin:
+ *           type: boolean
+ *         prompts:
+ *           type: array
+ *           items:
+ *             type: object
+ *             properties:
+ *               role:
+ *                 type: string
+ *                 enum: [system, user, assistant, developer]
+ *               content:
+ *                 type: string
+ *         automationSettings:
+ *           type: object
+ *           properties:
+ *             enabled:
+ *               type: boolean
+ *             timezone:
+ *               type: string
+ *             defaultReleaseDay:
+ *               type: string
+ *             defaultReleaseTime:
+ *               type: string
+ *             defaultDueDay:
+ *               type: string
+ *             defaultDueTime:
+ *               type: string
+ *             defaultCloseDelayHours:
+ *               type: number
+ *             defaultProcessDelayHours:
+ *               type: number
+ *             defaultFeedbackReleaseMode:
+ *               type: string
+ *               enum: [IMMEDIATE, DELAYED, MANUAL]
+ *             missingSubmissionPolicy:
+ *               type: string
+ *               enum: [FORWARD_PREVIOUS, USE_DEFAULTS, SKIP]
+ */
 const classroomSchema = new mongoose.Schema({
   name: {
     type: String,

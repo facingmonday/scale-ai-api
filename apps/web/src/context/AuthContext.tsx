@@ -148,48 +148,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     > => {
       if (!isSignedIn) return undefined;
 
-      const silent = opts?.silent ?? false;
+      const silent = opts?.silent ?? true;
       if (!silent) {
         setIsLoading(true);
       }
       setAuthError(null);
       try {
-      // If Clerk can't give us a token, don't spam the backend with a guaranteed 401.
-      const token = await TokenHandler.getToken();
-      if (!token) {
-        setAuthError(
-          "Missing auth token from Clerk. If your backend requires a JWT template, set VITE_CLERK_JWT_TEMPLATE."
-        );
-        await clerk.signOut();
-        return undefined;
-      }
-      const data = await authService.getMe();
-      const classroom = data?.activeClassroom || null;
-      const routesData = data?.routes || [];
-      setRoutes(routesData);
-      setActiveClassroom(classroom);
-      setBilling(data?.billing || null);
-      return { activeClassroom: classroom, routes: routesData };
-    } catch (err) {
-      console.error("Failed to fetch auth context:", err);
-      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+        // If Clerk can't give us a token, don't spam the backend with a guaranteed 401.
+        const token = await TokenHandler.getToken();
+        if (!token) {
+          setAuthError(
+            "Missing auth token from Clerk. If your backend requires a JWT template, set VITE_CLERK_JWT_TEMPLATE."
+          );
+          await clerk.signOut();
+          return undefined;
+        }
+        const data = await authService.getMe();
+        const classroom = data?.activeClassroom || null;
+        const routesData = data?.routes || [];
+        setRoutes(routesData);
+        setActiveClassroom(classroom);
+        setBilling(data?.billing || null);
+        return { activeClassroom: classroom, routes: routesData };
+      } catch (err) {
+        console.error("Failed to fetch auth context:", err);
+        const status = axios.isAxiosError(err) ? err.response?.status : undefined;
 
-      if (status === 401) {
-        setAuthError(
-          "Unauthorized (401) while calling /v1/auth/me. This usually means the Clerk token is missing/invalid for the backend."
-        );
-        await clerk.signOut();
-        return undefined;
-      }
+        if (status === 401) {
+          setAuthError(
+            "Unauthorized (401) while calling /v1/auth/me. This usually means the Clerk token is missing/invalid for the backend."
+          );
+          await clerk.signOut();
+          return undefined;
+        }
 
-      setAuthError("Failed to load auth context. Please try again.");
-      return undefined;
-    } finally {
-      if (!silent) {
+        setAuthError("Failed to load auth context. Please try again.");
+        return undefined;
+      } finally {
         setIsLoading(false);
       }
-    }
-  },
+    },
     [clerk, isSignedIn]
   );
 
@@ -323,18 +321,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       return;
     }
 
+    const isTeacher = userRole === "org:admin";
+    const targetPath = isTeacher ? "/dashboard" : "/classrooms";
+
     if (
       hasOrganization &&
       !activeClassroom &&
+      window.location.pathname !== targetPath &&
       window.location.pathname !== "/classrooms" &&
       window.location.pathname !== "/join" &&
       window.location.pathname !== "/join-organization" &&
       !hasJoinParams &&
       window.location.pathname !== "/profile"
     ) {
-      navigate("/classrooms", { replace: true });
+      navigate(targetPath, { replace: true });
     }
-  }, [isSignedIn, isLoading, isOrgResolved, user, activeClassroom, navigate]);
+  }, [isSignedIn, isLoading, isOrgResolved, user, activeClassroom, navigate, userRole]);
 
   //todo: add a proper access control system
   const hasAccess = true;

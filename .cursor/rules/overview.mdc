@@ -3,11 +3,11 @@ alwaysApply: true
 ---
 
 ```markdown
-# SCALE.ai — Application Overview & Design Summary
+# SCALE LXP — Application Overview & Design Summary
 
 ## Purpose
 
-SCALE.ai is a learning-focused supply chain simulation platform designed for college-level Supply Chain 101 courses. It uses a pizza shop game to teach students core operational concepts such as demand forecasting, capacity planning, inventory management, environmental risk, and decision-making under uncertainty.
+SCALE LXP is a learning-focused supply chain simulation platform designed for college-level Supply Chain 101 courses. It uses a pizza shop game to teach students core operational concepts such as demand forecasting, capacity planning, inventory management, environmental risk, and decision-making under uncertainty.
 
 The system is **not a grading tool**. Students do not fail or go bankrupt, but they can go negative. The goal is learning through outcomes, comparison, and reflection.
 
@@ -261,7 +261,7 @@ AI prompts are not permanently stored. The system is conversational in structure
 
 ## Overall Goal
 
-SCALE.ai provides a lightweight but powerful simulation that:
+SCALE LXP provides a lightweight but powerful simulation that:
 
 - Encourages planning and reflection
 - Demonstrates real-world tradeoffs

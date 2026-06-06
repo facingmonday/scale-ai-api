@@ -1,5 +1,42 @@
 const mongoose = require("mongoose");
-
+/**
+ * @openapi
+ * components:
+ *   schemas:
+ *     Organization:
+ *       type: object
+ *       required:
+ *         - clerkOrganizationId
+ *         - name
+ *         - slug
+ *       properties:
+ *         _id:
+ *           type: string
+ *         clerkOrganizationId:
+ *           type: string
+ *         name:
+ *           type: string
+ *         slug:
+ *           type: string
+ *         imageUrl:
+ *           type: string
+ *         maxAllowedMemberships:
+ *           type: number
+ *         adminDeleteEnabled:
+ *           type: boolean
+ *         stripeAccountId:
+ *           type: string
+ *         publicMetadata:
+ *           type: object
+ *         privateMetadata:
+ *           type: object
+ *         clerkCreatedAt:
+ *           type: string
+ *           format: date-time
+ *         clerkUpdatedAt:
+ *           type: string
+ *           format: date-time
+ */
 const organizationSchema = new mongoose.Schema(
   {
     // Clerk organization data

@@ -4,8 +4,6 @@ const baseSchema = require("../../lib/baseSchema");
 const billingSubscriptionSchema = new mongoose.Schema({
   clerkSubscriptionId: {
     type: String,
-    index: true,
-    sparse: true,
   },
   clerkCustomerId: {
     type: String,

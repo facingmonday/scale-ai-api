@@ -29,19 +29,6 @@ class ServiceWorkerRegistry {
       enabled: true,
     });
 
-    this.registerWorker("nightly-lesson-prep", {
-      name: "Nightly Lesson Prep Assistant",
-      description: "Runs at night to analyze classroom outcomes and generate lesson slides/reports for teachers.",
-      isSystemWorker: true,
-      requiresOrganization: false,
-      defaultSchedule: "0 2 * * *", // 2 AM CST
-      timezone: "America/Chicago",
-      maxExecutionTime: 15 * 60 * 1000, // 15 minutes
-      retryOnFailure: true,
-      maxRetries: 1,
-      enabled: true,
-    });
-
     // Ticket Reminder Worker - System-wide job
     // this.registerWorker("ticket-reminder", {
     //   name: "Ticket Reminder Worker",

@@ -1,0 +1,4745 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "SCALE LXP API",
+    "version": "1.0.0",
+    "description": "API documentation for the SCALE LXP supply chain simulation platform."
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Enter your Clerk JWT session token to access the protected endpoints."
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Error message explaining what went wrong."
+          }
+        }
+      },
+      "VariableDefinition": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string",
+            "description": "The Mongoose ObjectId of the variable definition."
+          },
+          "classroomId": {
+            "type": "string",
+            "description": "The associated classroom ID."
+          },
+          "organization": {
+            "type": "string",
+            "description": "The associated organization ID."
+          },
+          "key": {
+            "type": "string",
+            "description": "Unique variable identifier key.",
+            "example": "price_elasticity"
+          },
+          "label": {
+            "type": "string",
+            "description": "Human-readable label for the variable.",
+            "example": "Price Elasticity"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of the variable's function."
+          },
+          "appliesTo": {
+            "type": "string",
+            "enum": [
+              "profile",
+              "profileType",
+              "challenge",
+              "decision",
+              "outcome"
+            ],
+            "description": "Scope of application."
+          },
+          "dataType": {
+            "type": "string",
+            "enum": [
+              "number",
+              "string",
+              "boolean",
+              "select"
+            ],
+            "description": "The raw data type of the variable."
+          },
+          "inputType": {
+            "type": "string",
+            "enum": [
+              "text",
+              "number",
+              "slider",
+              "dropdown",
+              "checkbox",
+              "knob",
+              "selectbutton",
+              "switch",
+              "multiple-choice"
+            ],
+            "description": "The input field type displayed in the UI."
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "List of options for select data types."
+          },
+          "defaultValue": {
+            "type": "object",
+            "description": "Default value."
+          },
+          "min": {
+            "type": "number",
+            "description": "Minimum numeric range."
+          },
+          "max": {
+            "type": "number",
+            "description": "Maximum numeric range."
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether this variable is required to submit decisions/outcomes."
+          },
+          "isActive": {
+            "type": "boolean",
+            "description": "Soft deletion indicator flag."
+          }
+        }
+      },
+      "ProfileType": {
+        "type": "object",
+        "required": [
+          "classroomId",
+          "key",
+          "label"
+        ],
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "classroomId": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "startingBalance": {
+            "type": "number"
+          },
+          "initialStartupCost": {
+            "type": "number"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "variables": {
+            "type": "object",
+            "description": "Map of preset variables for this profile type."
+          }
+        }
+      },
+      "Profile": {
+        "type": "object",
+        "required": [
+          "classroomId",
+          "userId",
+          "studentId",
+          "shopName",
+          "storeDescription",
+          "storeLocation",
+          "profileType"
+        ],
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "classroomId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "studentId": {
+            "type": "string"
+          },
+          "shopName": {
+            "type": "string"
+          },
+          "storeDescription": {
+            "type": "string"
+          },
+          "storeLocation": {
+            "type": "string"
+          },
+          "imageUrl": {
+            "type": "string"
+          },
+          "profileType": {
+            "type": "string",
+            "description": "ProfileType ID reference."
+          },
+          "variables": {
+            "type": "object",
+            "description": "Map of user-defined variable overrides."
+          }
+        }
+      },
+      "Outcome": {
+        "type": "object",
+        "required": [
+          "challengeId"
+        ],
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "classroomId": {
+            "type": "string"
+          },
+          "challengeId": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "hiddenNotes": {
+            "type": "string"
+          },
+          "randomEventChancePercent": {
+            "type": "number"
+          },
+          "autoGenerateSubmissionsOnOutcome": {
+            "type": "string",
+            "enum": [
+              "USE_AI",
+              "FORWARD_PREVIOUS",
+              "USE_DEFAULTS",
+              "SKIP"
+            ]
+          },
+          "punishAbsentStudents": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low",
+              "none"
+            ]
+          },
+          "variables": {
+            "type": "object",
+            "description": "Map of resolved outcome variable values."
+          }
+        }
+      },
+      "Organization": {
+        "type": "object",
+        "required": [
+          "clerkOrganizationId",
+          "name",
+          "slug"
+        ],
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "clerkOrganizationId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "imageUrl": {
+            "type": "string"
+          },
+          "maxAllowedMemberships": {
+            "type": "number"
+          },
+          "adminDeleteEnabled": {
+            "type": "boolean"
+          },
+          "stripeAccountId": {
+            "type": "string"
+          },
+          "publicMetadata": {
+            "type": "object"
+          },
+          "privateMetadata": {
+            "type": "object"
+          },
+          "clerkCreatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "clerkUpdatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Member": {
+        "type": "object",
+        "required": [
+          "clerkUserId",
+          "createdAt"
+        ],
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "clerkUserId": {
+            "type": "string",
+            "description": "Unique user ID from Clerk."
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "imageUrl": {
+            "type": "string"
+          },
+          "hasImage": {
+            "type": "boolean"
+          },
+          "emailAddresses": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "phoneNumbers": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "organizationMemberships": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "activeClassroom": {
+            "type": "object",
+            "properties": {
+              "classroomId": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "admin",
+                  "member"
+                ]
+              },
+              "setAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "LedgerEntry": {
+        "type": "object",
+        "required": [
+          "classroomId",
+          "userId",
+          "summary"
+        ],
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "classroomId": {
+            "type": "string"
+          },
+          "challengeId": {
+            "type": "string"
+          },
+          "decisionId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "metrics": {
+            "type": "object",
+            "description": "Map of dynamic calculated metric values."
+          },
+          "randomEvent": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "aiMetadata": {
+            "type": "object",
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "runId": {
+                "type": "string"
+              },
+              "generatedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          },
+          "calculationContext": {
+            "type": "object"
+          },
+          "overridden": {
+            "type": "boolean"
+          },
+          "overriddenBy": {
+            "type": "string"
+          },
+          "overriddenAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Decision": {
+        "type": "object",
+        "required": [
+          "classroomId",
+          "challengeId",
+          "userId"
+        ],
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "classroomId": {
+            "type": "string"
+          },
+          "challengeId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "type": "string",
+                "enum": [
+                  "MANUAL",
+                  "AI",
+                  "FORWARDED_PREVIOUS",
+                  "AI_FALLBACK",
+                  "DEFAULTS"
+                ]
+              },
+              "forwardedFromScenarioId": {
+                "type": "string"
+              },
+              "forwardedFromSubmissionId": {
+                "type": "string"
+              },
+              "meta": {
+                "type": "object"
+              }
+            }
+          },
+          "submittedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ledgerEntryId": {
+            "type": "string"
+          },
+          "jobs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "processingStatus": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ]
+          },
+          "variables": {
+            "type": "object",
+            "description": "Map of student decision variable values."
+          }
+        }
+      },
+      "ClassroomTemplate": {
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "createdBy",
+          "updatedBy"
+        ],
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "organization": {
+            "type": "string",
+            "description": "The organization ID or null if global."
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "version": {
+            "type": "number"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "sourceTemplateId": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "object",
+            "description": "Flexible template payload definition containing presets and configurations."
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "createdDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedBy": {
+            "type": "string"
+          },
+          "updatedDate": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Classroom": {
+        "type": "object",
+        "required": [
+          "name",
+          "ownership"
+        ],
+        "properties": {
+          "_id": {
+            "type": "string",
+            "description": "The Mongoose ObjectId of the classroom."
+          },
+          "name": {
+            "type": "string",
+            "description": "Classroom name."
+          },
+          "description": {
+            "type": "string",
+            "description": "Classroom description."
+          },
+          "isActive": {
+            "type": "boolean",
+            "description": "Active status of the classroom."
+          },
+          "ownership": {
+            "type": "string",
+            "description": "The owner Member ObjectId."
+          },
+          "imageUrl": {
+            "type": "string",
+            "description": "Optional header image URL."
+          },
+          "billingMode": {
+            "type": "string",
+            "enum": [
+              "student_paid",
+              "teacher_paid_open",
+              "teacher_paid_roster",
+              "hybrid",
+              "roster_only",
+              "open_free"
+            ]
+          },
+          "joinPolicy": {
+            "type": "string",
+            "enum": [
+              "invite_link",
+              "open",
+              "roster_only",
+              "closed"
+            ]
+          },
+          "studentPaysAllowed": {
+            "type": "boolean"
+          },
+          "allowedDomains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "accessCode": {
+            "type": "string"
+          },
+          "allowAnonymousJoin": {
+            "type": "boolean"
+          },
+          "prompts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "system",
+                    "user",
+                    "assistant",
+                    "developer"
+                  ]
+                },
+                "content": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "automationSettings": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "timezone": {
+                "type": "string"
+              },
+              "defaultReleaseDay": {
+                "type": "string"
+              },
+              "defaultReleaseTime": {
+                "type": "string"
+              },
+              "defaultDueDay": {
+                "type": "string"
+              },
+              "defaultDueTime": {
+                "type": "string"
+              },
+              "defaultCloseDelayHours": {
+                "type": "number"
+              },
+              "defaultProcessDelayHours": {
+                "type": "number"
+              },
+              "defaultFeedbackReleaseMode": {
+                "type": "string",
+                "enum": [
+                  "IMMEDIATE",
+                  "DELAYED",
+                  "MANUAL"
+                ]
+              },
+              "missingSubmissionPolicy": {
+                "type": "string",
+                "enum": [
+                  "FORWARD_PREVIOUS",
+                  "USE_DEFAULTS",
+                  "SKIP"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "Challenge": {
+        "type": "object",
+        "required": [
+          "classroomId",
+          "title"
+        ],
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "classroomId": {
+            "type": "string",
+            "description": "The classroom ID."
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "isPublished": {
+            "type": "boolean"
+          },
+          "isClosed": {
+            "type": "boolean"
+          },
+          "publishAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "submissionDeadlineAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "closeSubmissionsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "processAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "feedbackReleaseAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "feedbackReleaseMode": {
+            "type": "string",
+            "enum": [
+              "IMMEDIATE",
+              "DELAYED",
+              "MANUAL"
+            ]
+          },
+          "isFeedbackReleased": {
+            "type": "boolean"
+          },
+          "isLockedForStudents": {
+            "type": "boolean"
+          },
+          "allowLateSubmissions": {
+            "type": "boolean"
+          },
+          "lateSubmissionPolicy": {
+            "type": "object",
+            "properties": {
+              "penaltyPercentPerDay": {
+                "type": "number"
+              }
+            }
+          },
+          "automationMode": {
+            "type": "string",
+            "enum": [
+              "MANUAL",
+              "FULL"
+            ]
+          },
+          "automationStatus": {
+            "type": "string",
+            "enum": [
+              "UNSCHEDULED",
+              "SCHEDULED",
+              "PUBLISHED",
+              "PROCESSING",
+              "COMPLETED",
+              "BLOCKED",
+              "FAILED",
+              "DRAFT",
+              "acceptingSubmissions",
+              "submissionsClosed",
+              "queuedForProcessing",
+              "processed",
+              "feedbackReleased"
+            ]
+          },
+          "automationError": {
+            "type": "string"
+          },
+          "automationLastCheckedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "automatedProcessedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "missingSubmissionPolicy": {
+            "type": "string",
+            "enum": [
+              "FORWARD_PREVIOUS",
+              "USE_DEFAULTS",
+              "SKIP"
+            ]
+          },
+          "punishAbsentStudents": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low",
+              "none"
+            ]
+          },
+          "week": {
+            "type": "number"
+          },
+          "imageUrl": {
+            "type": "string"
+          },
+          "variables": {
+            "type": "object",
+            "description": "Map of resolved challenge variables."
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/health-check": {
+      "get": {
+        "summary": "Health status check",
+        "description": "Returns a simple status indicating the API instance is healthy and running.",
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "healthy"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/variables": {
+      "post": {
+        "summary": "Create variable definition",
+        "description": "Define a new dynamic system variable. Requires org:admin role.",
+        "tags": [
+          "Variable Definitions"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VariableDefinition"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VariableDefinition"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "Get all variable definitions",
+        "description": "Retrieve all variable definitions configured in the classroom.",
+        "tags": [
+          "Variable Definitions"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of variable definitions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VariableDefinition"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/variables/{key}": {
+      "put": {
+        "summary": "Update variable definition",
+        "description": "Modify variable definition settings by key. Requires org:admin role.",
+        "tags": [
+          "Variable Definitions"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VariableDefinition"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VariableDefinition"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete variable definition",
+        "description": "Delete variable definition record by key. Requires org:admin role.",
+        "tags": [
+          "Variable Definitions"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted successfully."
+          }
+        }
+      }
+    },
+    "/v1/student/profile-types": {
+      "get": {
+        "summary": "Get profile types for student",
+        "description": "Retrieve all profile types/store templates available in the active classroom.",
+        "tags": [
+          "Profile Types"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of store templates.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProfileType"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/profile-types": {
+      "post": {
+        "summary": "Create profile type template",
+        "description": "Define a new profile type template. Requires org:admin role.",
+        "tags": [
+          "Profile Types"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Profile type template created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileType"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "Get all profile types (Instructor)",
+        "description": "Retrieve all profile types configured. Requires org:admin role.",
+        "tags": [
+          "Profile Types"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of profile types.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProfileType"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/profile-types/{storeTypeId}": {
+      "put": {
+        "summary": "Update profile type template",
+        "description": "Modify settings of a profile type template. Requires org:admin role.",
+        "tags": [
+          "Profile Types"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "storeTypeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileType"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "Get profile type by ID",
+        "description": "Retrieve detailed configurations for a specific profile type template. Requires org:admin role.",
+        "tags": [
+          "Profile Types"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "storeTypeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile type configuration.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileType"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete profile type template",
+        "description": "Removes a profile type template. Requires org:admin role.",
+        "tags": [
+          "Profile Types"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "storeTypeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted successfully."
+          }
+        }
+      }
+    },
+    "/v1/student/profile": {
+      "post": {
+        "summary": "Create student store profile",
+        "description": "Initializes the student's store profile for the active classroom.",
+        "tags": [
+          "Profiles"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "storeName",
+                  "profileTypeId"
+                ],
+                "properties": {
+                  "storeName": {
+                    "type": "string"
+                  },
+                  "profileTypeId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Profile created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Update student store profile",
+        "description": "Update student's store details.",
+        "tags": [
+          "Profiles"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "storeName": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Profile updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "Get student store profile",
+        "description": "Retrieves the student's store profile in the active classroom.",
+        "tags": [
+          "Profiles"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Store profile object returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/class/{classroomId}/profile/{userId}": {
+      "get": {
+        "summary": "Get specific student store profile (Instructor)",
+        "description": "Retrieve a specific student's store profile within a classroom. Requires org:admin role.",
+        "tags": [
+          "Profiles"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "classroomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Student store profile object returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/outcomes/{challengeId}/outcome": {
+      "post": {
+        "summary": "Set global challenge outcome",
+        "description": "Save and immediately process the global outcome for a specific challenge. Requires org:admin role.",
+        "tags": [
+          "Outcomes"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "challengeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Outcome set and processing started.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Outcome"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "Get challenge outcome (Instructor)",
+        "description": "Fetch the outcome settings for a challenge. Requires org:admin role.",
+        "tags": [
+          "Outcomes"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "challengeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Outcome data.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Outcome"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete scenario outcome",
+        "description": "Deletes the outcome records for a challenge. Requires org:admin role.",
+        "tags": [
+          "Outcomes"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "challengeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Outcome deleted."
+          }
+        }
+      }
+    },
+    "/v1/admin/outcomes/{challengeId}/outcome/draft": {
+      "post": {
+        "summary": "Save outcome draft",
+        "description": "Save a draft of the global challenge outcome without publishing or triggering calculation jobs. Requires org:admin role.",
+        "tags": [
+          "Outcomes"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "challengeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Draft saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Outcome"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/outcomes/{challengeId}/outcome/approve": {
+      "post": {
+        "summary": "Approve scenario outcome",
+        "description": "Approve and finalize the draft outcome. Requires org:admin role.",
+        "tags": [
+          "Outcomes"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "challengeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Outcome approved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Outcome"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/outcomes/{challengeId}/outcome/variables": {
+      "put": {
+        "summary": "Update outcome variables",
+        "description": "Update the variable values mapped to this outcome. Requires org:admin role.",
+        "tags": [
+          "Outcomes"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "challengeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Outcome variables updated."
+          }
+        }
+      }
+    },
+    "/v1/student/outcomes/{challengeId}/outcome": {
+      "get": {
+        "summary": "Get scenario outcome (Student)",
+        "description": "Fetch the published global outcome for a classroom challenge. Requires org:member role.",
+        "tags": [
+          "Outcomes"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "challengeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Outcome data.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Outcome"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organizations": {
+      "get": {
+        "summary": "Get all organizations for the user",
+        "description": "Retrieve all organizations where the current user is a registered member.",
+        "tags": [
+          "Organizations"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of organizations returned successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Organization"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a new organization",
+        "description": "Create a new organization under the user's account.",
+        "tags": [
+          "Organizations"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Organization created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Organization"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organizations/{organizationId}/join": {
+      "post": {
+        "summary": "Join an organization",
+        "description": "Request to join a specific organization by its ID.",
+        "tags": [
+          "Organizations"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Joined successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Organization"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found."
+          }
+        }
+      }
+    },
+    "/v1/openai/completion": {
+      "post": {
+        "summary": "Generate completion text",
+        "description": "Submit prompts to fetch completion text from OpenAI.",
+        "tags": [
+          "OpenAI Integration"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "prompt"
+                ],
+                "properties": {
+                  "prompt": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Completion response returned."
+          }
+        }
+      }
+    },
+    "/v1/openai/generate": {
+      "post": {
+        "summary": "Generate AI image",
+        "description": "Generate an image using OpenAI models.",
+        "tags": [
+          "OpenAI Integration"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "prompt"
+                ],
+                "properties": {
+                  "prompt": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Generated image metadata/URL returned."
+          }
+        }
+      }
+    },
+    "/v1/notifications": {
+      "get": {
+        "summary": "Get notifications",
+        "description": "Fetch notifications history. Requires org:admin role.",
+        "tags": [
+          "Notifications"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of notifications."
+          }
+        }
+      },
+      "post": {
+        "summary": "Create custom notification",
+        "description": "Trigger/create a custom notification delivery. Requires org:admin role.",
+        "tags": [
+          "Notifications"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Notification created."
+          }
+        }
+      }
+    },
+    "/v1/notifications/web": {
+      "get": {
+        "summary": "Get web notifications",
+        "description": "Fetch web UI specific notifications list. Requires org:admin role.",
+        "tags": [
+          "Notifications"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Web notifications list."
+          }
+        }
+      }
+    },
+    "/v1/notifications/unread-count": {
+      "get": {
+        "summary": "Get unread count",
+        "description": "Retrieve the total count of unread web notifications. Requires org:admin role.",
+        "tags": [
+          "Notifications"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unread count object."
+          }
+        }
+      }
+    },
+    "/v1/notifications/status": {
+      "put": {
+        "summary": "Mark all notifications read",
+        "description": "Update status of all web notifications (e.g. read, deleted). Requires org:admin role.",
+        "tags": [
+          "Notifications"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated successfully."
+          }
+        }
+      }
+    },
+    "/v1/notifications/{id}": {
+      "put": {
+        "summary": "Update single notification status",
+        "description": "Update status for a specific notification by ID. Requires org:admin role.",
+        "tags": [
+          "Notifications"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Notification updated."
+          }
+        }
+      }
+    },
+    "/v1/admin/metrics": {
+      "post": {
+        "summary": "Create metric definition",
+        "description": "Define a new system output metric. Requires org:admin role.",
+        "tags": [
+          "Metric Definitions"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created successfully."
+          }
+        }
+      },
+      "get": {
+        "summary": "Get all metric definitions",
+        "description": "Retrieve all metric definitions defined for the organization.",
+        "tags": [
+          "Metric Definitions"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of metric definitions."
+          }
+        }
+      }
+    },
+    "/v1/admin/metrics/{key}": {
+      "put": {
+        "summary": "Update metric definition",
+        "description": "Modify metric definition details by key. Requires org:admin role.",
+        "tags": [
+          "Metric Definitions"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated successfully."
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete metric definition",
+        "description": "Delete a metric definition record by key. Requires org:admin role.",
+        "tags": [
+          "Metric Definitions"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted successfully."
+          }
+        }
+      }
+    },
+    "/v1/members": {
+      "post": {
+        "summary": "Create a new member",
+        "description": "Creates a new user/member within the active organization. Requires org:admin role.",
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "firstName",
+                  "lastName",
+                  "role"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string"
+                  },
+                  "firstName": {
+                    "type": "string"
+                  },
+                  "lastName": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "admin",
+                      "member"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Member created successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Member"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request."
+          }
+        }
+      },
+      "get": {
+        "summary": "Get all organization members",
+        "description": "Returns a list of all members within the active organization. Requires org:admin role.",
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of members.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Member"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/members/search": {
+      "get": {
+        "summary": "Search members",
+        "description": "Search organization members by name or email. Requires org:admin role.",
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Search results.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Member"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/members/stats": {
+      "get": {
+        "summary": "Get member statistics",
+        "description": "Get statistics regarding active members in the organization. Requires org:admin role.",
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Statistics object."
+          }
+        }
+      }
+    },
+    "/v1/members/{id}/organization-membership": {
+      "put": {
+        "summary": "Update organization membership role",
+        "description": "Change a member's organization role (e.g. admin vs member). Requires org:admin role.",
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "role"
+                ],
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "admin",
+                      "member"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Membership role updated."
+          }
+        }
+      }
+    },
+    "/v1/members/{id}": {
+      "get": {
+        "summary": "Get member by ID",
+        "description": "Retrieve detailed information for a specific member by their Mongoose ID. Requires org:admin role.",
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Member profile.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Member"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Member not found."
+          }
+        }
+      },
+      "put": {
+        "summary": "Update member profile",
+        "description": "Update profile fields for a member. Requires org:admin role.",
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "firstName": {
+                    "type": "string"
+                  },
+                  "lastName": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Member updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Member"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove member",
+        "description": "Remove a member from the organization. Requires org:admin role.",
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Member removed."
+          }
+        }
+      }
+    },
+    "/v1/members/add-existing": {
+      "post": {
+        "summary": "Add an existing Clerk user",
+        "description": "Add a user who already has a Clerk account to the organization. Requires org:admin role.",
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "role"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "admin",
+                      "member"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "User added successfully."
+          }
+        }
+      }
+    },
+    "/v1/members/export": {
+      "post": {
+        "summary": "Export members as CSV",
+        "description": "Generates and triggers a file export of the active members list in CSV format. Requires org:admin role.",
+        "tags": [
+          "Members"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File download trigger."
+          }
+        }
+      }
+    },
+    "/v1/licensing/plans": {
+      "get": {
+        "summary": "Get licensing subscription plans",
+        "description": "Retrieve all available licensing plan configurations.",
+        "tags": [
+          "Licensing"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of available plans."
+          }
+        }
+      }
+    },
+    "/v1/licensing/summary": {
+      "get": {
+        "summary": "Get licensing billing summary",
+        "description": "Retrieve general licensing summary details for active organization.",
+        "tags": [
+          "Licensing"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Summary stats object."
+          }
+        }
+      }
+    },
+    "/v1/licensing/student/access": {
+      "get": {
+        "summary": "Get student access credentials",
+        "description": "Retrieve licensing access settings for the student user.",
+        "tags": [
+          "Licensing"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Access settings data."
+          }
+        }
+      }
+    },
+    "/v1/licensing/student/checkout": {
+      "post": {
+        "summary": "Create student checkout session",
+        "description": "Initializes a payment checkout flow for the student.",
+        "tags": [
+          "Licensing"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session URL metadata."
+          }
+        }
+      }
+    },
+    "/v1/licensing/seat-pools": {
+      "get": {
+        "summary": "Get seat pools",
+        "description": "Fetch available seats pools. Requires org:admin role.",
+        "tags": [
+          "Licensing"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Seat pool lists."
+          }
+        }
+      }
+    },
+    "/v1/licensing/seat-pools/manual": {
+      "post": {
+        "summary": "Create manual seat pool allocation",
+        "description": "Force assign a manual seat pool definition. Requires org:admin role.",
+        "tags": [
+          "Licensing"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Manual allocation record."
+          }
+        }
+      }
+    },
+    "/v1/licensing/classrooms/{classroomId}/summary": {
+      "get": {
+        "summary": "Get classroom license summary",
+        "description": "Retrieve license distribution summary for classroom. Requires org:admin role.",
+        "tags": [
+          "Licensing"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "classroomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Summary stats."
+          }
+        }
+      }
+    },
+    "/v1/licensing/classrooms/{classroomId}/allocations": {
+      "post": {
+        "summary": "Allocate classroom seats",
+        "description": "Distribute seats dynamically to classroom roster. Requires org:admin role.",
+        "tags": [
+          "Licensing"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "classroomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Allocated successfully."
+          }
+        }
+      }
+    },
+    "/v1/licensing/classrooms/{classroomId}/roster-seats": {
+      "get": {
+        "summary": "Get classroom roster seat allocation",
+        "description": "Fetch detailed distribution list of seats in the roster. Requires org:admin role.",
+        "tags": [
+          "Licensing"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "classroomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Distribution list."
+          }
+        }
+      }
+    },
+    "/v1/licensing/classrooms/{classroomId}/roster-import": {
+      "post": {
+        "summary": "Import roster with license allocation",
+        "description": "Upload student files and pre-allocate seat licenses. Requires org:admin role.",
+        "tags": [
+          "Licensing"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "classroomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Import log record."
+          }
+        }
+      }
+    },
+    "/v1/admin/ledger/{classroomId}/user/{userId}": {
+      "get": {
+        "summary": "Get ledger history for a student",
+        "description": "Retrieve historical ledger entries for a student user within a classroom. Accessible by admin and members of the classroom.",
+        "tags": [
+          "Ledgers"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "classroomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Historical ledger records list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LedgerEntry"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/ledger/challenge/{challengeId}": {
+      "get": {
+        "summary": "Get ledger entries for a scenario challenge",
+        "description": "Fetch all student ledger outcome entries generated for a specific challenge. Requires org:admin role.",
+        "tags": [
+          "Ledgers"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "challengeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of ledger entries.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LedgerEntry"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/ledger/challenge/{challengeId}/user/{userId}": {
+      "get": {
+        "summary": "Get specific student ledger entry for a challenge",
+        "description": "Retrieve the ledger entry for a specific student and challenge. Requires org:admin role.",
+        "tags": [
+          "Ledgers"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "challengeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ledger entry object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerEntry"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/ledger/{ledgerId}/override": {
+      "patch": {
+        "summary": "Override ledger entry metrics",
+        "description": "Allows the instructor to manually override metrics and values in a student ledger entry. Requires org:admin role.",
+        "tags": [
+          "Ledgers"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ledgerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "metrics": {
+                    "type": "object",
+                    "description": "Map of metric keys to overridden values."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Ledger entry updated with overrides.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerEntry"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/join": {
+      "post": {
+        "summary": "Request to join classroom flow",
+        "description": "Endpoint for authenticated user to trigger the classroom template onboarding flow.",
+        "tags": [
+          "Onboarding & Join"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Onboarded successfully."
+          }
+        }
+      }
+    },
+    "/v1/admin/job/challenge/{challengeId}": {
+      "get": {
+        "summary": "Get jobs for a challenge",
+        "description": "Fetch background calculation/simulation jobs associated with a scenario challenge. Requires org:admin role.",
+        "tags": [
+          "Jobs"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "challengeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of jobs."
+          }
+        }
+      }
+    },
+    "/v1/admin/job/{jobId}": {
+      "get": {
+        "summary": "Get job status by ID",
+        "description": "Fetch status and metadata for a specific background job by ID. Requires org:admin role.",
+        "tags": [
+          "Jobs"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job details and status."
+          }
+        }
+      }
+    },
+    "/v1/admin/job/{jobId}/retry": {
+      "post": {
+        "summary": "Retry a failed job",
+        "description": "Retries execution of a failed simulation or processing job. Requires org:admin role.",
+        "tags": [
+          "Jobs"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job retry triggered."
+          }
+        }
+      }
+    },
+    "/v1/admin/job/process-pending": {
+      "post": {
+        "summary": "Process pending jobs",
+        "description": "Manually trigger processing for all pending background jobs. Requires org:admin role.",
+        "tags": [
+          "Jobs"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Manual trigger initiated."
+          }
+        }
+      }
+    },
+    "/v1/enrollment/my-classes": {
+      "get": {
+        "summary": "Get user classes",
+        "description": "Retrieve all classrooms in which the current user is enrolled.",
+        "tags": [
+          "Enrollments"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of classrooms."
+          }
+        }
+      }
+    },
+    "/v1/enrollment/admin/class/{classroomId}/roster": {
+      "get": {
+        "summary": "Get classroom roster",
+        "description": "Fetch enrolled student profiles for a classroom. Requires org:admin role.",
+        "tags": [
+          "Enrollments"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "classroomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Roster object."
+          }
+        }
+      }
+    },
+    "/v1/enrollment/admin/class/{classroomId}/roster/export": {
+      "post": {
+        "summary": "Export roster as CSV",
+        "description": "Generates and exports the classroom student roster in CSV format. Requires org:admin role.",
+        "tags": [
+          "Enrollments"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "classroomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File download trigger."
+          }
+        }
+      }
+    },
+    "/v1/enrollment/admin/class/{classroomId}/student/{userId}": {
+      "delete": {
+        "summary": "Remove student from classroom",
+        "description": "Deactivates/removes a student's enrollment in a classroom. Requires org:admin role.",
+        "tags": [
+          "Enrollments"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "classroomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Student removed successfully."
+          }
+        }
+      }
+    },
+    "/v1/enrollment/class/{classroomId}/join": {
+      "post": {
+        "summary": "Join a classroom",
+        "description": "Enroll the authenticated user into a classroom.",
+        "tags": [
+          "Enrollments"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "classroomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "accessCode": {
+                    "type": "string",
+                    "description": "Code to authenticate the join request."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successfully joined classroom."
+          }
+        }
+      }
+    },
+    "/v1/admin/decisions/{decisionId}": {
+      "get": {
+        "summary": "Get specific student decision submission",
+        "description": "Retrieve a student's weekly decision submission by ID. Requires org:admin role.",
+        "tags": [
+          "Decisions"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "decisionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Decision submission returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Decision"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/decisions": {
+      "post": {
+        "summary": "Query student decisions",
+        "description": "Retrieve decision submissions matching filters. Requires org:admin role.",
+        "tags": [
+          "Decisions"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of decisions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Decision"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/decisions/student/{studentId}": {
+      "get": {
+        "summary": "Get all decisions for a student",
+        "description": "Fetch all decision submissions submitted by a specific student. Requires org:admin role.",
+        "tags": [
+          "Decisions"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "studentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of decisions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Decision"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/student/decision": {
+      "post": {
+        "summary": "Submit weekly decisions",
+        "description": "Create a weekly decision submission for the active classroom scenario.",
+        "tags": [
+          "Decisions"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "scenarioId",
+                  "variables"
+                ],
+                "properties": {
+                  "scenarioId": {
+                    "type": "string"
+                  },
+                  "variables": {
+                    "type": "object",
+                    "description": "Map of variable keys to values."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Decisions submitted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Decision"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/student/decision/{decisionId}": {
+      "put": {
+        "summary": "Update weekly decisions",
+        "description": "Modify a submitted weekly decision submission.",
+        "tags": [
+          "Decisions"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "decisionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "variables": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Submission updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Decision"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/student/decision/status": {
+      "get": {
+        "summary": "Get weekly decision submission status",
+        "description": "Check the submission status for the current week's scenario.",
+        "tags": [
+          "Decisions"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Submission status flags."
+          }
+        }
+      }
+    },
+    "/v1/student/decisions": {
+      "get": {
+        "summary": "Get current student submissions",
+        "description": "Retrieve all weekly decision submissions created by the current user in the active classroom.",
+        "tags": [
+          "Decisions"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of submissions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Decision"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/challenges/{challengeId}/decisions": {
+      "get": {
+        "summary": "Get decisions for a scenario challenge",
+        "description": "Fetch all student decisions for a specific scenario challenge. Requires org:admin role.",
+        "tags": [
+          "Decisions"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "challengeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of decisions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Decision"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/challenges/{challengeId}/missing-decisions": {
+      "get": {
+        "summary": "Get missing submissions for scenario",
+        "description": "Identify students who have not submitted decisions for a specific scenario challenge. Requires org:admin role.",
+        "tags": [
+          "Decisions"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "challengeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of missing students."
+          }
+        }
+      }
+    },
+    "/v1/admin/classroom-templates": {
+      "get": {
+        "summary": "List classroom templates",
+        "description": "Fetch all templates configured in the organization. Requires org:admin role.",
+        "tags": [
+          "Classroom Templates"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of templates.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ClassroomTemplate"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/classroom-templates/{templateId}": {
+      "get": {
+        "summary": "Get classroom template by ID",
+        "description": "Retrieve detailed configurations for a specific template. Requires org:admin role.",
+        "tags": [
+          "Classroom Templates"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "templateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Template details.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassroomTemplate"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/classroom-templates/{templateId}/variable-definitions": {
+      "post": {
+        "summary": "Add variable definition to template",
+        "description": "Registers a variable schema inside the template. Requires org:admin role.",
+        "tags": [
+          "Classroom Templates"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "templateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Variable added."
+          }
+        }
+      }
+    },
+    "/v1/admin/classroom-templates/from-classroom": {
+      "post": {
+        "summary": "Create template from classroom snapshot",
+        "description": "Take a snapshot of a classroom and save it as a new template. Requires org:admin role.",
+        "tags": [
+          "Classroom Templates"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Template created from snapshot.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassroomTemplate"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Overwrite default template from classroom snapshot",
+        "description": "Reset/overwrite the default template layout from a classroom state. Requires org:admin role.",
+        "tags": [
+          "Classroom Templates"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default template updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassroomTemplate"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/classroom-templates/{templateId}/from-classroom": {
+      "put": {
+        "summary": "Overwrite specific template from classroom snapshot",
+        "description": "Overwrite an existing template from classroom variables/metrics. Requires org:admin role.",
+        "tags": [
+          "Classroom Templates"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "templateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Template updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassroomTemplate"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/classroom-templates/{templateId}/import-from-class": {
+      "post": {
+        "summary": "Import from classroom (alternative endpoint)",
+        "description": "Copy classroom configurations to this template. Requires org:admin role.",
+        "tags": [
+          "Classroom Templates"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "templateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Imported successfully."
+          }
+        }
+      },
+      "put": {
+        "summary": "Import from classroom (alternative put method)",
+        "description": "Overwrite/import classroom settings to template. Requires org:admin role.",
+        "tags": [
+          "Classroom Templates"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "templateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Overwritten successfully."
+          }
+        }
+      }
+    },
+    "/v1/admin/class": {
+      "post": {
+        "summary": "Create classroom",
+        "description": "Creates a new classroom. Requires org:admin role.",
+        "tags": [
+          "Classrooms"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Classroom created successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Classroom"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "Get all classrooms",
+        "description": "Get a list of all classrooms in the organization.",
+        "tags": [
+          "Classrooms"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of classrooms.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Classroom"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/class/{classroomId}/variables": {
+      "delete": {
+        "summary": "Delete classroom variables",
+        "description": "Delete variables defined in the classroom. Requires org:admin role.",
+        "tags": [
+          "Classrooms"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "classroomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Variables deleted."
+          }
+        }
+      }
+    },
+    "/v1/admin/class/{classroomId}/restore-template": {
+      "post": {
+        "summary": "Restore template definitions",
+        "description": "Reset variables in the classroom to match global template. Requires org:admin role.",
+        "tags": [
+          "Classrooms"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "classroomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Classroom variables restored."
+          }
+        }
+      }
+    },
+    "/v1/admin/class/{classroomId}/dashboard": {
+      "get": {
+        "summary": "Get instructor dashboard",
+        "description": "Fetch dashboard statistics and lists for classroom management. Requires org:admin role.",
+        "tags": [
+          "Classrooms"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "classroomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dashboard statistics."
+          }
+        }
+      }
+    },
+    "/v1/admin/class/student/{classroomId}/dashboard": {
+      "get": {
+        "summary": "Get student view dashboard (Instructor context)",
+        "description": "Get dashboard statistics in student format. Requires org:admin role.",
+        "tags": [
+          "Classrooms"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "classroomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Student dashboard view statistics."
+          }
+        }
+      }
+    },
+    "/v1/admin/class/{classroomId}/invite": {
+      "post": {
+        "summary": "Invite student",
+        "description": "Invite student by email to classroom. Requires org:admin role.",
+        "tags": [
+          "Classrooms"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "classroomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Student invited."
+          }
+        }
+      }
+    },
+    "/v1/admin/class/{classroomId}": {
+      "put": {
+        "summary": "Update classroom",
+        "description": "Update classroom settings. Requires org:admin role.",
+        "tags": [
+          "Classrooms"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "classroomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Classroom updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Classroom"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete classroom",
+        "description": "Delete a classroom. Requires org:admin role.",
+        "tags": [
+          "Classrooms"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "classroomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Classroom deleted."
+          }
+        }
+      }
+    },
+    "/v1/admin/challenges": {
+      "post": {
+        "summary": "Create challenge",
+        "description": "Define a new scenario challenge in the classroom. Requires org:admin role.",
+        "tags": [
+          "Challenges"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Challenge"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "Get all challenges (Instructor)",
+        "description": "Retrieve all challenge definitions. Requires org:admin role.",
+        "tags": [
+          "Challenges"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of challenges.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Challenge"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/challenges/{challengeId}": {
+      "put": {
+        "summary": "Update challenge",
+        "description": "Update challenge details. Requires org:admin role.",
+        "tags": [
+          "Challenges"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "challengeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Challenge"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete challenge",
+        "description": "Delete a challenge record. Requires org:admin role.",
+        "tags": [
+          "Challenges"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "challengeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted successfully."
+          }
+        }
+      }
+    },
+    "/v1/admin/challenges/{challengeId}/publish": {
+      "post": {
+        "summary": "Publish challenge",
+        "description": "Set challenge status to active/published so students can submit decisions. Requires org:admin role.",
+        "tags": [
+          "Challenges"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "challengeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Published successfully."
+          }
+        }
+      }
+    },
+    "/v1/admin/challenges/{challengeId}/unpublish": {
+      "post": {
+        "summary": "Unpublish challenge",
+        "description": "Hide challenge from students. Requires org:admin role.",
+        "tags": [
+          "Challenges"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "challengeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unpublished successfully."
+          }
+        }
+      }
+    },
+    "/v1/admin/challenges/{challengeId}/preview": {
+      "post": {
+        "summary": "Preview challenge",
+        "description": "Simulates scenario locally without changing live variables. Requires org:admin role.",
+        "tags": [
+          "Challenges"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "challengeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Preview simulation outputs."
+          }
+        }
+      }
+    },
+    "/v1/admin/challenges/{challengeId}/rerun": {
+      "post": {
+        "summary": "Rerun simulation jobs",
+        "description": "Retrigger calculations for all store outcomes for this scenario. Requires org:admin role.",
+        "tags": [
+          "Challenges"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "challengeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rerun jobs enqueued."
+          }
+        }
+      }
+    },
+    "/v1/admin/challenges/{challengeId}/cancel-batch-and-rerun": {
+      "post": {
+        "summary": "Cancel batch job and rerun",
+        "description": "Cancel running OpenAI Batch execution and trigger a rerun. Requires org:admin role.",
+        "tags": [
+          "Challenges"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "challengeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Batch cancelled and rerun initiated."
+          }
+        }
+      }
+    },
+    "/v1/admin/challenges/{challengeId}/release-feedback": {
+      "post": {
+        "summary": "Release outcome feedback",
+        "description": "Release AI outcomes and feedback text to students. Requires org:admin role.",
+        "tags": [
+          "Challenges"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "challengeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Feedback released."
+          }
+        }
+      }
+    },
+    "/v1/admin/challenges/{challengeId}/export": {
+      "post": {
+        "summary": "Export challenge submissions",
+        "description": "Trigger CSV export of all submissions for this challenge. Requires org:admin role.",
+        "tags": [
+          "Challenges"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "challengeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Export file trigger."
+          }
+        }
+      }
+    },
+    "/v1/admin/challenges/current": {
+      "get": {
+        "summary": "Get current active challenge",
+        "description": "Fetch the current weekly challenge. Requires org:admin role.",
+        "tags": [
+          "Challenges"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Active challenge details.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Challenge"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/challenges/{id}": {
+      "get": {
+        "summary": "Get challenge by ID (Instructor)",
+        "description": "Fetch detailed challenge parameters. Requires org:admin role.",
+        "tags": [
+          "Challenges"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Challenge details.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Challenge"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/student/challenges/current": {
+      "get": {
+        "summary": "Get current challenge (Student)",
+        "description": "Fetch active weekly challenge for the classroom.",
+        "tags": [
+          "Challenges"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current challenge details.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Challenge"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/student/challenges/{id}": {
+      "get": {
+        "summary": "Get challenge details (Student)",
+        "description": "Get specific challenge parameters.",
+        "tags": [
+          "Challenges"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Challenge details.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Challenge"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/student/challenges": {
+      "get": {
+        "summary": "Get all classroom challenges (Student)",
+        "description": "Retrieve all challenge records for the current user's classroom.",
+        "tags": [
+          "Challenges"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of challenges.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Challenge"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/me": {
+      "get": {
+        "summary": "Get active user session info",
+        "description": "Returns the currently authenticated user profile, organization, active classroom, available UI routes, and billing summary.",
+        "tags": [
+          "Auth"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully fetched current session info.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user": {
+                      "type": "object",
+                      "properties": {
+                        "_id": {
+                          "type": "string"
+                        },
+                        "firstName": {
+                          "type": "string"
+                        },
+                        "lastName": {
+                          "type": "string"
+                        },
+                        "email": {
+                          "type": "string"
+                        },
+                        "imageUrl": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "organization": {
+                      "type": "object",
+                      "nullable": true
+                    },
+                    "activeClassroom": {
+                      "type": "object",
+                      "nullable": true
+                    },
+                    "routes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "billing": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. User membership does not exist for the active organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/active-classroom": {
+      "post": {
+        "summary": "Set or clear the active classroom for the user session",
+        "description": "Sets the active classroom to scope operations, or clears it if no classroomId is provided.",
+        "tags": [
+          "Auth"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "classroomId": {
+                    "type": "string",
+                    "description": "The Mongoose ID of the classroom, or null/empty to clear.",
+                    "example": "60c72b2f9b1d8b2d1c8b4567"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Active classroom updated successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "activeClassroom": {
+                      "type": "object",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden. Classroom does not belong to user's organization or user is not enrolled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Classroom not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ai/chat": {
+      "post": {
+        "summary": "Chat with AI assistant",
+        "description": "Submit a chat prompt to the classroom AI learning assistant.",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "message"
+                ],
+                "properties": {
+                  "message": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "AI response returned successfully."
+          }
+        }
+      }
+    },
+    "/v1/ai/chat/history": {
+      "get": {
+        "summary": "Get AI chat history",
+        "description": "Fetch previous chat conversation log between user and AI assistant in the active classroom.",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Conversational message log list."
+          }
+        }
+      }
+    },
+    "/v1/ai/reports": {
+      "get": {
+        "summary": "Get classroom reports",
+        "description": "Returns consolidated analytics reports generated by AI for the classroom.",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Analytics reports."
+          }
+        }
+      }
+    },
+    "/v1/ai/automation-tasks": {
+      "get": {
+        "summary": "Get automation tasks",
+        "description": "Retrieve all registered AI automation tasks for the classroom.",
+        "tags": [
+          "AI Automation"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of automation tasks."
+          }
+        }
+      },
+      "post": {
+        "summary": "Create automation task",
+        "description": "Define a new scheduled AI automation task.",
+        "tags": [
+          "AI Automation"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Task created."
+          }
+        }
+      }
+    },
+    "/v1/ai/automation-tasks/{id}": {
+      "put": {
+        "summary": "Update automation task",
+        "description": "Modify details of an AI automation task by ID.",
+        "tags": [
+          "AI Automation"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task updated."
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete automation task",
+        "description": "Removes an AI automation task definition.",
+        "tags": [
+          "AI Automation"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task deleted."
+          }
+        }
+      }
+    },
+    "/v1/ai/automation-tasks/runs": {
+      "get": {
+        "summary": "Get automation task execution runs",
+        "description": "Fetch logs/history of AI task executions in the classroom.",
+        "tags": [
+          "AI Automation"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Run records list."
+          }
+        }
+      }
+    }
+  },
+  "tags": []
+}

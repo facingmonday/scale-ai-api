@@ -577,8 +577,8 @@ exports.inviteStudent = async function (req, res) {
           email: email,
         },
         from: {
-          email: process.env.SENDGRID_FROM_EMAIL || "noreply@scale.ai",
-          name: process.env.SENDGRID_FROM_NAME || "SCALE.ai",
+          email: process.env.SENDGRID_FROM_EMAIL || "noreply@scalelxp.com",
+          name: process.env.SENDGRID_FROM_NAME || "SCALE LXP",
         },
         subject: `Invitation to join ${classDoc.name}`,
         html: `

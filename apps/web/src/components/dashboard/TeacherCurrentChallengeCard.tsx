@@ -5,7 +5,6 @@ import challengeService from "@/services/challenge";
 import decisionService from "@/services/decision";
 import outcomeService from "@/services/outcome";
 import jobService from "@/services/job";
-import ScenarioCreateForm from "@/components/ChallengeCreateForm";
 import CloseScenarioForm from "@/components/CloseChallengeForm";
 import GlobalOutcomeModal from "@/components/dashboard/GlobalOutcomeModal";
 import type { Challenge, ScenarioWithVariables } from "@/types/challenge";
@@ -34,7 +33,6 @@ const TeacherCurrentScenarioCard: React.FC<TeacherCurrentScenarioCardProps> = ({
 }) => {
   const navigate = useNavigate();
   const global = useGlobalContext();
-  const [isCreateScenarioOpen, setIsCreateScenarioOpen] = useState(false);
   const [isCloseScenarioOpen, setIsCloseScenarioOpen] = useState(false);
   const [isOutcomeOpen, setIsOutcomeOpen] = useState(false);
 
@@ -261,10 +259,10 @@ const TeacherCurrentScenarioCard: React.FC<TeacherCurrentScenarioCardProps> = ({
   };
 
   useEffect(() => {
-    const handler = () => setIsCreateScenarioOpen(true);
+    const handler = () => navigate("/challenges/new");
     window.addEventListener("teacher:create-challenge", handler);
     return () => window.removeEventListener("teacher:create-challenge", handler);
-  }, []);
+  }, [navigate]);
 
   return (
     <div className="w-full">
@@ -343,7 +341,7 @@ const TeacherCurrentScenarioCard: React.FC<TeacherCurrentScenarioCardProps> = ({
           <button
             type="button"
             className="btn-teal"
-            onClick={() => setIsCreateScenarioOpen(true)}
+            onClick={() => navigate("/challenges/new")}
           >
             + Create challenge
           </button>
@@ -411,17 +409,7 @@ const TeacherCurrentScenarioCard: React.FC<TeacherCurrentScenarioCardProps> = ({
         )}
       </div>
 
-      {classroomId && (
-        <ScenarioCreateForm
-          visible={isCreateScenarioOpen}
-          onHide={() => setIsCreateScenarioOpen(false)}
-          classroomId={classroomId}
-          onSuccess={(challengeId) => {
-            setIsCreateScenarioOpen(false);
-            navigate(`/challenges/${challengeId}`);
-          }}
-        />
-      )}
+
 
       {/* Close Challenge Modal */}
       <CloseScenarioForm

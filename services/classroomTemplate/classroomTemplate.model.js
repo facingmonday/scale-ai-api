@@ -6,7 +6,49 @@ const VariableValue = require("../variableDefinition/variableValue.model");
 const MetricDefinition = require("../metricDefinition/metricDefinition.model");
 const { STORE_TYPE_PRESETS } = require("../profile/profileTypePresets");
 const defaultTemplatesData = require("./defaultTemplatesData");
-
+/**
+ * @openapi
+ * components:
+ *   schemas:
+ *     ClassroomTemplate:
+ *       type: object
+ *       required:
+ *         - key
+ *         - label
+ *         - createdBy
+ *         - updatedBy
+ *       properties:
+ *         _id:
+ *           type: string
+ *         organization:
+ *           type: string
+ *           description: The organization ID or null if global.
+ *         key:
+ *           type: string
+ *         label:
+ *           type: string
+ *         description:
+ *           type: string
+ *         version:
+ *           type: number
+ *         isActive:
+ *           type: boolean
+ *         sourceTemplateId:
+ *           type: string
+ *         payload:
+ *           type: object
+ *           description: Flexible template payload definition containing presets and configurations.
+ *         createdBy:
+ *           type: string
+ *         createdDate:
+ *           type: string
+ *           format: date-time
+ *         updatedBy:
+ *           type: string
+ *         updatedDate:
+ *           type: string
+ *           format: date-time
+ */
 const classroomTemplateSchema = new mongoose.Schema(
   {
     // null => global template maintained by developers
@@ -778,7 +820,7 @@ Before returning output:
     {
       role: "system",
       content:
-        "You are the SCALE.ai simulation engine for a supply chain class using a pizza shop game. " +
+        "You are the SCALE LXP simulation engine for a supply chain class using a pizza shop game. " +
         "Compute the metrics listed in metrics_to_calculate based on the profile configuration, challenge, global outcome, and the student's decisions. " +
         "Apply realistic business logic and environmental effects. Return ONLY valid JSON matching the provided schema.",
     },
@@ -1266,7 +1308,7 @@ classroomTemplateSchema.statics.ensureGlobalDefaultTemplate =
                 : Number(preset.startingBalance) || 0,
             initialStartupCost:
               st.initialStartupCost !== undefined &&
-              st.initialStartupCost !== null
+                st.initialStartupCost !== null
                 ? Number(st.initialStartupCost)
                 : Number(preset.initialStartupCost) || 0,
           };
@@ -1326,7 +1368,7 @@ classroomTemplateSchema.statics.ensureGlobalDefaultTemplate =
       key,
       label: "Supply Chain 101 (Default)",
       description:
-        "Default developer-managed template for SCALE.ai Supply Chain 101 simulation.",
+        "Default developer-managed template for SCALE LXP Supply Chain 101 simulation.",
       isActive: true,
       version: 1,
       payload,
@@ -1405,7 +1447,7 @@ classroomTemplateSchema.statics.ensureGlobalMarketing101Template =
       key,
       label: "Marketing 101 (Default)",
       description:
-        "Default developer-managed template for SCALE.ai Marketing 101 simulation. Demonstrates dynamic metrics with non-supply-chain outputs.",
+        "Default developer-managed template for SCALE LXP Marketing 101 simulation. Demonstrates dynamic metrics with non-supply-chain outputs.",
       isActive: true,
       version: 1,
       payload,
@@ -1966,7 +2008,7 @@ classroomTemplateSchema.statics.copyGlobalToOrganization = async function (
       // Sync/Backfill missing payload sections from global template (idempotent)
       const payload =
         existingOrgTemplate.payload &&
-        typeof existingOrgTemplate.payload === "object"
+          typeof existingOrgTemplate.payload === "object"
           ? existingOrgTemplate.payload
           : {};
 
@@ -2021,7 +2063,7 @@ classroomTemplateSchema.statics.copyGlobalToOrganization = async function (
               : Number(globalSt.startingBalance) || 0;
           const initialStartupCost =
             st.initialStartupCost !== undefined &&
-            st.initialStartupCost !== null
+              st.initialStartupCost !== null
               ? Number(st.initialStartupCost)
               : Number(globalSt.initialStartupCost) || 0;
 
@@ -2134,7 +2176,7 @@ classroomTemplateSchema.methods.applyToClassroom = async function ({
     : [];
   const storeTypeValuesByKey =
     payload.storeTypeValuesByStoreTypeKey &&
-    typeof payload.storeTypeValuesByStoreTypeKey === "object"
+      typeof payload.storeTypeValuesByStoreTypeKey === "object"
       ? payload.storeTypeValuesByStoreTypeKey
       : {};
 
@@ -2179,10 +2221,10 @@ classroomTemplateSchema.methods.applyToClassroom = async function ({
   const allStoreTypesInClass = storeTypeDocs.length
     ? storeTypeDocs
     : await ProfileType.find({
-        organization: organizationId,
-        classroomId,
-        isActive: true,
-      });
+      organization: organizationId,
+      classroomId,
+      isActive: true,
+    });
 
   // 2) Create VariableDefinitions (classroom-scoped, create-only)
   const allDefs = [

@@ -1,4 +1,4 @@
-SCALE.ai
+SCALE LXP
 Backend API Developer Specification
 
 Tech Stack: Node.js, Express, MongoDB, Mongoose
@@ -8,7 +8,7 @@ Email: SendGrid
 
 1. System Overview
 
-SCALE.ai is a classroom-based supply chain simulation platform.
+SCALE LXP is a classroom-based supply chain simulation platform.
 
 Each week:
 

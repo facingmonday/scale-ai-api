@@ -3,14 +3,13 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../../context/AuthContext";
 import { useGlobalContext } from "../../../context/GlobalContext";
 import classroomService from "../../../services/classroom";
-import classroomTemplatesService from "../../../services/classroomTemplates";
 import ClassroomCard from "../../../components/ClassroomCard";
 import type { ClassroomWithVirtuals } from "../../../types/classroom";
-import type { ClassroomTemplate } from "../../../types/classroomTemplate";
-import type { BillingMode } from "../../../types/licensing";
 import BasicLayout from "../../../components/Layouts/BasicLayout";
 import enrollmentService from "../../../services/enrollment";
 import LoadingOverlay from "../../../components/LoadingOverlay";
+import CreateClassroomModal from "../../../components/CreateClassroomModal";
+
 const Classrooms = () => {
   const { setNewActiveClassroom, activeClassroom, isLoading, organization } =
     useAuth();
@@ -23,17 +22,6 @@ const Classrooms = () => {
   const [isFetchingClassrooms, setIsFetchingClassrooms] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newClassroomName, setNewClassroomName] = useState("");
-  const [newClassroomDescription, setNewClassroomDescription] = useState("");
-  const [newAllowAnonymousJoin, setNewAllowAnonymousJoin] = useState(true);
-  const [newClassroomBillingMode, setNewClassroomBillingMode] =
-    useState<BillingMode>("student_paid");
-  const [classroomTemplates, setClassroomTemplates] = useState<
-    ClassroomTemplate[]
-  >([]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
-  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
   const [joiningClassroomId, setJoiningClassroomId] = useState<string | null>(
     null
   );
@@ -175,87 +163,7 @@ const Classrooms = () => {
     }
   };
 
-  const handleCreateClassroom = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newClassroomName.trim()) return;
 
-    setIsCreating(true);
-    try {
-      globalContext?.setIsLoading(true);
-
-      const response = await classroomService.create({
-        name: newClassroomName.trim(),
-        description: newClassroomDescription.trim() || undefined,
-        templateId: selectedTemplateId || undefined,
-        billingMode: newClassroomBillingMode,
-        joinPolicy:
-          newClassroomBillingMode === "roster_only"
-            ? "roster_only"
-            : "invite_link",
-        studentPaysAllowed:
-          newClassroomBillingMode === "student_paid" ||
-          newClassroomBillingMode === "hybrid",
-        allowAnonymousJoin: newAllowAnonymousJoin,
-      });
-      const newClassroom = response.data;
-      // Validate the classroom was created successfully
-      if (!newClassroom || !newClassroom._id) {
-        throw new Error("Failed to create classroom: Invalid response");
-      }
-
-      // Set the new classroom as active (this will navigate to /dashboard)
-      await setNewActiveClassroom(newClassroom);
-
-      globalContext?.setIsLoading(false);
-    } catch (err) {
-      console.error("Failed to create classroom:", err);
-      const errorMessage =
-        err && typeof err === "object" && "response" in err
-          ? (err as { response?: { data?: { message?: string } } }).response
-              ?.data?.message
-          : undefined;
-      globalContext?.showToast?.(
-        errorMessage || "Failed to create classroom",
-        "error"
-      );
-      globalContext?.setIsLoading(false);
-    } finally {
-      setIsCreating(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!showCreateModal) return;
-    let isMounted = true;
-
-    const fetchTemplates = async () => {
-      setIsLoadingTemplates(true);
-      try {
-        const templates = await classroomTemplatesService.getAll();
-        if (isMounted) {
-          setClassroomTemplates(Array.isArray(templates) ? templates : []);
-        }
-      } catch (err) {
-        console.error("Failed to fetch classroom templates:", err);
-        if (isMounted) {
-          setClassroomTemplates([]);
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoadingTemplates(false);
-        }
-      }
-    };
-
-    void fetchTemplates();
-    // reset selection on open
-    setSelectedTemplateId("");
-    setNewClassroomBillingMode("student_paid");
-
-    return () => {
-      isMounted = false;
-    };
-  }, [showCreateModal]);
 
   const handleJoinClassroom = async (classroom: ClassroomWithVirtuals) => {
     const classroomId =
@@ -381,146 +289,10 @@ const Classrooms = () => {
           )}
 
           {/* Create Classroom Modal */}
-          {showCreateModal && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-              <div className="card max-w-md w-full">
-                <h2 className="heading-lg mb-4">Create New Classroom</h2>
-                <form onSubmit={handleCreateClassroom}>
-                  <div className="space-y-4">
-                    <div>
-                      <label htmlFor="templateId" className="label">
-                        Template (optional)
-                      </label>
-                      <select
-                        id="templateId"
-                        className="input"
-                        value={selectedTemplateId}
-                        onChange={(e) => setSelectedTemplateId(e.target.value)}
-                        disabled={isCreating || isLoadingTemplates}
-                      >
-                        <option value="">
-                          {isLoadingTemplates
-                            ? "Loading templates..."
-                            : "No template"}
-                        </option>
-                        {classroomTemplates.map((t) => (
-                          <option key={t._id} value={t._id}>
-                            {t.label}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-text-muted text-xs mt-1">
-                        Templates prefill default settings and variables.
-                      </p>
-                    </div>
-                    <div>
-                      <label htmlFor="name" className="label">
-                        Classroom Name *
-                      </label>
-                      <input
-                        id="name"
-                        type="text"
-                        value={newClassroomName}
-                        onChange={(e) => setNewClassroomName(e.target.value)}
-                        className="input"
-                        placeholder="Enter classroom name"
-                        required
-                        autoFocus
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="description" className="label">
-                        Description
-                      </label>
-                      <textarea
-                        id="description"
-                        value={newClassroomDescription}
-                        onChange={(e) =>
-                          setNewClassroomDescription(e.target.value)
-                        }
-                        className="input min-h-[100px] resize-none"
-                        placeholder="Enter classroom description (optional)"
-                      />
-                    </div>
-                    <div>
-                      <p className="text-text-muted text-xs mt-1">
-                        Starting balances and startup costs are now configured
-                        on profile types.
-                      </p>
-                    </div>
-                    <div>
-                      <label htmlFor="billingMode" className="label">
-                        How should students get access?
-                      </label>
-                      <select
-                        id="billingMode"
-                        className="input"
-                        value={newClassroomBillingMode}
-                        onChange={(e) =>
-                          setNewClassroomBillingMode(e.target.value as BillingMode)
-                        }
-                        disabled={isCreating}
-                      >
-                        <option value="student_paid">
-                          Students pay individually
-                        </option>
-                        <option value="teacher_paid_open">
-                          Teacher-paid open seats
-                        </option>
-                        <option value="teacher_paid_roster">
-                          Teacher-paid roster seats
-                        </option>
-                        <option value="hybrid">
-                          Teacher seats first, then student pay
-                        </option>
-                        <option value="roster_only">Roster only</option>
-                      </select>
-                      <p className="text-text-muted text-xs mt-1">
-                        You can change this later from the classroom billing
-                        settings.
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <input
-                        id="newAllowAnonymousJoin"
-                        type="checkbox"
-                        checked={newAllowAnonymousJoin}
-                        onChange={(e) => setNewAllowAnonymousJoin(e.target.checked)}
-                        className="w-4 h-4 rounded border-ui-border text-brand-teal focus:ring-brand-teal"
-                      />
-                      <label htmlFor="newAllowAnonymousJoin" className="text-sm font-medium text-text-primary">
-                        Allow anonymous students to join (anyone with the link)
-                      </label>
-                    </div>
-                  </div>
-                  <div className="flex gap-3 mt-6">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowCreateModal(false);
-                        setNewClassroomName("");
-                        setNewClassroomDescription("");
-                        setSelectedTemplateId("");
-                        setNewClassroomBillingMode("student_paid");
-                        setNewAllowAnonymousJoin(true);
-                      }}
-                      className="btn-outline flex-1"
-                      disabled={isCreating}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="btn-teal flex-1"
-                      disabled={isCreating || !newClassroomName.trim()}
-                    >
-                      {isCreating ? "Creating..." : "Create"}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
+          <CreateClassroomModal
+            isOpen={showCreateModal}
+            onClose={() => setShowCreateModal(false)}
+          />
 
           {/* Edit Classroom Modal */}
           {editingClassroom && (

@@ -17,6 +17,8 @@ export { default as ScenarioDeleteAction } from "./ChallengeDeleteAction";
 export { default as ScenarioResetSubmissionsAction } from "./ChallengeResetDecisionsAction";
 export { default as ScenarioRerunAction } from "./ChallengeRerunAction";
 export { default as ScenarioRemoveOutcomeAction } from "./ChallengeRemoveOutcomeAction";
+export { default as CreateClassroomModal } from "./CreateClassroomModal";
 
 // Dashboard components
 export * from "./dashboard";
+

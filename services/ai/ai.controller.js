@@ -79,6 +79,7 @@ exports.chat = async function (req, res) {
       userId,
       role: "user",
       content: prompt,
+      organization: req.organization?._id || req.activeClassroom.organization,
       createdBy: userId.toString(),
       updatedBy: userId.toString(),
     });
@@ -146,6 +147,7 @@ exports.chat = async function (req, res) {
       userId,
       role: "model",
       content: fullResponse,
+      organization: req.organization?._id || req.activeClassroom.organization,
       createdBy: "system",
       updatedBy: "system",
     });
@@ -238,7 +240,7 @@ exports.createAutomationTask = async function (req, res) {
       isActive: isActive !== undefined ? isActive : true,
       actionType: actionType || "CUSTOM_PROMPT",
       config: config || {},
-      organization: req.organization?._id || null,
+      organization: req.organization?._id || req.activeClassroom.organization,
       createdBy: req.clerkUser.id,
       updatedBy: req.clerkUser.id,
     });

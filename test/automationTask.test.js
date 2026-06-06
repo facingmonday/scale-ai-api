@@ -27,8 +27,8 @@ async function runTest() {
   console.log("Connected to MongoDB!");
 
   // If no Gemini API keys are configured, stub the ADK runAgent method to allow the integration test to pass
-  if (!process.env.GEMINI_API_KEY && !process.env.GOOGLE_GENAI_API_KEY) {
-    console.log("⚠️ No GEMINI_API_KEY or GOOGLE_GENAI_API_KEY found. Stubbing AutomationTaskService.runAgent for testing.");
+  if (!process.env.GEMINI_API_KEY) {
+    console.log("⚠️ No GEMINI_API_KEY found. Stubbing AutomationTaskService.runAgent for testing.");
     AutomationTaskService.runAgent = async (task, context) => {
       if (task.actionType === "GENERATE_SLIDES") {
         return {
@@ -63,6 +63,7 @@ async function runTest() {
         firstName: "Test",
         lastName: "User",
         maskedEmail: "test@example.com",
+        createdAt: new Date(),
       });
       await member.save();
     }

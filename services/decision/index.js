@@ -16,12 +16,57 @@ const {
 } = require("../../middleware/auth");
 
 // Admin routes - require authenticated admin
+/**
+ * @openapi
+ * /v1/admin/decisions/{decisionId}:
+ *   get:
+ *     summary: Get specific student decision submission
+ *     description: Retrieve a student's weekly decision submission by ID. Requires org:admin role.
+ *     tags:
+ *       - Decisions
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - name: decisionId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Decision submission returned.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Decision'
+ */
 router.get(
   "/admin/decisions/:decisionId",
   requireAuth(),
   checkRole("org:admin"),
   controller.getSubmission
 );
+
+/**
+ * @openapi
+ * /v1/admin/decisions:
+ *   post:
+ *     summary: Query student decisions
+ *     description: Retrieve decision submissions matching filters. Requires org:admin role.
+ *     tags:
+ *       - Decisions
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of decisions.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Decision'
+ */
 router.post(
   "/admin/decisions",
   requireAuth(),
@@ -29,31 +74,158 @@ router.post(
   controller.getSubmissions
 );
 
+/**
+ * @openapi
+ * /v1/admin/decisions/student/{studentId}:
+ *   get:
+ *     summary: Get all decisions for a student
+ *     description: Fetch all decision submissions submitted by a specific student. Requires org:admin role.
+ *     tags:
+ *       - Decisions
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - name: studentId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of decisions.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Decision'
+ */
 router.get(
   "/admin/decisions/student/:studentId",
   requireAuth(),
   checkRole("org:admin"),
   controller.getAllSubmissionsForUser
 );
+
 // Student routes - require authenticated member
+/**
+ * @openapi
+ * /v1/student/decision:
+ *   post:
+ *     summary: Submit weekly decisions
+ *     description: Create a weekly decision submission for the active classroom scenario.
+ *     tags:
+ *       - Decisions
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - scenarioId
+ *               - variables
+ *             properties:
+ *               scenarioId:
+ *                 type: string
+ *               variables:
+ *                 type: object
+ *                 description: Map of variable keys to values.
+ *     responses:
+ *       201:
+ *         description: Decisions submitted.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Decision'
+ */
 router.post(
   "/student/decision",
   requireMemberAuth(),
   controller.submitWeeklyDecisions
 );
 
+/**
+ * @openapi
+ * /v1/student/decision/{decisionId}:
+ *   put:
+ *     summary: Update weekly decisions
+ *     description: Modify a submitted weekly decision submission.
+ *     tags:
+ *       - Decisions
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - name: decisionId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               variables:
+ *                 type: object
+ *     responses:
+ *       200:
+ *         description: Submission updated.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Decision'
+ */
 router.put(
   "/student/decision/:decisionId",
   requireMemberAuth(),
   controller.updateWeeklyDecisions
 );
 
+/**
+ * @openapi
+ * /v1/student/decision/status:
+ *   get:
+ *     summary: Get weekly decision submission status
+ *     description: Check the submission status for the current week's scenario.
+ *     tags:
+ *       - Decisions
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Submission status flags.
+ */
 router.get(
   "/student/decision/status",
   requireMemberAuth(),
   controller.getSubmissionStatus
 );
 
+/**
+ * @openapi
+ * /v1/student/decisions:
+ *   get:
+ *     summary: Get current student submissions
+ *     description: Retrieve all weekly decision submissions created by the current user in the active classroom.
+ *     tags:
+ *       - Decisions
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of submissions.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Decision'
+ */
 router.get(
   "/student/decisions",
   requireMemberAuth(),
@@ -62,23 +234,30 @@ router.get(
 
 // Admin routes - require org:admin role
 /**
- * Get all decisions for a challenge
- * GET /api/admin/challenges/:challengeId/decisions
- * @param {string} challengeId - Challenge ID
- * @returns {Object} Decision data
- * @returns {boolean} success - Whether the request was successful
- * @returns {Object} data - Decision data
- * @returns {Array} decisions - Array of decisions
- * @returns {Object} decisions.member - Member data
- * @returns {string} decisions.member._id - Member ID
- * @returns {string} decisions.member.clerkUserId - Clerk User ID
- * @returns {string} decisions.member.firstName - First Name
- * @returns {string} decisions.member.lastName - Last Name
- * @returns {string} decisions.member.maskedEmail - Masked Email
- * @returns {Object} decisions.variables - Variables
- * @returns {string} decisions.variables.variableKey - Variable Key
- * @returns {string} decisions.variables.value - Variable Value
- * @returns {Date} decisions.submittedAt - Decision Date
+ * @openapi
+ * /v1/admin/challenges/{challengeId}/decisions:
+ *   get:
+ *     summary: Get decisions for a scenario challenge
+ *     description: Fetch all student decisions for a specific scenario challenge. Requires org:admin role.
+ *     tags:
+ *       - Decisions
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - name: challengeId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of decisions.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Decision'
  */
 router.get(
   "/admin/challenges/:challengeId/decisions",
@@ -87,6 +266,26 @@ router.get(
   controller.getSubmissionsForScenario
 );
 
+/**
+ * @openapi
+ * /v1/admin/challenges/{challengeId}/missing-decisions:
+ *   get:
+ *     summary: Get missing submissions for scenario
+ *     description: Identify students who have not submitted decisions for a specific scenario challenge. Requires org:admin role.
+ *     tags:
+ *       - Decisions
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - name: challengeId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of missing students.
+ */
 router.get(
   "/admin/challenges/:challengeId/missing-decisions",
   requireAuth(),

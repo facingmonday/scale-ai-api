@@ -23,7 +23,7 @@ function ChallengeClosedEmail(props) {
   } = props || {};
 
   const host =
-    env?.SCALE_ADMIN_HOST || env?.SCALE_API_HOST || "https://scale.ai";
+    env?.SCALE_ADMIN_HOST || env?.SCALE_API_HOST || "https://scalelxp.com";
   const challengeId = challenge?._id || challenge?.id || "challenge";
   const classroomId =
     classroom?._id || classroom?.id || classroom?.slug || "classroom";
@@ -254,7 +254,7 @@ function ChallengeClosedEmail(props) {
                 backgroundColor: "#fff",
               }}
             >
-              <Text style={{ margin: "6px 0" }}>© SCALE.ai</Text>
+              <Text style={{ margin: "6px 0" }}>© SCALE LXP</Text>
               {organizationName ? (
                 <Text style={{ margin: "6px 0" }}>{organizationName}</Text>
               ) : null}

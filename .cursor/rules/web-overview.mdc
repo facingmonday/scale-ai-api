@@ -3,11 +3,11 @@ alwaysApply: false
 globs: apps/web/**/*
 ---
 
-# SCALE.ai Frontend Developer Guide
+# SCALE LXP Frontend Developer Guide
 
 ## React Application Specification
 
-This document explains **how the SCALE.ai application works** from a frontend perspective.  
+This document explains **how the SCALE LXP application works** from a frontend perspective.  
 It is intended to be used by a **React frontend developer** building the student and instructor dashboards.
 
 If I refer to Students or Student I am referring to users with the role org:member
@@ -17,9 +17,9 @@ This is a **rules-of-the-road document**. If something is unclear, assume the ba
 
 ---
 
-## 1. What SCALE.ai Is
+## 1. What SCALE LXP Is
 
-SCALE.ai is a **classroom-based supply chain simulation game** using a pizza shop scenario.
+SCALE LXP is a **classroom-based supply chain simulation game** using a pizza shop scenario.
 
 Students:
 

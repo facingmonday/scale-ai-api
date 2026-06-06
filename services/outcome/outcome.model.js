@@ -3,7 +3,37 @@ const baseSchema = require("../../lib/baseSchema");
 const LedgerEntry = require("../ledger/ledger.model");
 const VariableValue = require("../variableDefinition/variableValue.model");
 const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
-
+/**
+ * @openapi
+ * components:
+ *   schemas:
+ *     Outcome:
+ *       type: object
+ *       required:
+ *         - challengeId
+ *       properties:
+ *         _id:
+ *           type: string
+ *         classroomId:
+ *           type: string
+ *         challengeId:
+ *           type: string
+ *         notes:
+ *           type: string
+ *         hiddenNotes:
+ *           type: string
+ *         randomEventChancePercent:
+ *           type: number
+ *         autoGenerateSubmissionsOnOutcome:
+ *           type: string
+ *           enum: [USE_AI, FORWARD_PREVIOUS, USE_DEFAULTS, SKIP]
+ *         punishAbsentStudents:
+ *           type: string
+ *           enum: [high, medium, low, none]
+ *         variables:
+ *           type: object
+ *           description: Map of resolved outcome variable values.
+ */
 const scenarioOutcomeSchema = new mongoose.Schema({
   // classroomId is denormalized onto the outcome so the variablePopulationPlugin
   // can look up active VariableDefinitions without an extra Challenge join.

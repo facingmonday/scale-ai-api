@@ -45,7 +45,44 @@ async function ensureClassroomPromptsInitialized(
 
   return false;
 }
-
+/**
+ * @openapi
+ * components:
+ *   schemas:
+ *     Profile:
+ *       type: object
+ *       required:
+ *         - classroomId
+ *         - userId
+ *         - studentId
+ *         - shopName
+ *         - storeDescription
+ *         - storeLocation
+ *         - profileType
+ *       properties:
+ *         _id:
+ *           type: string
+ *         classroomId:
+ *           type: string
+ *         userId:
+ *           type: string
+ *         studentId:
+ *           type: string
+ *         shopName:
+ *           type: string
+ *         storeDescription:
+ *           type: string
+ *         storeLocation:
+ *           type: string
+ *         imageUrl:
+ *           type: string
+ *         profileType:
+ *           type: string
+ *           description: ProfileType ID reference.
+ *         variables:
+ *           type: object
+ *           description: Map of user-defined variable overrides.
+ */
 const storeSchema = new mongoose.Schema({
   classroomId: {
     type: mongoose.Schema.Types.ObjectId,

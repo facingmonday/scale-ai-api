@@ -4,7 +4,86 @@ const VariableDefinition = require("../variableDefinition/variableDefinition.mod
 const VariableValue = require("../variableDefinition/variableValue.model");
 const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
 // Note: Classroom, Enrollment, and Member are required inside functions to avoid circular dependencies
-
+/**
+ * @openapi
+ * components:
+ *   schemas:
+ *     Challenge:
+ *       type: object
+ *       required:
+ *         - classroomId
+ *         - title
+ *       properties:
+ *         _id:
+ *           type: string
+ *         classroomId:
+ *           type: string
+ *           description: The classroom ID.
+ *         title:
+ *           type: string
+ *         description:
+ *           type: string
+ *         isPublished:
+ *           type: boolean
+ *         isClosed:
+ *           type: boolean
+ *         publishAt:
+ *           type: string
+ *           format: date-time
+ *         submissionDeadlineAt:
+ *           type: string
+ *           format: date-time
+ *         closeSubmissionsAt:
+ *           type: string
+ *           format: date-time
+ *         processAt:
+ *           type: string
+ *           format: date-time
+ *         feedbackReleaseAt:
+ *           type: string
+ *           format: date-time
+ *         feedbackReleaseMode:
+ *           type: string
+ *           enum: [IMMEDIATE, DELAYED, MANUAL]
+ *         isFeedbackReleased:
+ *           type: boolean
+ *         isLockedForStudents:
+ *           type: boolean
+ *         allowLateSubmissions:
+ *           type: boolean
+ *         lateSubmissionPolicy:
+ *           type: object
+ *           properties:
+ *             penaltyPercentPerDay:
+ *               type: number
+ *         automationMode:
+ *           type: string
+ *           enum: [MANUAL, FULL]
+ *         automationStatus:
+ *           type: string
+ *           enum: [UNSCHEDULED, SCHEDULED, PUBLISHED, PROCESSING, COMPLETED, BLOCKED, FAILED, DRAFT, acceptingSubmissions, submissionsClosed, queuedForProcessing, processed, feedbackReleased]
+ *         automationError:
+ *           type: string
+ *         automationLastCheckedAt:
+ *           type: string
+ *           format: date-time
+ *         automatedProcessedAt:
+ *           type: string
+ *           format: date-time
+ *         missingSubmissionPolicy:
+ *           type: string
+ *           enum: [FORWARD_PREVIOUS, USE_DEFAULTS, SKIP]
+ *         punishAbsentStudents:
+ *           type: string
+ *           enum: [high, medium, low, none]
+ *         week:
+ *           type: number
+ *         imageUrl:
+ *           type: string
+ *         variables:
+ *           type: object
+ *           description: Map of resolved challenge variables.
+ */
 const scenarioSchema = new mongoose.Schema({
   classroomId: {
     type: mongoose.Schema.Types.ObjectId,
