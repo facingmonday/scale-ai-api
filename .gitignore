@@ -38,3 +38,8 @@ docker-compose.local.yml
 
 apps/web/node_modules/
 apps/web/dist/
+
+# Vitepress / Vite cache
+.vitepress/cache/
+**/.vitepress/cache/
+apps/docs/.vitepress/cache/

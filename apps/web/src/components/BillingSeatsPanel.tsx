@@ -52,64 +52,110 @@ const BillingSeatsPanel: React.FC = () => {
     }
   };
 
-  const totalSeats = seatPools.reduce(
+  // B2B Organization Seats calculations
+  const totalOrgSeats = seatPools.reduce(
     (sum, pool) => sum + (pool.totalSeats ?? 0),
     0
   );
-  const usedSeats = seatPools.reduce((sum, pool) => sum + (pool.usedSeats || 0), 0);
-  const remainingSeats = Math.max(totalSeats - usedSeats, 0);
+  const claimedOrgSeats = seatPools.reduce(
+    (sum, pool) => sum + (pool.usedSeats || 0),
+    0
+  );
+  const remainingOrgSeats = Math.max(totalOrgSeats - claimedOrgSeats, 0);
+
+  // B2C Student Self-Paid Seats calculations
+  const studentPaidSeats = summary?.classroomUsage?.reduce(
+    (sum, classroom) => sum + (classroom.billingMode === "student_paid" ? classroom.claimedSeats : 0),
+    0
+  ) || 0;
+
+  // Percentage for progress bar
+  const orgSeatsPercent = totalOrgSeats > 0 ? Math.min((claimedOrgSeats / totalOrgSeats) * 100, 100) : 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
-        <h2 className="text-2xl font-semibold mb-2">Billing & Seats</h2>
-        <p className="text-text-muted">
-          Manage SCALE seats purchased through Clerk Billing and allocated across
-          classrooms. Seat enforcement happens on the backend.
+        <h2 className="text-2xl font-bold text-text-primary tracking-tight">Billing & Seats</h2>
+        <p className="text-text-muted mt-1 text-sm md:text-base">
+          Manage classroom licenses and billing. Classrooms can be configured for individual student payment or organization-funded seats.
         </p>
       </div>
 
-      {error && <div className="alert alert-error">{error}</div>}
+      {error && (
+        <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg text-sm">
+          {error}
+        </div>
+      )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="card">
-          <p className="text-text-muted text-sm">Purchased Seats</p>
-          <p className="heading-lg">{isLoading ? "..." : totalSeats}</p>
+      {/* Grid of Key Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Card 1: Org Seats */}
+        <div className="card bg-ui-surface border border-ui-border rounded-xl p-5 shadow-sm space-y-4">
+          <div>
+            <p className="text-text-muted text-xs font-semibold uppercase tracking-wider">Organization Seats (B2B)</p>
+            <p className="text-3xl font-bold text-text-primary mt-1">
+              {isLoading ? "..." : `${claimedOrgSeats} / ${totalOrgSeats}`}
+            </p>
+          </div>
+          <div className="w-full bg-ui-border rounded-full h-2 overflow-hidden">
+            <div
+              className="bg-brand-teal h-full transition-all duration-500 rounded-full"
+              style={{ width: `${orgSeatsPercent}%` }}
+            />
+          </div>
+          <p className="text-xs text-text-muted">
+            {isLoading ? "..." : `${remainingOrgSeats} seats remaining for roster classrooms.`}
+          </p>
         </div>
-        <div className="card">
-          <p className="text-text-muted text-sm">Claimed Seats</p>
-          <p className="heading-lg">{isLoading ? "..." : usedSeats}</p>
+
+        {/* Card 2: Student Paid */}
+        <div className="card bg-ui-surface border border-ui-border rounded-xl p-5 shadow-sm flex flex-col justify-between">
+          <div>
+            <p className="text-text-muted text-xs font-semibold uppercase tracking-wider">Student-Paid Seats (B2C)</p>
+            <p className="text-3xl font-bold text-text-primary mt-1">
+              {isLoading ? "..." : studentPaidSeats}
+            </p>
+          </div>
+          <p className="text-xs text-text-muted mt-4">
+            Students pay individually before joining student-paid classrooms.
+          </p>
         </div>
-        <div className="card">
-          <p className="text-text-muted text-sm">Available Seats</p>
-          <p className="heading-lg">{isLoading ? "..." : remainingSeats}</p>
+
+        {/* Card 3: Total Active Students */}
+        <div className="card bg-ui-surface border border-ui-border rounded-xl p-5 shadow-sm flex flex-col justify-between">
+          <div>
+            <p className="text-text-muted text-xs font-semibold uppercase tracking-wider">Total Active Licenses</p>
+            <p className="text-3xl font-bold text-text-primary mt-1">
+              {isLoading ? "..." : claimedOrgSeats + studentPaidSeats}
+            </p>
+          </div>
+          <p className="text-xs text-text-muted mt-4">
+            Combined active student seats across all classrooms in this organization.
+          </p>
         </div>
       </div>
 
-      <div className="card">
-        <div className="flex items-start justify-between gap-4 mb-4">
+      {/* Seat Pools Section */}
+      <div className="card bg-ui-surface border border-ui-border rounded-xl p-6 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
-            <h3 className="heading-md">Seat Pools</h3>
-            <p className="text-text-muted">
-              Buy or provision seats, then allocate them to classrooms.
+            <h3 className="text-lg font-bold text-text-primary">Organization Seat Pools</h3>
+            <p className="text-text-muted text-xs md:text-sm mt-0.5">
+              Seat allocations provisioned via Clerk B2B plans for rostered students.
             </p>
           </div>
           <div className="flex gap-2">
             <button
-              className="btn-outline"
+              className="btn-outline border border-ui-border hover:bg-ui-border px-3 py-1.5 rounded-lg text-sm transition-all"
               disabled={isCreating}
-              onClick={() =>
-                void createSeatPack("teacher_seat_pack_30", 30)
-              }
+              onClick={() => void createSeatPack("teacher_seat_pack_30", 30)}
             >
               Add 30 Seats
             </button>
             <button
-              className="btn-teal"
+              className="btn-teal bg-brand-teal text-white hover:bg-brand-teal/90 px-3 py-1.5 rounded-lg text-sm transition-all"
               disabled={isCreating}
-              onClick={() =>
-                void createSeatPack("teacher_seat_pack_100", 100)
-              }
+              onClick={() => void createSeatPack("teacher_seat_pack_100", 100)}
             >
               Add 100 Seats
             </button>
@@ -117,32 +163,39 @@ const BillingSeatsPanel: React.FC = () => {
         </div>
 
         {seatPools.length === 0 ? (
-          <p className="text-text-muted">
-            No teacher-paid seat pools yet. Students can still pay individually
-            in student-paid classrooms.
+          <p className="text-text-muted text-sm py-4">
+            No active organization seat pools. Roster classrooms require organization seats to enroll students.
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm border-collapse">
               <thead>
-                <tr className="text-left text-text-muted border-b border-ui-border">
-                  <th className="py-2">Plan</th>
-                  <th className="py-2">Status</th>
-                  <th className="py-2">Used</th>
-                  <th className="py-2">Remaining</th>
+                <tr className="text-left text-text-muted border-b border-ui-border font-medium">
+                  <th className="pb-3 pr-4">Plan Name</th>
+                  <th className="pb-3 px-4">Status</th>
+                  <th className="pb-3 px-4">Used Seats</th>
+                  <th className="pb-3 pl-4 text-right">Remaining</th>
                 </tr>
               </thead>
               <tbody>
                 {seatPools.map((pool) => (
-                  <tr key={pool._id} className="border-b border-ui-border/60">
-                    <td className="py-3">
+                  <tr key={pool._id} className="border-b border-ui-border/60 hover:bg-ui-border/10 transition-colors">
+                    <td className="py-3.5 pr-4 font-semibold text-text-primary">
                       {PLAN_LABELS[pool.planKey] || pool.planKey}
                     </td>
-                    <td className="py-3">{pool.status}</td>
-                    <td className="py-3">
+                    <td className="py-3.5 px-4">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider ${
+                        pool.status === "active" || pool.status === "manual"
+                          ? "bg-green-500/10 text-green-400"
+                          : "bg-red-500/10 text-red-400"
+                      }`}>
+                        {pool.status}
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-text-secondary font-mono">
                       {pool.usedSeats} / {pool.totalSeats ?? "Unlimited"}
                     </td>
-                    <td className="py-3">
+                    <td className="py-3.5 pl-4 text-right font-semibold text-text-primary font-mono">
                       {pool.remainingSeats ?? "Unlimited"}
                     </td>
                   </tr>
@@ -153,30 +206,44 @@ const BillingSeatsPanel: React.FC = () => {
         )}
       </div>
 
-      <div className="card">
-        <h3 className="heading-md mb-2">Classroom Usage</h3>
+      {/* Classroom Usage Section */}
+      <div className="card bg-ui-surface border border-ui-border rounded-xl p-6 shadow-sm">
+        <h3 className="text-lg font-bold text-text-primary mb-4">Classroom License Allocations</h3>
         {summary?.classroomUsage?.length ? (
-          <div className="space-y-2">
+          <div className="divide-y divide-ui-border/60">
             {summary.classroomUsage.map((classroom) => (
               <div
                 key={classroom.classroomId}
-                className="flex items-center justify-between gap-4 border-b border-ui-border/60 py-2"
+                className="flex items-center justify-between gap-4 py-3.5 first:pt-0 last:pb-0"
               >
                 <div>
-                  <p className="font-medium">{classroom.name}</p>
-                  <p className="text-xs text-text-muted">
-                    {classroom.billingMode || "student_paid"} ·{" "}
-                    {classroom.joinPolicy || "invite_link"}
-                  </p>
+                  <p className="font-semibold text-text-primary text-base">{classroom.name}</p>
+                  <div className="flex flex-wrap items-center gap-2 mt-1">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                      classroom.billingMode === "teacher_paid_roster"
+                        ? "bg-blue-500/10 text-blue-400"
+                        : "bg-orange-500/10 text-orange-400"
+                    }`}>
+                      {classroom.billingMode === "teacher_paid_roster"
+                        ? "Paid by Organization (Roster)"
+                        : "Paid by Students (Individual)"}
+                    </span>
+                    <span className="text-xs text-text-muted">
+                      · {classroom.joinPolicy === "roster_only" ? "Roster Only" : "Invite Link"}
+                    </span>
+                  </div>
                 </div>
-                <span className="text-sm text-text-muted">
-                  {classroom.claimedSeats} claimed
-                </span>
+                <div className="text-right">
+                  <span className="text-lg font-bold text-brand-teal font-mono">
+                    {classroom.claimedSeats}
+                  </span>
+                  <span className="text-xs text-text-muted ml-1 font-medium">claimed</span>
+                </div>
               </div>
             ))}
           </div>
         ) : (
-          <p className="text-text-muted">No classroom seat usage yet.</p>
+          <p className="text-text-muted text-sm py-4">No active classrooms.</p>
         )}
       </div>
     </div>
