@@ -37,7 +37,7 @@ const ClassroomTemplate = require("../classroomTemplate/classroomTemplate.model"
  *           description: Optional header image URL.
  *         billingMode:
  *           type: string
- *           enum: [student_paid, teacher_paid_open, teacher_paid_roster, hybrid, roster_only, open_free]
+ *           enum: [student_paid, teacher_paid_roster]
  *         joinPolicy:
  *           type: string
  *           enum: [invite_link, open, roster_only, closed]
@@ -114,11 +114,7 @@ const classroomSchema = new mongoose.Schema({
     type: String,
     enum: [
       "student_paid",
-      "teacher_paid_open",
       "teacher_paid_roster",
-      "hybrid",
-      "roster_only",
-      "open_free",
     ],
     default: "student_paid",
     index: true,

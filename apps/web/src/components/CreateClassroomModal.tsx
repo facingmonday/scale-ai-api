@@ -83,12 +83,10 @@ const CreateClassroomModal: React.FC<CreateClassroomModalProps> = ({
         templateId: selectedTemplateId || undefined,
         billingMode: newClassroomBillingMode,
         joinPolicy:
-          newClassroomBillingMode === "roster_only"
+          newClassroomBillingMode === "teacher_paid_roster"
             ? "roster_only"
             : "invite_link",
-        studentPaysAllowed:
-          newClassroomBillingMode === "student_paid" ||
-          newClassroomBillingMode === "hybrid",
+        studentPaysAllowed: newClassroomBillingMode === "student_paid",
         allowAnonymousJoin: newAllowAnonymousJoin,
       });
       const newClassroom = response.data;
@@ -208,16 +206,9 @@ const CreateClassroomModal: React.FC<CreateClassroomModalProps> = ({
                 disabled={isCreating}
               >
                 <option value="student_paid">Students pay individually</option>
-                <option value="teacher_paid_open">
-                  Teacher-paid open seats
-                </option>
                 <option value="teacher_paid_roster">
                   Teacher-paid roster seats
                 </option>
-                {/* <option value="hybrid">
-                  Teacher seats first, then student pay
-                </option>
-                <option value="roster_only">Roster only</option> */}
               </select>
               <p className="text-text-muted text-xs mt-1">
                 You can change this later from the classroom billing settings.

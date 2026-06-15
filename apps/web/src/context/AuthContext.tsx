@@ -329,6 +329,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       !activeClassroom &&
       window.location.pathname !== targetPath &&
       window.location.pathname !== "/classrooms" &&
+      window.location.pathname !== "/classrooms/new" &&
       window.location.pathname !== "/join" &&
       window.location.pathname !== "/join-organization" &&
       !hasJoinParams &&

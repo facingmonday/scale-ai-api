@@ -3,12 +3,8 @@ const AutomationTask = require("./automationTask.model");
 const AutomationTaskRun = require("./automationTaskRun.model");
 const ClassroomReport = require("./classroomReport.model");
 const Classroom = require("../classroom/classroom.model");
-const Challenge = require("../challenge/challenge.model");
-const Decision = require("../decision/decision.model");
-const LedgerEntry = require("../ledger/ledger.model");
-const Profile = require("../profile/profile.model");
-const MetricDefinition = require("../metricDefinition/metricDefinition.model");
-const SimulationJob = require("../job/job.model");
+const { PromptContextBuilderFactory } = require("./lib/promptContextBuilders");
+const GammaService = require("./lib/gammaService");
 class AutomationTaskService {
   /**
    * Trigger automation tasks of a specific lifecycle type
@@ -106,6 +102,24 @@ class AutomationTaskService {
 
       // 3. Handle outputs based on actionType
       if (task.actionType === "GENERATE_SLIDES" || task.actionType === "GENERATE_REPORT") {
+        // For GENERATE_SLIDES, send AI output to Gamma for polished PPTX generation
+        if (task.actionType === "GENERATE_SLIDES" && process.env.GAMMA_API_KEY) {
+          try {
+            const inputText = this.formatSlideOutlineForGamma(agentResult);
+            const Challenge = require("../challenge/challenge.model");
+            const challenge = await Challenge.findById(run.challengeId).lean();
+            const gammaResult = await GammaService.generateAndExport(inputText, {
+              title: `${task.name}${challenge?.week ? ` — Week ${challenge.week}` : ""}`,
+              numCards: agentResult.slideOutline?.length || 8,
+            });
+            agentResult.gamma = gammaResult;
+            console.log(`🎨 Gamma presentation ready: ${gammaResult.exportUrl}`);
+          } catch (gammaError) {
+            console.error(`⚠️ Gamma generation failed, saving AI output only:`, gammaError.message);
+            agentResult.gammaError = gammaError.message;
+          }
+        }
+
         // Save output to classroom report vault
         await ClassroomReport.findOneAndUpdate(
           {
@@ -179,80 +193,8 @@ class AutomationTaskService {
    * Build the execution context based on the task trigger event type
    */
   static async buildPromptContext(trigger, run) {
-    const classroom = await Classroom.findById(run.classroomId).lean();
-    if (!classroom) throw new Error("Classroom not found");
-
-    const challenge = await Challenge.findById(run.challengeId).lean();
-    if (!challenge) throw new Error("Challenge not found");
-
-    const context = {
-      classroomName: classroom.name,
-      challengeTitle: challenge.title,
-      challengeDescription: challenge.description,
-      triggerEvent: trigger,
-    };
-
-    if (trigger === "AFTER_CHALLENGE_CREATED") {
-      context.variables = challenge.variables || {};
-      return context;
-    }
-
-    if (trigger === "AFTER_STUDENT_SUBMISSION") {
-      const decision = await Decision.findById(run.decisionId).lean();
-      if (!decision) throw new Error(`Decision not found: ${run.decisionId}`);
-
-      const ProfileModel = require("../profile/profile.model");
-      const profile = await ProfileModel.findOne({ classroomId: run.classroomId, userId: decision.userId }).lean();
-      
-      const Member = require("../members/member.model");
-      const student = await Member.findById(decision.userId).select("firstName lastName maskedEmail").lean();
-
-      context.student = {
-        name: student ? `${student.firstName} ${student.lastName}` : "Unknown Student",
-        shopName: profile?.shopName || "Unknown Shop",
-        profileType: profile?.profileTypeLabel || profile?.profileType?.label || "Unknown Type",
-      };
-      context.submissionVariables = decision.variables || {};
-      return context;
-    }
-
-    if (trigger === "AFTER_CHALLENGE_CLOSED") {
-      // 1. Gather all student submissions for this challenge
-      const allSubmissions = await Decision.getSubmissionsByScenario(run.challengeId);
-      
-      // 2. Fetch profiles to attach
-      const submissionsWithStores = await Promise.all(
-        allSubmissions.map(async (decision) => {
-          const profile = await Profile.getStoreByUser(run.classroomId, decision.userId);
-          return {
-            ...decision,
-            profile,
-          };
-        })
-      );
-
-      // 3. Compute store type stats using static method
-      const metricDefinitions = await MetricDefinition.getActive(run.classroomId);
-      const storeTypeStats = await Challenge.getStoreTypeStats(submissionsWithStores, metricDefinitions);
-
-      context.totalStudents = submissionsWithStores.length;
-      context.studentOutcomes = submissionsWithStores.map(sub => {
-        const metrics = sub.ledgerEntryId?.metrics;
-        return {
-          studentName: sub.member ? `${sub.member.firstName} ${sub.member.lastName}` : "Unknown Student",
-          shopName: sub.profile?.shopName || "Unknown Shop",
-          profileType: sub.profile?.profileType?.label || "Unknown Type",
-          metrics: metrics instanceof Map ? Object.fromEntries(metrics) : metrics || {},
-          summary: sub.ledgerEntryId?.summary || "",
-          randomEvent: sub.ledgerEntryId?.randomEvent || "",
-          variables: sub.variables || [],
-        };
-      });
-      context.storeTypeStats = storeTypeStats;
-      return context;
-    }
-
-    throw new Error(`Unsupported trigger type: ${trigger}`);
+    const builder = PromptContextBuilderFactory.getBuilder(trigger, run);
+    return builder.build();
   }
 
   /**
@@ -331,6 +273,45 @@ class AutomationTaskService {
       // Fallback
       return { outputText: responseText };
     }
+  }
+
+  /**
+   * Convert the AI agent's structured slideOutline into markdown text
+   * suitable for Gamma's inputText parameter
+   */
+  static formatSlideOutlineForGamma(agentResult) {
+    const lines = [];
+
+    if (agentResult.classSummary) {
+      lines.push(`# ${agentResult.classSummary}`);
+      lines.push("");
+    }
+
+    if (agentResult.commonMistakes?.length) {
+      lines.push("## Common Mistakes");
+      for (const mistake of agentResult.commonMistakes) {
+        lines.push(`- ${mistake}`);
+      }
+      lines.push("");
+    }
+
+    if (agentResult.slideOutline?.length) {
+      for (const slide of agentResult.slideOutline) {
+        lines.push(`## ${slide.slideTitle}`);
+        if (slide.bullets?.length) {
+          for (const bullet of slide.bullets) {
+            lines.push(`- ${bullet}`);
+          }
+        }
+        if (slide.teachingTip) {
+          lines.push(``);
+          lines.push(`> Teaching Tip: ${slide.teachingTip}`);
+        }
+        lines.push("");
+      }
+    }
+
+    return lines.join("\n");
   }
 }
 

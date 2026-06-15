@@ -12,7 +12,8 @@ import classroomService from "@/services/classroom";
 import challengeService from "@/services/challenge";
 import enrollmentService from "@/services/enrollment";
 import type { ClassroomWithVirtuals } from "@/types/classroom";
-import CreateClassroomModal from "@/components/CreateClassroomModal";
+
+
 
 import {
   TeacherCurrentChallengeCard,
@@ -51,8 +52,7 @@ const Dashboard: React.FC = () => {
   const [isFetchingMultiClass, setIsFetchingMultiClass] = useState(false);
   const [multiClassError, setMultiClassError] = useState<string | null>(null);
 
-  // Create classroom modal states
-  const [showCreateModal, setShowCreateModal] = useState(false);
+
 
 
   const fetchMultiClassData = useCallback(async () => {
@@ -368,7 +368,7 @@ const Dashboard: React.FC = () => {
               </div>
               <div className="mt-4 md:mt-0 flex gap-3">
                 <button
-                  onClick={() => setShowCreateModal(true)}
+                  onClick={() => navigate("/classrooms/new")}
                   className="btn-blue text-white flex items-center gap-2"
                 >
                   <span>+ New Classroom</span>
@@ -412,7 +412,7 @@ const Dashboard: React.FC = () => {
                         Get started by creating your first classroom. You can use templates to prefill scenarios and variable configurations.
                       </p>
                       <button
-                        onClick={() => setShowCreateModal(true)}
+                        onClick={() => navigate("/classrooms/new")}
                         className="btn-teal"
                       >
                         Create Classroom
@@ -601,11 +601,7 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Create Classroom Modal */}
-        <CreateClassroomModal
-          isOpen={showCreateModal}
-          onClose={() => setShowCreateModal(false)}
-        />
+
 
       </BasicLayout>
     );

@@ -1,10 +1,6 @@
 export type BillingMode =
   | "student_paid"
-  | "teacher_paid_open"
-  | "teacher_paid_roster"
-  | "hybrid"
-  | "roster_only"
-  | "open_free";
+  | "teacher_paid_roster";
 
 export type JoinPolicy = "invite_link" | "open" | "roster_only" | "closed";
 

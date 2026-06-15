@@ -21,24 +21,9 @@ const billingModes: Array<{ value: BillingMode; label: string; help: string }> =
     help: "Students pay individually before joining this classroom.",
   },
   {
-    value: "teacher_paid_open",
-    label: "Teacher paid, open seats",
-    help: "Any invited student can claim one of the teacher-paid seats.",
-  },
-  {
     value: "teacher_paid_roster",
     label: "Teacher paid, roster only",
-    help: "Only imported roster students can claim teacher-paid seats.",
-  },
-  {
-    value: "hybrid",
-    label: "Hybrid",
-    help: "Use teacher-paid seats first, then let students pay individually.",
-  },
-  {
-    value: "roster_only",
-    label: "Roster only",
-    help: "Only imported roster emails can join.",
+    help: "Only imported roster students can claim seats.",
   },
 ];
 
@@ -99,18 +84,19 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
   const saveSettings = async () => {
     setIsSaving(true);
     setError(null);
+    const updatedStudentPaysAllowed = billingMode === "student_paid";
     try {
       const response = await classroomService.update(classroomId, {
         billingMode,
         joinPolicy,
-        studentPaysAllowed,
+        studentPaysAllowed: updatedStudentPaysAllowed,
         allowAnonymousJoin,
       });
       const updated = response?.data || {
         ...classroom,
         billingMode,
         joinPolicy,
-        studentPaysAllowed,
+        studentPaysAllowed: updatedStudentPaysAllowed,
         allowAnonymousJoin,
       };
       onClassroomUpdated?.(updated);
@@ -165,7 +151,9 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
             type="button"
             onClick={() => {
               setBillingMode(mode.value);
-              if (mode.value === "roster_only") setJoinPolicy("roster_only");
+              if (mode.value === "teacher_paid_roster") {
+                setJoinPolicy("roster_only");
+              }
             }}
             className={`text-left p-4 rounded-lg border transition-colors ${
               billingMode === mode.value
@@ -198,16 +186,6 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
           <label className="flex items-center gap-3">
             <input
               type="checkbox"
-              checked={studentPaysAllowed}
-              onChange={(e) => setStudentPaysAllowed(e.target.checked)}
-              className="w-4 h-4 rounded border-ui-border text-brand-teal focus:ring-brand-teal"
-            />
-            <span className="text-sm">Allow students to pay when no teacher seat is available</span>
-          </label>
-
-          <label className="flex items-center gap-3">
-            <input
-              type="checkbox"
               checked={allowAnonymousJoin}
               onChange={(e) => setAllowAnonymousJoin(e.target.checked)}
               className="w-4 h-4 rounded border-ui-border text-brand-teal focus:ring-brand-teal"
@@ -236,7 +214,7 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
 
       <div className="border-t border-ui-border pt-6">
         <h3 className="heading-sm mb-3">Seat Usage</h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
           <div className="p-3 rounded border border-ui-border">
             <p className="text-xs text-text-muted">Claimed</p>
             <p className="text-xl font-semibold">
@@ -255,47 +233,6 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
               {isLoading ? "..." : summary?.roster.claimed ?? 0}
             </p>
           </div>
-          <div className="p-3 rounded border border-ui-border">
-            <p className="text-xs text-text-muted">Allocations</p>
-            <p className="text-xl font-semibold">
-              {isLoading ? "..." : summary?.allocations.length ?? 0}
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_140px_auto] gap-3 items-end">
-          <label className="flex flex-col gap-1">
-            <span className="label">Seat Pool</span>
-            <select
-              className="input"
-              value={selectedPoolId}
-              onChange={(e) => setSelectedPoolId(e.target.value)}
-            >
-              <option value="">Select a seat pool</option>
-              {seatPools.map((pool) => (
-                <option key={pool._id} value={pool._id}>
-                  {pool.planKey} ({pool.remainingSeats ?? "unlimited"} available)
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="label">Seats</span>
-            <input
-              className="input"
-              type="number"
-              min={0}
-              value={seatsToAllocate}
-              onChange={(e) => setSeatsToAllocate(Number(e.target.value))}
-            />
-          </label>
-          <button
-            className="btn-outline"
-            disabled={!selectedPoolId || seatsToAllocate <= 0 || isSaving}
-            onClick={() => void allocateSeats()}
-          >
-            Allocate
-          </button>
         </div>
       </div>
     </div>

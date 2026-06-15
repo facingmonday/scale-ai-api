@@ -8,7 +8,8 @@ import type { ClassroomWithVirtuals } from "../../../types/classroom";
 import BasicLayout from "../../../components/Layouts/BasicLayout";
 import enrollmentService from "../../../services/enrollment";
 import LoadingOverlay from "../../../components/LoadingOverlay";
-import CreateClassroomModal from "../../../components/CreateClassroomModal";
+
+
 
 const Classrooms = () => {
   const { setNewActiveClassroom, activeClassroom, isLoading, organization } =
@@ -21,7 +22,7 @@ const Classrooms = () => {
   );
   const [isFetchingClassrooms, setIsFetchingClassrooms] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+
   const [joiningClassroomId, setJoiningClassroomId] = useState<string | null>(
     null
   );
@@ -223,7 +224,7 @@ const Classrooms = () => {
             <h1 className="heading-xl">My Classes ({classrooms.length})</h1>
             <div className="flex gap-3">
               <button
-                onClick={() => setShowCreateModal(true)}
+                onClick={() => navigate("/classrooms/new")}
                 className="btn-blue text-white"
               >
                 + New Classroom
@@ -239,7 +240,7 @@ const Classrooms = () => {
                 Get started by creating your first classroom
               </p>
               <button
-                onClick={() => setShowCreateModal(true)}
+                onClick={() => navigate("/classrooms/new")}
                 className="btn-teal"
               >
                 Create Classroom
@@ -288,11 +289,7 @@ const Classrooms = () => {
             </div>
           )}
 
-          {/* Create Classroom Modal */}
-          <CreateClassroomModal
-            isOpen={showCreateModal}
-            onClose={() => setShowCreateModal(false)}
-          />
+
 
           {/* Edit Classroom Modal */}
           {editingClassroom && (

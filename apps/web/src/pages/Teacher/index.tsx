@@ -4,6 +4,7 @@ export { default as dashboard } from "./Dashboard";
 export { default as challenges } from "./Challenges/";
 export { default as challenge } from "./Challenge";
 export { default as challengeCreate } from "./ChallengeCreate";
+export { default as classroomCreate } from "./ClassroomCreate";
 export { default as settings } from "./Settings";
 export { default as students } from "./Students";
 export { default as student } from "./Student";

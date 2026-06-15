@@ -601,11 +601,7 @@
             "type": "string",
             "enum": [
               "student_paid",
-              "teacher_paid_open",
-              "teacher_paid_roster",
-              "hybrid",
-              "roster_only",
-              "open_free"
+              "teacher_paid_roster"
             ]
           },
           "joinPolicy": {

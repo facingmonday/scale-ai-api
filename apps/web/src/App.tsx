@@ -12,6 +12,7 @@ import * as Pages from "./pages";
 import { JoinOrganization } from "./pages/JoinOrganization";
 import ClassroomLinkLanding from "./pages/Classrooms/ClassroomLinkLanding";
 import AuthPage from "./pages/Auth/Auth";
+import ClassroomCreate from "./pages/Teacher/ClassroomCreate/ClassroomCreate";
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
@@ -242,6 +243,14 @@ export default function App() {
                   <Routes>
                     <Route path="/" element={<RootEntry />} />
                     <Route path="/join" element={<JoinPathRedirect />} />
+                    <Route
+                      path="/classrooms/new"
+                      element={
+                        <Suspense fallback={<LoadingScreen />}>
+                          <ClassroomCreate />
+                        </Suspense>
+                      }
+                    />
                     <Route
                       path="/classrooms/:id"
                       element={

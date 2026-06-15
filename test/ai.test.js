@@ -8,7 +8,7 @@ require("../models");
 
 const ChatMessage = mongoose.model("ChatMessage");
 const ClassroomReport = mongoose.model("ClassroomReport");
-const tools = require("../services/ai/ai.tools");
+const tools = require("../services/ai/tools");
 const controller = require("../services/ai/ai.controller");
 
 test("AI ChatMessage model has correct schema properties", () => {

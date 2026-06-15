@@ -1,13 +1,13 @@
-# Bull Queue System for Kikits
+# Bull Queue System for SCALE LXP
 
-This directory contains the Bull queue system implementation for handling PDF generation and email sending asynchronously to prevent memory issues and improve performance.
+This directory contains the Bull queue system implementation for handling email and simulation jobs asynchronously to prevent memory issues and improve performance.
 
 ## Overview
 
 The queue system uses Redis as a backend and provides:
 
-- **PDF Generation Queue**: Handles receipt, ticket, and cancellation PDF generation
 - **Email Sending Queue**: Handles email, SMS, and push notifications
+- **Simulation Queues**: Handles simulation and outcome processing jobs
 - **Bull Dashboard**: Web interface for monitoring queue status and jobs
 
 ## Environment Variables
@@ -30,22 +30,24 @@ PORT_WORKERS=1341            # Port for the workers service
 
 ### Queue Types
 
-1. **PDF Generation Queue** (`pdf-generation`)
-
-   - `order-receipt`: Generate order receipt PDFs
-   - `order-tickets`: Generate order tickets PDF
-   - `order-cancelled`: Generate order cancellation PDF
-   - `single-ticket`: Generate individual ticket PDF
-
-2. **Email Sending Queue** (`email-sending`)
+1. **Email Sending Queue** (`email-sending`)
    - `email`: Send email notifications
    - `sms`: Send SMS notifications
    - `push`: Send push notifications
 
+2. **Simulation Queue** (`simulation`)
+   - Processing AI-driven student decision simulation outcomes
+
+3. **Simulation Batch Queue** (`simulation-batch`)
+   - Processing batch simulation executions
+
+4. **Outcome Processing Queue** (`challenge-outcome-processing`)
+   - Processing challenge outcomes
+
 ### Queue Workers
 
-- **PDF Worker** (`lib/queues/pdf-worker.js`): Processes PDF generation jobs
 - **Email Worker** (`lib/queues/email-worker.js`): Processes notification sending jobs
+- **Simulation Worker** (`lib/queues/simulation-worker.js`): Processes student decision outcome calculations
 
 ### Monitoring
 
@@ -79,18 +81,6 @@ http://localhost:1341/admin/queues
 
 ## Integration
 
-### PDF Generation
-
-Instead of directly calling PDF generation methods, use the queue system:
-
-```javascript
-// OLD: Direct PDF generation (memory intensive)
-const url = await order.generateReceiptPDF();
-
-// NEW: Queue-based PDF generation
-const result = await order.generateReceiptPDF(); // Returns { jobId, status: 'queued' }
-```
-
 ### Email Notifications
 
 Instead of directly sending emails, use the queue system:
@@ -105,13 +95,6 @@ await notification.save(); // Automatically queues the email
 ```
 
 ## Queue Job Priorities
-
-- **PDF Generation**:
-
-  - Order receipts: Priority 5 (highest)
-  - Order tickets: Priority 4
-  - Order cancellations: Priority 3
-  - Single tickets: Priority 2
 
 - **Email Sending**:
   - SMS: Priority 4 (higher urgency)

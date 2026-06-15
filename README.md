@@ -1288,9 +1288,6 @@ npm install
 
 # Copy environment file
 cp .env.example .env
-
-# Install Puppeteer browsers (if not skipped)
-npm run postinstall
 ```
 
 ### Environment Variables
@@ -1354,7 +1351,6 @@ Backend services are deployed on **DigitalOcean App Platform** using Docker. The
 The project includes a Dockerfile that:
 
 - Uses Node.js 18 Alpine
-- Installs Chromium for Puppeteer
 - Sets up production environment
 - Runs the service specified by `APP_NAME` environment variable
 
@@ -1453,7 +1449,6 @@ The application uses **Bull** (Redis-based queue) for background job processing.
 
 - **Simulation** - AI-driven simulation job processing (env-configurable concurrency; defaults to 2)
 - **Email Sending** - Email notifications
-- **PDF Generation** - PDF document generation
 - **SMS Sending** - SMS notifications
 - **Push Sending** - Push notifications
 

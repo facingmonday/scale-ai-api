@@ -309,30 +309,13 @@ async function claimSeatOrRequireCheckout({
     );
   }
 
-  if (joinPolicy === "roster_only" || billingMode === "roster_only") {
+  if (joinPolicy === "roster_only" || billingMode === "roster_only" || billingMode === "teacher_paid_roster") {
     throw makeLicensingError(
       "This classroom is limited to imported roster emails.",
       403,
       "ROSTER_ONLY",
       { classroomId: classroom._id, organizationId: organization._id }
     );
-  }
-
-  if (["teacher_paid_open", "hybrid"].includes(billingMode)) {
-    const allocation = await findOpenAllocation(classroom._id);
-    if (allocation) {
-      return {
-        allowed: true,
-        ...(await createClaim({
-          classroom,
-          member,
-          source: "teacher_open",
-          seatPool: allocation.seatPoolId,
-          allocation,
-          createdBy: clerkUserId,
-        })),
-      };
-    }
   }
 
   const userPool = await findUnclaimedStudentPool({
@@ -348,18 +331,6 @@ async function claimSeatOrRequireCheckout({
         member,
         source: "student_purchase",
         seatPool: userPool,
-        createdBy: clerkUserId,
-      })),
-    };
-  }
-
-  if (billingMode === "open_free") {
-    return {
-      allowed: true,
-      ...(await createClaim({
-        classroom,
-        member,
-        source: "free_teacher_workspace",
         createdBy: clerkUserId,
       })),
     };

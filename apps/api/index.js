@@ -1,13 +1,18 @@
 // Load environment variables FIRST before any other imports that might use them
-require("dotenv").config();
+const path = require("path");
+const fs = require("fs");
+const dotenvPath = path.resolve(__dirname, "../../.env");
+if (fs.existsSync(dotenvPath)) {
+  require("dotenv").config({ path: dotenvPath });
+} else {
+  require("dotenv").config();
+}
 
 const express = require("express");
 const mongoose = require("mongoose");
 const morgan = require("morgan");
 const multer = require("multer");
 const cors = require("cors");
-const path = require("path");
-const fs = require("fs");
 const { clerkMiddleware } = require("@clerk/express");
 const swaggerJsdoc = require("swagger-jsdoc");
 const swaggerUi = require("swagger-ui-express");

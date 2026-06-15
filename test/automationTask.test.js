@@ -12,6 +12,7 @@ const AutomationTask = require("../services/ai/automationTask.model");
 const AutomationTaskRun = require("../services/ai/automationTaskRun.model");
 const ClassroomReport = require("../services/ai/classroomReport.model");
 const AutomationTaskService = require("../services/ai/automationTask.service");
+const GammaService = require("../services/ai/lib/gammaService");
 
 async function runTest() {
   let uri = process.env.MONGO_URL || process.env.MONGO_URI;
@@ -50,6 +51,23 @@ async function runTest() {
     };
   }
 
+  // Stub Gamma API to avoid needing a real GAMMA_API_KEY during tests
+  if (!process.env.GAMMA_API_KEY) {
+    console.log("⚠️ No GAMMA_API_KEY found. Stubbing GammaService.generateAndExport for testing.");
+    // Set a fake key so the service branch triggers
+    process.env.GAMMA_API_KEY = "test_gamma_key_stub";
+    GammaService.generateAndExport = async (inputText, options) => {
+      console.log(`🎨 [STUB] Gamma generateAndExport called with title: "${options?.title}", numCards: ${options?.numCards}`);
+      return {
+        generationId: "mock_gamma_gen_123",
+        gammaId: "g_mock_abc123",
+        gammaUrl: "https://gamma.app/docs/mock-presentation",
+        exportUrl: "https://gamma.app/export/mock-presentation.pptx",
+        credits: { deducted: 15, remaining: 485 },
+      };
+    };
+  }
+
 
   let classroom, challenge, decision, ledgerEntry, automationTask, profile, profileType;
 
@@ -75,7 +93,7 @@ async function runTest() {
     classroom = new Classroom({
       name: "Test Automation Classroom",
       ownership: member._id,
-      billingMode: "open_free",
+      billingMode: "student_paid",
       organization: orgId,
       createdBy: member.clerkUserId,
       updatedBy: member.clerkUserId,
@@ -229,6 +247,18 @@ async function runTest() {
       throw new Error("No ClassroomReport created of type CUSTOM_TASK_OUTPUT!");
     }
     console.log("ClassroomReport found! Payload:", JSON.stringify(report.payload, null, 2));
+
+    // Verify Gamma integration data is present
+    if (report.payload?.gamma) {
+      console.log("✅ Gamma integration data present:");
+      console.log(`   gammaUrl: ${report.payload.gamma.gammaUrl}`);
+      console.log(`   exportUrl: ${report.payload.gamma.exportUrl}`);
+      console.log(`   generationId: ${report.payload.gamma.generationId}`);
+    } else if (report.payload?.gammaError) {
+      console.log(`⚠️ Gamma generation failed: ${report.payload.gammaError}`);
+    } else {
+      console.log("ℹ️ No Gamma data (GAMMA_API_KEY not configured or non-slides task)");
+    }
 
     console.log("\n🎉 ALL TESTS PASSED SUCCESSFULLY! 🎉\n");
 

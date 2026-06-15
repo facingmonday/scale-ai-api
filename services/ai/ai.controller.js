@@ -3,7 +3,7 @@ const ChatMessage = require("./chat.model");
 const ClassroomReport = require("./classroomReport.model");
 const AutomationTask = require("./automationTask.model");
 const AutomationTaskRun = require("./automationTaskRun.model");
-const tools = require("./ai.tools");
+const tools = require("./tools");
 
 // Define Student Agent (Tutor)
 const studentAgent = new LlmAgent({

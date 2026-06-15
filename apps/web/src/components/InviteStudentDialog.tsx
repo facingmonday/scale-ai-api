@@ -39,14 +39,8 @@ const InviteStudentDialog: React.FC<InviteStudentDialogProps> = ({
     if (mode === "student_paid") {
       return "Students will be asked to pay for access before joining this classroom.";
     }
-    if (mode === "teacher_paid_open") {
-      return "This invite can consume one teacher-paid seat when the student joins.";
-    }
-    if (mode === "teacher_paid_roster" || mode === "roster_only") {
+    if (mode === "teacher_paid_roster") {
       return "Only imported roster students can claim a seat for this classroom.";
-    }
-    if (mode === "hybrid") {
-      return "Teacher-paid seats are used first. Students can pay if no teacher seats remain.";
     }
     return "Billing rules are checked when the student accepts the invite.";
   }, [summary]);
