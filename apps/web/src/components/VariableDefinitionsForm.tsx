@@ -26,6 +26,7 @@ export type VariableDefinitionsFormValues = {
   max?: string;
   required: boolean;
   isActive: boolean;
+  challengeId?: string | null;
 };
 
 function inputTypeNeedsOptions(
@@ -79,6 +80,7 @@ function transformToVariableDefinition(
     required: values.required,
     isActive: values.isActive,
     classroomId: "", // Not needed for preview
+    challengeId: values.challengeId || null,
   } as Partial<VariableDefinitionModel>;
 }
 
@@ -203,7 +205,7 @@ const VariableDefinitionsForm: React.FC<{ disabled?: boolean }> = ({
           <select
             id="vd-appliesTo"
             className="input"
-            disabled={disabled}
+            disabled={disabled || !!watch("challengeId")}
             {...register("appliesTo", { required: true })}
           >
             <option value="profile">Profile</option>
@@ -213,6 +215,20 @@ const VariableDefinitionsForm: React.FC<{ disabled?: boolean }> = ({
             <option value="outcome">Outcome</option>
           </select>
         </div>
+
+        {watch("challengeId") && (
+          <div>
+            <label className="label" htmlFor="vd-challengeId">
+              Challenge ID
+            </label>
+            <input
+              id="vd-challengeId"
+              className="input"
+              disabled
+              {...register("challengeId")}
+            />
+          </div>
+        )}
 
         <div className="flex flex-row gap-2">
           <div className="w-1/2">

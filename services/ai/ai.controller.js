@@ -1,4 +1,4 @@
-const { LlmAgent, InMemoryRunner, createEvent, stringifyContent } = require("@google/adk");
+const { LlmAgent, InMemoryRunner, createEvent, stringifyContent, getFunctionResponses } = require("@google/adk");
 const ChatMessage = require("./chat.model");
 const ClassroomReport = require("./classroomReport.model");
 const AutomationTask = require("./automationTask.model");
@@ -64,7 +64,7 @@ exports.chat = async function (req, res) {
       .sort({ createdDate: -1 })
       .limit(20)
       .lean();
-    
+
     // Sort chronologically
     dbHistory.reverse();
 
@@ -130,8 +130,40 @@ exports.chat = async function (req, res) {
     });
 
     let fullResponse = "";
+    let lastToolResult = null;
+
+    const toolComponentMap = {
+      get_class_roster: "ClassRoster",
+      get_student_ledger_entries: "StudentLedger",
+      get_student_profile: "StudentProfile",
+      get_student_submissions: "StudentSubmissions",
+      get_scenario_details: "ScenarioDetails",
+      get_classroom_summary: "ClassroomSummary"
+    };
 
     for await (const event of eventStream) {
+      // Intercept tool outputs
+      const responses = getFunctionResponses(event);
+      for (const resp of responses) {
+        const result = resp.response?.result ?? resp.response;
+        const error = resp.response?.error;
+        if (!error && result) {
+          if (toolComponentMap[resp.name]) {
+            lastToolResult = {
+              status: `${resp.name}_completed`,
+              spec: {
+                root: {
+                  component: toolComponentMap[resp.name],
+                  props: result
+                }
+              }
+            };
+            // Send the UI spec to the client immediately
+            res.write(`data: ${JSON.stringify({ result: lastToolResult })}\n\n`);
+          }
+        }
+      }
+
       if (event.partial) {
         const text = stringifyContent(event);
         if (text) {
@@ -146,7 +178,8 @@ exports.chat = async function (req, res) {
       classroomId,
       userId,
       role: "model",
-      content: fullResponse,
+      content: fullResponse || "Empty response.",
+      result: lastToolResult,
       organization: req.organization?._id || req.activeClassroom.organization,
       createdBy: "system",
       updatedBy: "system",

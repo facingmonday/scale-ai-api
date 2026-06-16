@@ -832,6 +832,10 @@ classroomSchema.statics.adminRestoreTemplateForClassroom = async function (
     organization: organizationId,
     classroomId,
   });
+  const MetricDefinition = require("../metricDefinition/metricDefinition.model");
+  const metricDefsRes = await MetricDefinition.deleteMany({
+    classroomId,
+  });
 
   // 2) Apply template (recreates ProfileType defs + ProfileType values; creates other defs too)
   const templateApply = await template.applyToClassroom({
@@ -927,6 +931,7 @@ classroomSchema.statics.adminRestoreTemplateForClassroom = async function (
   return {
     variableValuesDeleted: valuesRes?.deletedCount || 0,
     variableDefinitionsDeleted: defsRes?.deletedCount || 0,
+    metricDefinitionsDeleted: metricDefsRes?.deletedCount || 0,
     templateApply,
     reseeded: {
       storeValuesCreated,
@@ -977,6 +982,7 @@ classroomSchema.statics.deleteClassroom = async function (
     storeTypesDeleted: 0,
     variableDefinitionsDeleted: 0,
     variableValuesDeleted: 0,
+    metricDefinitionsDeleted: 0,
     simulationJobsDeleted: 0,
     notificationsDeleted: 0,
   };
@@ -1031,6 +1037,14 @@ classroomSchema.statics.deleteClassroom = async function (
   });
   stats.variableDefinitionsDeleted =
     variableDefinitionsResult.deletedCount || 0;
+
+  // 10b. Delete all metric definitions for this classroom
+  const MetricDefinition = require("../metricDefinition/metricDefinition.model");
+  const metricDefinitionsResult = await MetricDefinition.deleteMany({
+    classroomId,
+  });
+  stats.metricDefinitionsDeleted =
+    metricDefinitionsResult.deletedCount || 0;
 
   // 11. Delete all enrollments for this classroom
   const enrollmentsResult = await Enrollment.deleteMany({ classroomId });

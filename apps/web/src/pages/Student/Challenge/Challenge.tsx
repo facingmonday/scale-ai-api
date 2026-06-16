@@ -13,6 +13,8 @@ import BasicLayout from "../../../components/Layouts/BasicLayout";
 import challengeService from "../../../services/challenge";
 import decisionService from "../../../services/decision";
 import profileService from "../../../services/profile";
+import variableDefinitionsService from "../../../services/variableDefinition";
+import type { VariableDefinition } from "../../../types/variableDefinition";
 import Outcome from "@/components/Outcome";
 import VariablesForm from "@/components/VariablesForm";
 import VariablesDisplay from "@/components/VariablesDisplay";
@@ -82,9 +84,15 @@ const ScenarioPage: React.FC = () => {
         const scenarioResp = await challengeService.getById(id, "student");
         const scenarioData = (scenarioResp.data || scenarioResp) as Challenge;
 
-        // Get decision variable definitions from fresh classroom
-        const submissionDefs =
-          classroom?.variableDefinitions?.decision ?? [];
+        // Get variable definitions from API
+        const varDefsResponse = await variableDefinitionsService.getAll(
+          classroom._id,
+          undefined,
+          id
+        );
+        const allDefs = ((varDefsResponse?.data ?? varDefsResponse ?? []) as VariableDefinition[]);
+        const scenarioDefs = allDefs.filter((def) => def.appliesTo === "challenge");
+        const submissionDefs = allDefs.filter((def) => def.appliesTo === "decision");
 
         // If decision exists but variables are not populated, fetch decision separately
         if (
@@ -124,8 +132,7 @@ const ScenarioPage: React.FC = () => {
 
         setScenario(scenarioData);
 
-        // Get challenge variable definitions from fresh classroom
-        const scenarioDefs = classroom?.variableDefinitions?.challenge ?? [];
+
 
         // Get challenge variables from the challenge data
         const scenarioVariables =
@@ -422,7 +429,7 @@ const ScenarioPage: React.FC = () => {
 
               {submissionDeadline && !challenge.isClosed && (
                 <div className="card mb-6">
-                  <h2 className="heading-sm">Decision Deadline</h2>
+                  <h2 className="heading-sm">Submission Deadline</h2>
                   <p className="text-sm text-text-muted mt-1">
                     Submit or update your decisions by{" "}
                     <strong className="text-text-primary">

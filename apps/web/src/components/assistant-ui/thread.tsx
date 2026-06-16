@@ -20,6 +20,13 @@ import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { componentsAllowlist } from "./generative-ui-registry";
+
+const UnknownComponentFallback: React.FC<{ component: string }> = ({ component }) => (
+  <div className="p-3 bg-muted text-muted-foreground rounded-xl text-xs font-mono border">
+    Unknown component: {component}
+  </div>
+);
 import {
   ActionBarMorePrimitive,
   ActionBarPrimitive,
@@ -232,6 +239,13 @@ const AssistantMessage: FC = () => {
                 return <Reasoning {...part} />;
               case "tool-call":
                 return part.toolUI ?? <ToolFallback {...part} />;
+              case "generative-ui":
+                return (
+                  <MessagePrimitive.GenerativeUI
+                    components={componentsAllowlist}
+                    Fallback={UnknownComponentFallback}
+                  />
+                );
               case "indicator":
                 return (
                   <span

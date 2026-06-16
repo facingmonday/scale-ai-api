@@ -22,7 +22,7 @@ const FloatingChat: React.FC = () => {
       const prompt = lastUserMsg?.content?.[0]?.text || "";
       if (!prompt) return;
 
-      const queue: string[] = [];
+      const queue: { text?: string; result?: any; error?: string }[] = [];
       let resolveNext: ((value: boolean) => void) | null = null;
       let isDone = false;
       let error: Error | null = null;
@@ -50,12 +50,29 @@ const FloatingChat: React.FC = () => {
       });
 
       let accumulatedText = "";
+      let lastResult: any = null;
       while (true) {
         if (queue.length > 0) {
-          accumulatedText += queue.shift()!;
-          yield {
-            content: [{ type: "text" as const, text: accumulatedText }],
-          };
+          const chunk = queue.shift()!;
+          if (chunk.error) {
+            throw new Error(chunk.error);
+          }
+          if (chunk.text) {
+            accumulatedText += chunk.text;
+          }
+          if (chunk.result) {
+            lastResult = chunk.result;
+          }
+
+          const content: any[] = [{ type: "text" as const, text: accumulatedText }];
+          if (lastResult && lastResult.spec) {
+            content.push({
+              type: "generative-ui" as const,
+              spec: lastResult.spec,
+            });
+          }
+
+          yield { content };
           continue;
         }
         if (isDone) {
@@ -85,10 +102,19 @@ const FloatingChat: React.FC = () => {
       try {
         const data = await aiService.getChatHistory(classroomId);
         if (data && Array.isArray(data.history)) {
-          const mapped = data.history.map((msg: any) => ({
-            role: msg.role === "model" ? ("assistant" as const) : ("user" as const),
-            content: [{ type: "text" as const, text: msg.content }]
-          }));
+          const mapped = data.history.map((msg: any) => {
+            const content: any[] = [{ type: "text" as const, text: msg.content }];
+            if (msg.result && msg.result.spec) {
+              content.push({
+                type: "generative-ui" as const,
+                spec: msg.result.spec,
+              });
+            }
+            return {
+              role: msg.role === "model" ? ("assistant" as const) : ("user" as const),
+              content,
+            };
+          });
           runtime.threads.main.reset(mapped);
         } else {
           runtime.threads.main.reset([]);

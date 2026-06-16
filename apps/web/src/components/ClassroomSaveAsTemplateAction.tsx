@@ -114,7 +114,7 @@ const ClassroomSaveAsTemplateAction: React.FC<Props> = ({
         <div>
           <h3 className="font-semibold mb-1">Save classroom as template</h3>
           <p className="text-text-muted text-sm">
-            Snapshot this classroom's profile types and variable definitions into
+            Snapshot this classroom's profile types, variable definitions, and metric definitions into
             a classroom template.
           </p>
         </div>

@@ -52,11 +52,14 @@ async function update(
   return response.data;
 }
 
-async function getAll(classroomId: string, appliesTo?: string) {
+async function getAll(classroomId: string, appliesTo?: string, challengeId?: string) {
   const url = new URL(`${API_HOST}/${API_VERSION}/admin/variables`);
   url.searchParams.append("classroomId", classroomId);
   if (appliesTo) {
     url.searchParams.append("appliesTo", appliesTo);
+  }
+  if (challengeId) {
+    url.searchParams.append("challengeId", challengeId);
   }
   const response = await axios.get(url.toString(), {
     headers: await TokenHandler.getHeaders(),

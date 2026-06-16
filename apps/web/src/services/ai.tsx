@@ -32,7 +32,7 @@ async function getClassroomReports(classroomId: string) {
 async function streamChat(
   classroomId: string,
   prompt: string,
-  onChunk: (text: string) => void
+  onChunk: (chunk: { text?: string; result?: any; error?: string }) => void
 ) {
   const headers = {
     ...(await TokenHandler.getHeaders()),
@@ -79,11 +79,7 @@ async function streamChat(
         }
         try {
           const parsed = JSON.parse(dataStr);
-          if (parsed.text) {
-            onChunk(parsed.text);
-          } else if (parsed.error) {
-            throw new Error(parsed.error);
-          }
+          onChunk(parsed);
         } catch (e) {
           console.warn("Error parsing chunk:", e, "Line was:", line);
         }

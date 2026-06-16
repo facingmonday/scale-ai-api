@@ -2337,6 +2337,7 @@ classroomTemplateSchema.methods.applyToClassroom = async function ({
       try {
         await MetricDefinition.create({
           classroomId,
+          organization: organizationId,
           key: md.key,
           label: md.label || md.key,
           description: md.description || "",
@@ -2360,6 +2361,7 @@ classroomTemplateSchema.methods.applyToClassroom = async function ({
         });
         stats.metricDefinitionsCreated += 1;
       } catch (e) {
+        console.error("Failed creating MetricDefinition:", e);
         stats.metricDefinitionsSkipped += 1;
       }
     }

@@ -248,18 +248,22 @@ scenarioSchema.statics.getNextWeekNumber = async function (classroomId) {
  * Validate challenge variables against VariableDefinition
  * @param {string} classroomId - Class ID
  * @param {Object} variables - Variables object to validate
+ * @param {string} [challengeId] - Challenge ID (optional)
  * @returns {Promise<Object>} Validation result
  */
 scenarioSchema.statics.validateScenarioVariables = async function (
   classroomId,
-  variables
+  variables,
+  challengeId = null
 ) {
   return await VariableDefinition.validateValues(
     classroomId,
     "challenge",
-    variables
+    variables,
+    { challengeId }
   );
 };
+
 
 /**
  * Create a challenge
@@ -299,8 +303,8 @@ scenarioSchema.statics.createScenario = async function (
   const scheduleFields = {
     publishAt: publishAt || null,
     submissionDeadlineAt: submissionDeadlineAt || null,
-    closeSubmissionsAt: closeSubmissionsAt || null,
-    processAt: processAt || null,
+    closeSubmissionsAt: closeSubmissionsAt || submissionDeadlineAt || null,
+    processAt: processAt || submissionDeadlineAt || null,
     feedbackReleaseAt: feedbackReleaseAt || null,
     feedbackReleaseMode: feedbackReleaseMode || "IMMEDIATE",
     allowLateSubmissions: allowLateSubmissions || false,
@@ -492,7 +496,8 @@ scenarioSchema.methods.updateVariables = async function (
   // Validate variables
   const validation = await this.constructor.validateScenarioVariables(
     this.classroomId,
-    variables
+    variables,
+    this._id
   );
 
   if (!validation.isValid) {
@@ -505,7 +510,8 @@ scenarioSchema.methods.updateVariables = async function (
   const variablesWithDefaults = await VariableDefinition.applyDefaults(
     this.classroomId,
     "challenge",
-    variables
+    variables,
+    { challengeId: this._id }
   );
 
   // Update or create variable values
@@ -1176,6 +1182,10 @@ scenarioSchema.statics.deleteScenario = async function (challengeId) {
     appliesTo: "challenge",
     ownerId: challengeId,
   });
+
+  // 7b. Delete variable definitions specific to this challenge (VariableDefinition: challengeId: challengeId)
+  const VariableDefinition = require("../variableDefinition/variableDefinition.model");
+  await VariableDefinition.deleteMany({ challengeId });
 
   // 8. Delete variable values for this challenge's outcome (appliesTo: "outcome")
   const outcomeDoc = await Outcome.findOne({ challengeId }).select("_id");

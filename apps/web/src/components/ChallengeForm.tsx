@@ -75,7 +75,7 @@ const ChallengeForm: React.FC<ScenarioFormProps> = ({
           </label>
 
           <label className="flex flex-col gap-2">
-            <span className="label">Decision deadline</span>
+            <span className="label">Submission deadline</span>
             <input
               type="datetime-local"
               className="input"
