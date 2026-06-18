@@ -9,6 +9,7 @@ import VariablesForm from "../../../components/VariablesForm";
 import { useAuth } from "../../../context/AuthContext";
 import { useGlobalContext } from "../../../context/GlobalContext";
 import profileTypeService from "../../../services/profileType";
+import variableDefinitionsService from "../../../services/variableDefinition";
 import type { ProfileType } from "../../../types/profileType";
 import type { VariableDefinitionWithValue } from "../../../types/decision";
 import { getErrorMessage } from "../../../utils/error";
@@ -29,7 +30,9 @@ const StoreTypePage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const globalContext = useGlobalContext();
   const { activeClassroom, refetchMe } = useAuth();
-  const classroomId = activeClassroom?._id ?? null;
+  const classroomIdFromParams = searchParams.get("classroomId");
+  const classroomId =
+    classroomIdFromParams ?? activeClassroom?._id ?? null;
   const returnTo = searchParams.get("returnTo");
 
   const [profileType, setStoreType] = useState<ProfileType | null>(null);
@@ -65,7 +68,18 @@ const StoreTypePage: React.FC = () => {
       const next = (response?.data ?? response) as ProfileType;
       setStoreType(next);
 
-      const defs = activeClassroom?.variableDefinitions?.profileType ?? [];
+      let defs =
+        activeClassroom?._id === classroomId
+          ? activeClassroom?.variableDefinitions?.profileType ?? []
+          : [];
+      if (defs.length === 0 && classroomId) {
+        const defsResponse = await variableDefinitionsService.getAll(
+          classroomId,
+          "profileType"
+        );
+        defs = (defsResponse?.data ?? defsResponse ?? []) as typeof defs;
+      }
+
       const existingVars = (next.variables ?? {}) as Record<string, unknown>;
 
       // Filter: active defs for creation; active OR key in existing data for historical display
@@ -152,6 +166,30 @@ const StoreTypePage: React.FC = () => {
     }
   });
 
+  if (!classroomId) {
+    return (
+      <BasicLayout>
+        <div className="page">
+          <div className="container">
+            <div className="card text-center py-12">
+              <h2 className="heading-lg mb-2">Classroom Required</h2>
+              <p className="text-text-muted mb-4">
+                Open this profile type from a classroom to edit it.
+              </p>
+              <button
+                type="button"
+                className="btn-teal"
+                onClick={() => navigate(returnTo || "/classrooms")}
+              >
+                Back
+              </button>
+            </div>
+          </div>
+        </div>
+      </BasicLayout>
+    );
+  }
+
   if (error) {
     return (
       <BasicLayout>
@@ -201,7 +239,14 @@ const StoreTypePage: React.FC = () => {
                 <button
                   type="button"
                   className="btn-outline"
-                  onClick={() => navigate(returnTo || "/profile-types")}
+                  onClick={() =>
+                    navigate(
+                      returnTo ||
+                        (classroomId
+                          ? `/classroom/${classroomId}?tab=profileTypes`
+                          : "/classrooms")
+                    )
+                  }
                   disabled={isSaving}
                 >
                   Back

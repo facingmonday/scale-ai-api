@@ -8,7 +8,8 @@ const swaggerOptions = {
     info: {
       title: "SCALE LXP API",
       version: "1.0.0",
-      description: "API documentation for the SCALE LXP supply chain simulation platform.",
+      description:
+        "API documentation for the SCALE LXP supply chain simulation platform.",
     },
     components: {
       securitySchemes: {
@@ -16,7 +17,8 @@ const swaggerOptions = {
           type: "http",
           scheme: "bearer",
           bearerFormat: "JWT",
-          description: "Enter your Clerk JWT session token to access the protected endpoints.",
+          description:
+            "Enter your Clerk JWT session token to access the protected endpoints.",
         },
       },
       schemas: {
@@ -43,4 +45,6 @@ const destPath = path.join(__dirname, "../apps/docs/public/swagger.json");
 
 fs.mkdirSync(path.dirname(destPath), { recursive: true });
 fs.writeFileSync(destPath, JSON.stringify(swaggerSpec, null, 2));
-console.log("OpenAPI spec successfully written to apps/docs/public/swagger.json");
+console.log(
+  "OpenAPI spec successfully written to apps/docs/public/swagger.json",
+);

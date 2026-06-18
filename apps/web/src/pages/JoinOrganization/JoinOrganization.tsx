@@ -24,17 +24,16 @@ const JoinOrganization = () => {
     }
   }, [organization, navigate]);
 
-  useEffect(() => {
-    fetchOrganizations();
-  }, []);
+  const loadOrganizationList = async () => {
+    const response = await organizationsService.getAll();
+    return response.data || response;
+  };
 
   const fetchOrganizations = async () => {
     setIsFetchingOrgs(true);
     setError(null);
     try {
-      const response = await organizationsService.getAll();
-      const orgList = response.data || response;
-      setOrganizations(orgList);
+      setOrganizations(await loadOrganizationList());
     } catch (err) {
       console.error("Failed to fetch organizations:", err);
       const errorMessage =
@@ -47,6 +46,35 @@ const JoinOrganization = () => {
       setIsFetchingOrgs(false);
     }
   };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadOrganizations = async () => {
+      try {
+        const orgList = await loadOrganizationList();
+        if (cancelled) return;
+        setOrganizations(orgList);
+      } catch (err) {
+        if (cancelled) return;
+        console.error("Failed to fetch organizations:", err);
+        const errorMessage =
+          err && typeof err === "object" && "response" in err
+            ? (err as { response?: { data?: { message?: string } } }).response
+                ?.data?.message
+            : undefined;
+        setError(errorMessage || "Failed to load organizations");
+      } finally {
+        if (!cancelled) setIsFetchingOrgs(false);
+      }
+    };
+
+    void loadOrganizations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleJoinOrganization = async (org: Organization) => {
     try {

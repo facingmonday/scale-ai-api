@@ -10,9 +10,12 @@ import type {
 } from "../types/licensing";
 
 async function getSummary(): Promise<BillingSummary> {
-  const response = await axios.get(`${API_HOST}/${API_VERSION}/licensing/summary`, {
-    headers: await TokenHandler.getHeaders(),
-  });
+  const response = await axios.get(
+    `${API_HOST}/${API_VERSION}/licensing/summary`,
+    {
+      headers: await TokenHandler.getHeaders(),
+    },
+  );
   return response.data.data;
 }
 
@@ -21,47 +24,19 @@ async function getSeatPools(): Promise<SeatPool[]> {
     `${API_HOST}/${API_VERSION}/licensing/seat-pools`,
     {
       headers: await TokenHandler.getHeaders(),
-    }
-  );
-  return response.data.data;
-}
-
-async function createManualSeatPool(data: {
-  planKey: string;
-  totalSeats?: number;
-}): Promise<SeatPool> {
-  const response = await axios.post(
-    `${API_HOST}/${API_VERSION}/licensing/seat-pools/manual`,
-    data,
-    {
-      headers: await TokenHandler.getHeaders(),
-    }
+    },
   );
   return response.data.data;
 }
 
 async function getClassroomSummary(
-  classroomId: string
+  classroomId: string,
 ): Promise<ClassroomLicensingSummary> {
   const response = await axios.get(
     `${API_HOST}/${API_VERSION}/licensing/classrooms/${classroomId}/summary`,
     {
       headers: await TokenHandler.getHeaders(),
-    }
-  );
-  return response.data.data;
-}
-
-async function allocateSeats(
-  classroomId: string,
-  data: { seatPoolId: string; seatsAllocated: number; mode?: string }
-) {
-  const response = await axios.post(
-    `${API_HOST}/${API_VERSION}/licensing/classrooms/${classroomId}/allocations`,
-    data,
-    {
-      headers: await TokenHandler.getHeaders(),
-    }
+    },
   );
   return response.data.data;
 }
@@ -71,16 +46,14 @@ async function importRoster(
   data: {
     csv?: string;
     rows?: Array<Record<string, string>>;
-    reserveSeats?: boolean;
-    allocationId?: string | null;
-  }
+  },
 ) {
   const response = await axios.post(
     `${API_HOST}/${API_VERSION}/licensing/classrooms/${classroomId}/roster-import`,
     data,
     {
       headers: await TokenHandler.getHeaders(),
-    }
+    },
   );
   return response.data.data;
 }
@@ -90,13 +63,14 @@ async function getRosterSeats(classroomId: string): Promise<RosterSeat[]> {
     `${API_HOST}/${API_VERSION}/licensing/classrooms/${classroomId}/roster-seats`,
     {
       headers: await TokenHandler.getHeaders(),
-    }
+    },
   );
   return response.data.data;
 }
 
 async function createStudentCheckout(classroomId: string): Promise<{
   checkoutUrl: string;
+  sessionId: string;
   planKey: string;
 }> {
   const response = await axios.post(
@@ -104,7 +78,23 @@ async function createStudentCheckout(classroomId: string): Promise<{
     { classroomId },
     {
       headers: await TokenHandler.getHeaders(),
-    }
+    },
+  );
+  return response.data.data;
+}
+
+async function createOrgCheckout(quantity: number): Promise<{
+  checkoutUrl: string;
+  sessionId: string;
+  planKey: string;
+  quantity: number;
+}> {
+  const response = await axios.post(
+    `${API_HOST}/${API_VERSION}/licensing/org/checkout`,
+    { quantity },
+    {
+      headers: await TokenHandler.getHeaders(),
+    },
   );
   return response.data.data;
 }
@@ -114,7 +104,7 @@ async function getStudentAccess(): Promise<SeatClaim[]> {
     `${API_HOST}/${API_VERSION}/licensing/student/access`,
     {
       headers: await TokenHandler.getHeaders(),
-    }
+    },
   );
   return response.data.data;
 }
@@ -122,12 +112,11 @@ async function getStudentAccess(): Promise<SeatClaim[]> {
 const licensingService = {
   getSummary,
   getSeatPools,
-  createManualSeatPool,
   getClassroomSummary,
-  allocateSeats,
   importRoster,
   getRosterSeats,
   createStudentCheckout,
+  createOrgCheckout,
   getStudentAccess,
 };
 

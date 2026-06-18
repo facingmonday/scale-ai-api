@@ -57,7 +57,7 @@ router.get("/student/access", requireAuth(), controller.getStudentAccess);
  * /v1/licensing/student/checkout:
  *   post:
  *     summary: Create student checkout session
- *     description: Initializes a payment checkout flow for the student.
+ *     description: Initializes a Stripe checkout flow for a student seat.
  *     tags:
  *       - Licensing
  *     security:
@@ -70,10 +70,31 @@ router.post("/student/checkout", requireAuth(), controller.createStudentCheckout
 
 /**
  * @openapi
+ * /v1/licensing/org/checkout:
+ *   post:
+ *     summary: Create org seat checkout session
+ *     description: Initializes a Stripe checkout flow for org admin seat purchase.
+ *     tags:
+ *       - Licensing
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Session URL metadata.
+ */
+router.post(
+  "/org/checkout",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.createOrgCheckout
+);
+
+/**
+ * @openapi
  * /v1/licensing/seat-pools:
  *   get:
  *     summary: Get seat pools
- *     description: Fetch available seats pools. Requires org:admin role.
+ *     description: Fetch organization seat pool. Requires org:admin role.
  *     tags:
  *       - Licensing
  *     security:
@@ -87,27 +108,6 @@ router.get(
   requireAuth(),
   checkRole("org:admin"),
   controller.getSeatPools
-);
-
-/**
- * @openapi
- * /v1/licensing/seat-pools/manual:
- *   post:
- *     summary: Create manual seat pool allocation
- *     description: Force assign a manual seat pool definition. Requires org:admin role.
- *     tags:
- *       - Licensing
- *     security:
- *       - BearerAuth: []
- *     responses:
- *       200:
- *         description: Manual allocation record.
- */
-router.post(
-  "/seat-pools/manual",
-  requireAuth(),
-  checkRole("org:admin"),
-  controller.createManualSeatPool
 );
 
 /**
@@ -135,33 +135,6 @@ router.get(
   requireAuth(),
   checkRole("org:admin"),
   controller.getClassroomSummary
-);
-
-/**
- * @openapi
- * /v1/licensing/classrooms/{classroomId}/allocations:
- *   post:
- *     summary: Allocate classroom seats
- *     description: Distribute seats dynamically to classroom roster. Requires org:admin role.
- *     tags:
- *       - Licensing
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - name: classroomId
- *         in: path
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Allocated successfully.
- */
-router.post(
-  "/classrooms/:classroomId/allocations",
-  requireAuth(),
-  checkRole("org:admin"),
-  controller.allocateSeats
 );
 
 /**
@@ -195,8 +168,8 @@ router.get(
  * @openapi
  * /v1/licensing/classrooms/{classroomId}/roster-import:
  *   post:
- *     summary: Import roster with license allocation
- *     description: Upload student files and pre-allocate seat licenses. Requires org:admin role.
+ *     summary: Import roster
+ *     description: Upload student roster for classroom access control. Requires org:admin role.
  *     tags:
  *       - Licensing
  *     security:

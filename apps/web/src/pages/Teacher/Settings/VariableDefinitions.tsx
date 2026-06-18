@@ -10,10 +10,14 @@ import variableDefinitionsService from "../../../services/variableDefinition";
 import type { VariableDefinition } from "../../../types/variableDefinition";
 import VariableDefinitionsAddButton from "../../../components/VariableDefinitionsAddButton";
 
-const VariableDefinitions: React.FC = () => {
+type Props = {
+  classroomId?: string | null;
+};
+
+const VariableDefinitions: React.FC<Props> = ({ classroomId: classroomIdProp }) => {
   const { activeClassroom } = useAuth();
   const globalContext = useGlobalContext();
-  const classroomId = activeClassroom?._id || null;
+  const classroomId = classroomIdProp ?? activeClassroom?._id ?? null;
 
   const [definitions, setDefinitions] = useState<VariableDefinition[]>([]);
   const [isLoading, setIsLoading] = useState(false);

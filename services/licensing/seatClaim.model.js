@@ -32,6 +32,8 @@ const seatClaimSchema = new mongoose.Schema({
   source: {
     type: String,
     enum: [
+      "org_prepaid",
+      "stripe_student",
       "student_purchase",
       "teacher_assigned",
       "teacher_open",

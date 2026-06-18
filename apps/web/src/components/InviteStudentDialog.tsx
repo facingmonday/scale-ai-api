@@ -35,15 +35,8 @@ const InviteStudentDialog: React.FC<InviteStudentDialogProps> = ({
   }, [classroomId, visible]);
 
   const billingMessage = useMemo(() => {
-    const mode = summary?.classroom?.billingMode;
-    if (mode === "student_paid") {
-      return "Students will be asked to pay for access before joining this classroom.";
-    }
-    if (mode === "teacher_paid_roster") {
-      return "Only imported roster students can claim a seat for this classroom.";
-    }
-    return "Billing rules are checked when the student accepts the invite.";
-  }, [summary]);
+    return "Students need an organization seat or individual payment before enrolling in this classroom.";
+  }, []);
 
   const reset = () => {
     setEmail("");

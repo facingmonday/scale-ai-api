@@ -50,6 +50,7 @@ exports.joinClass = async function (req, res) {
       member,
       studentEmail,
       studentId,
+      joinSource: "classroom_list",
     });
 
     // TODO: Trigger downstream initialization (profile, variables)

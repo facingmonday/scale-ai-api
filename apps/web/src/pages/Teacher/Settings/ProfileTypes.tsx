@@ -14,6 +14,7 @@ import { useAuth } from "../../../context/AuthContext";
 
 type Props = {
   showTitle?: boolean;
+  classroomId?: string | null;
   /**
    * Where the Profile Type detail page should navigate back to.
    * This is passed via querystring to allow refresh/deep-linking.
@@ -33,13 +34,20 @@ const slugifyStoreTypeKey = (label: string) => {
 
 const ProfileTypes: React.FC<Props> = ({
   showTitle = true,
+  classroomId: classroomIdProp,
   returnTo = "/profile-types",
 }) => {
   const globalContext = useGlobalContext();
   const navigate = useNavigate();
   const { activeClassroom } = useAuth();
 
-  const classroomId = activeClassroom?._id ?? null;
+  const classroomId = classroomIdProp ?? activeClassroom?._id ?? null;
+
+  const profileTypeDetailUrl = (profileTypeId: string) => {
+    const params = new URLSearchParams({ returnTo });
+    if (classroomId) params.set("classroomId", classroomId);
+    return `/profile-types/${profileTypeId}?${params.toString()}`;
+  };
 
   const [profileTypes, setStoreTypes] = useState<ProfileType[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -166,11 +174,7 @@ const ProfileTypes: React.FC<Props> = ({
 
       // Navigate to the detail page
       if (createdStoreType?._id) {
-        navigate(
-          `/profile-types/${createdStoreType._id}?returnTo=${encodeURIComponent(
-            returnTo
-          )}`
-        );
+        navigate(profileTypeDetailUrl(createdStoreType._id));
       } else {
         void fetchStoreTypes();
       }
@@ -181,6 +185,16 @@ const ProfileTypes: React.FC<Props> = ({
       setIsCreating(false);
     }
   };
+
+  if (!classroomId) {
+    return (
+      <div className="card">
+        <p className="text-text-muted">
+          Select a classroom to manage profile types.
+        </p>
+      </div>
+    );
+  }
 
   if (error) {
     return (
@@ -260,13 +274,7 @@ const ProfileTypes: React.FC<Props> = ({
                 severity="secondary"
                 text
                 rounded
-                onClick={() =>
-                  navigate(
-                    `/profile-types/${row._id}?returnTo=${encodeURIComponent(
-                      returnTo
-                    )}`
-                  )
-                }
+                onClick={() => navigate(profileTypeDetailUrl(row._id))}
                 aria-label="Edit profile type"
               />
               <Button

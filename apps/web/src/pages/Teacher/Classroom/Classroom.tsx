@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog } from "primereact/dialog";
 import { Button } from "primereact/button";
-import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { ClassroomPrompt, ClassroomWithVirtuals } from "@/types/classroom";
 import type { StudentDisplay } from "@/types/components";
 import { useAuth } from "@/context/AuthContext";
@@ -17,13 +17,79 @@ import ClassroomDeleteAction from "@/components/ClassroomDeleteAction";
 import ClassroomInviteStudentButton from "@/components/ClassroomInviteStudentButton";
 import ClassroomBillingSettings from "@/components/ClassroomBillingSettings";
 import RosterImportPanel from "@/components/RosterImportPanel";
+import VariableDefinitions from "../Settings/VariableDefinitions";
+import MetricDefinitions from "../Settings/MetricDefinitions";
+import ProfileTypes from "../Settings/ProfileTypes";
+import TeacherPreferencesPanel from "./TeacherPreferencesPanel";
 import LoadingOverlay from "../../../components/LoadingOverlay";
+
+type ClassroomTab =
+  | "details"
+  | "automation"
+  | "prompts"
+  | "classAccess"
+  | "students"
+  | "roster"
+  | "variableDefinitions"
+  | "metricDefinitions"
+  | "profileTypes"
+  | "preferences"
+  | "admin";
+
+const CLASSROOM_TABS: { key: ClassroomTab; label: string }[] = [
+  { key: "details", label: "Details" },
+  { key: "automation", label: "Automation" },
+  { key: "prompts", label: "Prompts" },
+  { key: "classAccess", label: "Class Access" },
+  { key: "students", label: "Students" },
+  { key: "roster", label: "Roster" },
+  { key: "variableDefinitions", label: "Variable Definitions" },
+  { key: "metricDefinitions", label: "Metric Definitions" },
+  { key: "profileTypes", label: "Profile Types" },
+  { key: "preferences", label: "Preferences" },
+  { key: "admin", label: "Admin" },
+];
+
+const VALID_TABS = new Set<ClassroomTab>(CLASSROOM_TABS.map((t) => t.key));
+
+const SAVE_TABS = new Set<ClassroomTab>(["details", "automation", "prompts"]);
 
 const TeacherClassroom: React.FC = () => {
   const { userRole, isLoading } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { id } = useParams<{ id: string }>();
   const classroomId = id || "";
+
+  const tabFromUrl = useMemo(() => {
+    const raw = searchParams.get("tab");
+    if (raw && VALID_TABS.has(raw as ClassroomTab)) {
+      return raw as ClassroomTab;
+    }
+    return null;
+  }, [searchParams]);
+
+  const [activeTab, setActiveTab] = useState<ClassroomTab>(
+    tabFromUrl ?? "details"
+  );
+
+  useEffect(() => {
+    if (tabFromUrl && tabFromUrl !== activeTab) {
+      setActiveTab(tabFromUrl);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabFromUrl]);
+
+  const setTab = (tab: ClassroomTab) => {
+    setActiveTab(tab);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("tab", tab);
+      return next;
+    });
+  };
+
+  const profileTypesReturnTo = `/classroom/${classroomId}?tab=profileTypes`;
 
   const [classroom, setClassroom] = useState<ClassroomWithVirtuals | null>(
     null
@@ -182,7 +248,6 @@ const TeacherClassroom: React.FC = () => {
     missingSubmissionPolicy,
   ]);
 
-  // Teacher-only page
   if (isLoading) {
     return (
       <div className="page">
@@ -298,23 +363,6 @@ const TeacherClassroom: React.FC = () => {
     }
   };
 
-  // Teacher-only page
-  if (isLoading) {
-    return (
-      <div className="page">
-        <LoadingOverlay loading={isLoading} />
-      </div>
-    );
-  }
-
-  if (!classroomId) {
-    return <Navigate to="/classrooms" replace />;
-  }
-
-  if (userRole !== "org:admin") {
-    return <Navigate to="/dashboard" replace />;
-  }
-
   const updatePrompt = (idx: number, next: ClassroomPrompt) => {
     setPrompts((prev) => prev.map((p, i) => (i === idx ? next : p)));
   };
@@ -348,16 +396,43 @@ const TeacherClassroom: React.FC = () => {
               >
                 Back
               </button>
-              <button
-                type="button"
-                className="btn-teal"
-                onClick={() => void handleSave()}
-                disabled={!canSave || isSaving}
-              >
-                {isSaving ? "Saving..." : "Save"}
-              </button>
+              {SAVE_TABS.has(activeTab) && (
+                <button
+                  type="button"
+                  className="btn-teal"
+                  onClick={() => void handleSave()}
+                  disabled={!canSave || isSaving}
+                >
+                  {isSaving ? "Saving..." : "Save"}
+                </button>
+              )}
             </div>
           </div>
+
+          {saveError && SAVE_TABS.has(activeTab) && (
+            <p className="text-danger text-sm mb-4">{saveError}</p>
+          )}
+
+          {!isLoadingClassroom && !loadError && (
+            <div className="overflow-x-auto mb-6 -mx-1 px-1">
+              <div className="flex gap-4 border-b border-ui-border min-w-max">
+                {CLASSROOM_TABS.map(({ key, label }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setTab(key)}
+                    className={`px-4 py-2 -mb-px transition-colors whitespace-nowrap ${
+                      activeTab === key
+                        ? "border-b-2 border-brand-teal text-text-primary font-medium"
+                        : "text-text-muted hover:text-text-primary"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {isLoadingClassroom ? (
             <div className="card">
@@ -378,6 +453,7 @@ const TeacherClassroom: React.FC = () => {
             </div>
           ) : null}
 
+          {!isLoadingClassroom && !loadError && activeTab === "details" && (
           <div className="flex flex-col sm:flex-row gap-4 w-full">
             <div className="card mb-4 sm:w-1/4">
               <Image
@@ -395,9 +471,6 @@ const TeacherClassroom: React.FC = () => {
 
             <div className="card mb-4 w-full">
               <h2 className="heading-md mb-4">Classroom details</h2>
-              {saveError && (
-                <p className="text-danger text-sm mb-3">{saveError}</p>
-              )}
               <div className="space-y-4">
                 <div>
                   <label className="label" htmlFor="classroom-name">
@@ -432,8 +505,10 @@ const TeacherClassroom: React.FC = () => {
               </div>
             </div>
           </div>
+          )}
 
-          <div className="card mt-6">
+          {!isLoadingClassroom && !loadError && activeTab === "automation" && (
+          <div className="card">
             <div className="flex items-center justify-between gap-3 mb-4">
               <div>
                 <h2 className="heading-md">Classroom Automation Settings</h2>
@@ -608,8 +683,10 @@ const TeacherClassroom: React.FC = () => {
               </div>
             )}
           </div>
+          )}
 
-          <div className="card mt-6">
+          {!isLoadingClassroom && !loadError && activeTab === "prompts" && (
+          <div className="card">
             <div className="flex items-center justify-between gap-3 mb-4">
               <div className="min-w-0">
                 <h2 className="heading-md">Prompts</h2>
@@ -710,17 +787,17 @@ const TeacherClassroom: React.FC = () => {
               </div>
             )}
           </div>
-
-          {classroom && (
-            <div className="mt-6">
-              <ClassroomBillingSettings
-                classroom={classroom}
-                onClassroomUpdated={(updated) => setClassroom(updated)}
-              />
-            </div>
           )}
 
-          <div className="card mt-6">
+          {!isLoadingClassroom && !loadError && activeTab === "classAccess" && classroom && (
+            <ClassroomBillingSettings
+              classroom={classroom}
+              onClassroomUpdated={(updated) => setClassroom(updated)}
+            />
+          )}
+
+          {!isLoadingClassroom && !loadError && activeTab === "students" && (
+          <div className="card">
             <div className="flex items-center justify-between gap-3 mb-4">
               <h2 className="heading-md">Students</h2>
               <ClassroomInviteStudentButton
@@ -736,15 +813,37 @@ const TeacherClassroom: React.FC = () => {
               onDelete={(student) => openRemoveStudentDialog(student)}
             />
           </div>
+          )}
 
-          <div className="mt-6">
+          {!isLoadingClassroom && !loadError && activeTab === "roster" && (
             <RosterImportPanel
               classroomId={classroomId}
               onImported={() => setRosterRefreshKey((k) => k + 1)}
             />
-          </div>
+          )}
 
-          <div className="danger-zone-card mt-6">
+          {!isLoadingClassroom && !loadError && activeTab === "variableDefinitions" && (
+            <VariableDefinitions classroomId={classroomId} />
+          )}
+
+          {!isLoadingClassroom && !loadError && activeTab === "metricDefinitions" && (
+            <MetricDefinitions classroomId={classroomId} />
+          )}
+
+          {!isLoadingClassroom && !loadError && activeTab === "profileTypes" && (
+            <ProfileTypes
+              showTitle={true}
+              classroomId={classroomId}
+              returnTo={profileTypesReturnTo}
+            />
+          )}
+
+          {!isLoadingClassroom && !loadError && activeTab === "preferences" && (
+            <TeacherPreferencesPanel />
+          )}
+
+          {!isLoadingClassroom && !loadError && activeTab === "admin" && (
+          <div className="danger-zone-card">
             <h2 className="danger-zone-title">Danger Zone</h2>
             <p className="text-text-muted text-sm mb-6">
               These actions are irreversible. Please be certain before
@@ -770,6 +869,7 @@ const TeacherClassroom: React.FC = () => {
               />
             </div>
           </div>
+          )}
         </div>
       </div>
 

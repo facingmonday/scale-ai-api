@@ -7,7 +7,12 @@ import type { ClassroomWithVirtuals } from "../../../types/classroom";
 import BasicLayout from "../../../components/Layouts/BasicLayout";
 import enrollmentService from "../../../services/enrollment";
 import classroomService from "../../../services/classroom";
+import licensingService from "../../../services/licensing";
 import LoadingOverlay from "../../../components/LoadingOverlay";
+import {
+  canSelfJoinFromClassList,
+  getClassListJoinHint,
+} from "../../../utils/classroomJoin";
 
 const Classrooms = () => {
   const { setNewActiveClassroom, activeClassroom, isLoading, organization } =
@@ -29,6 +34,10 @@ const Classrooms = () => {
   const [joiningClassroomId, setJoiningClassroomId] = useState<string | null>(
     null
   );
+  const [checkoutClassroomId, setCheckoutClassroomId] = useState<string | null>(
+    null
+  );
+  const [isStartingCheckout, setIsStartingCheckout] = useState(false);
 
   // Redirect if user already has an active classroom
   useEffect(() => {
@@ -103,14 +112,50 @@ const Classrooms = () => {
       // Will automatically navigate to dashboard
     } catch (err) {
       console.error("Failed to join classroom:", err);
-      const errorMessage =
+      const response =
         err && typeof err === "object" && "response" in err
-          ? (err as { response?: { data?: { message?: string } } }).response
-              ?.data?.message
+          ? (err as {
+              response?: {
+                data?: { message?: string; error?: string; code?: string };
+              };
+            }).response
           : undefined;
-      setError(errorMessage || "Failed to join classroom. Please try again.");
+      const errorCode = response?.data?.code;
+      const errorMessage =
+        response?.data?.error ||
+        response?.data?.message ||
+        "Failed to join classroom. Please try again.";
+
+      if (errorCode === "PAYMENT_REQUIRED" && classroomId) {
+        setCheckoutClassroomId(classroomId);
+        setError(errorMessage);
+      } else {
+        setError(errorMessage);
+      }
       globalContext?.setIsLoading(false);
       setJoiningClassroomId(null);
+    }
+  };
+
+  const startCheckout = async () => {
+    if (!checkoutClassroomId || isStartingCheckout) return;
+    setIsStartingCheckout(true);
+    try {
+      const checkout = await licensingService.createStudentCheckout(
+        checkoutClassroomId
+      );
+      window.location.href = checkout.checkoutUrl;
+    } catch (checkoutErr) {
+      console.error("Unable to start checkout:", checkoutErr);
+      const message =
+        checkoutErr &&
+        typeof checkoutErr === "object" &&
+        "response" in checkoutErr
+          ? (checkoutErr as { response?: { data?: { error?: string } } })
+              .response?.data?.error
+          : undefined;
+      setError(message || "Checkout is not available yet.");
+      setIsStartingCheckout(false);
     }
   };
 
@@ -137,13 +182,24 @@ const Classrooms = () => {
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <h1 className="heading-xl">My Classes ({classrooms.length})</h1>
-            {/* <button
-              onClick={() => setShowJoiningModal(true)}
-              className="btn-teal"
-            >
-              + Join a Class
-            </button> */}
           </div>
+
+          {error && (
+            <div className="card mb-6 border border-red-500/30 bg-red-500/5">
+              <p className="text-red-400 text-sm">{error}</p>
+              {checkoutClassroomId && (
+                <button
+                  className="btn-teal mt-4"
+                  disabled={isStartingCheckout}
+                  onClick={() => void startCheckout()}
+                >
+                  {isStartingCheckout
+                    ? "Starting checkout..."
+                    : "Buy Class Access"}
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Organization Classrooms Section */}
           {orgClassrooms.length > 0 ? (
@@ -159,11 +215,15 @@ const Classrooms = () => {
                   const isEnrolled = Boolean(
                     classroomId && enrolledClassroomIds.has(classroomId)
                   );
+                  const showJoinButton =
+                    isEnrolled || canSelfJoinFromClassList(classroom);
+                  const joinHint = getClassListJoinHint(classroom, isEnrolled);
                   return (
                     <ClassroomCard
                       key={classroomId}
                       classroom={classroom}
-                      showJoinButton={true}
+                      showJoinButton={showJoinButton}
+                      joinHint={joinHint}
                       isEnrolled={isEnrolled}
                       onJoinClick={() => handleJoinClassroom(classroom)}
                       isJoining={joiningClassroomId === classroomId}

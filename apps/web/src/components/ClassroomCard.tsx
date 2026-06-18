@@ -6,6 +6,7 @@ interface ClassroomCardProps {
   onClick?: () => void;
   onMenuClick?: (event: React.MouseEvent) => void;
   showJoinButton?: boolean;
+  joinHint?: string | null;
   onJoinClick?: () => void;
   isJoining?: boolean;
   isEnrolled?: boolean;
@@ -33,6 +34,7 @@ const ClassroomCard: React.FC<ClassroomCardProps> = ({
   classroom,
   onClick,
   showJoinButton = false,
+  joinHint = null,
   onJoinClick,
   isJoining = false,
   isEnrolled = false,
@@ -99,6 +101,11 @@ const ClassroomCard: React.FC<ClassroomCardProps> = ({
                 : "Join Classroom"}
             </button>
           </div>
+        )}
+        {!showJoinButton && joinHint && (
+          <p className="mt-4 text-xs text-text-muted leading-relaxed">
+            {joinHint}
+          </p>
         )}
       </div>
     </div>

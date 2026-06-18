@@ -10,10 +10,14 @@ import metricDefinitionsService from "../../../services/metricDefinition";
 import type { MetricDefinition } from "../../../types/metric";
 import MetricDefinitionsAddButton from "../../../components/Metrics/MetricDefinitionsAddButton";
 
-const MetricDefinitions: React.FC = () => {
+type Props = {
+  classroomId?: string | null;
+};
+
+const MetricDefinitions: React.FC<Props> = ({ classroomId: classroomIdProp }) => {
   const { activeClassroom } = useAuth();
   const globalContext = useGlobalContext();
-  const classroomId = activeClassroom?._id || null;
+  const classroomId = classroomIdProp ?? activeClassroom?._id ?? null;
 
   const [definitions, setDefinitions] = useState<MetricDefinition[]>([]);
   const [isLoading, setIsLoading] = useState(false);

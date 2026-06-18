@@ -1,7 +1,3 @@
-export type BillingMode =
-  | "student_paid"
-  | "teacher_paid_roster";
-
 export type JoinPolicy = "invite_link" | "open" | "roster_only" | "closed";
 
 export interface SeatPool {
@@ -14,17 +10,6 @@ export interface SeatPool {
   status: "active" | "past_due" | "canceled" | "expired" | "manual";
 }
 
-export interface ClassroomSeatAllocation {
-  _id: string;
-  classroomId: string;
-  seatPoolId: string | SeatPool;
-  seatsAllocated: number;
-  seatsClaimed: number;
-  remainingSeats?: number;
-  mode: "open" | "roster_reserved" | "invite_only";
-  status: "active" | "paused" | "expired" | "revoked";
-}
-
 export interface SeatClaim {
   _id: string;
   classroomId:
@@ -33,9 +18,10 @@ export interface SeatClaim {
         _id: string;
         name: string;
         description?: string;
-        billingMode?: BillingMode;
       };
   source:
+    | "org_prepaid"
+    | "stripe_student"
     | "student_purchase"
     | "teacher_assigned"
     | "teacher_open"
@@ -74,15 +60,20 @@ export interface BillingSummary {
   classroomUsage: Array<{
     classroomId: string;
     name: string;
-    billingMode?: BillingMode;
     joinPolicy?: JoinPolicy;
     claimedSeats: number;
   }>;
   userClaims: SeatClaim[];
+  orgSeatSummary?: {
+    totalSeats: number;
+    usedSeats: number;
+    remainingSeats: number;
+    poolId?: string;
+  };
+  stripePaidSeats?: number;
   freeTeacherLimits: {
     planKey: string;
     classroomLimit: number;
-    studentPaysAllowed: boolean;
   };
 }
 
@@ -90,13 +81,10 @@ export interface ClassroomLicensingSummary {
   classroom: {
     _id: string;
     name: string;
-    billingMode: BillingMode;
     joinPolicy: JoinPolicy;
-    studentPaysAllowed: boolean;
     allowedDomains: string[];
     allowAnonymousJoin?: boolean;
   };
-  allocations: ClassroomSeatAllocation[];
   claimedSeats: number;
   roster: {
     total: number;
