@@ -9,6 +9,7 @@ import type { BaseSchema } from "./base";
  */
 export type VariableDefinition = BaseSchema & {
   classroomId: string; // Classroom ObjectId reference
+  challengeId?: string | null; // Optional Challenge ObjectId reference
   key: string; // Unique within class
   label: string;
   description: string;

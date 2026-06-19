@@ -74,3 +74,48 @@ test("new challenge automation fields are validated successfully", async () => {
   assert.equal(challenge.lateSubmissionPolicy.penaltyPercentPerDay, 5);
 });
 
+const mongoose = require("mongoose");
+
+async function connectDb() {
+  if (mongoose.connection.readyState === 0) {
+    let uri = process.env.MONGO_URL || process.env.MONGO_URI;
+    if (!uri && process.env.MONGO_SCHEME) {
+      uri = `${process.env.MONGO_SCHEME}://${process.env.MONGO_USERNAME}:${process.env.MONGO_PASSWORD}@${process.env.MONGO_HOSTNAME}/${process.env.MONGO_DB}?authSource=admin`;
+    }
+    if (!uri) {
+      uri = "mongodb://localhost:27017/scale-ai-api";
+    }
+    await mongoose.connect(uri);
+  }
+}
+
+test("createScenario defaults closeSubmissionsAt and processAt to submissionDeadlineAt", async () => {
+  await connectDb();
+  
+  const classroomId = new mongoose.Types.ObjectId();
+  const organizationId = new mongoose.Types.ObjectId();
+  const clerkUserId = "test-user-123";
+  const deadline = new Date("2026-09-08T15:00:00.000Z");
+
+  const challenge = await Challenge.createScenario(
+    classroomId,
+    {
+      title: "Test Default Dates Challenge",
+      description: "Testing default dates",
+      submissionDeadlineAt: deadline,
+      automationMode: "FULL",
+    },
+    organizationId,
+    clerkUserId
+  );
+
+  try {
+    assert.ok(challenge);
+    assert.equal(challenge.closeSubmissionsAt.toISOString(), deadline.toISOString());
+    assert.equal(challenge.processAt.toISOString(), deadline.toISOString());
+  } finally {
+    await Challenge.deleteOne({ _id: challenge._id });
+    await mongoose.connection.close();
+  }
+});
+

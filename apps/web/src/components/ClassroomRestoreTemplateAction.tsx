@@ -93,7 +93,7 @@ const ClassroomRestoreTemplateAction: React.FC<Props> = ({
             Restore template into classroom
           </h3>
           <p className="text-text-muted text-sm">
-            Clears all variables, then reapplies a classroom template and
+            Clears all variables and metric definitions, then reapplies a classroom template and
             reseeds default values.
           </p>
         </div>
@@ -146,8 +146,8 @@ const ClassroomRestoreTemplateAction: React.FC<Props> = ({
         <div className="flex flex-col gap-4">
           {error ? <p className="text-danger font-medium">{error}</p> : null}
           <p className="text-text-muted">
-            This will delete all variable values + definitions for this
-            classroom, then reapply the selected template and reseed default
+            This will delete all variable values, definitions, and metric definitions
+            for this classroom, then reapply the selected template and reseed default
             values.
           </p>
           <div>

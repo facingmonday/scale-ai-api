@@ -710,12 +710,16 @@ ledgerEntrySchema.statics.buildAISimulationOpenAIRequest = async function (
       : {};
 
   const filtered = classroomId
-    ? await VariableDefinition.filterVariablesForAIContext(classroomId, {
-      profileVariables,
-      challengeVariables,
-      decisionVariables,
-      outcomeVariables,
-    })
+    ? await VariableDefinition.filterVariablesForAIContext(
+        classroomId,
+        {
+          profileVariables,
+          challengeVariables,
+          decisionVariables,
+          outcomeVariables,
+        },
+        { challengeId: challenge?._id || decision?.challengeId || outcome?.challengeId || null }
+      )
     : { profileVariables, challengeVariables, decisionVariables, outcomeVariables };
 
   const filteredProfile =

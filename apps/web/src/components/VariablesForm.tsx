@@ -13,11 +13,12 @@ type Props = {
   namePrefix?: string;
   showAddButton?: boolean;
   defaultAppliesTo?:
-    | "profile"
-    | "profileType"
-    | "challenge"
-    | "decision"
-    | "outcome";
+  | "profile"
+  | "profileType"
+  | "challenge"
+  | "decision"
+  | "outcome";
+  challengeId?: string | null;
   onSave?: () => void;
 };
 
@@ -29,6 +30,7 @@ const VariablesForm: React.FC<Props> = ({
   namePrefix = "variables",
   showAddButton = false,
   defaultAppliesTo = "profile",
+  challengeId = null,
   onSave = () => { },
 }) => {
   const sortedVariables = useMemo(() => {
@@ -40,6 +42,30 @@ const VariablesForm: React.FC<Props> = ({
   const { activeClassroom } = useAuth();
 
   if (sortedVariables.length === 0) {
+    if (showAddButton) {
+      return (
+        <div className="space-y-4 w-full">
+          <div className="flex items-center justify-between gap-4 w-full">
+            <div>
+              <h2 className="heading-lg">{title}</h2>
+              {description && <p className="text-text-muted">{description}</p>}
+            </div>
+            <div>
+              <VariableDefinitionsAddButton
+                classroomId={activeClassroom?._id ?? ""}
+                variant="create"
+                defaultAppliesTo={defaultAppliesTo}
+                challengeId={challengeId}
+                onSaved={onSave}
+              />
+            </div>
+          </div>
+          <div className="card">
+            <p className="text-text-muted">No variables found.</p>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="card">
         <p className="text-text-muted">No variables found.</p>
@@ -60,6 +86,7 @@ const VariablesForm: React.FC<Props> = ({
               classroomId={activeClassroom?._id ?? ""}
               variant="create"
               defaultAppliesTo={defaultAppliesTo}
+              challengeId={challengeId}
               onSaved={onSave}
             />
           )}
@@ -70,7 +97,7 @@ const VariablesForm: React.FC<Props> = ({
         namePrefix={namePrefix}
         readOnly={readOnly}
       >
-        <div className="flex flex-wrap">
+        <div className="flex flex-wrap gap-4">
           {sortedVariables
             .filter((variable) => {
               if (readOnly) {
@@ -79,7 +106,7 @@ const VariablesForm: React.FC<Props> = ({
               return variable.isActive;
             })
             .map((variable) => (
-              <div key={variable.key} className="md:w-1/2 lg:w-1/3 xl:w-1/4 p-2">
+              <div key={variable.key} className="md:w-1/2 lg:w-1/3 xl:w-1/4">
                 <VariableDefinitionField
                   key={variable.key}
                   definition={variable}

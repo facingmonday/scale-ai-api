@@ -18,7 +18,7 @@ export { default as ScenarioResetSubmissionsAction } from "./ChallengeResetDecis
 export { default as ScenarioRerunAction } from "./ChallengeRerunAction";
 export { default as ScenarioRemoveOutcomeAction } from "./ChallengeRemoveOutcomeAction";
 export { default as CreateClassroomModal } from "./CreateClassroomModal";
-
+export { default as FileVault } from "./FileVault";
 // Dashboard components
 export * from "./dashboard";
 

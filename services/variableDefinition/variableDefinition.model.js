@@ -68,6 +68,12 @@ const variableDefinitionSchema = new mongoose.Schema({
     required: true,
     index: true,
   },
+  challengeId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Challenge",
+    default: null,
+    index: true,
+  },
   key: {
     type: String,
     required: true,
@@ -135,9 +141,9 @@ const variableDefinitionSchema = new mongoose.Schema({
 }).add(baseSchema);
 
 // Compound indexes for performance
-// All definitions are classroom-scoped: unique on organization + classroomId + appliesTo + key
+// All definitions are classroom-scoped: unique on organization + classroomId + appliesTo + key + challengeId
 variableDefinitionSchema.index(
-  { organization: 1, classroomId: 1, appliesTo: 1, key: 1 },
+  { organization: 1, classroomId: 1, appliesTo: 1, key: 1, challengeId: 1 },
   {
     unique: true,
     sparse: true, // keep sparse to avoid impacting older docs during transition
@@ -168,12 +174,13 @@ variableDefinitionSchema.statics.createDefinition = async function (
     throw new Error("classroomId is required");
   }
 
-  // Check uniqueness within org + classroom + appliesTo
+  // Check uniqueness within org + classroom + appliesTo + challengeId
   const existing = await this.findOne({
     organization: organizationId,
     classroomId,
     appliesTo: payload.appliesTo,
     key: payload.key,
+    challengeId: payload.challengeId || null,
   });
 
   if (existing) {
@@ -227,6 +234,7 @@ variableDefinitionSchema.statics.createDefinition = async function (
 
   const definition = new this({
     classroomId,
+    challengeId: payload.challengeId || null,
     key: payload.key,
     label: payload.label,
     description: payload.description || "",
@@ -273,6 +281,15 @@ variableDefinitionSchema.statics.getDefinitionsForScope = async function (
     delete query.isActive;
   }
 
+  if (options.challengeId) {
+    query.$or = [
+      { challengeId: null },
+      { challengeId: options.challengeId }
+    ];
+  } else {
+    query.challengeId = null;
+  }
+
   const definitions = await this.find(query).sort({ label: 1 });
   return definitions;
 };
@@ -280,7 +297,7 @@ variableDefinitionSchema.statics.getDefinitionsForScope = async function (
 /**
  * Get all variable definitions for a class
  * @param {string} classroomId - Class ID
- * @param {Object} options - Options (includeInactive)
+ * @param {Object} options - Options (includeInactive, challengeId)
  * @returns {Promise<Array>} Array of variable definitions
  */
 variableDefinitionSchema.statics.getDefinitionsByClass = async function (
@@ -294,6 +311,15 @@ variableDefinitionSchema.statics.getDefinitionsByClass = async function (
     delete query.isActive;
   }
 
+  if (options.challengeId) {
+    query.$or = [
+      { challengeId: null },
+      { challengeId: options.challengeId }
+    ];
+  } else {
+    query.challengeId = null;
+  }
+
   const definitions = await this.find(query).sort({ appliesTo: 1, label: 1 });
   return definitions;
 };
@@ -303,14 +329,16 @@ variableDefinitionSchema.statics.getDefinitionsByClass = async function (
  * @param {string} classroomId - Class ID (required for profile/challenge/decision)
  * @param {string} appliesTo - Scope ("profile", "challenge", "decision", "profileType")
  * @param {Object} valuesObject - Values to validate
+ * @param {Object} options - Options (challengeId)
  * @returns {Promise<Object>} Validation result with errors array
  */
 variableDefinitionSchema.statics.validateValues = async function (
   classroomId,
   appliesTo,
   valuesObject,
+  options = {},
 ) {
-  const definitions = await this.getDefinitionsForScope(classroomId, appliesTo);
+  const definitions = await this.getDefinitionsForScope(classroomId, appliesTo, options);
   const errors = [];
 
   const activeDefinitions = definitions.filter(
@@ -419,14 +447,16 @@ variableDefinitionSchema.statics.validateValues = async function (
  * @param {string} classroomId - Class ID (required for profile/challenge/decision)
  * @param {string} appliesTo - Scope ("profile", "challenge", "decision", "profileType")
  * @param {Object} valuesObject - Values object to apply defaults to
+ * @param {Object} options - Options (challengeId)
  * @returns {Promise<Object>} Values object with defaults applied
  */
 variableDefinitionSchema.statics.applyDefaults = async function (
   classroomId,
   appliesTo,
   valuesObject,
+  options = {},
 ) {
-  const definitions = await this.getDefinitionsForScope(classroomId, appliesTo);
+  const definitions = await this.getDefinitionsForScope(classroomId, appliesTo, options);
   const result = { ...valuesObject };
 
   for (const definition of definitions) {
@@ -456,14 +486,15 @@ variableDefinitionSchema.statics.applyDefaults = async function (
  * @param {string} classroomId - Classroom ID
  * @param {string} appliesTo - "profile", "profileType", "challenge", or "decision"
  * @param {Object} variables - { [key]: value }
+ * @param {Object} options - Options (challengeId)
  * @returns {Promise<Object>} Filtered variables (only keys with active definitions)
  */
 variableDefinitionSchema.statics.filterVariablesByActiveDefinitions =
-  async function (classroomId, appliesTo, variables) {
+  async function (classroomId, appliesTo, variables, options = {}) {
     if (!variables || typeof variables !== "object" || Array.isArray(variables)) {
       return {};
     }
-    const definitions = await this.getDefinitionsForScope(classroomId, appliesTo);
+    const definitions = await this.getDefinitionsForScope(classroomId, appliesTo, options);
     const activeKeys = new Set(definitions.map((d) => d.key));
     const filtered = {};
     for (const [key, value] of Object.entries(variables)) {
@@ -480,11 +511,13 @@ variableDefinitionSchema.statics.filterVariablesByActiveDefinitions =
  *
  * @param {string} classroomId - Classroom ID
  * @param {Object} ctx - { profileVariables, challengeVariables, decisionVariables, outcomeVariables }
+ * @param {Object} options - Options (challengeId)
  * @returns {Promise<Object>} Filtered context with same shape
  */
 variableDefinitionSchema.statics.filterVariablesForAIContext = async function (
   classroomId,
-  ctx
+  ctx,
+  options = {}
 ) {
   if (!classroomId) {
     return ctx;
@@ -493,9 +526,9 @@ variableDefinitionSchema.statics.filterVariablesForAIContext = async function (
     await Promise.all([
       this.getDefinitionsForScope(classroomId, "profile"),
       this.getDefinitionsForScope(classroomId, "profileType"),
-      this.getDefinitionsForScope(classroomId, "challenge"),
-      this.getDefinitionsForScope(classroomId, "decision"),
-      this.getDefinitionsForScope(classroomId, "outcome"),
+      this.getDefinitionsForScope(classroomId, "challenge", options),
+      this.getDefinitionsForScope(classroomId, "decision", options),
+      this.getDefinitionsForScope(classroomId, "outcome", options),
     ]);
   const profileActiveKeys = new Set([
     ...profileDefs.map((d) => d.key),
@@ -541,6 +574,12 @@ variableDefinitionSchema.statics.getDefinitionByKey = async function (
   query.classroomId = classroomId;
   if (options.appliesTo) {
     query.appliesTo = options.appliesTo;
+  }
+
+  if (options.challengeId) {
+    query.challengeId = options.challengeId;
+  } else {
+    query.challengeId = null;
   }
 
   return await this.findOne(query);

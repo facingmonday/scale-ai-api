@@ -95,14 +95,14 @@ const VariableDefinition: React.FC<Props> = ({ definition, readOnly }) => {
       <div className="flex items-start justify-center gap-4 ">
         <div className="flex-1 text-center">
           <div className="flex items-center justify-center gap-2">
-            <h3 className="heading-md">{label}</h3>
+            <h3 className="heading-md" style={{ wordBreak: "break-word", overflowWrap: "break-word" }}>{label}</h3>
             {definition.required && (
               <span className="text-red-400 text-sm" aria-hidden="true">
                 *
               </span>
             )}
           </div>
-          {helper && <p className="text-text-muted text-sm mt-1">{helper}</p>}
+          {helper && <p className="text-text-muted text-sm mt-1" style={{ wordBreak: "break-word", overflowWrap: "break-word" }}>{helper}</p>}
         </div>
       </div>
 

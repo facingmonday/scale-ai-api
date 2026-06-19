@@ -202,12 +202,16 @@ class SimulationWorker {
         : {};
 
     const filtered = job.classroomId
-      ? await VariableDefinition.filterVariablesForAIContext(job.classroomId, {
-          profileVariables,
-          challengeVariables,
-          decisionVariables,
-          outcomeVariables,
-        })
+      ? await VariableDefinition.filterVariablesForAIContext(
+          job.classroomId,
+          {
+            profileVariables,
+            challengeVariables,
+            decisionVariables,
+            outcomeVariables,
+          },
+          { challengeId: job.challengeId }
+        )
       : {
           profileVariables,
           challengeVariables,

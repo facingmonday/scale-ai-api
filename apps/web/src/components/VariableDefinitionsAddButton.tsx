@@ -14,6 +14,7 @@ type Props = {
   variant: "create" | "edit";
   variableDefinition?: VariableDefinition;
   defaultAppliesTo?: VariableDefinition["appliesTo"];
+  challengeId?: string | null;
   onSaved?: () => void;
 };
 
@@ -58,7 +59,8 @@ function inputTypeNeedsOptions(
 
 function toDefaults(
   def?: VariableDefinition,
-  defaultAppliesTo?: VariableDefinition["appliesTo"]
+  defaultAppliesTo?: VariableDefinition["appliesTo"],
+  challengeId?: string | null
 ): VariableDefinitionsFormValues {
   // Be defensive: older definitions may still have dataType === "select".
   const rawDataType =
@@ -111,6 +113,7 @@ function toDefaults(
     max: def?.max === null || def?.max === undefined ? "" : String(def.max),
     required: def?.required ?? false,
     isActive: def?.isActive ?? true,
+    challengeId: def?.challengeId ?? challengeId ?? null,
   };
 }
 
@@ -119,6 +122,7 @@ const VariableDefinitionsAddButton: React.FC<Props> = ({
   variant,
   variableDefinition,
   defaultAppliesTo,
+  challengeId,
   onSaved,
 }) => {
   const [visible, setVisible] = useState(false);
@@ -128,8 +132,8 @@ const VariableDefinitionsAddButton: React.FC<Props> = ({
   const isEdit = variant === "edit";
 
   const defaults = useMemo(
-    () => toDefaults(isEdit ? variableDefinition : undefined, defaultAppliesTo),
-    [isEdit, variableDefinition, defaultAppliesTo]
+    () => toDefaults(isEdit ? variableDefinition : undefined, defaultAppliesTo, challengeId),
+    [isEdit, variableDefinition, defaultAppliesTo, challengeId]
   );
 
   const form = useForm<VariableDefinitionsFormValues>({
@@ -183,7 +187,7 @@ const VariableDefinitionsAddButton: React.FC<Props> = ({
       const payloadCommon = {
         label: values.label.trim(),
         description: values.description?.trim() || undefined,
-        appliesTo: values.appliesTo,
+        appliesTo: values.appliesTo || defaults.appliesTo,
         dataType: values.dataType,
         inputType: values.inputType,
         options,
@@ -201,6 +205,7 @@ const VariableDefinitionsAddButton: React.FC<Props> = ({
             : undefined,
         required: !!values.required,
         isActive: values.isActive ?? true,
+        challengeId: values.challengeId || challengeId || null,
       };
 
       if (isEdit) {
@@ -280,7 +285,7 @@ const VariableDefinitionsAddButton: React.FC<Props> = ({
         modal
         closable={!isSubmitting}
         dismissableMask={!isSubmitting}
-        className="modal w-full max-w-3xl"
+        className="modal w-full max-w-5xl"
         maskClassName="modal-mask"
         headerClassName="modal-header"
         contentClassName="modal-content"

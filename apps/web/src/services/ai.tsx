@@ -15,9 +15,46 @@ async function getChatHistory(classroomId: string) {
   return response.data;
 }
 
-async function getClassroomReports(classroomId: string) {
+async function getClassroomReports(classroomId: string, tag?: string, search?: string) {
+  const params: Record<string, string> = {};
+  if (tag && tag !== "all") {
+    params.tag = tag;
+  }
+  if (search && search.trim() !== "") {
+    params.search = search.trim();
+  }
+
   const response = await axios.get(
     `${API_HOST}/${API_VERSION}/ai/reports`,
+    {
+      headers: {
+        ...(await TokenHandler.getHeaders()),
+        "x-classroom": classroomId,
+      },
+      params,
+    }
+  );
+  return response.data;
+}
+
+async function uploadVaultFile(classroomId: string, formData: FormData) {
+  const response = await axios.post(
+    `${API_HOST}/${API_VERSION}/ai/reports/upload`,
+    formData,
+    {
+      headers: {
+        ...(await TokenHandler.getHeaders()),
+        "x-classroom": classroomId,
+        "Content-Type": "multipart/form-data",
+      },
+    }
+  );
+  return response.data;
+}
+
+async function deleteVaultFile(classroomId: string, reportId: string) {
+  const response = await axios.delete(
+    `${API_HOST}/${API_VERSION}/ai/reports/${reportId}`,
     {
       headers: {
         ...(await TokenHandler.getHeaders()),
@@ -32,7 +69,7 @@ async function getClassroomReports(classroomId: string) {
 async function streamChat(
   classroomId: string,
   prompt: string,
-  onChunk: (text: string) => void
+  onChunk: (chunk: { text?: string; result?: any; error?: string }) => void
 ) {
   const headers = {
     ...(await TokenHandler.getHeaders()),
@@ -79,11 +116,7 @@ async function streamChat(
         }
         try {
           const parsed = JSON.parse(dataStr);
-          if (parsed.text) {
-            onChunk(parsed.text);
-          } else if (parsed.error) {
-            throw new Error(parsed.error);
-          }
+          onChunk(parsed);
         } catch (e) {
           console.warn("Error parsing chunk:", e, "Line was:", line);
         }
@@ -95,6 +128,8 @@ async function streamChat(
 const aiService = {
   getChatHistory,
   getClassroomReports,
+  uploadVaultFile,
+  deleteVaultFile,
   streamChat,
 };
 

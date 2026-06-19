@@ -26,6 +26,7 @@ type ClerkOrganizationMembershipLike = {
   organizationId?: string;
 };
 type ClerkUserLike = {
+  id?: string;
   imageUrl?: string | null;
   firstName?: string | null;
   lastName?: string | null;

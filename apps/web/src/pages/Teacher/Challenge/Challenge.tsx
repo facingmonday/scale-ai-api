@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import BasicLayout from "../../../components/Layouts/BasicLayout";
 import challengeService from "../../../services/challenge";
+import variableDefinitionsService from "../../../services/variableDefinition";
+import type { VariableDefinition } from "../../../types/variableDefinition";
 import Outcome from "@/components/Outcome";
 import { useAuth } from "@/context/AuthContext";
 import VariablesForm from "@/components/VariablesForm";
@@ -104,9 +106,15 @@ const Challenge: React.FC = () => {
         const next = (response.data || response) as ScenarioWithVariables;
         setScenario(next);
 
-        // Get challenge variable definitions from activeClassroom
-        const scenarioDefs =
-          activeClassroom?.variableDefinitions?.challenge ?? [];
+        // Get challenge variable definitions from API
+        const varDefsResponse = await variableDefinitionsService.getAll(
+          next.classroomId,
+          "challenge",
+          next._id
+        );
+        const scenarioDefs = ((varDefsResponse?.data ?? varDefsResponse ?? []) as VariableDefinition[]).filter(
+          (def) => def.appliesTo === "challenge"
+        );
 
         // Merge variable definitions with existing challenge values
         // This ensures all definitions are shown, even if challenge hasn't filled them out yet
@@ -606,7 +614,7 @@ const Challenge: React.FC = () => {
                           render={({ field }) => (
                             <label className="flex flex-col gap-2">
                               <span className="label">
-                                Decision deadline
+                                Submission deadline
                               </span>
                               <input
                                 type="datetime-local"
@@ -825,13 +833,17 @@ const Challenge: React.FC = () => {
                 </div>
               </div>
 
-              {scenarioVariableDefinitions.length > 0 && (
-                <div className="section m-2 mb-4">
+              {(scenarioVariableDefinitions.length > 0 || isEditing) && (
+                <div className="section mb-4">
                   <VariablesForm
                     variables={scenarioVariableDefinitions}
                     readOnly={!isEditing}
                     title="Challenge Variables"
                     description="Configure the variables used for this challenge."
+                    showAddButton={isEditing}
+                    defaultAppliesTo="challenge"
+                    challengeId={id}
+                    onSave={() => void fetchScenario()}
                   />
                 </div>
               )}

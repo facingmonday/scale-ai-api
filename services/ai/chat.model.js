@@ -21,7 +21,12 @@ const chatMessageSchema = new mongoose.Schema({
   },
   content: {
     type: String,
-    required: true,
+    required: function() {
+      return !this.result;
+    },
+  },
+  result: {
+    type: mongoose.Schema.Types.Mixed,
   },
 }).add(baseSchema);
 

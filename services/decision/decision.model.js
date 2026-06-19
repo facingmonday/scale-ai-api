@@ -148,16 +148,19 @@ submissionSchema.index({ ledgerEntryId: 1 });
  * Validate decision variables against VariableDefinition
  * @param {string} classroomId - Class ID
  * @param {Object} variables - Variables object to validate
+ * @param {string} [challengeId] - Challenge ID (optional)
  * @returns {Promise<Object>} Validation result
  */
 submissionSchema.statics.validateSubmissionVariables = async function (
   classroomId,
-  variables
+  variables,
+  challengeId = null
 ) {
   return await VariableDefinition.validateValues(
     classroomId,
     "decision",
-    variables
+    variables,
+    { challengeId }
   );
 };
 
@@ -205,7 +208,8 @@ submissionSchema.statics.createSubmission = async function (
   // Validate variables
   const validation = await this.validateSubmissionVariables(
     classroomId,
-    variables
+    variables,
+    challengeId
   );
   if (!validation.isValid) {
     throw new Error(
@@ -217,7 +221,8 @@ submissionSchema.statics.createSubmission = async function (
   const variablesWithDefaults = await VariableDefinition.applyDefaults(
     classroomId,
     "decision",
-    variables
+    variables,
+    { challengeId }
   );
 
   // Only persist variables with active definitions (exclude soft-deleted variables)
@@ -225,7 +230,8 @@ submissionSchema.statics.createSubmission = async function (
     await VariableDefinition.filterVariablesByActiveDefinitions(
       classroomId,
       "decision",
-      variablesWithDefaults
+      variablesWithDefaults,
+      { challengeId }
     );
 
   // Verify challenge is published and not closed
