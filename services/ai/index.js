@@ -8,6 +8,7 @@ const express = require("express");
 const controller = require("./ai.controller");
 const router = express.Router();
 const { requireAuth, requireActiveClassroom } = require("../../middleware/auth");
+const { upload } = require("../../lib/spaces");
 
 /**
  * @openapi
@@ -67,6 +68,8 @@ router.get("/chat/history", requireAuth(), requireActiveClassroom(), controller.
  *         description: Analytics reports.
  */
 router.get("/reports", requireAuth(), requireActiveClassroom(), controller.getClassroomReports);
+router.post("/reports/upload", requireAuth(), requireActiveClassroom(), upload("vault").single("file"), controller.uploadVaultFile);
+router.delete("/reports/:id", requireAuth(), requireActiveClassroom(), controller.deleteVaultFile);
 
 // Automation Task Management Endpoints
 /**

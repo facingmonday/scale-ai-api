@@ -15,9 +15,46 @@ async function getChatHistory(classroomId: string) {
   return response.data;
 }
 
-async function getClassroomReports(classroomId: string) {
+async function getClassroomReports(classroomId: string, tag?: string, search?: string) {
+  const params: Record<string, string> = {};
+  if (tag && tag !== "all") {
+    params.tag = tag;
+  }
+  if (search && search.trim() !== "") {
+    params.search = search.trim();
+  }
+
   const response = await axios.get(
     `${API_HOST}/${API_VERSION}/ai/reports`,
+    {
+      headers: {
+        ...(await TokenHandler.getHeaders()),
+        "x-classroom": classroomId,
+      },
+      params,
+    }
+  );
+  return response.data;
+}
+
+async function uploadVaultFile(classroomId: string, formData: FormData) {
+  const response = await axios.post(
+    `${API_HOST}/${API_VERSION}/ai/reports/upload`,
+    formData,
+    {
+      headers: {
+        ...(await TokenHandler.getHeaders()),
+        "x-classroom": classroomId,
+        "Content-Type": "multipart/form-data",
+      },
+    }
+  );
+  return response.data;
+}
+
+async function deleteVaultFile(classroomId: string, reportId: string) {
+  const response = await axios.delete(
+    `${API_HOST}/${API_VERSION}/ai/reports/${reportId}`,
     {
       headers: {
         ...(await TokenHandler.getHeaders()),
@@ -91,6 +128,8 @@ async function streamChat(
 const aiService = {
   getChatHistory,
   getClassroomReports,
+  uploadVaultFile,
+  deleteVaultFile,
   streamChat,
 };
 

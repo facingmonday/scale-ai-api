@@ -14,6 +14,9 @@ router.use("/organizations", require("./organizations"));
 router.use("/notifications", require("./notifications"));
 router.use("/openai", require("./openai")); // Remove direct access to openai
 router.use("/ai", require("./ai"));
+router.use("/files", require("./files"));
+router.use("/folders", require("./folders"));
+router.use("/tags", require("./tags"));
 router.use("/licensing", require("./licensing"));
 //router.use("/workers", require("./workers"));
 

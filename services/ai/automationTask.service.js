@@ -120,6 +120,25 @@ class AutomationTaskService {
           }
         }
 
+        // Bootstrap tag
+        const Tag = require("../tags/tags.model");
+        const slugify = require("slugify");
+        const tagSlug = "classroom-report";
+        let tagDoc = await Tag.findOne({ classroomId: run.classroomId, slug: tagSlug });
+        if (!tagDoc) {
+          tagDoc = await Tag.create({
+            title: "Classroom Report",
+            slug: tagSlug,
+            description: "AI Generated Classroom Reports",
+            color: "#e28743",
+            type: "file",
+            classroomId: run.classroomId,
+            organization: run.organization || task.organization,
+            createdBy: "system",
+            updatedBy: "system",
+          });
+        }
+
         // Save output to classroom report vault
         await ClassroomReport.findOneAndUpdate(
           {
@@ -131,6 +150,11 @@ class AutomationTaskService {
           },
           {
             $set: {
+              title: task.name,
+              name: `${slugify(task.name, { lower: true, strict: true })}.json`,
+              type: "report",
+              tags: [tagDoc._id],
+              visibility: "everyone",
               payload: agentResult,
               updatedBy: "system",
               updatedDate: new Date(),

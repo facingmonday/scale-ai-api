@@ -4,6 +4,7 @@ const ClassroomReport = require("./classroomReport.model");
 const AutomationTask = require("./automationTask.model");
 const AutomationTaskRun = require("./automationTaskRun.model");
 const tools = require("./tools");
+const { deleteFile } = require("../../lib/spaces");
 
 // Define Student Agent (Tutor)
 const studentAgent = new LlmAgent({
@@ -218,23 +219,149 @@ exports.getChatHistory = async function (req, res) {
 exports.getClassroomReports = async function (req, res) {
   try {
     const classroomId = req.activeClassroom._id;
-    const reports = await ClassroomReport.find({ classroomId })
+    const query = { classroomId };
+
+    // Apply visibility filter based on student/teacher role
+    if (req.classroomRole !== "admin") {
+      query.$and = query.$and || [];
+      query.$and.push({
+        $or: [
+          { visibility: "everyone" },
+          { visibility: "student", userId: req.user._id },
+          { createdBy: req.clerkUser.id }
+        ]
+      });
+    }
+
+    // Apply optional query filters (tag and search text)
+    const { tag, search } = req.query;
+    if (tag && tag !== "all") {
+      query.tags = tag;
+    }
+    if (search && search.trim() !== "") {
+      const searchRegex = new RegExp(search.trim(), "i");
+      query.$and = query.$and || [];
+      query.$and.push({
+        $or: [
+          { title: searchRegex },
+          { fileName: searchRegex }
+        ]
+      });
+    }
+
+    const reports = await ClassroomReport.find(query)
       .populate("challengeId")
+      .populate("userId", "firstName lastName")
       .sort({ createdDate: -1 })
       .lean();
 
     const formattedReports = reports.map(report => ({
       _id: report._id,
-      challengeTitle: report.challengeId?.title || "Classroom Report",
+      title: report.title || report.challengeId?.title || "Classroom Report",
+      fileName: report.fileName || null,
+      fileUrl: report.fileUrl || null,
+      key: report.key || null,
+      fileSize: report.fileSize || null,
+      mimeType: report.mimeType || null,
+      tags: report.tags || ["classroom report"],
+      visibility: report.visibility || "everyone",
+      userId: report.userId?._id || report.userId || null,
+      user: report.userId ? {
+        _id: report.userId._id,
+        firstName: report.userId.firstName,
+        lastName: report.userId.lastName,
+      } : null,
+      challengeTitle: report.challengeId?.title || report.title || "Classroom Report",
       challengeId: report.challengeId?._id || null,
       reportType: report.reportType,
-      payload: report.payload,
+      payload: report.payload || null,
+      createdBy: report.createdBy,
       createdDate: report.createdDate
     }));
 
     res.status(200).json({ reports: formattedReports });
   } catch (error) {
     console.error("Error fetching classroom reports:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.uploadVaultFile = async function (req, res) {
+  try {
+    const classroomId = req.activeClassroom._id;
+    const { title, tags, visibility, userId } = req.body;
+
+    if (!req.file) {
+      return res.status(400).json({ error: "No file was uploaded" });
+    }
+
+    let parsedTags = ["other"];
+    if (tags) {
+      try {
+        parsedTags = Array.isArray(tags) ? tags : JSON.parse(tags);
+      } catch (e) {
+        parsedTags = String(tags)
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean);
+      }
+    }
+
+    const report = new ClassroomReport({
+      classroomId,
+      reportType: "UPLOADED_FILE",
+      title: title || req.file.originalname,
+      fileName: req.file.originalname,
+      fileUrl: req.file.location,
+      key: req.fileData?.key || req.file.key,
+      fileSize: req.file.size,
+      mimeType: req.file.mimetype,
+      tags: parsedTags,
+      visibility: visibility || "everyone",
+      userId: visibility === "student" && userId ? userId : null,
+      organization: req.organization?._id,
+      createdBy: req.clerkUser.id,
+      updatedBy: req.clerkUser.id,
+    });
+
+    await report.save();
+
+    res.status(201).json({ success: true, report });
+  } catch (error) {
+    console.error("Error uploading vault file:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.deleteVaultFile = async function (req, res) {
+  try {
+    const { id } = req.params;
+    const report = await ClassroomReport.findById(id);
+
+    if (!report) {
+      return res.status(404).json({ error: "File not found" });
+    }
+
+    const isTeacher = req.classroomRole === "admin";
+    const isCreator = report.createdBy === req.clerkUser.id;
+
+    if (!isTeacher && !isCreator) {
+      return res.status(403).json({ error: "Unauthorized to delete this file" });
+    }
+
+    if (report.key) {
+      try {
+        await deleteFile(process.env.SPACES_BUCKET, report.key);
+      } catch (err) {
+        console.warn("Failed to delete physical file from spaces:", err.message);
+      }
+    }
+
+    await ClassroomReport.findByIdAndDelete(id);
+
+    res.status(200).json({ success: true, message: "File deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting vault file:", error);
     res.status(500).json({ error: error.message });
   }
 };
