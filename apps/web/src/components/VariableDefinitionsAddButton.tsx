@@ -285,7 +285,7 @@ const VariableDefinitionsAddButton: React.FC<Props> = ({
         modal
         closable={!isSubmitting}
         dismissableMask={!isSubmitting}
-        className="modal w-full max-w-3xl"
+        className="modal w-full max-w-5xl"
         maskClassName="modal-mask"
         headerClassName="modal-header"
         contentClassName="modal-content"

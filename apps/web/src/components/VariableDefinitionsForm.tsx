@@ -164,9 +164,9 @@ const VariableDefinitionsForm: React.FC<{ disabled?: boolean }> = ({
   }, [inputTypeOptions, setValue, watch]);
 
   return (
-    <div className="grid grid-cols-2 gap-4">
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "2rem", width: "100%", alignItems: "flex-start" }}>
       {/* Form on the left */}
-      <div className="flex flex-col gap-2 w-1/2">
+      <div style={{ flex: "1 1 350px", display: "flex", flexDirection: "column", gap: "0.75rem", minWidth: 0 }}>
         <div>
           <label className="label" htmlFor="vd-label">
             Label *
@@ -367,7 +367,7 @@ const VariableDefinitionsForm: React.FC<{ disabled?: boolean }> = ({
       </div>
 
       {/* Preview on the right */}
-      <div className="flex flex-col col-span-1">
+      <div style={{ flex: "1 1 300px", display: "flex", flexDirection: "column", gap: "0.75rem", minWidth: 0 }}>
         <div className="mb-2">
           <h3 className="text-sm font-medium text-text-secondary">Preview</h3>
         </div>
