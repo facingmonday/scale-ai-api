@@ -65,6 +65,20 @@ async function deleteFile(classroomId: string, fileId: string) {
   return response.data;
 }
 
+async function copyFile(classroomId: string, fileId: string, targetClassroomId: string) {
+  const response = await axios.post(
+    `${API_HOST}/${API_VERSION}/files/${fileId}/copy`,
+    { targetClassroomId },
+    {
+      headers: {
+        ...(await TokenHandler.getHeaders()),
+        "x-classroom": classroomId,
+      },
+    }
+  );
+  return response.data;
+}
+
 // ================= FOLDERS =================
 
 async function getFolders(classroomId: string) {
@@ -154,6 +168,7 @@ const vaultService = {
   uploadFile,
   updateFile,
   deleteFile,
+  copyFile,
   getFolders,
   createFolder,
   deleteFolder,

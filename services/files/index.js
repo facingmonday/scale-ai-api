@@ -14,5 +14,6 @@ router.post(
 );
 router.put("/:id", requireAuth(), requireActiveClassroom(), controller.update);
 router.delete("/:id", requireAuth(), requireActiveClassroom(), controller.remove);
+router.post("/:id/copy", requireAuth(), requireActiveClassroom(), controller.copy);
 
 module.exports = router;

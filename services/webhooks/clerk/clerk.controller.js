@@ -208,6 +208,42 @@ const organizationCreated = async (orgData) => {
           e?.message || e
         );
       }
+
+      // Seed default organization-level tags
+      try {
+        const Tag = require("../../tags/tags.model");
+        const slugify = require("slugify");
+        const DEFAULT_ORG_TAGS = [
+          { title: "Lecture Slides", color: "#4f46e5", description: "Standard lecture slide decks" },
+          { title: "Case Studies", color: "#0891b2", description: "Pizza shop scenario case studies" },
+          { title: "Homework Handouts", color: "#16a34a", description: "Homework assignments and handouts" },
+          { title: "Class Templates", color: "#ea580c", description: "Operational templates and guidelines" }
+        ];
+
+        const createdBy = orgData.created_by || "system_webhook";
+
+        for (const defaultTag of DEFAULT_ORG_TAGS) {
+          const slug = slugify(defaultTag.title, { lower: true, strict: true });
+          await Tag.findOneAndUpdate(
+            { organization: organization._id, slug, classroomId: null },
+            {
+              $set: {
+                title: defaultTag.title,
+                slug,
+                description: defaultTag.description,
+                color: defaultTag.color,
+                type: "tag",
+                createdBy,
+                updatedBy: createdBy,
+              }
+            },
+            { upsert: true }
+          );
+        }
+        console.log(`Seeded default organization-level tags for org: ${organization.clerkOrganizationId}`);
+      } catch (tagError) {
+        console.error("⚠️ Failed to seed default organization-level tags:", tagError.message);
+      }
     } else {
       console.log(
         "Organization already exists:",

@@ -59,7 +59,7 @@ const FileSchema = new mongoose.Schema(
     classroomId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Classroom",
-      required: true,
+      default: null,
       index: true,
     },
     challengeId: {
