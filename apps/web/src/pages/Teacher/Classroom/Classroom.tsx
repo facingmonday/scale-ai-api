@@ -16,6 +16,8 @@ import ClassroomSaveAsTemplateAction from "@/components/ClassroomSaveAsTemplateA
 import ClassroomDeleteAction from "@/components/ClassroomDeleteAction";
 import ClassroomInviteStudentButton from "@/components/ClassroomInviteStudentButton";
 import ClassroomBillingSettings from "@/components/ClassroomBillingSettings";
+import ClassroomJoinLinkPanel from "@/components/ClassroomJoinLinkPanel";
+import ClassroomStudentTransferDialog from "@/components/ClassroomStudentTransferDialog";
 import RosterImportPanel from "@/components/RosterImportPanel";
 import VariableDefinitions from "../Settings/VariableDefinitions";
 import MetricDefinitions from "../Settings/MetricDefinitions";
@@ -29,12 +31,9 @@ type ClassroomTab =
   | "prompts"
   | "classAccess"
   | "students"
-  | "roster"
-  | "variableDefinitions"
-  | "metricDefinitions"
+  | "definitions"
   | "profileTypes"
-  | "preferences"
-  | "admin";
+  | "preferences";
 
 const CLASSROOM_TABS: { key: ClassroomTab; label: string }[] = [
   { key: "details", label: "Details" },
@@ -42,15 +41,27 @@ const CLASSROOM_TABS: { key: ClassroomTab; label: string }[] = [
   { key: "prompts", label: "Prompts" },
   { key: "classAccess", label: "Class Access" },
   { key: "students", label: "Students" },
-  { key: "roster", label: "Roster" },
-  { key: "variableDefinitions", label: "Variable Definitions" },
-  { key: "metricDefinitions", label: "Metric Definitions" },
+  { key: "definitions", label: "Definitions" },
   { key: "profileTypes", label: "Profile Types" },
   { key: "preferences", label: "Preferences" },
-  { key: "admin", label: "Admin" },
 ];
 
 const VALID_TABS = new Set<ClassroomTab>(CLASSROOM_TABS.map((t) => t.key));
+
+const TAB_ALIASES: Record<string, ClassroomTab> = {
+  roster: "students",
+  variableDefinitions: "definitions",
+  metricDefinitions: "definitions",
+  admin: "preferences",
+};
+
+const resolveTab = (raw: string | null): ClassroomTab | null => {
+  if (!raw) return null;
+  const resolved = TAB_ALIASES[raw] ?? raw;
+  return VALID_TABS.has(resolved as ClassroomTab)
+    ? (resolved as ClassroomTab)
+    : null;
+};
 
 const SAVE_TABS = new Set<ClassroomTab>(["details", "automation", "prompts"]);
 
@@ -61,24 +72,30 @@ const TeacherClassroom: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const classroomId = id || "";
 
-  const tabFromUrl = useMemo(() => {
-    const raw = searchParams.get("tab");
-    if (raw && VALID_TABS.has(raw as ClassroomTab)) {
-      return raw as ClassroomTab;
-    }
-    return null;
-  }, [searchParams]);
+  const tabFromUrl = useMemo(
+    () => resolveTab(searchParams.get("tab")),
+    [searchParams]
+  );
 
   const [activeTab, setActiveTab] = useState<ClassroomTab>(
     tabFromUrl ?? "details"
   );
 
   useEffect(() => {
+    const raw = searchParams.get("tab");
+    if (raw && TAB_ALIASES[raw]) {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("tab", TAB_ALIASES[raw]);
+        return next;
+      });
+      return;
+    }
     if (tabFromUrl && tabFromUrl !== activeTab) {
       setActiveTab(tabFromUrl);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabFromUrl]);
+  }, [tabFromUrl, searchParams]);
 
   const setTab = (tab: ClassroomTab) => {
     setActiveTab(tab);
@@ -127,6 +144,10 @@ const TeacherClassroom: React.FC = () => {
   const [removeStudentError, setRemoveStudentError] = useState<string | null>(
     null
   );
+  const [isTransferStudentDialogOpen, setIsTransferStudentDialogOpen] =
+    useState(false);
+  const [transferStudent, setTransferStudent] =
+    useState<StudentDisplay | null>(null);
 
   useEffect(() => {
     if (!classroomId) return;
@@ -337,6 +358,11 @@ const TeacherClassroom: React.FC = () => {
     setSelectedStudent(student);
     setRemoveStudentError(null);
     setIsRemoveStudentDialogOpen(true);
+  };
+
+  const openTransferStudentDialog = (student: StudentDisplay) => {
+    setTransferStudent(student);
+    setIsTransferStudentDialogOpen(true);
   };
 
   const handleRemoveStudent = async () => {
@@ -790,44 +816,77 @@ const TeacherClassroom: React.FC = () => {
           )}
 
           {!isLoadingClassroom && !loadError && activeTab === "classAccess" && classroom && (
+          <div className="space-y-6">
             <ClassroomBillingSettings
               classroom={classroom}
               onClassroomUpdated={(updated) => setClassroom(updated)}
             />
-          )}
-
-          {!isLoadingClassroom && !loadError && activeTab === "students" && (
-          <div className="card">
-            <div className="flex items-center justify-between gap-3 mb-4">
-              <h2 className="heading-md">Students</h2>
-              <ClassroomInviteStudentButton
-                classroomId={classroomId}
-                disabled={isLoadingClassroom || !!loadError}
-                onSuccess={() => setRosterRefreshKey((k) => k + 1)}
-              />
+            <ClassroomJoinLinkPanel classroomId={classroomId} />
+            <div className="card">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <h2 className="heading-md">Invite Students</h2>
+                <ClassroomInviteStudentButton
+                  classroomId={classroomId}
+                  disabled={isLoadingClassroom || !!loadError}
+                  onSuccess={() => setRosterRefreshKey((k) => k + 1)}
+                />
+              </div>
+              <p className="text-text-muted text-sm">
+                Send an invitation email with the join link. Students still need
+                an organization seat or individual payment when they enroll.
+              </p>
             </div>
-
-            <StudentList
-              key={`${classroomId}:${rosterRefreshKey}`}
-              classroomId={classroomId}
-              onDelete={(student) => openRemoveStudentDialog(student)}
-            />
-          </div>
-          )}
-
-          {!isLoadingClassroom && !loadError && activeTab === "roster" && (
             <RosterImportPanel
               classroomId={classroomId}
               onImported={() => setRosterRefreshKey((k) => k + 1)}
             />
+            <div className="card">
+              <h2 className="heading-md mb-2">Enrolled Students</h2>
+              <p className="text-text-muted text-sm mb-4">
+                Transfer students to another classroom in your organization.
+                Their organization seat moves with them.
+              </p>
+              <StudentList
+                key={`${classroomId}:${rosterRefreshKey}`}
+                classroomId={classroomId}
+                onDelete={(student) => openRemoveStudentDialog(student)}
+                onTransfer={(student) => openTransferStudentDialog(student)}
+              />
+            </div>
+          </div>
           )}
 
-          {!isLoadingClassroom && !loadError && activeTab === "variableDefinitions" && (
+          {!isLoadingClassroom && !loadError && activeTab === "students" && (
+          <div className="space-y-6">
+            <div className="card">
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <h2 className="heading-md">Students</h2>
+                <button
+                  type="button"
+                  className="btn-outline"
+                  onClick={() => setTab("classAccess")}
+                >
+                  Manage access
+                </button>
+              </div>
+              <p className="text-text-muted text-sm mb-4">
+                View enrolled students. To invite, import a roster, or change
+                enrollment settings, use the Class Access tab.
+              </p>
+              <StudentList
+                key={`${classroomId}:${rosterRefreshKey}`}
+                classroomId={classroomId}
+                onDelete={(student) => openRemoveStudentDialog(student)}
+              />
+            </div>
+          </div>
+          )}
+
+          {!isLoadingClassroom && !loadError && activeTab === "definitions" && (
+          <div className="space-y-8">
             <VariableDefinitions classroomId={classroomId} />
-          )}
-
-          {!isLoadingClassroom && !loadError && activeTab === "metricDefinitions" && (
             <MetricDefinitions classroomId={classroomId} />
+          </div>
           )}
 
           {!isLoadingClassroom && !loadError && activeTab === "profileTypes" && (
@@ -839,34 +898,34 @@ const TeacherClassroom: React.FC = () => {
           )}
 
           {!isLoadingClassroom && !loadError && activeTab === "preferences" && (
+          <div className="space-y-8">
             <TeacherPreferencesPanel />
-          )}
 
-          {!isLoadingClassroom && !loadError && activeTab === "admin" && (
-          <div className="danger-zone-card">
-            <h2 className="danger-zone-title">Danger Zone</h2>
-            <p className="text-text-muted text-sm mb-6">
-              These actions are irreversible. Please be certain before
-              proceeding.
-            </p>
-            <div className="flex flex-col gap-4">
-              <ClassroomResetVariablesAction
-                classroomId={classroomId}
-                disabled={isLoadingClassroom || !!loadError}
-              />
-              <ClassroomRestoreTemplateAction
-                classroomId={classroomId}
-                disabled={isLoadingClassroom || !!loadError}
-              />
-              <ClassroomSaveAsTemplateAction
-                classroomId={classroomId}
-                disabled={isLoadingClassroom || !!loadError}
-              />
-              <ClassroomDeleteAction
-                classroomId={classroomId}
-                classroomName={classroom?.name || "Classroom"}
-                disabled={isLoadingClassroom || !!loadError}
-              />
+            <div className="danger-zone-card">
+              <h2 className="danger-zone-title">Danger Zone</h2>
+              <p className="text-text-muted text-sm mb-6">
+                These actions are irreversible. Please be certain before
+                proceeding.
+              </p>
+              <div className="flex flex-col gap-4">
+                <ClassroomResetVariablesAction
+                  classroomId={classroomId}
+                  disabled={isLoadingClassroom || !!loadError}
+                />
+                <ClassroomRestoreTemplateAction
+                  classroomId={classroomId}
+                  disabled={isLoadingClassroom || !!loadError}
+                />
+                <ClassroomSaveAsTemplateAction
+                  classroomId={classroomId}
+                  disabled={isLoadingClassroom || !!loadError}
+                />
+                <ClassroomDeleteAction
+                  classroomId={classroomId}
+                  classroomName={classroom?.name || "Classroom"}
+                  disabled={isLoadingClassroom || !!loadError}
+                />
+              </div>
             </div>
           </div>
           )}
@@ -926,6 +985,14 @@ const TeacherClassroom: React.FC = () => {
           </p>
         </div>
       </Dialog>
+
+      <ClassroomStudentTransferDialog
+        visible={isTransferStudentDialogOpen}
+        onHide={() => setIsTransferStudentDialogOpen(false)}
+        fromClassroomId={classroomId}
+        student={transferStudent}
+        onSuccess={() => setRosterRefreshKey((k) => k + 1)}
+      />
     </BasicLayout>
   );
 };

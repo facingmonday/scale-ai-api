@@ -63,14 +63,19 @@ rosterSeatSchema.index(
   {
     unique: true,
     partialFilterExpression: { status: { $ne: "revoked" } },
-  }
+  },
 );
 rosterSeatSchema.index({ organization: 1, classroomId: 1, status: 1 });
 
-rosterSeatSchema.statics.findReservableForEmail = function (classroomId, email) {
+rosterSeatSchema.statics.findReservableForEmail = function (
+  classroomId,
+  email,
+) {
   return this.findOne({
     classroomId,
-    email: String(email || "").trim().toLowerCase(),
+    email: String(email || "")
+      .trim()
+      .toLowerCase(),
     status: "reserved",
   });
 };

@@ -21,7 +21,7 @@ function assertJoinPolicyAllowed({
       "This classroom is closed to new enrollments.",
       403,
       "CLASSROOM_CLOSED",
-      { classroomId: classroom._id, organizationId: organization._id }
+      { classroomId: classroom._id, organizationId: organization._id },
     );
   }
 
@@ -30,7 +30,7 @@ function assertJoinPolicyAllowed({
       "This classroom requires an invite link to join.",
       403,
       "INVITE_REQUIRED",
-      { classroomId: classroom._id, organizationId: organization._id }
+      { classroomId: classroom._id, organizationId: organization._id },
     );
   }
 }
@@ -45,7 +45,7 @@ function assertRosterAccessAllowed({ classroom, rosterSeat, joinPolicy }) {
       "This classroom is limited to imported roster students.",
       403,
       "ROSTER_ONLY",
-      { classroomId: classroom._id }
+      { classroomId: classroom._id },
     );
   }
 
@@ -54,7 +54,7 @@ function assertRosterAccessAllowed({ classroom, rosterSeat, joinPolicy }) {
       "This classroom is limited to imported roster emails.",
       403,
       "ROSTER_ONLY",
-      { classroomId: classroom._id }
+      { classroomId: classroom._id },
     );
   }
 }

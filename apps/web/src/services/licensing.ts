@@ -4,6 +4,7 @@ import { API_HOST, API_VERSION } from "../config";
 import type {
   BillingSummary,
   ClassroomLicensingSummary,
+  OrgSeatReservation,
   RosterSeat,
   SeatClaim,
   SeatPool,
@@ -109,6 +110,37 @@ async function getStudentAccess(): Promise<SeatClaim[]> {
   return response.data.data;
 }
 
+async function getSeatReservations(): Promise<OrgSeatReservation[]> {
+  const response = await axios.get(
+    `${API_HOST}/${API_VERSION}/licensing/seat-reservations`,
+    {
+      headers: await TokenHandler.getHeaders(),
+    },
+  );
+  return response.data.data;
+}
+
+async function createSeatReservation(email: string): Promise<OrgSeatReservation> {
+  const response = await axios.post(
+    `${API_HOST}/${API_VERSION}/licensing/seat-reservations`,
+    { email },
+    {
+      headers: await TokenHandler.getHeaders(),
+    },
+  );
+  return response.data.data;
+}
+
+async function revokeSeatReservation(id: string): Promise<OrgSeatReservation> {
+  const response = await axios.delete(
+    `${API_HOST}/${API_VERSION}/licensing/seat-reservations/${id}`,
+    {
+      headers: await TokenHandler.getHeaders(),
+    },
+  );
+  return response.data.data;
+}
+
 const licensingService = {
   getSummary,
   getSeatPools,
@@ -118,6 +150,9 @@ const licensingService = {
   createStudentCheckout,
   createOrgCheckout,
   getStudentAccess,
+  getSeatReservations,
+  createSeatReservation,
+  revokeSeatReservation,
 };
 
 export default licensingService;

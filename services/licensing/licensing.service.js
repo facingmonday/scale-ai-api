@@ -3,6 +3,11 @@ const BillingSubscription = require("./billingSubscription.model");
 const SeatPool = require("./seatPool.model");
 const SeatClaim = require("./seatClaim.model");
 const RosterSeat = require("./rosterSeat.model");
+const {
+  getOrgSeatAvailability,
+  claimReservationAtomically,
+  claimFloatingPrepaidSeatAtomically,
+} = require("./orgSeatReservation.service");
 const { getDefaultFreeTeacherLimits, PLAN_KEYS } = require("./planCatalog");
 const {
   assertJoinPolicyAllowed,
@@ -54,44 +59,21 @@ async function findOrCreateOrgSeatPool(organization, createdBy = "system") {
 }
 
 async function getOrgSeatPoolSummary(organizationId) {
+  const availability = await getOrgSeatAvailability(organizationId);
   const pool = await SeatPool.findOne({
     organization: organizationId,
     planKey: PLAN_KEYS.ORG_SEATS,
     status: { $in: ACTIVE_POOL_STATUSES },
   }).lean({ virtuals: true });
 
-  if (!pool) {
-    return {
-      totalSeats: 0,
-      usedSeats: 0,
-      remainingSeats: 0,
-    };
-  }
-
   return {
-    totalSeats: pool.totalSeats || 0,
-    usedSeats: pool.usedSeats || 0,
-    remainingSeats: Math.max((pool.totalSeats || 0) - (pool.usedSeats || 0), 0),
-    poolId: pool._id,
+    ...availability,
+    poolId: pool?._id,
   };
 }
 
 async function claimPrepaidSeatAtomically({ organizationId, createdBy }) {
-  const pool = await SeatPool.findOneAndUpdate(
-    {
-      organization: organizationId,
-      planKey: PLAN_KEYS.ORG_SEATS,
-      status: { $in: ACTIVE_POOL_STATUSES },
-      $expr: { $lt: ["$usedSeats", "$totalSeats"] },
-    },
-    {
-      $inc: { usedSeats: 1 },
-      $set: { updatedBy: createdBy },
-    },
-    { new: true },
-  );
-
-  return pool;
+  return claimFloatingPrepaidSeatAtomically({ organizationId, createdBy });
 }
 
 async function getBillingSummary({ user, organization }) {
@@ -100,7 +82,13 @@ async function getBillingSummary({ user, organization }) {
       plans: [],
       seatPools: [],
       classroomUsage: [],
-      orgSeatSummary: { totalSeats: 0, usedSeats: 0, remainingSeats: 0 },
+      orgSeatSummary: {
+        totalSeats: 0,
+        usedSeats: 0,
+        reservedUnclaimed: 0,
+        floatingAvailable: 0,
+        remainingSeats: 0,
+      },
       stripePaidSeats: 0,
       freeTeacherLimits: getDefaultFreeTeacherLimits(),
     };
@@ -230,6 +218,7 @@ async function createClaim({
   source,
   seatPool,
   rosterSeat,
+  orgSeatReservationId,
   createdBy,
   metadata = {},
 }) {
@@ -243,6 +232,7 @@ async function createClaim({
     userId: member._id,
     seatPoolId: seatPool?._id,
     rosterSeatId: rosterSeat?._id,
+    orgSeatReservationId,
     source,
     organization: classroom.organization,
     createdBy,
@@ -310,7 +300,32 @@ async function claimSeatOrRequireCheckout({
     joinPolicy,
   });
 
-  const prepaidPool = await claimPrepaidSeatAtomically({
+  if (lookupEmail) {
+    const namedClaim = await claimReservationAtomically({
+      organizationId: organization._id,
+      email: lookupEmail,
+      memberId: member._id,
+      classroomId: classroom._id,
+      clerkUserId,
+    });
+
+    if (namedClaim) {
+      return {
+        allowed: true,
+        ...(await createClaim({
+          classroom,
+          member,
+          source: "org_reserved",
+          seatPool: namedClaim.pool,
+          rosterSeat,
+          orgSeatReservationId: namedClaim.reservation._id,
+          createdBy: clerkUserId,
+        })),
+      };
+    }
+  }
+
+  const prepaidPool = await claimFloatingPrepaidSeatAtomically({
     organizationId: organization._id,
     createdBy: clerkUserId,
   });

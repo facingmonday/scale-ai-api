@@ -21,6 +21,7 @@ export interface SeatClaim {
       };
   source:
     | "org_prepaid"
+    | "org_reserved"
     | "stripe_student"
     | "student_purchase"
     | "teacher_assigned"
@@ -45,10 +46,25 @@ export interface RosterSeat {
   status: "reserved" | "claimed" | "revoked" | "invalid";
 }
 
+export interface OrgSeatReservation {
+  _id: string;
+  email: string;
+  status: "reserved" | "claimed" | "revoked";
+  claimedAt?: string;
+  claimedClassroomId?: string;
+}
+
 export interface BillingSubscription {
   _id: string;
   planKey: string;
-  status: "active" | "trialing" | "past_due" | "canceled" | "incomplete" | "expired" | "manual";
+  status:
+    | "active"
+    | "trialing"
+    | "past_due"
+    | "canceled"
+    | "incomplete"
+    | "expired"
+    | "manual";
   purchaserScope: "user" | "organization";
   purchaserUserId?: string;
   purchaserOrganizationId?: string;
@@ -67,6 +83,8 @@ export interface BillingSummary {
   orgSeatSummary?: {
     totalSeats: number;
     usedSeats: number;
+    reservedUnclaimed?: number;
+    floatingAvailable?: number;
     remainingSeats: number;
     poolId?: string;
   };

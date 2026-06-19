@@ -137,6 +137,44 @@ router.delete(
   controller.removeStudent
 );
 
+/**
+ * @openapi
+ * /v1/enrollment/admin/transfer:
+ *   post:
+ *     summary: Transfer student to another classroom
+ *     description: Moves a student and their organization seat claim to another classroom in the same organization. Requires org:admin role.
+ *     tags:
+ *       - Enrollments
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - userId
+ *               - fromClassroomId
+ *               - toClassroomId
+ *             properties:
+ *               userId:
+ *                 type: string
+ *               fromClassroomId:
+ *                 type: string
+ *               toClassroomId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Student transferred successfully.
+ */
+router.post(
+  "/admin/transfer",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.transferStudent
+);
+
 // Student routes - require authenticated member
 /**
  * @openapi

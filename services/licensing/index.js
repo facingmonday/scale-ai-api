@@ -66,7 +66,11 @@ router.get("/student/access", requireAuth(), controller.getStudentAccess);
  *       200:
  *         description: Session URL metadata.
  */
-router.post("/student/checkout", requireAuth(), controller.createStudentCheckout);
+router.post(
+  "/student/checkout",
+  requireAuth(),
+  controller.createStudentCheckout,
+);
 
 /**
  * @openapi
@@ -86,7 +90,7 @@ router.post(
   "/org/checkout",
   requireAuth(),
   checkRole("org:admin"),
-  controller.createOrgCheckout
+  controller.createOrgCheckout,
 );
 
 /**
@@ -107,7 +111,7 @@ router.get(
   "/seat-pools",
   requireAuth(),
   checkRole("org:admin"),
-  controller.getSeatPools
+  controller.getSeatPools,
 );
 
 /**
@@ -134,7 +138,7 @@ router.get(
   "/classrooms/:classroomId/summary",
   requireAuth(),
   checkRole("org:admin"),
-  controller.getClassroomSummary
+  controller.getClassroomSummary,
 );
 
 /**
@@ -161,7 +165,7 @@ router.get(
   "/classrooms/:classroomId/roster-seats",
   requireAuth(),
   checkRole("org:admin"),
-  controller.getRosterSeats
+  controller.getRosterSeats,
 );
 
 /**
@@ -188,7 +192,28 @@ router.post(
   "/classrooms/:classroomId/roster-import",
   requireAuth(),
   checkRole("org:admin"),
-  controller.importRoster
+  controller.importRoster,
+);
+
+router.get(
+  "/seat-reservations",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.getSeatReservations,
+);
+
+router.post(
+  "/seat-reservations",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.createSeatReservation,
+);
+
+router.delete(
+  "/seat-reservations/:id",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.revokeSeatReservation,
 );
 
 module.exports = router;

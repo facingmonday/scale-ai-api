@@ -6,10 +6,27 @@ import { useAuth } from "@/context/AuthContext";
 
 const CLASSROOM_REDIRECT_TABS = new Set([
   "preferences",
+  "definitions",
   "variableDefinitions",
   "metricDefinitions",
   "profileTypes",
+  "admin",
 ]);
+
+const CLASSROOM_TAB_ALIASES: Record<string, string> = {
+  variableDefinitions: "definitions",
+  metricDefinitions: "definitions",
+  admin: "preferences",
+};
+
+const CLASSROOM_TAB_LABELS: Record<string, string> = {
+  preferences: "preferences",
+  definitions: "definitions",
+  variableDefinitions: "definitions",
+  metricDefinitions: "definitions",
+  profileTypes: "profile types",
+  admin: "preferences",
+};
 
 const Settings: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -17,10 +34,11 @@ const Settings: React.FC = () => {
   const tab = searchParams.get("tab");
 
   if (tab && CLASSROOM_REDIRECT_TABS.has(tab)) {
+    const classroomTab = CLASSROOM_TAB_ALIASES[tab] ?? tab;
     if (activeClassroom?._id) {
       return (
         <Navigate
-          to={`/classroom/${activeClassroom._id}?tab=${tab}`}
+          to={`/classroom/${activeClassroom._id}?tab=${classroomTab}`}
           replace
         />
       );
@@ -33,14 +51,7 @@ const Settings: React.FC = () => {
             <div className="card mt-6">
               <p className="text-text-muted">
                 Open a classroom from the Classrooms page to manage{" "}
-                {tab === "preferences"
-                  ? "preferences"
-                  : tab === "variableDefinitions"
-                    ? "variable definitions"
-                    : tab === "metricDefinitions"
-                      ? "metric definitions"
-                      : "profile types"}
-                .
+                {CLASSROOM_TAB_LABELS[tab] ?? "settings"}.
               </p>
             </div>
           </div>

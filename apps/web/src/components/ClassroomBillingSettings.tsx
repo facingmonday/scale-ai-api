@@ -9,6 +9,13 @@ interface ClassroomBillingSettingsProps {
   onClassroomUpdated?: (classroom: ClassroomWithVirtuals) => void;
 }
 
+const JOIN_POLICY_LABELS: Record<JoinPolicy, string> = {
+  invite_link: "Invite link required",
+  open: "Open to organization members",
+  roster_only: "Imported roster only",
+  closed: "Closed to new enrollments",
+};
+
 const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
   classroom,
   onClassroomUpdated,
@@ -16,6 +23,11 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
   const classroomId = classroom._id;
   const [joinPolicy, setJoinPolicy] = useState<JoinPolicy>(
     classroom.joinPolicy || "invite_link",
+  );
+  const [lastOpenJoinPolicy, setLastOpenJoinPolicy] = useState<JoinPolicy>(
+    classroom.joinPolicy && classroom.joinPolicy !== "closed"
+      ? classroom.joinPolicy
+      : "invite_link",
   );
   const [allowAnonymousJoin, setAllowAnonymousJoin] = useState(
     classroom.allowAnonymousJoin !== false,
@@ -48,19 +60,28 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classroomId]);
 
-  const saveSettings = async () => {
+  const saveSettings = async (overrides?: {
+    joinPolicy?: JoinPolicy;
+    allowAnonymousJoin?: boolean;
+  }) => {
+    const nextJoinPolicy = overrides?.joinPolicy ?? joinPolicy;
+    const nextAllowAnonymousJoin =
+      overrides?.allowAnonymousJoin ?? allowAnonymousJoin;
+
     setIsSaving(true);
     setError(null);
     try {
       const response = await classroomService.update(classroomId, {
-        joinPolicy,
-        allowAnonymousJoin,
+        joinPolicy: nextJoinPolicy,
+        allowAnonymousJoin: nextAllowAnonymousJoin,
       });
       const updated = response?.data || {
         ...classroom,
-        joinPolicy,
-        allowAnonymousJoin,
+        joinPolicy: nextJoinPolicy,
+        allowAnonymousJoin: nextAllowAnonymousJoin,
       };
+      setJoinPolicy(nextJoinPolicy);
+      setAllowAnonymousJoin(nextAllowAnonymousJoin);
       onClassroomUpdated?.(updated);
       await load();
     } catch (e) {
@@ -71,10 +92,24 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
     }
   };
 
+  const isClosed = joinPolicy === "closed";
+
+  const handleEnrollmentToggle = (closed: boolean) => {
+    if (closed) {
+      if (joinPolicy !== "closed") {
+        setLastOpenJoinPolicy(joinPolicy);
+      }
+      void saveSettings({ joinPolicy: "closed" });
+      return;
+    }
+
+    void saveSettings({ joinPolicy: lastOpenJoinPolicy });
+  };
+
   return (
     <div className="card space-y-6">
       <div>
-        <h2 className="heading-md">Class Access</h2>
+        <h2 className="heading-md">Enrollment Controls</h2>
         <p className="text-text-muted">
           Control who can enroll in this class. Seat billing is managed at the
           organization level.
@@ -83,19 +118,71 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
 
       {error && <p className="text-red-400 text-sm">{error}</p>}
 
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <span className="label mb-0">Enrollment</span>
+        <div
+          className="inline-flex rounded-lg border border-ui-border p-1 bg-ui-bg-hover"
+          role="group"
+          aria-label="Enrollment status"
+        >
+          <button
+            type="button"
+            className={`min-w-[5.5rem] px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              !isClosed
+                ? "bg-brand-teal text-white shadow-sm"
+                : "text-text-muted hover:text-text-primary"
+            }`}
+            disabled={isSaving || !isClosed}
+            aria-pressed={!isClosed}
+            onClick={() => handleEnrollmentToggle(false)}
+          >
+            Open
+          </button>
+          <button
+            type="button"
+            className={`min-w-[5.5rem] px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              isClosed
+                ? "bg-ui-muted text-text-primary shadow-sm"
+                : "text-text-muted hover:text-text-primary"
+            }`}
+            disabled={isSaving || isClosed}
+            aria-pressed={isClosed}
+            onClick={() => handleEnrollmentToggle(true)}
+          >
+            Closed
+          </button>
+        </div>
+        {isSaving && <span className="text-text-muted text-sm">Saving...</span>}
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <label className="flex flex-col gap-1">
           <span className="label">Join Policy</span>
           <select
             className="input"
-            value={joinPolicy}
-            onChange={(e) => setJoinPolicy(e.target.value as JoinPolicy)}
+            value={isClosed ? lastOpenJoinPolicy : joinPolicy}
+            onChange={(e) => {
+              const next = e.target.value as JoinPolicy;
+              setJoinPolicy(next);
+              if (next !== "closed") {
+                setLastOpenJoinPolicy(next);
+              }
+            }}
+            disabled={isSaving || isClosed}
           >
-            <option value="invite_link">Invite link</option>
-            <option value="open">Open to organization members</option>
-            <option value="roster_only">Imported roster only</option>
-            <option value="closed">Closed</option>
+            {(Object.keys(JOIN_POLICY_LABELS) as JoinPolicy[])
+              .filter((policy) => policy !== "closed")
+              .map((policy) => (
+                <option key={policy} value={policy}>
+                  {JOIN_POLICY_LABELS[policy]}
+                </option>
+              ))}
           </select>
+          {isClosed && (
+            <p className="text-text-muted text-xs mt-1">
+              Set enrollment to Open to change join policy.
+            </p>
+          )}
         </label>
 
         <div className="flex flex-col gap-3 justify-end pb-1">
@@ -104,6 +191,7 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
               type="checkbox"
               checked={allowAnonymousJoin}
               onChange={(e) => setAllowAnonymousJoin(e.target.checked)}
+              disabled={isSaving}
               className="w-4 h-4 rounded border-ui-border text-brand-teal focus:ring-brand-teal"
             />
             <span className="text-sm">
@@ -125,23 +213,23 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
 
       {/* <div className="border-t border-ui-border pt-6">
         <h3 className="heading-sm mb-3">Seat Usage</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="p-3 rounded border border-ui-border">
-            <p className="text-xs text-text-muted">Claimed</p>
+            <p className="text-xs text-text-muted">Seats Claimed</p>
             <p className="text-xl font-semibold">
-              {isLoading ? "..." : summary?.claimedSeats ?? 0}
+              {isLoading ? "..." : (summary?.claimedSeats ?? 0)}
             </p>
           </div>
           <div className="p-3 rounded border border-ui-border">
             <p className="text-xs text-text-muted">Roster Reserved</p>
             <p className="text-xl font-semibold">
-              {isLoading ? "..." : summary?.roster.reserved ?? 0}
+              {isLoading ? "..." : (summary?.roster.reserved ?? 0)}
             </p>
           </div>
           <div className="p-3 rounded border border-ui-border">
             <p className="text-xs text-text-muted">Roster Claimed</p>
             <p className="text-xl font-semibold">
-              {isLoading ? "..." : summary?.roster.claimed ?? 0}
+              {isLoading ? "..." : (summary?.roster.claimed ?? 0)}
             </p>
           </div>
         </div>

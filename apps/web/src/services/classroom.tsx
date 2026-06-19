@@ -25,31 +25,31 @@ async function create(data: {
     data,
     {
       headers: await TokenHandler.getHeaders(),
-    }
+    },
   );
   return response.data;
 }
 
 async function getAdminDashboard(
-  classroomId: string
+  classroomId: string,
 ): Promise<AdminDashboardResponse> {
   const response = await axios.get<AdminDashboardResponse>(
     `${API_HOST}/${API_VERSION}/admin/class/${classroomId}/dashboard`,
     {
       headers: await TokenHandler.getHeaders(),
-    }
+    },
   );
   return response.data;
 }
 
 async function getStudentDashboard(
-  classroomId: string
+  classroomId: string,
 ): Promise<StudentDashboardResponse> {
   const response = await axios.get<StudentDashboardResponse>(
     `${API_HOST}/${API_VERSION}/student/class/${classroomId}/dashboard`,
     {
       headers: await TokenHandler.getHeaders(),
-    }
+    },
   );
   return response.data;
 }
@@ -60,7 +60,7 @@ async function inviteStudent(classroomId: string, email: string) {
     { email },
     {
       headers: await TokenHandler.getHeaders(),
-    }
+    },
   );
   return response.data;
 }
@@ -89,14 +89,14 @@ async function update(
     accessCode: string;
     allowAnonymousJoin: boolean;
     automationSettings: ClassroomAutomationSettings;
-  }>
+  }>,
 ) {
   const response = await axios.put(
     `${API_HOST}/${API_VERSION}/admin/class/${classroomId}`,
     data,
     {
       headers: await TokenHandler.getHeaders(),
-    }
+    },
   );
   return response.data;
 }
@@ -106,7 +106,7 @@ async function remove(classroomId: string) {
     `${API_HOST}/${API_VERSION}/admin/class/${classroomId}`,
     {
       headers: await TokenHandler.getHeaders(),
-    }
+    },
   );
   return response.data;
 }
@@ -116,21 +116,21 @@ async function removeAllVariables(classroomId: string) {
     `${API_HOST}/${API_VERSION}/admin/class/${classroomId}/variables`,
     {
       headers: await TokenHandler.getHeaders(),
-    }
+    },
   );
   return response.data;
 }
 
 async function restoreTemplate(
   classroomId: string,
-  body?: { templateId?: string; templateKey?: string }
+  body?: { templateId?: string; templateKey?: string },
 ) {
   const response = await axios.post(
     `${API_HOST}/${API_VERSION}/admin/class/${classroomId}/restore-template`,
     body ?? {},
     {
       headers: await TokenHandler.getHeaders(),
-    }
+    },
   );
   return response.data;
 }

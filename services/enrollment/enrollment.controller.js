@@ -3,6 +3,9 @@ const Member = require("../members/member.model");
 const Enrollment = require("./enrollment.model");
 const Organization = require("../organizations/organization.model");
 const { ensureJoin } = require("../join/join.service");
+const {
+  transferStudentBetweenClassrooms,
+} = require("./transfer.service");
 
 /**
  * Student joins class
@@ -234,6 +237,48 @@ exports.removeStudent = async function (req, res) {
     }
     if (error.message.includes("Insufficient permissions")) {
       return res.status(403).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Transfer student to another classroom within the organization (org:admin only).
+ * POST /v1/enrollment/admin/transfer
+ */
+exports.transferStudent = async function (req, res) {
+  try {
+    const { userId, fromClassroomId, toClassroomId } = req.body || {};
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    if (!userId || !fromClassroomId || !toClassroomId) {
+      return res.status(400).json({
+        error: "userId, fromClassroomId, and toClassroomId are required",
+      });
+    }
+
+    const result = await transferStudentBetweenClassrooms({
+      organizationId,
+      fromClassroomId,
+      toClassroomId,
+      userId,
+      performedByClerkUserId: clerkUserId,
+    });
+
+    res.json({
+      success: true,
+      message: "Student transferred successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error transferring student:", error);
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+        code: error.code,
+        details: error.details,
+      });
     }
     res.status(500).json({ error: error.message });
   }
