@@ -5,7 +5,12 @@ const slugify = require("slugify");
 exports.get = async function (req, res, next) {
   try {
     const classroomId = req.activeClassroom._id;
-    const tags = await TagsModel.find({ classroomId })
+    const tags = await TagsModel.find({
+      $or: [
+        { classroomId },
+        { classroomId: null, organization: req.organization?._id }
+      ]
+    })
       .sort({ title: 1 })
       .lean();
 
@@ -19,7 +24,7 @@ exports.get = async function (req, res, next) {
 exports.create = async function (req, res) {
   try {
     const classroomId = req.activeClassroom._id;
-    const { title, description, color, type } = req.body;
+    const { title, description, color, type, targetLevel } = req.body;
 
     if (!title) {
       return res.status(400).json({ error: "Tag title is required" });
@@ -27,9 +32,14 @@ exports.create = async function (req, res) {
 
     const slug = slugify(title, { lower: true, strict: true });
 
-    const existingTag = await TagsModel.findOne({ classroomId, slug });
+    const existingTag = await TagsModel.findOne({
+      slug,
+      ...(targetLevel === "organization"
+        ? { classroomId: null, organization: req.organization?._id }
+        : { classroomId })
+    });
     if (existingTag) {
-      return res.status(400).json({ error: "Tag with this name already exists in this classroom" });
+      return res.status(400).json({ error: "Tag with this name already exists in this scope" });
     }
 
     const newTag = new TagsModel({
@@ -38,7 +48,7 @@ exports.create = async function (req, res) {
       description,
       color: color || "#808080",
       type: type || "tag",
-      classroomId,
+      classroomId: targetLevel === "organization" ? null : classroomId,
       organization: req.organization?._id,
       createdBy: req.clerkUser.id,
       updatedBy: req.clerkUser.id,

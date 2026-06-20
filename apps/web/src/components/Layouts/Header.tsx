@@ -289,9 +289,8 @@ export default function Header() {
 
                 {/* Caret */}
                 <svg
-                  className={`w-4 h-4 text-text-secondary transition-transform ${
-                    openUserMenu ? "rotate-180" : ""
-                  }`}
+                  className={`w-4 h-4 text-text-secondary transition-transform ${openUserMenu ? "rotate-180" : ""
+                    }`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -606,11 +605,10 @@ export default function Header() {
                   <li key={orgId}>
                     <button
                       type="button"
-                      className={`w-full text-left rounded-lg border transition-all flex items-start gap-4 p-4 ${
-                        isActive
+                      className={`w-full text-left rounded-lg border transition-all flex items-start gap-4 p-4 ${isActive
                           ? "bg-ui-muted border-brand-orange border-2"
                           : "border-ui-border hover:bg-ui-muted hover:border-ui-border"
-                      }`}
+                        }`}
                       onClick={async () => {
                         if (!isActive && orgId) {
                           try {
@@ -647,11 +645,10 @@ export default function Header() {
                         <div className="flex items-start justify-between gap-2 mb-1">
                           <div className="flex-1 min-w-0">
                             <h3
-                              className={`font-semibold text-base truncate ${
-                                isActive
+                              className={`font-semibold text-base truncate ${isActive
                                   ? "text-brand-orange"
                                   : "text-text-primary"
-                              }`}
+                                }`}
                             >
                               {orgName}
                             </h3>

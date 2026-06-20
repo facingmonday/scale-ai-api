@@ -4,7 +4,12 @@ const { deleteFile } = require("../../lib/spaces");
 exports.get = async function (req, res, next) {
   try {
     const classroomId = req.activeClassroom._id;
-    const query = { classroomId };
+    const query = {
+      $or: [
+        { classroomId },
+        { classroomId: null, organization: req.organization?._id }
+      ]
+    };
 
     // Apply visibility filter based on student/teacher role
     if (req.classroomRole !== "admin") {
@@ -55,7 +60,7 @@ exports.get = async function (req, res, next) {
 exports.uploadFile = async function (req, res) {
   try {
     const classroomId = req.activeClassroom._id;
-    const { title, tags, visibility, userId, folder } = req.body;
+    const { title, tags, visibility, userId, folder, targetLevel } = req.body;
 
     if (!req.file) {
       return res.status(400).json({ error: "No file was uploaded" });
@@ -95,11 +100,11 @@ exports.uploadFile = async function (req, res) {
       fileSize: req.file.size || 0,
       bucket: req.fileData?.bucket || req.file.bucket || process.env.SPACES_BUCKET,
       key: req.fileData?.key || req.file.key,
-      folder: folder && folder !== "root" ? folder : null,
-      tags: parsedTags,
+      folder: targetLevel === "organization" ? null : (folder && folder !== "root" ? folder : null),
+      tags: targetLevel === "organization" ? [] : parsedTags,
       visibility: visibility || "everyone",
       userId: visibility === "student" && userId ? userId : null,
-      classroomId,
+      classroomId: targetLevel === "organization" ? null : classroomId,
       organization: req.organization?._id,
       createdBy: req.clerkUser.id,
       updatedBy: req.clerkUser.id,
@@ -184,6 +189,69 @@ exports.remove = async function (req, res) {
     res.status(200).json({ success: true, message: "File removed successfully" });
   } catch (error) {
     console.error("Error removing file:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.copy = async function (req, res) {
+  try {
+    const { id } = req.params;
+    const { targetClassroomId } = req.body;
+    const sourceClassroomId = req.activeClassroom._id;
+
+    if (!targetClassroomId) {
+      return res.status(400).json({ error: "targetClassroomId is required" });
+    }
+
+    // Find source file (allow classroom files or org files from the same organization)
+    const file = await FileModel.findOne({
+      _id: id,
+      $or: [
+        { classroomId: sourceClassroomId },
+        { classroomId: null, organization: req.organization?._id }
+      ]
+    });
+
+    if (!file) {
+      return res.status(404).json({ error: "Source file not found" });
+    }
+
+    // Validate that target classroom exists and user has admin permissions
+    const ClassroomModel = require("../classroom/classroom.model");
+    try {
+      await ClassroomModel.validateAdminAccess(
+        targetClassroomId,
+        req.clerkUser.id,
+        req.organization?._id
+      );
+    } catch (err) {
+      return res.status(403).json({ error: "Unauthorized access to target classroom" });
+    }
+
+    // Duplicate file document to target classroom (place at root, clear tags)
+    const newFile = new FileModel({
+      name: file.name,
+      title: file.title,
+      type: file.type,
+      url: file.url,
+      mimeType: file.mimeType,
+      fileSize: file.fileSize,
+      bucket: file.bucket,
+      key: file.key,
+      folder: null,
+      tags: [],
+      visibility: file.visibility === "student" ? "teachers" : file.visibility,
+      userId: null,
+      classroomId: targetClassroomId,
+      organization: req.organization?._id,
+      createdBy: req.clerkUser.id,
+      updatedBy: req.clerkUser.id,
+    });
+
+    await newFile.save();
+    res.status(201).json({ success: true, data: newFile });
+  } catch (error) {
+    console.error("Error copying file:", error);
     res.status(500).json({ error: error.message });
   }
 };

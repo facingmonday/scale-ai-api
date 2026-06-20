@@ -31,7 +31,7 @@ const TagSchema = new mongoose.Schema(
     classroomId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Classroom",
-      required: true,
+      default: null,
       index: true,
     },
     metadata: {
@@ -44,8 +44,15 @@ const TagSchema = new mongoose.Schema(
   }
 );
 
-// Compound index to ensure unique slug *per classroom*
-TagSchema.index({ classroomId: 1, slug: 1 }, { unique: true });
+// Compound indexes to ensure unique slug per classroom or per organization
+TagSchema.index({ classroomId: 1, slug: 1 }, { 
+  unique: true, 
+  partialIndexExpression: { classroomId: { $type: "objectId" } } 
+});
+TagSchema.index({ organization: 1, slug: 1 }, { 
+  unique: true, 
+  partialIndexExpression: { classroomId: null } 
+});
 
 TagSchema.add(baseSchema);
 
