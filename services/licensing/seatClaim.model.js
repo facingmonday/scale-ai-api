@@ -29,9 +29,17 @@ const seatClaimSchema = new mongoose.Schema({
     ref: "RosterSeat",
     index: true,
   },
+  orgSeatReservationId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "OrgSeatReservation",
+    index: true,
+  },
   source: {
     type: String,
     enum: [
+      "org_prepaid",
+      "org_reserved",
+      "stripe_student",
       "student_purchase",
       "teacher_assigned",
       "teacher_open",

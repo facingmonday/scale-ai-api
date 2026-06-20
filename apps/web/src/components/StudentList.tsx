@@ -10,6 +10,7 @@ interface StudentListProps {
   onStudentClick?: (student: StudentDisplay) => void;
   onEdit?: (student: StudentDisplay) => void;
   onDelete?: (student: StudentDisplay) => void;
+  onTransfer?: (student: StudentDisplay) => void;
   onStudentsLoaded?: (students: StudentDisplay[], count: number) => void;
   emptyState?: React.ReactNode;
   pageSize?: number;
@@ -20,6 +21,7 @@ const StudentList: React.FC<StudentListProps> = ({
   onStudentClick,
   onEdit,
   onDelete,
+  onTransfer,
   onStudentsLoaded,
   emptyState,
   pageSize = 10,
@@ -196,10 +198,24 @@ const StudentList: React.FC<StudentListProps> = ({
             }}
           />
         )}
+        {onTransfer && (
+          <Button
+            icon="pi pi-arrow-right-arrow-left"
+            className="p-button-rounded p-button-text"
+            tooltip="Transfer to another class"
+            tooltipOptions={{ position: "top" }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onTransfer(rowData);
+            }}
+          />
+        )}
         {onDelete && (
           <Button
             icon="pi pi-trash"
             className="p-button-rounded p-button-text p-button-danger"
+            tooltip="Remove from class"
+            tooltipOptions={{ position: "top" }}
             onClick={(e) => {
               e.stopPropagation();
               onDelete(rowData);
@@ -317,7 +333,7 @@ const StudentList: React.FC<StudentListProps> = ({
           sortable
           sortField="profile.shopName"
         />
-        {(onEdit || onDelete) && (
+        {(onEdit || onDelete || onTransfer) && (
           <Column body={actionBodyTemplate} header="Actions" />
         )}
       </DataTable>

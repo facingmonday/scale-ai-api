@@ -16,30 +16,47 @@ export default function Auth() {
   const [isStartingCheckout, setIsStartingCheckout] = useState(false);
   const [studentIdInput, setStudentIdInput] = useState("");
   const [isSubmittingStudentId, setIsSubmittingStudentId] = useState(false);
+  const [isJoiningAfterCheckout, setIsJoiningAfterCheckout] = useState(false);
 
-  const { orgId, classroomId } = useMemo(() => {
+  const { orgId, classroomId, checkoutStatus } = useMemo(() => {
     const params = new URLSearchParams(location.search);
     return {
       orgId: params.get("orgId"),
       classroomId: params.get("classroomId"),
+      checkoutStatus: params.get("checkout"),
     };
   }, [location.search]);
 
   const isJoinFlow = !!orgId && !!classroomId;
+  const isCheckoutSuccess = checkoutStatus === "success";
 
-  // If this is the join flow and the user is signed in, make the one request.
+  const attemptJoin = async (studentId?: string) => {
+    if (!orgId || !classroomId) return;
+    setJoinError(null);
+    setJoinErrorCode(null);
+    await joinService.join(orgId, classroomId, studentId);
+    navigate(`/classrooms/${classroomId}`);
+  };
+
   useEffect(() => {
     if (!isJoinFlow) return;
     if (!isLoaded) return;
     if (!isSignedIn) return;
     if (!orgId || !classroomId) return;
+
+    if (isCheckoutSuccess) {
+      didJoinRef.current = false;
+    }
+
     if (didJoinRef.current) return;
     didJoinRef.current = true;
 
     const run = async () => {
+      if (isCheckoutSuccess) {
+        setIsJoiningAfterCheckout(true);
+      }
       try {
-        await joinService.join(orgId, classroomId);
-        navigate(`/classrooms/${classroomId}`);
+        await attemptJoin();
       } catch (e) {
         console.error("Unable to join classroom:", e);
         const response =
@@ -56,25 +73,34 @@ export default function Auth() {
             "Unable to join classroom"
         );
         setJoinErrorCode(response?.data?.code || null);
+        didJoinRef.current = false;
+      } finally {
+        setIsJoiningAfterCheckout(false);
       }
     };
 
     void run();
-  }, [classroomId, isJoinFlow, isLoaded, isSignedIn, navigate, orgId]);
+  }, [
+    classroomId,
+    isCheckoutSuccess,
+    isJoinFlow,
+    isLoaded,
+    isSignedIn,
+    navigate,
+    orgId,
+  ]);
 
-  // Loading state for Clerk
   if (!isLoaded) return null;
 
-  // JOIN FLOW UI (only differs AFTER you're signed in)
   if (isJoinFlow && isSignedIn) {
     const handleJoinWithStudentId = async () => {
-      if (!orgId || !classroomId || !studentIdInput.trim() || isSubmittingStudentId) return;
+      if (!orgId || !classroomId || !studentIdInput.trim() || isSubmittingStudentId)
+        return;
       setIsSubmittingStudentId(true);
       setJoinError(null);
       setJoinErrorCode(null);
       try {
-        await joinService.join(orgId, classroomId, studentIdInput.trim());
-        navigate(`/classrooms/${classroomId}`);
+        await attemptJoin(studentIdInput.trim());
       } catch (e) {
         console.error("Unable to join classroom with student ID:", e);
         const response =
@@ -136,7 +162,8 @@ export default function Auth() {
                 {joinErrorCode === "ROSTER_ONLY" && (
                   <div className="max-w-sm mx-auto mt-4 p-4 border border-ui-border rounded-lg bg-ui-background/50">
                     <p className="text-sm text-text-muted mb-3">
-                      If you were imported using your Student ID instead of your email, please enter it below to claim your seat:
+                      If you were imported using your Student ID instead of your
+                      email, please enter it below to claim your seat:
                     </p>
                     <div className="flex gap-2">
                       <input
@@ -160,7 +187,11 @@ export default function Auth() {
               </>
             ) : (
               <>
-                <h1 className="heading-lg mb-2">Joining classroom…</h1>
+                <h1 className="heading-lg mb-2">
+                  {isJoiningAfterCheckout
+                    ? "Payment received. Joining classroom…"
+                    : "Joining classroom…"}
+                </h1>
                 <p className="text-text-muted">Please wait.</p>
               </>
             )}
@@ -170,7 +201,6 @@ export default function Auth() {
     );
   }
 
-  // GENERIC AUTH UI
   return (
     <div className="flex flex-col md:reverse md:flex-row h-screen w-full">
       <div className="w-full md:w-2/3 bg-cover bg-center max-h-[25vh] md:max-h-full">

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Dialog } from "primereact/dialog";
 import classroomService from "../services/classroom";
 import licensingService from "../services/licensing";
+import { copyTextToClipboard } from "@/utils/classroomJoinLink";
 import type { ClassroomLicensingSummary } from "../types/licensing";
 
 interface InviteStudentDialogProps {
@@ -20,9 +21,15 @@ const InviteStudentDialog: React.FC<InviteStudentDialogProps> = ({
   const [email, setEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [summary, setSummary] = useState<ClassroomLicensingSummary | null>(null);
+  const [summary, setSummary] = useState<ClassroomLicensingSummary | null>(
+    null,
+  );
+  const [sentJoinLink, setSentJoinLink] = useState<string | null>(null);
+  const [sentEmail, setSentEmail] = useState<string | null>(null);
+  const [copyError, setCopyError] = useState<string | null>(null);
 
   const isValid = email.trim().length > 0 && email.includes("@");
+  const isSuccess = sentJoinLink !== null;
 
   useEffect(() => {
     if (!visible || !classroomId) return;
@@ -35,26 +42,26 @@ const InviteStudentDialog: React.FC<InviteStudentDialogProps> = ({
   }, [classroomId, visible]);
 
   const billingMessage = useMemo(() => {
-    const mode = summary?.classroom?.billingMode;
-    if (mode === "student_paid") {
-      return "Students will be asked to pay for access before joining this classroom.";
-    }
-    if (mode === "teacher_paid_roster") {
-      return "Only imported roster students can claim a seat for this classroom.";
-    }
-    return "Billing rules are checked when the student accepts the invite.";
-  }, [summary]);
+    return "Students need an organization seat or individual payment before enrolling in this classroom.";
+  }, []);
 
   const reset = () => {
     setEmail("");
     setError(null);
     setIsSubmitting(false);
+    setSentJoinLink(null);
+    setSentEmail(null);
+    setCopyError(null);
   };
 
   const handleHide = () => {
     if (isSubmitting) return;
+    const wasSuccess = isSuccess;
     reset();
     onHide();
+    if (wasSuccess) {
+      onSuccess?.();
+    }
   };
 
   const handleSubmit = async () => {
@@ -63,10 +70,13 @@ const InviteStudentDialog: React.FC<InviteStudentDialogProps> = ({
     setIsSubmitting(true);
     setError(null);
     try {
-      await classroomService.inviteStudent(classroomId, email.trim());
-      reset();
-      onHide();
-      onSuccess?.();
+      const response = await classroomService.inviteStudent(
+        classroomId,
+        email.trim(),
+      );
+      setSentEmail(email.trim());
+      setSentJoinLink(response?.data?.joinLink ?? null);
+      setEmail("");
     } catch (e) {
       console.error("Failed to invite student:", e);
       const errorMessage =
@@ -75,7 +85,19 @@ const InviteStudentDialog: React.FC<InviteStudentDialogProps> = ({
               ?.data?.message
           : undefined;
       setError(errorMessage || "Failed to invite student. Please try again.");
+    } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleCopyLink = async () => {
+    if (!sentJoinLink) return;
+    setCopyError(null);
+    try {
+      await copyTextToClipboard(sentJoinLink);
+    } catch (e) {
+      console.error("Failed to copy join link:", e);
+      setCopyError("Failed to copy link.");
     }
   };
 
@@ -97,59 +119,102 @@ const InviteStudentDialog: React.FC<InviteStudentDialogProps> = ({
       }}
       footer={
         <div className="flex gap-2 justify-end">
-          <button
-            className="btn-outline"
-            onClick={handleHide}
-            disabled={isSubmitting}
-          >
-            Cancel
-          </button>
-          <button
-            className="btn-teal"
-            onClick={() => void handleSubmit()}
-            disabled={!isValid || isSubmitting}
-          >
-            {isSubmitting ? "Sending..." : "Send Invitation"}
-          </button>
+          {isSuccess ? (
+            <button className="btn-teal" onClick={handleHide}>
+              Done
+            </button>
+          ) : (
+            <>
+              <button
+                className="btn-outline"
+                onClick={handleHide}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn-teal"
+                onClick={() => void handleSubmit()}
+                disabled={!isValid || isSubmitting}
+              >
+                {isSubmitting ? "Sending..." : "Send Invitation"}
+              </button>
+            </>
+          )}
         </div>
       }
     >
       <div className="flex flex-col gap-4">
         {error && <p className="text-red-400 text-sm">{error}</p>}
-        <div>
-          <label className="label" htmlFor="student-email">
-            Email Address
-          </label>
-          <input
-            id="student-email"
-            type="email"
-            className="input"
-            placeholder="student@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            disabled={isSubmitting}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && isValid && !isSubmitting) {
-                void handleSubmit();
-              }
-            }}
-          />
-          <p className="text-text-muted text-sm mt-1">
-            An invitation will be sent to this email address. The student will be
-            added to both the organization and this classroom.
-          </p>
-          <p className="text-text-muted text-sm mt-2">{billingMessage}</p>
-          {summary && (
-            <p className="text-text-muted text-xs mt-1">
-              Seats claimed: {summary.claimedSeats}. Roster reserved:{" "}
-              {summary.roster.reserved}. Roster claimed: {summary.roster.claimed}.
+
+        {isSuccess ? (
+          <>
+            <p className="text-brand-teal text-sm">
+              Invitation sent to {sentEmail}.
             </p>
-          )}
-        </div>
+            {sentJoinLink ? (
+              <div className="space-y-2">
+                <label className="label" htmlFor="invite-join-link">
+                  Join link
+                </label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    id="invite-join-link"
+                    type="text"
+                    className="input flex-1 font-mono text-sm"
+                    value={sentJoinLink}
+                    readOnly
+                  />
+                  <button
+                    type="button"
+                    className="btn-outline shrink-0"
+                    onClick={() => void handleCopyLink()}
+                  >
+                    Copy link
+                  </button>
+                </div>
+                {copyError && (
+                  <p className="text-red-400 text-sm">{copyError}</p>
+                )}
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <div>
+            <label className="label" htmlFor="student-email">
+              Email Address
+            </label>
+            <input
+              id="student-email"
+              type="email"
+              className="input"
+              placeholder="student@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={isSubmitting}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && isValid && !isSubmitting) {
+                  void handleSubmit();
+                }
+              }}
+            />
+            <p className="text-text-muted text-sm mt-1">
+              An invitation will be sent to this email address with the join
+              link.
+            </p>
+            <p className="text-text-muted text-sm mt-2">{billingMessage}</p>
+            {summary && (
+              <p className="text-text-muted text-xs mt-1">
+                Seats claimed: {summary.claimedSeats}. Roster reserved:{" "}
+                {summary.roster.reserved}. Roster claimed:{" "}
+                {summary.roster.claimed}.
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </Dialog>
   );
 };
 
 export default InviteStudentDialog;
-

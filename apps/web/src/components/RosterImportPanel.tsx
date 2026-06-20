@@ -12,7 +12,6 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
   onImported,
 }) => {
   const [csv, setCsv] = useState("");
-  const [reserveSeats, setReserveSeats] = useState(false);
   const [rosterSeats, setRosterSeats] = useState<RosterSeat[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +40,6 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
     try {
       const result = await licensingService.importRoster(classroomId, {
         csv,
-        reserveSeats,
       });
       setMessage(
         `Imported ${result.imported} roster rows${
@@ -125,8 +123,8 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
       <div>
         <h2 className="heading-md">Roster Import</h2>
         <p className="text-text-muted">
-          Upload student emails and optional student IDs. Roster rows can limit
-          who joins and can reserve teacher-paid seats.
+          Upload student emails and optional student IDs. Each imported row is
+          reserved on the roster and can limit who joins this class.
         </p>
       </div>
 
@@ -177,18 +175,6 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
           placeholder={"email,studentId,firstName,lastName,section\nstudent@example.edu,S123,Alex,Lee,A"}
         />
       </div>
-
-      <label className="flex items-start gap-3">
-        <input
-          type="checkbox"
-          checked={reserveSeats}
-          onChange={(e) => setReserveSeats(e.target.checked)}
-        />
-        <span className="text-sm">
-          Reserve paid seats for these imported students when an allocation is
-          selected later.
-        </span>
-      </label>
 
       <div className="flex justify-end">
         <button

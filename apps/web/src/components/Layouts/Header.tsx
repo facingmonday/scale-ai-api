@@ -148,16 +148,29 @@ export default function Header() {
                         </button>
                       )}
 
-                      <button
-                        className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-ui-muted"
-                        onClick={() => {
-                          navigate("/settings");
-                          setOpenMobileMenu(false);
-                        }}
-                      >
-                        Settings
-                      </button>
+                      {userRole === "org:member" && (
+                        <button
+                          className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-ui-muted"
+                          onClick={() => {
+                            navigate("/settings");
+                            setOpenMobileMenu(false);
+                          }}
+                        >
+                          Settings
+                        </button>
+                      )}
                     </>
+                  )}
+                  {userRole === "org:admin" && (
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-ui-muted"
+                      onClick={() => {
+                        navigate("/settings");
+                        setOpenMobileMenu(false);
+                      }}
+                    >
+                      Billing & Seats
+                    </button>
                   )}
                   <button
                     className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-ui-muted"
@@ -340,16 +353,29 @@ export default function Header() {
                         </button>
                       )}
 
-                      <button
-                        className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-ui-muted"
-                        onClick={() => {
-                          navigate("/settings");
-                          setOpenUserMenu(false);
-                        }}
-                      >
-                        Settings
-                      </button>
+                      {userRole === "org:member" && (
+                        <button
+                          className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-ui-muted"
+                          onClick={() => {
+                            navigate("/settings");
+                            setOpenUserMenu(false);
+                          }}
+                        >
+                          Settings
+                        </button>
+                      )}
                     </>
+                  )}
+                  {userRole === "org:admin" && (
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-ui-muted"
+                      onClick={() => {
+                        navigate("/settings");
+                        setOpenUserMenu(false);
+                      }}
+                    >
+                      Billing & Seats
+                    </button>
                   )}
                   <button
                     className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-ui-muted"

@@ -9,8 +9,6 @@ import BasicLayout from "../../../components/Layouts/BasicLayout";
 import enrollmentService from "../../../services/enrollment";
 import LoadingOverlay from "../../../components/LoadingOverlay";
 
-
-
 const Classrooms = () => {
   const { setNewActiveClassroom, activeClassroom, isLoading, organization } =
     useAuth();
@@ -18,13 +16,13 @@ const Classrooms = () => {
   const globalContext = useGlobalContext();
   const [classrooms, setClassrooms] = useState<ClassroomWithVirtuals[]>([]);
   const [orgClassrooms, setOrgClassrooms] = useState<ClassroomWithVirtuals[]>(
-    []
+    [],
   );
   const [isFetchingClassrooms, setIsFetchingClassrooms] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [joiningClassroomId, setJoiningClassroomId] = useState<string | null>(
-    null
+    null,
   );
   const [editingClassroom, setEditingClassroom] =
     useState<ClassroomWithVirtuals | null>(null);
@@ -59,14 +57,14 @@ const Classrooms = () => {
       // Filter out classrooms the user is already enrolled in
       const enrolledIds = enrolledClassrooms.map(
         (c: ClassroomWithVirtuals) =>
-          c._id || (c as ClassroomWithVirtuals & { id?: string }).id
+          c._id || (c as ClassroomWithVirtuals & { id?: string }).id,
       );
       const availableClassrooms = allOrgClassrooms.filter(
         (c: ClassroomWithVirtuals) => {
           const classroomId =
             c._id || (c as ClassroomWithVirtuals & { id?: string }).id;
           return !enrolledIds.includes(classroomId);
-        }
+        },
       );
       setOrgClassrooms(availableClassrooms);
     } catch (err) {
@@ -143,7 +141,7 @@ const Classrooms = () => {
             name: editClassroomName.trim(),
             description: editClassroomDescription.trim() || "",
           };
-        })
+        }),
       );
 
       globalContext?.showToast?.("Classroom updated", "success");
@@ -157,14 +155,12 @@ const Classrooms = () => {
           : undefined;
       globalContext?.showToast?.(
         errorMessage || "Failed to update classroom",
-        "error"
+        "error",
       );
     } finally {
       setIsUpdating(false);
     }
   };
-
-
 
   const handleJoinClassroom = async (classroom: ClassroomWithVirtuals) => {
     const classroomId =
@@ -288,8 +284,6 @@ const Classrooms = () => {
               </div>
             </div>
           )}
-
-
 
           {/* Edit Classroom Modal */}
           {editingClassroom && (

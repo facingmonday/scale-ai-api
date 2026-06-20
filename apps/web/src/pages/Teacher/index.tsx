@@ -12,7 +12,6 @@ export { default as decisions } from "./Decisions";
 export { default as decision } from "./Decision";
 export { default as jobs } from "./Jobs";
 export { default as job } from "./Job";
-export { default as profileTypes } from "./ProfileTypes";
 export { default as profileType } from "./ProfileType/ProfileType";
 export { default as ledgerEntry } from "./LedgerEntry/LedgerEntry";
 export { default as ledgerEntries } from "./LedgerEntries";

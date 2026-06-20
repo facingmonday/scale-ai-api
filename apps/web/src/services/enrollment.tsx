@@ -62,6 +62,21 @@ async function removeStudent(classroomId: string, userId: string) {
   return response.data;
 }
 
+async function transferStudent(data: {
+  userId: string;
+  fromClassroomId: string;
+  toClassroomId: string;
+}) {
+  const response = await axios.post(
+    `${API_HOST}/${API_VERSION}/enrollment/admin/transfer`,
+    data,
+    {
+      headers: await TokenHandler.getHeaders(),
+    }
+  );
+  return response.data;
+}
+
 async function getMyClasses() {
   const response = await axios.get(
     `${API_HOST}/${API_VERSION}/enrollment/my-classes`,
@@ -106,6 +121,7 @@ const enrollmentService = {
   joinClass,
   getRoster,
   removeStudent,
+  transferStudent,
   getMyClasses,
   exportRoster,
 };

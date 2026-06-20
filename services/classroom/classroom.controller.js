@@ -2,9 +2,7 @@ const Classroom = require("./classroom.model");
 const Member = require("../members/member.model");
 const Enrollment = require("../enrollment/enrollment.model");
 const { sendEmail } = require("../../lib/sendGrid/sendEmail");
-const {
-  requireCanCreateClassroom,
-} = require("../licensing/licensing.service");
+const { requireCanCreateClassroom } = require("../licensing/licensing.service");
 
 /**
  * Create a new class
@@ -78,7 +76,7 @@ exports.createClass = async function (req, res) {
       memberId,
       "admin",
       organizationId,
-      clerkUserId
+      clerkUserId,
     );
 
     // Apply classroom template (create-only)
@@ -99,7 +97,7 @@ exports.createClass = async function (req, res) {
         if (!templateToApply) {
           await ClassroomTemplate.copyGlobalToOrganization(
             organizationId,
-            clerkUserId
+            clerkUserId,
           );
           templateToApply = await ClassroomTemplate.findOne({
             organization: organizationId,
@@ -143,7 +141,7 @@ exports.createClass = async function (req, res) {
         // Ensure org has a default template copy, then use its prompts.
         await ClassroomTemplate.copyGlobalToOrganization(
           organizationId,
-          clerkUserId
+          clerkUserId,
         );
         const defaultTemplate = await ClassroomTemplate.findOne({
           organization: organizationId,
@@ -202,7 +200,7 @@ exports.getClassDashboard = async function (req, res) {
     await Classroom.validateAdminAccess(
       classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     // Get dashboard data
@@ -231,13 +229,13 @@ exports.getStudentDashboard = async function (req, res) {
     await Classroom.validateStudentAccess(
       classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     // Get dashboard data
     const dashboard = await Classroom.getStudentDashboard(
       classroomId,
-      organizationId
+      organizationId,
     );
 
     res.json({
@@ -277,7 +275,7 @@ exports.updateClass = async function (req, res) {
     const classroom = await Classroom.validateAdminAccess(
       classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     // Update allowed fields
@@ -304,7 +302,9 @@ exports.updateClass = async function (req, res) {
     }
     if (allowedDomains !== undefined) {
       classroom.allowedDomains = Array.isArray(allowedDomains)
-        ? allowedDomains.map((domain) => String(domain).trim().toLowerCase()).filter(Boolean)
+        ? allowedDomains
+            .map((domain) => String(domain).trim().toLowerCase())
+            .filter(Boolean)
         : [];
     }
     if (accessCode !== undefined) {
@@ -424,14 +424,14 @@ exports.deleteClassroomVariables = async function (req, res) {
     await Classroom.validateAdminAccess(
       classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     const result =
       await Classroom.adminDeleteAllVariableDefinitionsForClassroom(
         classroomId,
         organizationId,
-        { deleteValues: true }
+        { deleteValues: true },
       );
 
     return res.json({
@@ -465,14 +465,14 @@ exports.restoreClassroomTemplate = async function (req, res) {
     await Classroom.validateAdminAccess(
       classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     const result = await Classroom.adminRestoreTemplateForClassroom(
       classroomId,
       organizationId,
       clerkUserId,
-      { templateId, templateKey }
+      { templateId, templateKey },
     );
 
     return res.json({
@@ -509,7 +509,7 @@ exports.deleteClass = async function (req, res) {
     await Classroom.validateAdminAccess(
       classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     // Clear this classroom from any member's activeClassroom before deleting
@@ -557,13 +557,13 @@ exports.inviteStudent = async function (req, res) {
     const classDoc = await Classroom.validateAdminAccess(
       classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     // Generate join link for the canonical auth/join flow.
     const baseUrl = process.env.SCALE_APP_HOST || "http://localhost:5173";
     const joinLink = `${baseUrl}/?orgId=${encodeURIComponent(
-      req.organization.clerkOrganizationId
+      req.organization.clerkOrganizationId,
     )}&classroomId=${encodeURIComponent(classroomId)}`;
 
     // Get sender info
@@ -604,7 +604,7 @@ exports.inviteStudent = async function (req, res) {
       // Provide more helpful error information
       if (emailError.code === 401) {
         console.error(
-          "SendGrid authentication failed. Please check SENDGRID_API_KEY environment variable."
+          "SendGrid authentication failed. Please check SENDGRID_API_KEY environment variable.",
         );
       }
 

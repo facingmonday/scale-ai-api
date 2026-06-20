@@ -159,7 +159,15 @@ async function ensureEnrollment({
 /**
  * Ensures the final state is valid (auth/org/classroom/membership/enrollment) and returns it.
  */
-async function ensureJoin({ orgId, classroomId, clerkUserId, member, studentEmail, studentId }) {
+async function ensureJoin({
+  orgId,
+  classroomId,
+  clerkUserId,
+  member,
+  studentEmail,
+  studentId,
+  joinSource = "invite_link",
+}) {
   const [organization, classroom] = await Promise.all([
     ensureOrganizationByClerkId(orgId),
     Classroom.findById(classroomId),
@@ -209,6 +217,7 @@ async function ensureJoin({ orgId, classroomId, clerkUserId, member, studentEmai
       clerkUserId,
       studentEmail,
       studentId,
+      joinSource,
     });
   }
 

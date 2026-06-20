@@ -1,18 +1,28 @@
 const Classroom = require("../classroom/classroom.model");
 const RosterSeat = require("./rosterSeat.model");
-const SeatPool = require("./seatPool.model");
 const SeatClaim = require("./seatClaim.model");
-const ClassroomSeatAllocation = require("./classroomSeatAllocation.model");
-const {
-  PLAN_CATALOG,
-  PLAN_KEYS,
-} = require("./planCatalog");
+const { PLAN_CATALOG, PLAN_KEYS } = require("./planCatalog");
 const {
   getBillingSummary,
   getClassroomSeatSummary,
-  createManualSeatPool,
-  allocateSeatsToClassroom,
 } = require("./licensing.service");
+const {
+  listReservations,
+  createReservation,
+  revokeReservation,
+} = require("./orgSeatReservation.service");
+const {
+  createOrgSeatCheckoutSession,
+  createStudentSeatCheckoutSession,
+} = require("../stripe/stripe.service");
+const { isStripeConfigured } = require("../stripe/stripe.config");
+
+function getClerkPrimaryEmail(clerkUser) {
+  const primaryEmailObj = clerkUser?.emailAddresses?.find(
+    (email) => email.id === clerkUser?.primaryEmailAddressId,
+  );
+  return primaryEmailObj?.emailAddress;
+}
 
 function parseCsvLine(line) {
   const values = [];
@@ -46,7 +56,7 @@ function parseRosterCsv(csv) {
   if (lines.length === 0) return [];
 
   const headers = parseCsvLine(lines[0]).map((header) =>
-    header.trim().toLowerCase()
+    header.trim().toLowerCase(),
   );
   const rows = [];
 
@@ -87,13 +97,17 @@ exports.getSummary = async function getSummary(req, res, next) {
   }
 };
 
-exports.getClassroomSummary = async function getClassroomSummary(req, res, next) {
+exports.getClassroomSummary = async function getClassroomSummary(
+  req,
+  res,
+  next,
+) {
   try {
     const { classroomId } = req.params;
     const classroom = await Classroom.validateAdminAccess(
       classroomId,
       req.clerkUser.id,
-      req.organization._id
+      req.organization._id,
     );
     const summary = await getClassroomSeatSummary(classroom._id);
     return res.json({
@@ -102,10 +116,9 @@ exports.getClassroomSummary = async function getClassroomSummary(req, res, next)
         classroom: {
           _id: classroom._id,
           name: classroom.name,
-          billingMode: classroom.billingMode,
           joinPolicy: classroom.joinPolicy,
-          studentPaysAllowed: classroom.studentPaysAllowed,
           allowedDomains: classroom.allowedDomains || [],
+          allowAnonymousJoin: classroom.allowAnonymousJoin !== false,
         },
         ...summary,
       },
@@ -115,70 +128,22 @@ exports.getClassroomSummary = async function getClassroomSummary(req, res, next)
   }
 };
 
-exports.createManualSeatPool = async function createManualSeatPoolController(
-  req,
-  res,
-  next
-) {
-  try {
-    const { planKey = PLAN_KEYS.TEACHER_SEAT_PACK_30, totalSeats } =
-      req.body || {};
-    const pool = await createManualSeatPool({
-      organization: req.organization,
-      purchaserUserId: req.user._id,
-      planKey,
-      totalSeats,
-      createdBy: req.clerkUser.id,
-    });
-    return res.status(201).json({ success: true, data: pool });
-  } catch (error) {
-    return next(error);
-  }
-};
-
-exports.allocateSeats = async function allocateSeats(req, res, next) {
-  try {
-    const { classroomId } = req.params;
-    const { seatPoolId, seatsAllocated, mode } = req.body || {};
-    const classroom = await Classroom.validateAdminAccess(
-      classroomId,
-      req.clerkUser.id,
-      req.organization._id
-    );
-
-    const allocation = await allocateSeatsToClassroom({
-      classroom,
-      seatPoolId,
-      seatsAllocated: Number(seatsAllocated || 0),
-      mode,
-      createdBy: req.clerkUser.id,
-    });
-
-    return res.status(201).json({ success: true, data: allocation });
-  } catch (error) {
-    return next(error);
-  }
-};
-
 exports.importRoster = async function importRoster(req, res, next) {
   try {
     const { classroomId } = req.params;
-    const {
-      csv,
-      rows,
-      reserveSeats = false,
-      allocationId = null,
-    } = req.body || {};
+    const { csv, rows } = req.body || {};
 
     const classroom = await Classroom.validateAdminAccess(
       classroomId,
       req.clerkUser.id,
-      req.organization._id
+      req.organization._id,
     );
 
     const parsedRows = Array.isArray(rows) ? rows : parseRosterCsv(csv);
     const normalizedRows = parsedRows.map((row) => ({
-      email: String(row.email || "").trim().toLowerCase(),
+      email: String(row.email || "")
+        .trim()
+        .toLowerCase(),
       studentId: String(row.studentId || row.student_id || "").trim(),
       firstName: String(row.firstName || row.first_name || "").trim(),
       lastName: String(row.lastName || row.last_name || "").trim(),
@@ -186,22 +151,9 @@ exports.importRoster = async function importRoster(req, res, next) {
     }));
 
     const validRows = normalizedRows.filter((row) => row.email.includes("@"));
-    const invalidRows = normalizedRows.filter((row) => !row.email.includes("@"));
-
-    let allocation = null;
-    if (reserveSeats && allocationId) {
-      allocation = await ClassroomSeatAllocation.findOne({
-        _id: allocationId,
-        classroomId: classroom._id,
-        status: "active",
-      });
-      if (!allocation) {
-        return res.status(400).json({
-          success: false,
-          error: "Allocation not found for roster seat reservation",
-        });
-      }
-    }
+    const invalidRows = normalizedRows.filter(
+      (row) => !row.email.includes("@"),
+    );
 
     const upserted = [];
     for (const row of validRows) {
@@ -213,7 +165,6 @@ exports.importRoster = async function importRoster(req, res, next) {
         {
           $set: {
             ...row,
-            allocationId: reserveSeats ? allocation?._id : null,
             status: "reserved",
             organization: classroom.organization,
             updatedBy: req.clerkUser.id,
@@ -222,7 +173,7 @@ exports.importRoster = async function importRoster(req, res, next) {
             createdBy: req.clerkUser.id,
           },
         },
-        { new: true, upsert: true }
+        { new: true, upsert: true },
       );
       upserted.push(doc);
     }
@@ -244,14 +195,14 @@ exports.importRoster = async function importRoster(req, res, next) {
 exports.getRosterSeats = async function getRosterSeats(req, res, next) {
   try {
     const { classroomId } = req.params;
-    const classroom = await Classroom.validateAdminAccess(
+    await Classroom.validateAdminAccess(
       classroomId,
       req.clerkUser.id,
-      req.organization._id
+      req.organization._id,
     );
 
     const seats = await RosterSeat.find({
-      classroomId: classroom._id,
+      classroomId,
     }).sort({ status: 1, email: 1 });
 
     return res.json({ success: true, data: seats });
@@ -263,7 +214,7 @@ exports.getRosterSeats = async function getRosterSeats(req, res, next) {
 exports.createStudentCheckout = async function createStudentCheckout(
   req,
   res,
-  next
+  next,
 ) {
   try {
     const { classroomId } = req.body || {};
@@ -271,6 +222,13 @@ exports.createStudentCheckout = async function createStudentCheckout(
       return res.status(400).json({
         success: false,
         error: "classroomId is required",
+      });
+    }
+
+    if (!isStripeConfigured()) {
+      return res.status(501).json({
+        success: false,
+        error: "Stripe checkout is not configured.",
       });
     }
 
@@ -286,29 +244,52 @@ exports.createStudentCheckout = async function createStudentCheckout(
       });
     }
 
-    const checkoutBaseUrl = process.env.CLERK_STUDENT_CLASS_PASS_CHECKOUT_URL;
-    if (!checkoutBaseUrl) {
-      return res.status(501).json({
-        success: false,
-        error:
-          "Student checkout is not configured. Set CLERK_STUDENT_CLASS_PASS_CHECKOUT_URL.",
-        data: {
-          planKey: PLAN_KEYS.STUDENT_CLASS_PASS,
-          classroomId,
-        },
-      });
-    }
-
-    const checkoutUrl = new URL(checkoutBaseUrl);
-    checkoutUrl.searchParams.set("plan", PLAN_KEYS.STUDENT_CLASS_PASS);
-    checkoutUrl.searchParams.set("classroomId", classroom._id.toString());
-    checkoutUrl.searchParams.set("orgId", req.organization.clerkOrganizationId);
+    const session = await createStudentSeatCheckoutSession({
+      organization: req.organization,
+      member: req.user,
+      classroom,
+      customerEmail: getClerkPrimaryEmail(req.clerkUser),
+    });
 
     return res.json({
       success: true,
       data: {
-        checkoutUrl: checkoutUrl.toString(),
+        checkoutUrl: session.url,
+        sessionId: session.id,
         planKey: PLAN_KEYS.STUDENT_CLASS_PASS,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+exports.createOrgCheckout = async function createOrgCheckout(req, res, next) {
+  try {
+    const { quantity } = req.body || {};
+    const seatCount = Math.max(Number(quantity || 1), 1);
+
+    if (!isStripeConfigured()) {
+      return res.status(501).json({
+        success: false,
+        error: "Stripe checkout is not configured.",
+      });
+    }
+
+    const session = await createOrgSeatCheckoutSession({
+      organization: req.organization,
+      member: req.user,
+      quantity: seatCount,
+      customerEmail: getClerkPrimaryEmail(req.clerkUser),
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        checkoutUrl: session.url,
+        sessionId: session.id,
+        planKey: PLAN_KEYS.ORG_SEATS,
+        quantity: seatCount,
       },
     });
   } catch (error) {
@@ -322,7 +303,7 @@ exports.getStudentAccess = async function getStudentAccess(req, res, next) {
       organization: req.organization._id,
       userId: req.user._id,
     })
-      .populate("classroomId", "name description billingMode")
+      .populate("classroomId", "name description")
       .populate("seatPoolId", "planKey status")
       .sort({ claimedAt: -1 });
 
@@ -334,11 +315,83 @@ exports.getStudentAccess = async function getStudentAccess(req, res, next) {
 
 exports.getSeatPools = async function getSeatPools(req, res, next) {
   try {
-    const pools = await SeatPool.find({
-      organization: req.organization._id,
-    }).sort({ createdDate: -1 });
-    return res.json({ success: true, data: pools });
+    const { findOrCreateOrgSeatPool } = require("./licensing.service");
+    const pool = await findOrCreateOrgSeatPool(
+      req.organization,
+      req.clerkUser.id,
+    );
+    return res.json({ success: true, data: [pool] });
   } catch (error) {
+    return next(error);
+  }
+};
+
+exports.getSeatReservations = async function getSeatReservations(req, res, next) {
+  try {
+    const reservations = await listReservations(req.organization._id);
+    return res.json({ success: true, data: reservations });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+exports.createSeatReservation = async function createSeatReservation(
+  req,
+  res,
+  next,
+) {
+  try {
+    const { email } = req.body || {};
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        error: "email is required",
+      });
+    }
+
+    const reservation = await createReservation({
+      organization: req.organization,
+      email,
+      createdBy: req.clerkUser.id,
+    });
+
+    return res.status(201).json({ success: true, data: reservation });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: error.message,
+        code: error.code,
+        details: error.details,
+      });
+    }
+    return next(error);
+  }
+};
+
+exports.revokeSeatReservation = async function revokeSeatReservation(
+  req,
+  res,
+  next,
+) {
+  try {
+    const { id } = req.params;
+    const reservation = await revokeReservation({
+      organization: req.organization,
+      reservationId: id,
+      updatedBy: req.clerkUser.id,
+    });
+
+    return res.json({ success: true, data: reservation });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: error.message,
+        code: error.code,
+        details: error.details,
+      });
+    }
     return next(error);
   }
 };

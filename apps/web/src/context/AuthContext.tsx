@@ -235,8 +235,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       // Refetch routes to get classroom-less routes
       await fetchMe();
 
-      // Navigate back to classrooms
-      navigate("/classrooms", { replace: true });
+      const targetPath = userRole === "org:admin" ? "/dashboard" : "/classrooms";
+      navigate(targetPath, { replace: true });
     } catch (error) {
       console.error("Failed to clear active classroom:", error);
       throw error;

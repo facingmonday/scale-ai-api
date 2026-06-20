@@ -1,76 +1,55 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import classroomService from "@/services/classroom";
 import licensingService from "@/services/licensing";
 import type { ClassroomWithVirtuals } from "@/types/classroom";
-import type {
-  BillingMode,
-  ClassroomLicensingSummary,
-  JoinPolicy,
-  SeatPool,
-} from "@/types/licensing";
+import type { ClassroomLicensingSummary, JoinPolicy } from "@/types/licensing";
 
 interface ClassroomBillingSettingsProps {
   classroom: ClassroomWithVirtuals;
   onClassroomUpdated?: (classroom: ClassroomWithVirtuals) => void;
 }
 
-const billingModes: Array<{ value: BillingMode; label: string; help: string }> = [
-  {
-    value: "student_paid",
-    label: "Student paid",
-    help: "Students pay individually before joining this classroom.",
-  },
-  {
-    value: "teacher_paid_roster",
-    label: "Teacher paid, roster only",
-    help: "Only imported roster students can claim seats.",
-  },
-];
+const JOIN_POLICY_LABELS: Record<JoinPolicy, string> = {
+  invite_link: "Invite link required",
+  open: "Open to organization members",
+  roster_only: "Imported roster only",
+  closed: "Closed to new enrollments",
+};
 
 const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
   classroom,
   onClassroomUpdated,
 }) => {
   const classroomId = classroom._id;
-  const [billingMode, setBillingMode] = useState<BillingMode>(
-    classroom.billingMode || "student_paid"
-  );
   const [joinPolicy, setJoinPolicy] = useState<JoinPolicy>(
-    classroom.joinPolicy || "invite_link"
+    classroom.joinPolicy || "invite_link",
   );
-  const [studentPaysAllowed, setStudentPaysAllowed] = useState(
-    classroom.studentPaysAllowed !== false
+  const [lastOpenJoinPolicy, setLastOpenJoinPolicy] = useState<JoinPolicy>(
+    classroom.joinPolicy && classroom.joinPolicy !== "closed"
+      ? classroom.joinPolicy
+      : "invite_link",
   );
   const [allowAnonymousJoin, setAllowAnonymousJoin] = useState(
-    classroom.allowAnonymousJoin !== false
+    classroom.allowAnonymousJoin !== false,
   );
-  const [summary, setSummary] = useState<ClassroomLicensingSummary | null>(null);
-  const [seatPools, setSeatPools] = useState<SeatPool[]>([]);
-  const [selectedPoolId, setSelectedPoolId] = useState("");
-  const [seatsToAllocate, setSeatsToAllocate] = useState(0);
+  const [summary, setSummary] = useState<ClassroomLicensingSummary | null>(
+    null,
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const selectedMode = useMemo(
-    () => billingModes.find((mode) => mode.value === billingMode),
-    [billingMode]
-  );
 
   const load = async () => {
     if (!classroomId) return;
     setIsLoading(true);
     setError(null);
     try {
-      const [summaryData, poolsData] = await Promise.all([
-        licensingService.getClassroomSummary(classroomId),
-        licensingService.getSeatPools(),
-      ]);
+      const summaryData =
+        await licensingService.getClassroomSummary(classroomId);
       setSummary(summaryData);
-      setSeatPools(poolsData);
     } catch (e) {
       console.error("Failed to load classroom licensing:", e);
-      setError("Failed to load classroom billing settings.");
+      setError("Failed to load classroom access settings.");
     } finally {
       setIsLoading(false);
     }
@@ -81,90 +60,99 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classroomId]);
 
-  const saveSettings = async () => {
+  const saveSettings = async (overrides?: {
+    joinPolicy?: JoinPolicy;
+    allowAnonymousJoin?: boolean;
+  }) => {
+    const nextJoinPolicy = overrides?.joinPolicy ?? joinPolicy;
+    const nextAllowAnonymousJoin =
+      overrides?.allowAnonymousJoin ?? allowAnonymousJoin;
+
     setIsSaving(true);
     setError(null);
-    const updatedStudentPaysAllowed = billingMode === "student_paid";
     try {
       const response = await classroomService.update(classroomId, {
-        billingMode,
-        joinPolicy,
-        studentPaysAllowed: updatedStudentPaysAllowed,
-        allowAnonymousJoin,
+        joinPolicy: nextJoinPolicy,
+        allowAnonymousJoin: nextAllowAnonymousJoin,
       });
       const updated = response?.data || {
         ...classroom,
-        billingMode,
-        joinPolicy,
-        studentPaysAllowed: updatedStudentPaysAllowed,
-        allowAnonymousJoin,
+        joinPolicy: nextJoinPolicy,
+        allowAnonymousJoin: nextAllowAnonymousJoin,
       };
+      setJoinPolicy(nextJoinPolicy);
+      setAllowAnonymousJoin(nextAllowAnonymousJoin);
       onClassroomUpdated?.(updated);
       await load();
     } catch (e) {
-      console.error("Failed to save classroom billing settings:", e);
-      setError("Failed to save billing settings.");
+      console.error("Failed to save classroom access settings:", e);
+      setError("Failed to save access settings.");
     } finally {
       setIsSaving(false);
     }
   };
 
-  const allocateSeats = async () => {
-    if (!selectedPoolId || seatsToAllocate <= 0) return;
-    setIsSaving(true);
-    setError(null);
-    try {
-      await licensingService.allocateSeats(classroomId, {
-        seatPoolId: selectedPoolId,
-        seatsAllocated: seatsToAllocate,
-        mode:
-          billingMode === "teacher_paid_roster" || billingMode === "roster_only"
-            ? "roster_reserved"
-            : "open",
-      });
-      setSeatsToAllocate(0);
-      await load();
-    } catch (e) {
-      console.error("Failed to allocate seats:", e);
-      setError("Failed to allocate seats to this classroom.");
-    } finally {
-      setIsSaving(false);
+  const isClosed = joinPolicy === "closed";
+
+  const handleEnrollmentToggle = (closed: boolean) => {
+    if (closed) {
+      if (joinPolicy !== "closed") {
+        setLastOpenJoinPolicy(joinPolicy);
+      }
+      void saveSettings({ joinPolicy: "closed" });
+      return;
     }
+
+    void saveSettings({ joinPolicy: lastOpenJoinPolicy });
   };
 
   return (
     <div className="card space-y-6">
       <div>
-        <h2 className="heading-md">Billing & Seat Access</h2>
+        <h2 className="heading-md">Enrollment Controls</h2>
         <p className="text-text-muted">
-          Decide who pays for this class and how students are allowed to claim
-          seats.
+          Control who can enroll in this class. Seat billing is managed at the
+          organization level.
         </p>
       </div>
 
       {error && <p className="text-red-400 text-sm">{error}</p>}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {billingModes.map((mode) => (
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <span className="label mb-0">Enrollment</span>
+        <div
+          className="inline-flex rounded-lg border border-ui-border p-1 bg-ui-bg-hover"
+          role="group"
+          aria-label="Enrollment status"
+        >
           <button
-            key={mode.value}
             type="button"
-            onClick={() => {
-              setBillingMode(mode.value);
-              if (mode.value === "teacher_paid_roster") {
-                setJoinPolicy("roster_only");
-              }
-            }}
-            className={`text-left p-4 rounded-lg border transition-colors ${
-              billingMode === mode.value
-                ? "border-brand-teal bg-brand-teal/10"
-                : "border-ui-border hover:border-brand-teal/70"
+            className={`min-w-[5.5rem] px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              !isClosed
+                ? "bg-brand-teal text-white shadow-sm"
+                : "text-text-muted hover:text-text-primary"
             }`}
+            disabled={isSaving || !isClosed}
+            aria-pressed={!isClosed}
+            onClick={() => handleEnrollmentToggle(false)}
           >
-            <p className="font-semibold">{mode.label}</p>
-            <p className="text-sm text-text-muted">{mode.help}</p>
+            Open
           </button>
-        ))}
+          <button
+            type="button"
+            className={`min-w-[5.5rem] px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              isClosed
+                ? "bg-ui-muted text-text-primary shadow-sm"
+                : "text-text-muted hover:text-text-primary"
+            }`}
+            disabled={isSaving || isClosed}
+            aria-pressed={isClosed}
+            onClick={() => handleEnrollmentToggle(true)}
+          >
+            Closed
+          </button>
+        </div>
+        {isSaving && <span className="text-text-muted text-sm">Saving...</span>}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -172,14 +160,29 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
           <span className="label">Join Policy</span>
           <select
             className="input"
-            value={joinPolicy}
-            onChange={(e) => setJoinPolicy(e.target.value as JoinPolicy)}
+            value={isClosed ? lastOpenJoinPolicy : joinPolicy}
+            onChange={(e) => {
+              const next = e.target.value as JoinPolicy;
+              setJoinPolicy(next);
+              if (next !== "closed") {
+                setLastOpenJoinPolicy(next);
+              }
+            }}
+            disabled={isSaving || isClosed}
           >
-            <option value="invite_link">Invite link</option>
-            <option value="open">Open to organization members</option>
-            <option value="roster_only">Imported roster only</option>
-            <option value="closed">Closed</option>
+            {(Object.keys(JOIN_POLICY_LABELS) as JoinPolicy[])
+              .filter((policy) => policy !== "closed")
+              .map((policy) => (
+                <option key={policy} value={policy}>
+                  {JOIN_POLICY_LABELS[policy]}
+                </option>
+              ))}
           </select>
+          {isClosed && (
+            <p className="text-text-muted text-xs mt-1">
+              Set enrollment to Open to change join policy.
+            </p>
+          )}
         </label>
 
         <div className="flex flex-col gap-3 justify-end pb-1">
@@ -188,19 +191,15 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
               type="checkbox"
               checked={allowAnonymousJoin}
               onChange={(e) => setAllowAnonymousJoin(e.target.checked)}
+              disabled={isSaving}
               className="w-4 h-4 rounded border-ui-border text-brand-teal focus:ring-brand-teal"
             />
-            <span className="text-sm">Allow anonymous students to join (any user with the link)</span>
+            <span className="text-sm">
+              Allow students with the invite link who are not on the roster
+            </span>
           </label>
         </div>
       </div>
-
-      {selectedMode && (
-        <p className="text-sm text-text-muted">
-          Current mode: <strong>{selectedMode.label}</strong>.{" "}
-          {selectedMode.help}
-        </p>
-      )}
 
       <div className="flex justify-end">
         <button
@@ -208,33 +207,33 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
           disabled={isSaving}
           onClick={() => void saveSettings()}
         >
-          {isSaving ? "Saving..." : "Save Billing Settings"}
+          {isSaving ? "Saving..." : "Save Access Settings"}
         </button>
       </div>
 
-      <div className="border-t border-ui-border pt-6">
+      {/* <div className="border-t border-ui-border pt-6">
         <h3 className="heading-sm mb-3">Seat Usage</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="p-3 rounded border border-ui-border">
-            <p className="text-xs text-text-muted">Claimed</p>
+            <p className="text-xs text-text-muted">Seats Claimed</p>
             <p className="text-xl font-semibold">
-              {isLoading ? "..." : summary?.claimedSeats ?? 0}
+              {isLoading ? "..." : (summary?.claimedSeats ?? 0)}
             </p>
           </div>
           <div className="p-3 rounded border border-ui-border">
             <p className="text-xs text-text-muted">Roster Reserved</p>
             <p className="text-xl font-semibold">
-              {isLoading ? "..." : summary?.roster.reserved ?? 0}
+              {isLoading ? "..." : (summary?.roster.reserved ?? 0)}
             </p>
           </div>
           <div className="p-3 rounded border border-ui-border">
             <p className="text-xs text-text-muted">Roster Claimed</p>
             <p className="text-xl font-semibold">
-              {isLoading ? "..." : summary?.roster.claimed ?? 0}
+              {isLoading ? "..." : (summary?.roster.claimed ?? 0)}
             </p>
           </div>
         </div>
-      </div>
+      </div> */}
     </div>
   );
 };

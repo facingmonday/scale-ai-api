@@ -42,6 +42,7 @@ exports.join = async function join(req, res) {
       member,
       studentEmail,
       studentId,
+      joinSource: "invite_link",
     });
 
     return res.status(200).json({

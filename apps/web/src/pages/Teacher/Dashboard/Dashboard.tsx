@@ -34,10 +34,8 @@ import { getErrorMessage } from "@/utils/error";
 import LoadingOverlay from "../../../components/LoadingOverlay";
 
 const PLAN_LABELS: Record<string, string> = {
-  student_class_pass: "Student Class Pass",
-  teacher_seat_pack_30: "Teacher Seat Pack - 30",
-  teacher_seat_pack_100: "Teacher Seat Pack - 100",
-  institution_enterprise: "Institution Enterprise",
+  org_seats: "Organization Seats",
+  student_class_pass: "Student Seat",
 };
 
 const Dashboard: React.FC = () => {
@@ -592,7 +590,7 @@ const Dashboard: React.FC = () => {
                       Workspace Management
                     </h4>
                     <p className="text-text-muted text-xs leading-relaxed">
-                      Need more classrooms or student seats? You can provision additional seat packs or upgrade your subscription from the <a href="/settings?tab=billing" className="text-brand-blue hover:underline font-semibold">Billing Settings</a> page.
+                      Need more classrooms or student seats? You can provision additional seat packs or upgrade your subscription from the <a href="/settings" className="text-brand-blue hover:underline font-semibold">Billing Settings</a> page.
                     </p>
                   </div>
                 </div>

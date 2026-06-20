@@ -4,6 +4,10 @@ import type { ClassDashboard } from "@/types/dashboard";
 import type { Challenge, ScenarioWithVariables } from "@/types/challenge";
 import { useAuth } from "@/context/AuthContext";
 import { useGlobalContext } from "@/context/GlobalContext";
+import {
+  buildClassroomJoinUrl,
+  copyTextToClipboard,
+} from "@/utils/classroomJoinLink";
 
 interface ClassroomHeaderProps {
   classroomName: string;
@@ -58,31 +62,12 @@ const ClassroomHeader: React.FC<ClassroomHeaderProps> = ({
       return;
     }
 
-    const url = new URL("/", window.location.origin);
-    url.searchParams.set("orgId", orgId);
-    url.searchParams.set("classroomId", classroomId);
-
     try {
-      await navigator.clipboard.writeText(url.toString());
+      await copyTextToClipboard(buildClassroomJoinUrl(orgId, classroomId));
       globalContext?.showToast?.("Join link copied", "success");
     } catch (e) {
-      // Fallback for older browsers / non-secure contexts
-      try {
-        const textarea = document.createElement("textarea");
-        textarea.value = url.toString();
-        textarea.style.position = "fixed";
-        textarea.style.left = "-9999px";
-        textarea.style.top = "0";
-        document.body.appendChild(textarea);
-        textarea.focus();
-        textarea.select();
-        document.execCommand("copy");
-        document.body.removeChild(textarea);
-        globalContext?.showToast?.("Join link copied", "success");
-      } catch (err) {
-        console.error("Failed to copy join link:", e, err);
-        globalContext?.showToast?.("Failed to copy join link", "error");
-      }
+      console.error("Failed to copy join link:", e);
+      globalContext?.showToast?.("Failed to copy join link", "error");
     }
   };
 
