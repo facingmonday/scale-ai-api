@@ -118,7 +118,7 @@ const ClassroomCreate: React.FC = () => {
 
       globalContext?.showToast?.("Classroom created successfully", "success");
       await setNewActiveClassroom(newClassroom);
-      navigate("/dashboard");
+      navigate("/");
     } catch (err) {
       console.error("Failed to create classroom:", err);
       const errorMessage = getErrorMessage(err);
@@ -148,7 +148,7 @@ const ClassroomCreate: React.FC = () => {
               </p>
             </div>
             <button
-              onClick={() => navigate("/classrooms")}
+              onClick={() => navigate("/")}
               className="btn-outline flex items-center gap-2 max-w-fit self-start md:self-auto"
             >
               <i className="pi pi-arrow-left text-xs" />
@@ -560,7 +560,7 @@ const ClassroomCreate: React.FC = () => {
             <div className="flex items-center justify-between gap-4 mt-8 pt-6 border-t border-ui-border">
               <button
                 type="button"
-                onClick={currentStep === 1 ? () => navigate("/classrooms") : handleBack}
+                onClick={currentStep === 1 ? () => navigate("/") : handleBack}
                 className="btn-outline px-6 py-2.5 flex items-center gap-2"
                 disabled={isCreating}
               >

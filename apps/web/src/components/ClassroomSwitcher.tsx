@@ -145,7 +145,7 @@ export default function ClassroomSwitcher() {
             onClick={handleViewAllClassrooms}
             className="classroom-switcher-view-all"
           >
-            View All Classrooms
+            Exit Classrooms
           </button>
         </div>
       )}

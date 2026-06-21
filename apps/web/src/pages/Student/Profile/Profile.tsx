@@ -302,7 +302,7 @@ const Profile: React.FC = () => {
         }
         await fetchStore();
         // Navigate back to dashboard after successful save
-        navigate("/dashboard");
+        navigate("/");
       } catch (e) {
         console.error("Failed to save profile:", e);
         const errorMessage = getErrorMessage(e);
@@ -370,7 +370,7 @@ const Profile: React.FC = () => {
               <div className="flex gap-2">
                 <button
                   className="btn-outline"
-                  onClick={() => navigate("/dashboard")}
+                  onClick={() => navigate("/")}
                   type="button"
                 >
                   Cancel

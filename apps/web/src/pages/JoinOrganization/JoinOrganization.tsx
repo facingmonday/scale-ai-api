@@ -17,10 +17,10 @@ const JoinOrganization = () => {
   const [isFetchingOrgs, setIsFetchingOrgs] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // If user already has an organization, redirect to classrooms
+  // If user already has an organization, redirect to root
   useEffect(() => {
     if (organization) {
-      navigate("/classrooms", { replace: true });
+      navigate("/", { replace: true });
     }
   }, [organization, navigate]);
 
@@ -109,7 +109,7 @@ const JoinOrganization = () => {
       globalContext?.setIsLoading(false);
 
       // 6. Navigate AFTER org context and routes are ready
-      navigate("/classrooms", { replace: true });
+      navigate("/", { replace: true });
     } catch (err) {
       console.error("Failed to join organization:", err);
       setError("Failed to join organization. Please try again.");

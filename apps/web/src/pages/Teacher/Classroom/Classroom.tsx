@@ -282,7 +282,7 @@ const TeacherClassroom: React.FC = () => {
   }
 
   if (userRole !== "org:admin") {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/" replace />;
   }
 
   const handleSave = async () => {
@@ -418,7 +418,7 @@ const TeacherClassroom: React.FC = () => {
               <button
                 type="button"
                 className="btn-outline"
-                onClick={() => navigate("/classrooms")}
+                onClick={() => navigate("/")}
               >
                 Back
               </button>
@@ -471,7 +471,7 @@ const TeacherClassroom: React.FC = () => {
                 <button
                   type="button"
                   className="btn-outline"
-                  onClick={() => navigate("/classrooms")}
+                  onClick={() => navigate("/")}
                 >
                   Back to classrooms
                 </button>

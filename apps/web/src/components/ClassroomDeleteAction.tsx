@@ -31,7 +31,7 @@ const ClassroomDeleteAction: React.FC<Props> = ({
       setIsOpen(false);
       // Refetch auth to clear active classroom if it was the deleted one
       await refetchMe();
-      navigate("/classrooms");
+      navigate("/");
     } catch (e) {
       console.error("Failed to delete classroom:", e);
       const errorMessage =

@@ -579,7 +579,7 @@ const ScenarioPage: React.FC = () => {
               icon="pi pi-arrow-left"
               onClick={() => {
                 setShowSuccessDialog(false);
-                navigate("/dashboard");
+                navigate("/");
               }}
               className="btn-teal"
             />

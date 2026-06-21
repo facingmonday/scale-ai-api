@@ -22,7 +22,7 @@ export default function ClassroomLinkLanding() {
       try {
         await authService.setActiveClassroom(id);
         await refetchMe();
-        window.location.replace("/dashboard");
+        window.location.replace("/");
       } catch (e) {
         console.error("Failed to activate classroom:", e);
         setError("Unable to open classroom");

@@ -217,7 +217,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       await fetchMe();
 
       // Navigate to dashboard now that routes include it
-      navigate("/dashboard", { replace: true });
+      navigate("/", { replace: true });
     } catch (error) {
       console.error("Failed to set active classroom:", error);
       throw error;
@@ -235,7 +235,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       // Refetch routes to get classroom-less routes
       await fetchMe();
 
-      const targetPath = userRole === "org:admin" ? "/dashboard" : "/classrooms";
+      const targetPath = "/";
       navigate(targetPath, { replace: true });
     } catch (error) {
       console.error("Failed to clear active classroom:", error);
@@ -322,8 +322,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       return;
     }
 
-    const isTeacher = userRole === "org:admin";
-    const targetPath = isTeacher ? "/dashboard" : "/classrooms";
+    const targetPath = "/";
 
     if (
       hasOrganization &&

@@ -50,9 +50,8 @@ const AuthErrorScreen = ({
   </div>
 );
 
-const RootRedirect = () => {
+const WorkspaceGuard = () => {
   const {
-    activeClassroom,
     isLoading,
     routes,
     user,
@@ -60,7 +59,6 @@ const RootRedirect = () => {
     authError,
     refetchMe,
     logout,
-    userRole,
   } = useAuth();
 
   // 1. Hard stop while anything auth-related is still loading
@@ -85,15 +83,7 @@ const RootRedirect = () => {
     return <Navigate to="/join-organization" replace />;
   }
 
-  // 5. Has org but no active classroom yet
-  if (!activeClassroom) {
-    if (userRole === "org:admin") {
-      return <Navigate to="/dashboard" replace />;
-    }
-    return <Navigate to="/classrooms" replace />;
-  }
-
-  // 6. Routes not ready yet
+  // 5. Routes not ready yet
   if (!routes || routes.length === 0) {
     if (authError) {
       return (
@@ -107,28 +97,7 @@ const RootRedirect = () => {
     return <LoadingOverlay loading={isLoading} />;
   }
 
-  // 7. Navigate to first available route
-  type RouteNode = {
-    key: string;
-    pageKey?: string;
-    route?: string;
-    collapse?: RouteNode[];
-  };
-
-  const flattenRoutes = (items: RouteNode[]): RouteNode[] =>
-    items.flatMap((route: RouteNode) => [
-      ...(route.route ? [route] : []),
-      ...(route.collapse ? flattenRoutes(route.collapse) : []),
-    ]);
-
-  const flatRoutes = flattenRoutes(routes);
-  const firstRoute = flatRoutes.find((route) => route.route);
-
-  if (firstRoute?.route) {
-    return <Navigate to={firstRoute.route} replace />;
-  }
-
-  return <Navigate to="/classrooms" replace />;
+  return <DynamicRoutes />;
 };
 
 const RootEntry = () => {
@@ -140,7 +109,7 @@ const RootEntry = () => {
     return <AuthPage />;
   }
 
-  return <RootRedirect />;
+  return <WorkspaceGuard />;
 };
 
 const JoinPathRedirect = () => {
@@ -241,7 +210,6 @@ export default function App() {
               <SignedIn>
                 <AuthProvider>
                   <Routes>
-                    <Route path="/" element={<RootEntry />} />
                     <Route path="/join" element={<JoinPathRedirect />} />
                     <Route
                       path="/classrooms/new"
@@ -275,7 +243,7 @@ export default function App() {
                         </Suspense>
                       }
                     />
-                    <Route path="/*" element={<DynamicRoutes />} />
+                    <Route path="/*" element={<RootEntry />} />
                   </Routes>
                 </AuthProvider>
               </SignedIn>

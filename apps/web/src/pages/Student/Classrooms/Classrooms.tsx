@@ -42,7 +42,7 @@ const Classrooms = () => {
   // Redirect if user already has an active classroom
   useEffect(() => {
     if (!isLoading && activeClassroom) {
-      navigate("/dashboard", { replace: true });
+      navigate("/", { replace: true });
     }
   }, [activeClassroom, isLoading, navigate]);
 
