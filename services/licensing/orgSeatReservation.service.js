@@ -206,6 +206,61 @@ async function claimReservationAtomically({
   return { reservation, pool };
 }
 
+async function releaseUsedSeatAtomically({ organizationId, updatedBy }) {
+  const pool = await SeatPool.findOneAndUpdate(
+    {
+      organization: organizationId,
+      planKey: PLAN_KEYS.ORG_SEATS,
+      status: { $in: ACTIVE_POOL_STATUSES },
+      usedSeats: { $gt: 0 },
+    },
+    {
+      $inc: { usedSeats: -1 },
+      $set: { updatedBy },
+    },
+    { new: true }
+  );
+
+  return pool;
+}
+
+async function reclaimClaimedReservationForMember({
+  organizationId,
+  memberId,
+  classroomId,
+  clerkUserId,
+}) {
+  const reservation = await OrgSeatReservation.findOne({
+    organization: organizationId,
+    claimedBy: memberId,
+    status: "claimed",
+  });
+
+  if (!reservation) return null;
+
+  const pool = await SeatPool.findOneAndUpdate(
+    {
+      organization: organizationId,
+      planKey: PLAN_KEYS.ORG_SEATS,
+      status: { $in: ACTIVE_POOL_STATUSES },
+      $expr: { $lt: ["$usedSeats", "$totalSeats"] },
+    },
+    {
+      $inc: { usedSeats: 1 },
+      $set: { updatedBy: clerkUserId },
+    },
+    { new: true }
+  );
+
+  if (!pool) return null;
+
+  reservation.claimedClassroomId = classroomId;
+  reservation.updatedBy = clerkUserId;
+  await reservation.save();
+
+  return { reservation, pool };
+}
+
 async function claimFloatingPrepaidSeatAtomically({ organizationId, createdBy }) {
   const availability = await getOrgSeatAvailability(organizationId);
   if (availability.floatingAvailable <= 0) {
@@ -242,5 +297,7 @@ module.exports = {
   createReservation,
   revokeReservation,
   claimReservationAtomically,
+  releaseUsedSeatAtomically,
+  reclaimClaimedReservationForMember,
   claimFloatingPrepaidSeatAtomically,
 };

@@ -7,6 +7,7 @@ import type { ClassroomLicensingSummary, JoinPolicy } from "@/types/licensing";
 interface ClassroomBillingSettingsProps {
   classroom: ClassroomWithVirtuals;
   onClassroomUpdated?: (classroom: ClassroomWithVirtuals) => void;
+  onSeatGranted?: () => void;
 }
 
 const JOIN_POLICY_LABELS: Record<JoinPolicy, string> = {
@@ -19,6 +20,7 @@ const JOIN_POLICY_LABELS: Record<JoinPolicy, string> = {
 const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
   classroom,
   onClassroomUpdated,
+  onSeatGranted,
 }) => {
   const classroomId = classroom._id;
   const [joinPolicy, setJoinPolicy] = useState<JoinPolicy>(
@@ -38,15 +40,32 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [orgSeatsAvailable, setOrgSeatsAvailable] = useState<number | null>(
+    null,
+  );
+  const [grantUserId, setGrantUserId] = useState("");
+  const [grantReason, setGrantReason] = useState("");
+  const [isGranting, setIsGranting] = useState(false);
+  const [grantError, setGrantError] = useState<string | null>(null);
+  const [grantSuccess, setGrantSuccess] = useState<string | null>(null);
 
   const load = async () => {
     if (!classroomId) return;
     setIsLoading(true);
     setError(null);
     try {
-      const summaryData =
-        await licensingService.getClassroomSummary(classroomId);
+      const [summaryData, billingSummary] = await Promise.all([
+        licensingService.getClassroomSummary(classroomId),
+        licensingService.getSummary(),
+      ]);
       setSummary(summaryData);
+      const available =
+        billingSummary.orgSeatSummary?.floatingAvailable ??
+        billingSummary.orgSeatSummary?.remainingSeats ??
+        null;
+      setOrgSeatsAvailable(
+        typeof available === "number" ? available : null,
+      );
     } catch (e) {
       console.error("Failed to load classroom licensing:", e);
       setError("Failed to load classroom access settings.");
@@ -104,6 +123,42 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
     }
 
     void saveSettings({ joinPolicy: lastOpenJoinPolicy });
+  };
+
+  const handleGrantSeat = async () => {
+    if (!classroomId || isGranting) return;
+    const trimmedUserId = grantUserId.trim();
+    if (!trimmedUserId) {
+      setGrantError("Enter a student user ID.");
+      return;
+    }
+
+    setIsGranting(true);
+    setGrantError(null);
+    setGrantSuccess(null);
+    try {
+      await licensingService.grantSeat({
+        userId: trimmedUserId,
+        classroomId,
+        source: "manual_comp",
+        reason: grantReason.trim() || undefined,
+      });
+      setGrantSuccess("Seat granted and student enrolled.");
+      setGrantUserId("");
+      setGrantReason("");
+      onSeatGranted?.();
+      await load();
+    } catch (e) {
+      console.error("Failed to grant seat:", e);
+      const message =
+        e && typeof e === "object" && "response" in e
+          ? (e as { response?: { data?: { error?: string } } }).response?.data
+              ?.error
+          : undefined;
+      setGrantError(message || "Failed to grant seat.");
+    } finally {
+      setIsGranting(false);
+    }
   };
 
   return (
@@ -209,6 +264,65 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
         >
           {isSaving ? "Saving..." : "Save Access Settings"}
         </button>
+      </div>
+
+      <div className="border-t border-ui-border pt-6 space-y-4">
+        <div>
+          <h3 className="heading-sm mb-1">Grant Organization Seat</h3>
+          <p className="text-text-muted text-sm">
+            Enroll a student using an organization seat without checkout. This
+            consumes one seat from your org pool
+            {orgSeatsAvailable !== null
+              ? ` (${orgSeatsAvailable} available).`
+              : "."}{" "}
+            {summary
+              ? `This class currently has ${summary.claimedSeats} claimed seat${summary.claimedSeats === 1 ? "" : "s"}.`
+              : null}
+          </p>
+        </div>
+
+        {grantError && <p className="text-red-400 text-sm">{grantError}</p>}
+        {grantSuccess && (
+          <p className="text-green-400 text-sm">{grantSuccess}</p>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label className="flex flex-col gap-1">
+            <span className="label">Student user ID</span>
+            <input
+              className="input"
+              value={grantUserId}
+              onChange={(e) => setGrantUserId(e.target.value)}
+              placeholder="MongoDB user _id"
+              disabled={isGranting}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="label">Reason (optional)</span>
+            <input
+              className="input"
+              value={grantReason}
+              onChange={(e) => setGrantReason(e.target.value)}
+              placeholder="e.g. TA access, makeup enrollment"
+              disabled={isGranting}
+            />
+          </label>
+        </div>
+
+        <div className="flex justify-end">
+          <button
+            type="button"
+            className="btn-teal"
+            disabled={
+              isGranting ||
+              isLoading ||
+              (orgSeatsAvailable !== null && orgSeatsAvailable <= 0)
+            }
+            onClick={() => void handleGrantSeat()}
+          >
+            {isGranting ? "Granting..." : "Grant Seat"}
+          </button>
+        </div>
       </div>
 
       {/* <div className="border-t border-ui-border pt-6">

@@ -4,47 +4,11 @@ const Enrollment = require("./enrollment.model");
 const Member = require("../members/member.model");
 const SeatClaim = require("../licensing/seatClaim.model");
 const OrgSeatReservation = require("../licensing/orgSeatReservation.model");
-const RosterSeat = require("../licensing/rosterSeat.model");
+const {
+  releaseRosterSeatForClaim,
+  attachRosterSeatForClaim,
+} = require("../licensing/seatLifecycle.service");
 const { makeTransferError } = require("./transfer.errors");
-
-function getPrimaryEmail(member) {
-  return String(member?.email || member?.maskedEmail || "")
-    .trim()
-    .toLowerCase();
-}
-
-async function releaseRosterSeatForClaim(claim, updatedBy) {
-  if (!claim?.rosterSeatId) return;
-
-  const rosterSeat = await RosterSeat.findById(claim.rosterSeatId);
-  if (!rosterSeat) return;
-
-  rosterSeat.status = "reserved";
-  rosterSeat.claimedBy = undefined;
-  rosterSeat.claimedAt = undefined;
-  rosterSeat.updatedBy = updatedBy;
-  await rosterSeat.save();
-}
-
-async function attachTargetRosterSeat({ claim, member, toClassroomId, updatedBy }) {
-  const email = getPrimaryEmail(member);
-  if (!email) return null;
-
-  const rosterSeat = await RosterSeat.findReservableForEmail(
-    toClassroomId,
-    email
-  );
-  if (!rosterSeat) return null;
-
-  rosterSeat.status = "claimed";
-  rosterSeat.claimedBy = member._id;
-  rosterSeat.claimedAt = new Date();
-  rosterSeat.updatedBy = updatedBy;
-  await rosterSeat.save();
-
-  claim.rosterSeatId = rosterSeat._id;
-  return rosterSeat;
-}
 
 async function updateStudentActiveClassroom({
   member,
@@ -201,10 +165,10 @@ async function transferStudentBetweenClassrooms({
       transferredBy: performedByClerkUserId,
     };
 
-    await attachTargetRosterSeat({
+    await attachRosterSeatForClaim({
       claim: seatClaim,
       member,
-      toClassroomId: toClassroom._id,
+      classroomId: toClassroom._id,
       updatedBy: performedByClerkUserId,
     });
 

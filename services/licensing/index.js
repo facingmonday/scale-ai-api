@@ -216,4 +216,11 @@ router.delete(
   controller.revokeSeatReservation,
 );
 
+router.post(
+  "/admin/grant-seat",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.grantSeat,
+);
+
 module.exports = router;

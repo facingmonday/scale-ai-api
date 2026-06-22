@@ -7,6 +7,10 @@ const Member = require("../members/member.model");
 const {
   findOrCreateOrgSeatPool,
 } = require("../licensing/licensing.service");
+const {
+  findReusableStudentClaim,
+  repointStudentClaim,
+} = require("../licensing/seatLifecycle.service");
 
 function verifyWebhookSignature(rawBody, signature) {
   const { secretKey, webhookSecret } = getStripeConfig();
@@ -105,19 +109,40 @@ async function processCheckoutSessionCompleted(session) {
     if (existingClaim) {
       result = { claim: existingClaim, alreadyClaimed: true };
     } else {
-      const claim = new SeatClaim({
-        classroomId,
+      const reusableClaim = await findReusableStudentClaim({
+        organizationId,
         userId: purchaserUserId,
-        source: "stripe_student",
-        organization: organizationId,
-        createdBy: "stripe_webhook",
-        updatedBy: "stripe_webhook",
-        metadata: {
-          stripeSessionId: sessionId,
-        },
       });
-      await claim.save();
-      result = { claim };
+
+      if (reusableClaim) {
+        const repointed = await repointStudentClaim({
+          claim: reusableClaim,
+          classroom,
+          member,
+          rosterSeat: null,
+          updatedBy: "stripe_webhook",
+        });
+        repointed.metadata = {
+          ...(repointed.metadata || {}),
+          stripeSessionId: sessionId,
+        };
+        await repointed.save();
+        result = { claim: repointed, reused: true };
+      } else {
+        const claim = new SeatClaim({
+          classroomId,
+          userId: purchaserUserId,
+          source: "stripe_student",
+          organization: organizationId,
+          createdBy: "stripe_webhook",
+          updatedBy: "stripe_webhook",
+          metadata: {
+            stripeSessionId: sessionId,
+          },
+        });
+        await claim.save();
+        result = { claim };
+      }
     }
   } else {
     throw new Error(`Unknown Stripe checkout type: ${type}`);

@@ -188,15 +188,20 @@ const Classrooms = () => {
             <div className="card mb-6 border border-red-500/30 bg-red-500/5">
               <p className="text-red-400 text-sm">{error}</p>
               {checkoutClassroomId && (
-                <button
-                  className="btn-teal mt-4"
-                  disabled={isStartingCheckout}
-                  onClick={() => void startCheckout()}
-                >
-                  {isStartingCheckout
-                    ? "Starting checkout..."
-                    : "Buy Class Access"}
-                </button>
+                <>
+                  <button
+                    className="btn-teal mt-4"
+                    disabled={isStartingCheckout}
+                    onClick={() => void startCheckout()}
+                  >
+                    {isStartingCheckout
+                      ? "Starting checkout..."
+                      : "Buy Class Access"}
+                  </button>
+                  <p className="text-text-muted text-xs mt-3">
+                    For refund requests, please contact support.
+                  </p>
+                </>
               )}
             </div>
           )}

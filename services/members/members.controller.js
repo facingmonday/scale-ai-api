@@ -231,12 +231,22 @@ exports.removeMember = async (req, res) => {
       return res.status(404).json({ message: "Member not found" });
     }
 
+    const { releaseSeatsOnOrgRemoval } = require("../licensing/seatLifecycle.service");
+    const seatCleanup = await releaseSeatsOnOrgRemoval({
+      organizationId: organization._id,
+      userId: member._id,
+      updatedBy: req.clerkUser?.id || "org_admin",
+    });
+
     const result = await Member.removeMemberFromOrganization(
       member,
       organization
     );
 
-    res.status(200).json(result);
+    res.status(200).json({
+      ...result,
+      seatCleanup,
+    });
   } catch (error) {
     console.error("Error removing member:", error);
     res.status(500).json({ message: error.message });

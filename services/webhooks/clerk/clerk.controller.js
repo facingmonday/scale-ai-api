@@ -1,9 +1,6 @@
 const Member = require("../../members/member.model");
 const Organization = require("../../organizations/organization.model");
 const ClassroomTemplate = require("../../classroomTemplate/classroomTemplate.model");
-const BillingSubscription = require("../../licensing/billingSubscription.model");
-const SeatPool = require("../../licensing/seatPool.model");
-const { getPlan } = require("../../licensing/planCatalog");
 
 // Helper function to convert Clerk user to Member data
 const convertClerkUserToMemberData = (clerkUser) => {
@@ -494,6 +491,13 @@ const organizationMembershipDeleted = async (membershipData) => {
     const organization = await Organization.findByClerkId(clerkOrganizationId);
 
     if (member && organization) {
+      const { releaseSeatsOnOrgRemoval } = require("../../licensing/seatLifecycle.service");
+      await releaseSeatsOnOrgRemoval({
+        organizationId: organization._id,
+        userId: member._id,
+        updatedBy: "clerk_webhook",
+      });
+
       member.removeOrganizationMembership(organization);
       await member.save();
       console.log("Removed organization membership:", {
@@ -516,140 +520,6 @@ const organizationMembershipDeleted = async (membershipData) => {
     throw error;
   }
 };
-
-function readBillingPlanKey(data) {
-  return (
-    data?.plan?.key ||
-    data?.plan?.slug ||
-    data?.plan_key ||
-    data?.planId ||
-    data?.plan_id ||
-    data?.items?.[0]?.plan?.key ||
-    data?.items?.[0]?.plan?.slug ||
-    data?.metadata?.planKey ||
-    data?.metadata?.plan_key ||
-    "unknown"
-  );
-}
-
-function readSubscriptionStatus(type, data) {
-  if (type.includes("canceled") || type.includes("ended")) return "canceled";
-  if (type.includes("past_due")) return "past_due";
-  return data?.status || "active";
-}
-
-async function billingSubscriptionUpdated(type, data) {
-  const planKey = readBillingPlanKey(data);
-  const plan = getPlan(planKey);
-  const status = readSubscriptionStatus(type, data);
-  const clerkSubscriptionId =
-    data?.id || data?.subscription_id || data?.subscriptionId;
-  const clerkCustomerId = data?.customer_id || data?.customerId;
-  const clerkOrganizationId =
-    data?.organization_id ||
-    data?.organizationId ||
-    data?.org_id ||
-    data?.metadata?.organizationId ||
-    data?.metadata?.orgId;
-  const clerkUserId =
-    data?.user_id || data?.userId || data?.metadata?.userId || data?.customer?.user_id;
-
-  let organization = null;
-  if (clerkOrganizationId) {
-    organization = await Organization.findByClerkId(clerkOrganizationId);
-  }
-
-  let member = null;
-  if (clerkUserId) {
-    member = await Member.findByClerkUserId(clerkUserId);
-  }
-
-  if (!organization && member?.organizationMemberships?.length) {
-    organization = await Organization.findById(
-      member.organizationMemberships[0].organizationId
-    );
-  }
-
-  if (!organization) {
-    console.log("Skipping billing subscription without organization context", {
-      type,
-      clerkSubscriptionId,
-      planKey,
-    });
-    return null;
-  }
-
-  const purchaserScope = plan?.purchaserScope || (member ? "user" : "organization");
-  if (!clerkSubscriptionId) {
-    console.log("Skipping billing subscription without subscription id", {
-      type,
-      planKey,
-    });
-    return null;
-  }
-
-  const subscription = await BillingSubscription.findOneAndUpdate(
-    { clerkSubscriptionId },
-    {
-      $set: {
-        clerkSubscriptionId,
-        clerkCustomerId,
-        planKey,
-        status,
-        purchaserScope,
-        purchaserUserId: member?._id,
-        purchaserOrganizationId: organization._id,
-        organization: organization._id,
-        updatedBy: "clerk_billing_webhook",
-        currentPeriodStart: data?.current_period_start
-          ? new Date(data.current_period_start)
-          : undefined,
-        currentPeriodEnd: data?.current_period_end
-          ? new Date(data.current_period_end)
-          : undefined,
-        canceledAt: data?.canceled_at ? new Date(data.canceled_at) : undefined,
-        metadata: data?.metadata || {},
-      },
-      $setOnInsert: {
-        createdBy: "clerk_billing_webhook",
-      },
-    },
-    { new: true, upsert: true }
-  );
-
-  const seatCount = data?.metadata?.seatCount
-    ? Number(data.metadata.seatCount)
-    : plan?.seatCount ?? 1;
-
-  await SeatPool.findOneAndUpdate(
-    { billingSubscriptionId: subscription._id },
-    {
-      $set: {
-        billingSubscriptionId: subscription._id,
-        planKey,
-        scope: plan?.seatPoolScope || (purchaserScope === "user" ? "user" : "organization"),
-        purchaserUserId: member?._id,
-        purchaserOrganizationId: organization._id,
-        totalSeats: seatCount,
-        status:
-          status === "active" || status === "trialing"
-            ? "active"
-            : status === "past_due"
-              ? "past_due"
-              : "canceled",
-        organization: organization._id,
-        updatedBy: "clerk_billing_webhook",
-        metadata: data?.metadata || {},
-      },
-      $setOnInsert: {
-        createdBy: "clerk_billing_webhook",
-      },
-    },
-    { new: true, upsert: true }
-  );
-
-  return subscription;
-}
 
 // Main webhook handler
 const handleClerkWebhook = async (req, res) => {
@@ -690,20 +560,6 @@ const handleClerkWebhook = async (req, res) => {
         break;
       case "organizationMembership.deleted":
         await organizationMembershipDeleted(data);
-        break;
-
-      case "subscription.created":
-      case "subscription.updated":
-      case "subscription.active":
-      case "subscription.past_due":
-      case "subscription.canceled":
-      case "subscription.ended":
-      case "commerce.subscription.created":
-      case "commerce.subscription.updated":
-      case "commerce.subscription.active":
-      case "commerce.subscription.past_due":
-      case "commerce.subscription.canceled":
-        await billingSubscriptionUpdated(type, data);
         break;
 
       default:

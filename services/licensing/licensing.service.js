@@ -1,5 +1,5 @@
 const Classroom = require("../classroom/classroom.model");
-const BillingSubscription = require("./billingSubscription.model");
+const Enrollment = require("../enrollment/enrollment.model");
 const SeatPool = require("./seatPool.model");
 const SeatClaim = require("./seatClaim.model");
 const RosterSeat = require("./rosterSeat.model");
@@ -8,13 +8,19 @@ const {
   claimReservationAtomically,
   claimFloatingPrepaidSeatAtomically,
 } = require("./orgSeatReservation.service");
+const {
+  findReusableStudentClaimForJoin,
+  repointStudentClaim,
+  reclaimOrgReservedForMember,
+  countActiveClassroomClaims,
+  STUDENT_PAID_SOURCES,
+} = require("./seatLifecycle.service");
 const { getDefaultFreeTeacherLimits, PLAN_KEYS } = require("./planCatalog");
 const {
   assertJoinPolicyAllowed,
   assertRosterAccessAllowed,
 } = require("./joinPolicy");
 
-const ACTIVE_STATUSES = ["active", "trialing", "manual"];
 const ACTIVE_POOL_STATUSES = ["active", "manual"];
 
 function makeLicensingError(message, statusCode, code, details = {}) {
@@ -79,7 +85,6 @@ async function claimPrepaidSeatAtomically({ organizationId, createdBy }) {
 async function getBillingSummary({ user, organization }) {
   if (!organization?._id) {
     return {
-      plans: [],
       seatPools: [],
       classroomUsage: [],
       orgSeatSummary: {
@@ -94,14 +99,7 @@ async function getBillingSummary({ user, organization }) {
     };
   }
 
-  const [subscriptions, seatPools, claims, classrooms, orgSeatSummary] =
-    await Promise.all([
-      BillingSubscription.find({
-        organization: organization._id,
-        status: { $in: ACTIVE_STATUSES },
-      })
-        .select("-__v")
-        .lean(),
+  const [seatPools, claims, classrooms, orgSeatSummary] = await Promise.all([
       SeatPool.find({
         organization: organization._id,
         planKey: PLAN_KEYS.ORG_SEATS,
@@ -110,9 +108,9 @@ async function getBillingSummary({ user, organization }) {
         .lean({ virtuals: true }),
       SeatClaim.find({
         organization: organization._id,
-        status: "active",
+        status: { $in: ["active", "held"] },
       })
-        .select("classroomId userId seatPoolId source")
+        .select("classroomId userId seatPoolId source status")
         .lean(),
       Classroom.find({ organization: organization._id })
         .select("_id name joinPolicy")
@@ -120,28 +118,49 @@ async function getBillingSummary({ user, organization }) {
       getOrgSeatPoolSummary(organization._id),
     ]);
 
-  const classroomUsage = classrooms.map((classroom) => {
-    const classroomClaims = claims.filter(
-      (claim) => String(claim.classroomId) === String(classroom._id),
-    );
-    return {
-      classroomId: classroom._id,
-      name: classroom.name,
-      joinPolicy: classroom.joinPolicy,
-      claimedSeats: classroomClaims.length,
-    };
-  });
+  const activeEnrollments = await Enrollment.find({
+    organization: organization._id,
+    isRemoved: false,
+  })
+    .select("classroomId userId")
+    .lean();
+
+  const enrolledByClassroom = new Map();
+  for (const enrollment of activeEnrollments) {
+    const key = String(enrollment.classroomId);
+    if (!enrolledByClassroom.has(key)) {
+      enrolledByClassroom.set(key, new Set());
+    }
+    enrolledByClassroom.get(key).add(String(enrollment.userId));
+  }
+
+  const classroomUsage = await Promise.all(
+    classrooms.map(async (classroom) => {
+      const enrolledUsers = enrolledByClassroom.get(String(classroom._id)) || new Set();
+      const classroomClaims = claims.filter(
+        (claim) =>
+          String(claim.classroomId) === String(classroom._id) &&
+          claim.status === "active" &&
+          enrolledUsers.has(String(claim.userId)),
+      );
+      return {
+        classroomId: classroom._id,
+        name: classroom.name,
+        joinPolicy: classroom.joinPolicy,
+        claimedSeats: classroomClaims.length,
+      };
+    }),
+  );
 
   const userClaims = user?._id
     ? claims.filter((claim) => String(claim.userId) === String(user._id))
     : [];
 
   const stripePaidSeats = claims.filter(
-    (claim) => claim.source === "stripe_student",
+    (claim) => STUDENT_PAID_SOURCES.includes(claim.source),
   ).length;
 
   return {
-    plans: subscriptions,
     seatPools: seatPools.map((pool) => ({
       ...pool,
       remainingSeats:
@@ -195,13 +214,13 @@ async function requireCanCreateClassroom({ organization }) {
 }
 
 async function getClassroomSeatSummary(classroomId) {
-  const [claims, rosterSeats] = await Promise.all([
-    SeatClaim.find({ classroomId, status: "active" }).lean(),
+  const [claimedSeats, rosterSeats] = await Promise.all([
+    countActiveClassroomClaims(classroomId),
     RosterSeat.find({ classroomId }).lean(),
   ]);
 
   return {
-    claimedSeats: claims.length,
+    claimedSeats,
     roster: {
       total: rosterSeats.length,
       reserved: rosterSeats.filter((seat) => seat.status === "reserved").length,
@@ -300,6 +319,51 @@ async function claimSeatOrRequireCheckout({
     joinPolicy,
   });
 
+  const reusableStudentClaim = await findReusableStudentClaimForJoin({
+    organizationId: organization._id,
+    userId: member._id,
+    targetClassroomId: classroom._id,
+  });
+
+  if (reusableStudentClaim) {
+    const repointed = await repointStudentClaim({
+      claim: reusableStudentClaim,
+      classroom,
+      member,
+      rosterSeat,
+      updatedBy: clerkUserId,
+    });
+    return {
+      allowed: true,
+      claim: repointed,
+      decision: "student_reused",
+    };
+  }
+
+  const reclaimedReservation = await reclaimOrgReservedForMember({
+    organizationId: organization._id,
+    memberId: member._id,
+    classroomId: classroom._id,
+    clerkUserId,
+  });
+
+  if (reclaimedReservation) {
+    return {
+      allowed: true,
+      ...(await createClaim({
+        classroom,
+        member,
+        source: "org_reserved",
+        seatPool: reclaimedReservation.pool,
+        rosterSeat,
+        orgSeatReservationId: reclaimedReservation.reservation._id,
+        createdBy: clerkUserId,
+        metadata: { reclaimed: true },
+      })),
+      decision: "org_reserved_reclaimed",
+    };
+  }
+
   if (lookupEmail) {
     const namedClaim = await claimReservationAtomically({
       organizationId: organization._id,
@@ -356,8 +420,84 @@ async function claimSeatOrRequireCheckout({
   );
 }
 
+const GRANT_SOURCES = ["manual_comp", "teacher_assigned"];
+
+async function grantOrgSeatAndEnroll({
+  classroom,
+  organization,
+  member,
+  source = "manual_comp",
+  reason = "",
+  grantedBy,
+}) {
+  const grantSource = GRANT_SOURCES.includes(source) ? source : "manual_comp";
+
+  const existingEnrollment = await Enrollment.findByClassAndUser(
+    classroom._id,
+    member._id
+  );
+  if (existingEnrollment) {
+    throw makeLicensingError(
+      "Student is already enrolled in this classroom.",
+      409,
+      "ALREADY_ENROLLED"
+    );
+  }
+
+  const existingClaim = await SeatClaim.findActiveClaim(
+    classroom._id,
+    member._id
+  );
+  if (existingClaim) {
+    const enrollment = await Enrollment.enrollUser(
+      classroom._id,
+      member._id,
+      "member",
+      organization._id,
+      grantedBy
+    );
+    return { claim: existingClaim, enrollment, decision: "already_claimed" };
+  }
+
+  const prepaidPool = await claimFloatingPrepaidSeatAtomically({
+    organizationId: organization._id,
+    createdBy: grantedBy,
+  });
+
+  if (!prepaidPool) {
+    throw makeLicensingError(
+      "No organization seats available to grant.",
+      409,
+      "NO_SEATS_AVAILABLE",
+      { organizationId: organization._id }
+    );
+  }
+
+  const { claim } = await createClaim({
+    classroom,
+    member,
+    source: grantSource,
+    seatPool: prepaidPool,
+    createdBy: grantedBy,
+    metadata: {
+      reason: reason || undefined,
+      grantedBy,
+      grantedAt: new Date().toISOString(),
+    },
+  });
+
+  const enrollment = await Enrollment.enrollUser(
+    classroom._id,
+    member._id,
+    "member",
+    organization._id,
+    grantedBy
+  );
+
+  return { claim, enrollment, pool: prepaidPool, decision: grantSource };
+}
+
 module.exports = {
-  ACTIVE_STATUSES,
   makeLicensingError,
   findOrCreateOrgSeatPool,
   getOrgSeatPoolSummary,
@@ -368,4 +508,5 @@ module.exports = {
   getClassroomSeatSummary,
   claimSeatOrRequireCheckout,
   createClaim,
+  grantOrgSeatAndEnroll,
 };

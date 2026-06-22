@@ -212,4 +212,10 @@ router.post(
   controller.joinClass
 );
 
+router.post(
+  "/class/:classroomId/leave",
+  requireMemberAuth(),
+  controller.leaveClass
+);
+
 module.exports = router;

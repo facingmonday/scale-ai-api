@@ -151,13 +151,18 @@ export default function Auth() {
                 <h1 className="heading-lg mb-2">Unable to join classroom</h1>
                 <p className="text-text-muted mb-6">{joinError}</p>
                 {joinErrorCode === "PAYMENT_REQUIRED" && (
-                  <button
-                    className="btn-teal"
-                    disabled={isStartingCheckout}
-                    onClick={() => void startCheckout()}
-                  >
-                    {isStartingCheckout ? "Starting checkout..." : "Buy Class Access"}
-                  </button>
+                  <>
+                    <button
+                      className="btn-teal"
+                      disabled={isStartingCheckout}
+                      onClick={() => void startCheckout()}
+                    >
+                      {isStartingCheckout ? "Starting checkout..." : "Buy Class Access"}
+                    </button>
+                    <p className="text-text-muted text-sm mt-4">
+                      For refund requests, please contact support.
+                    </p>
+                  </>
                 )}
                 {joinErrorCode === "ROSTER_ONLY" && (
                   <div className="max-w-sm mx-auto mt-4 p-4 border border-ui-border rounded-lg bg-ui-background/50">

@@ -30,7 +30,7 @@ export interface SeatClaim {
     | "manual_comp"
     | "roster_reserved"
     | "free_teacher_workspace";
-  status: "active" | "revoked" | "expired";
+  status: "active" | "held" | "revoked" | "expired";
   claimedAt: string;
   seatPoolId?: string | SeatPool;
 }
@@ -54,24 +54,7 @@ export interface OrgSeatReservation {
   claimedClassroomId?: string;
 }
 
-export interface BillingSubscription {
-  _id: string;
-  planKey: string;
-  status:
-    | "active"
-    | "trialing"
-    | "past_due"
-    | "canceled"
-    | "incomplete"
-    | "expired"
-    | "manual";
-  purchaserScope: "user" | "organization";
-  purchaserUserId?: string;
-  purchaserOrganizationId?: string;
-}
-
 export interface BillingSummary {
-  plans: BillingSubscription[];
   seatPools: SeatPool[];
   classroomUsage: Array<{
     classroomId: string;
