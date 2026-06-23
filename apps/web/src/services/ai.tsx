@@ -125,12 +125,70 @@ async function streamChat(
   }
 }
 
+async function getAutomationTasks(classroomId: string) {
+  const response = await axios.get(
+    `${API_HOST}/${API_VERSION}/ai/automation-tasks`,
+    {
+      headers: {
+        ...(await TokenHandler.getHeaders()),
+        "x-classroom": classroomId,
+      },
+    }
+  );
+  return response.data;
+}
+
+async function createAutomationTask(classroomId: string, data: any) {
+  const response = await axios.post(
+    `${API_HOST}/${API_VERSION}/ai/automation-tasks`,
+    data,
+    {
+      headers: {
+        ...(await TokenHandler.getHeaders()),
+        "x-classroom": classroomId,
+      },
+    }
+  );
+  return response.data;
+}
+
+async function updateAutomationTask(classroomId: string, id: string, data: any) {
+  const response = await axios.put(
+    `${API_HOST}/${API_VERSION}/ai/automation-tasks/${id}`,
+    data,
+    {
+      headers: {
+        ...(await TokenHandler.getHeaders()),
+        "x-classroom": classroomId,
+      },
+    }
+  );
+  return response.data;
+}
+
+async function deleteAutomationTask(classroomId: string, id: string) {
+  const response = await axios.delete(
+    `${API_HOST}/${API_VERSION}/ai/automation-tasks/${id}`,
+    {
+      headers: {
+        ...(await TokenHandler.getHeaders()),
+        "x-classroom": classroomId,
+      },
+    }
+  );
+  return response.data;
+}
+
 const aiService = {
   getChatHistory,
   getClassroomReports,
   uploadVaultFile,
   deleteVaultFile,
   streamChat,
+  getAutomationTasks,
+  createAutomationTask,
+  updateAutomationTask,
+  deleteAutomationTask,
 };
 
 export default aiService;

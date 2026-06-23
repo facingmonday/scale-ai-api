@@ -27,6 +27,8 @@ import MetricDefinitions from "../Settings/MetricDefinitions";
 import ProfileTypes from "../Settings/ProfileTypes";
 import TeacherPreferencesPanel from "./TeacherPreferencesPanel";
 import LoadingOverlay from "../../../components/LoadingOverlay";
+import { AutomationTasksPanel } from "@/components/AutomationTasksPanel";
+
 
 type ClassroomTab =
   | "details"
@@ -137,6 +139,7 @@ const TeacherClassroom: React.FC = () => {
   const [defaultProcessDelayHours, setDefaultProcessDelayHours] = useState(0);
   const [defaultFeedbackReleaseMode, setDefaultFeedbackReleaseMode] = useState<"IMMEDIATE" | "DELAYED" | "MANUAL">("IMMEDIATE");
   const [missingSubmissionPolicy, setMissingSubmissionPolicy] = useState<"FORWARD_PREVIOUS" | "USE_DEFAULTS" | "SKIP">("USE_DEFAULTS");
+  const [createTaskTrigger, setCreateTaskTrigger] = useState(0);
 
   const [rosterRefreshKey, setRosterRefreshKey] = useState(0);
   const [selectedStudent, setSelectedStudent] = useState<StudentDisplay | null>(
@@ -483,6 +486,15 @@ const TeacherClassroom: React.FC = () => {
               >
                 Back
               </button>
+              {activeTab === "automation" && (
+                <button
+                  type="button"
+                  className="btn-teal"
+                  onClick={() => setCreateTaskTrigger((t) => t + 1)}
+                >
+                  Create Task
+                </button>
+              )}
               {SAVE_TABS.has(activeTab) && (
                 <button
                   type="button"
@@ -770,6 +782,13 @@ const TeacherClassroom: React.FC = () => {
               </div>
             )}
           </div>
+          )}
+
+          {!isLoadingClassroom && !loadError && activeTab === "automation" && (
+            <AutomationTasksPanel
+              classroomId={classroomId}
+              createTrigger={createTaskTrigger}
+            />
           )}
 
           {!isLoadingClassroom && !loadError && activeTab === "prompts" && (

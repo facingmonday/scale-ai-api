@@ -63,3 +63,14 @@ export interface Classroom extends BaseSchema {
 export interface ClassroomWithVirtuals extends Classroom {
   enrollmentCount?: number; // Virtual: count of enrollments
 }
+
+export interface AutomationTask extends BaseSchema {
+  classroomId: string;
+  name: string;
+  trigger: "AFTER_CHALLENGE_CREATED" | "AFTER_STUDENT_SUBMISSION" | "AFTER_CHALLENGE_CLOSED";
+  promptTemplate: string;
+  isActive: boolean;
+  actionType: "GENERATE_SLIDES" | "GENERATE_REPORT" | "SEND_NOTIFICATION" | "CUSTOM_PROMPT";
+  config: Record<string, any>;
+}
+

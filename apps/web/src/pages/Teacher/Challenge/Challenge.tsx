@@ -242,6 +242,7 @@ const Challenge: React.FC = () => {
   const watchedDescription = form.watch("description");
   const watchedAllowLateSubmissions = form.watch("allowLateSubmissions");
   const watchedFeedbackReleaseMode = form.watch("feedbackReleaseMode");
+  const watchedMissingSubmissionPolicy = form.watch("missingSubmissionPolicy");
 
   const onSave = form.handleSubmit(async (values) => {
     if (!id) return;
@@ -786,9 +787,13 @@ const Challenge: React.FC = () => {
                               <select
                                 className="input"
                                 value={field.value || "SKIP"}
-                                onChange={(event) =>
-                                  field.onChange(event.target.value)
-                                }
+                                onChange={(event) => {
+                                  const val = event.target.value;
+                                  field.onChange(val);
+                                  if (val === "SKIP") {
+                                    form.setValue("punishAbsentStudents", "none");
+                                  }
+                                }}
                                 disabled={!isEditing}
                               >
                                 <option value="SKIP">Skip week</option>
@@ -803,30 +808,32 @@ const Challenge: React.FC = () => {
                           )}
                         />
 
-                        <Controller
-                          name="punishAbsentStudents"
-                          control={form.control}
-                          render={({ field }) => (
-                            <label className="flex flex-col gap-2 md:col-span-2">
-                              <span className="label">
-                                Punishment for forwarded decisions
-                              </span>
-                              <select
-                                className="input"
-                                value={field.value || "none"}
-                                onChange={(event) =>
-                                  field.onChange(event.target.value)
-                                }
-                                disabled={!isEditing}
-                              >
-                                <option value="none">None</option>
-                                <option value="low">Low</option>
-                                <option value="medium">Medium</option>
-                                <option value="high">High</option>
-                              </select>
-                            </label>
-                          )}
-                        />
+                        {(watchedMissingSubmissionPolicy || "SKIP") !== "SKIP" && (
+                          <Controller
+                            name="punishAbsentStudents"
+                            control={form.control}
+                            render={({ field }) => (
+                              <label className="flex flex-col gap-2 md:col-span-2">
+                                <span className="label">
+                                  Punishment for forwarded decisions
+                                </span>
+                                <select
+                                  className="input"
+                                  value={field.value || "none"}
+                                  onChange={(event) =>
+                                    field.onChange(event.target.value)
+                                  }
+                                  disabled={!isEditing}
+                                >
+                                  <option value="none">None</option>
+                                  <option value="low">Low</option>
+                                  <option value="medium">Medium</option>
+                                  <option value="high">High</option>
+                                </select>
+                              </label>
+                            )}
+                          />
+                        )}
                       </div>
                     </div>
                   </div>

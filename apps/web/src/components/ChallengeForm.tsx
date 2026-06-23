@@ -113,14 +113,14 @@ const ChallengeForm: React.FC<ScenarioFormProps> = ({
             <select
               className="input"
               value={values.missingSubmissionPolicy || "SKIP"}
-              onChange={(event) =>
+              onChange={(event) => {
+                const policy = event.target.value as "FORWARD_PREVIOUS" | "SKIP";
                 onChange({
                   ...values,
-                  missingSubmissionPolicy: event.target.value as
-                    | "FORWARD_PREVIOUS"
-                    | "SKIP",
-                })
-              }
+                  missingSubmissionPolicy: policy,
+                  ...(policy === "SKIP" ? { punishAbsentStudents: "none" } : {}),
+                });
+              }}
               disabled={disabled}
             >
               <option value="SKIP">Skip week</option>
@@ -128,29 +128,31 @@ const ChallengeForm: React.FC<ScenarioFormProps> = ({
             </select>
           </label>
 
-          <label className="flex flex-col gap-2 md:col-span-2">
-            <span className="label">Punishment for forwarded decisions</span>
-            <select
-              className="input"
-              value={values.punishAbsentStudents || "none"}
-              onChange={(event) =>
-                onChange({
-                  ...values,
-                  punishAbsentStudents: event.target.value as
-                    | "high"
-                    | "medium"
-                    | "low"
-                    | "none",
-                })
-              }
-              disabled={disabled}
-            >
-              <option value="none">None</option>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
-          </label>
+          {(values.missingSubmissionPolicy || "SKIP") !== "SKIP" && (
+            <label className="flex flex-col gap-2 md:col-span-2">
+              <span className="label">Punishment for forwarded decisions</span>
+              <select
+                className="input"
+                value={values.punishAbsentStudents || "none"}
+                onChange={(event) =>
+                  onChange({
+                    ...values,
+                    punishAbsentStudents: event.target.value as
+                      | "high"
+                      | "medium"
+                      | "low"
+                      | "none",
+                  })
+                }
+                disabled={disabled}
+              >
+                <option value="none">None</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </label>
+          )}
         </div>
       </div>
     </div>

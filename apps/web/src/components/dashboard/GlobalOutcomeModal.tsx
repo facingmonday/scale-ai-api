@@ -251,18 +251,19 @@ const GlobalOutcomeModal: React.FC<GlobalOutcomeModalProps> = ({
               id="outcome-auto-generate"
               className="input"
               value={outcomeDraft.autoGenerateSubmissionsOnOutcome || ""}
-              onChange={(e) =>
+              onChange={(e) => {
+                const nextVal = e.target.value === ""
+                  ? null
+                  : (e.target.value as
+                      | "USE_AI"
+                      | "FORWARD_PREVIOUS"
+                      | "USE_DEFAULTS");
                 setOutcomeDraft((p) => ({
                   ...p,
-                  autoGenerateSubmissionsOnOutcome:
-                    e.target.value === ""
-                      ? null
-                      : (e.target.value as
-                          | "USE_AI"
-                          | "FORWARD_PREVIOUS"
-                          | "USE_DEFAULTS"),
-                }))
-              }
+                  autoGenerateSubmissionsOnOutcome: nextVal,
+                  ...(nextVal === null ? { punishAbsentStudents: null } : {}),
+                }));
+              }}
               disabled={isLoading}
             >
               <option value="">None</option>
@@ -271,32 +272,34 @@ const GlobalOutcomeModal: React.FC<GlobalOutcomeModalProps> = ({
             </select>
           </div>
 
-          <div>
-            <label className="label" htmlFor="outcome-punish-absent">
-              Punish Absent Students
-            </label>
-            <select
-              id="outcome-punish-absent"
-              className="input"
-              value={outcomeDraft.punishAbsentStudents || ""}
-              onChange={(e) =>
-                setOutcomeDraft((p) => ({
-                  ...p,
-                  punishAbsentStudents:
-                    e.target.value === ""
-                      ? null
-                      : (e.target.value as "high" | "medium" | "low" | "none"),
-                }))
-              }
-              disabled={isLoading}
-            >
-              <option value="">None</option>
-              <option value="none">None</option>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
-          </div>
+          {outcomeDraft.autoGenerateSubmissionsOnOutcome && (
+            <div>
+              <label className="label" htmlFor="outcome-punish-absent">
+                Punish Absent Students
+              </label>
+              <select
+                id="outcome-punish-absent"
+                className="input"
+                value={outcomeDraft.punishAbsentStudents || ""}
+                onChange={(e) =>
+                  setOutcomeDraft((p) => ({
+                    ...p,
+                    punishAbsentStudents:
+                      e.target.value === ""
+                        ? null
+                        : (e.target.value as "high" | "medium" | "low" | "none"),
+                  }))
+                }
+                disabled={isLoading}
+              >
+                <option value="">None</option>
+                <option value="none">None</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+          )}
 
           {outcomeDefs.length > 0 && (
             <div className="border-t pt-4">

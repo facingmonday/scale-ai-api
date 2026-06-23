@@ -97,9 +97,9 @@ function normalizeScheduleInput(body) {
   if (
     publishAt &&
     submissionDeadlineAt &&
-    new Date(submissionDeadlineAt).getTime() <= new Date(publishAt).getTime()
+    new Date(submissionDeadlineAt).getTime() < new Date(publishAt).getTime()
   ) {
-    const error = new Error("submissionDeadlineAt must be after publishAt");
+    const error = new Error("submissionDeadlineAt must be at or after publishAt");
     error.statusCode = 400;
     throw error;
   }
