@@ -3,6 +3,7 @@ const Member = require("../members/member.model");
 const Enrollment = require("./enrollment.model");
 const Organization = require("../organizations/organization.model");
 const { ensureJoin } = require("../join/join.service");
+const { leaveClassroom } = require("./leaveClassroom.service");
 const {
   transferStudentBetweenClassrooms,
 } = require("./transfer.service");
@@ -220,16 +221,27 @@ exports.removeStudent = async function (req, res) {
       organizationId
     );
 
-    // Remove enrollment using Enrollment model
-    await Enrollment.removeEnrollment(classroomId, userId, clerkUserId);
+    const { seatRelease } = await leaveClassroom({
+      classroomId,
+      userId,
+      organizationId,
+      updatedBy: clerkUserId,
+      allowAdminEnrollment: true,
+    });
 
     res.json({
       success: true,
       message: "Student removed successfully",
+      data: {
+        seatRelease: {
+          action: seatRelease.action,
+          claimId: seatRelease.claim?._id || null,
+        },
+      },
     });
   } catch (error) {
     console.error("Error removing student:", error);
-    if (error.message === "Enrollment not found") {
+    if (error.message === "Enrollment not found" || error.message === "Enrollment not found.") {
       return res.status(404).json({ error: error.message });
     }
     if (error.message === "Class not found") {
@@ -237,6 +249,63 @@ exports.removeStudent = async function (req, res) {
     }
     if (error.message.includes("Insufficient permissions")) {
       return res.status(403).json({ error: error.message });
+    }
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+        code: error.code,
+        details: error.details,
+      });
+    }
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Student leaves class
+ * POST /v1/enrollment/class/:classroomId/leave
+ */
+exports.leaveClass = async function (req, res) {
+  try {
+    const { classroomId } = req.params;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+    const userId = req.user._id;
+
+    const classDoc = await Classroom.findOne({
+      _id: classroomId,
+      organization: organizationId,
+    });
+    if (!classDoc) {
+      return res.status(404).json({ error: "Class not found" });
+    }
+
+    const { seatRelease } = await leaveClassroom({
+      classroomId,
+      userId,
+      organizationId,
+      updatedBy: clerkUserId,
+      allowAdminEnrollment: false,
+    });
+
+    res.json({
+      success: true,
+      message: "Left classroom successfully",
+      data: {
+        seatRelease: {
+          action: seatRelease.action,
+          claimId: seatRelease.claim?._id || null,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error leaving class:", error);
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+        code: error.code,
+        details: error.details,
+      });
     }
     res.status(500).json({ error: error.message });
   }

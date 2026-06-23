@@ -53,7 +53,7 @@ const seatClaimSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ["active", "revoked", "expired"],
+    enum: ["active", "held", "revoked", "expired"],
     default: "active",
     index: true,
   },
@@ -82,6 +82,15 @@ seatClaimSchema.statics.findActiveClaim = function (classroomId, userId) {
     userId,
     status: "active",
   });
+};
+
+seatClaimSchema.statics.findHeldStudentClaim = function (organizationId, userId) {
+  return this.findOne({
+    organization: organizationId,
+    userId,
+    status: "held",
+    source: { $in: ["stripe_student", "student_purchase"] },
+  }).sort({ claimedAt: -1 });
 };
 
 const SeatClaim = mongoose.model("SeatClaim", seatClaimSchema);

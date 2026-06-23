@@ -2,11 +2,6 @@ const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 
 const seatPoolSchema = new mongoose.Schema({
-  billingSubscriptionId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "BillingSubscription",
-    index: true,
-  },
   planKey: {
     type: String,
     required: true,

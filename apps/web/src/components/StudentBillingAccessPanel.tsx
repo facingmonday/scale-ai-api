@@ -2,6 +2,15 @@ import React, { useEffect, useState } from "react";
 import licensingService from "@/services/licensing";
 import type { SeatClaim } from "@/types/licensing";
 
+const REFUND_SUPPORT_NOTE =
+  "For refund requests, please contact support.";
+
+function getStatusLabel(status: SeatClaim["status"]) {
+  if (status === "held") return "Available to reuse";
+  if (status === "active") return "In use";
+  return status;
+}
+
 const StudentBillingAccessPanel: React.FC = () => {
   const [claims, setClaims] = useState<SeatClaim[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -32,6 +41,7 @@ const StudentBillingAccessPanel: React.FC = () => {
         <p className="text-text-muted mb-4">
           View the classroom seats attached to your account.
         </p>
+        <p className="text-text-muted text-sm mb-4">{REFUND_SUPPORT_NOTE}</p>
 
         {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
 
@@ -54,13 +64,23 @@ const StudentBillingAccessPanel: React.FC = () => {
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="font-semibold">
-                        {classroom?.name || "Classroom"}
+                        {claim.status === "held"
+                          ? "Unused class seat"
+                          : classroom?.name || "Classroom"}
                       </p>
                       <p className="text-sm text-text-muted">
                         Source: {claim.source.replace(/_/g, " ")}
                       </p>
+                      {claim.status === "held" && (
+                        <p className="text-sm text-text-muted mt-1">
+                          This seat can be used for another class in this
+                          organization.
+                        </p>
+                      )}
                     </div>
-                    <span className="badge badge-muted">{claim.status}</span>
+                    <span className="badge badge-muted">
+                      {getStatusLabel(claim.status)}
+                    </span>
                   </div>
                 </div>
               );

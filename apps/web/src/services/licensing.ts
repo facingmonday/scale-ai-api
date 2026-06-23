@@ -141,6 +141,22 @@ async function revokeSeatReservation(id: string): Promise<OrgSeatReservation> {
   return response.data.data;
 }
 
+async function grantSeat(data: {
+  userId: string;
+  classroomId: string;
+  source?: "manual_comp" | "teacher_assigned";
+  reason?: string;
+}) {
+  const response = await axios.post(
+    `${API_HOST}/${API_VERSION}/licensing/admin/grant-seat`,
+    data,
+    {
+      headers: await TokenHandler.getHeaders(),
+    },
+  );
+  return response.data.data;
+}
+
 const licensingService = {
   getSummary,
   getSeatPools,
@@ -153,6 +169,7 @@ const licensingService = {
   getSeatReservations,
   createSeatReservation,
   revokeSeatReservation,
+  grantSeat,
 };
 
 export default licensingService;

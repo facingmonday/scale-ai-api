@@ -181,6 +181,9 @@ const Dashboard: React.FC = () => {
     null
   );
   const [isStartingCheckout, setIsStartingCheckout] = useState(false);
+  const [leavingClassroomId, setLeavingClassroomId] = useState<string | null>(
+    null
+  );
   const globalContext = useGlobalContext();
 
   const fetchClassrooms = useCallback(async () => {
@@ -317,6 +320,47 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  const handleLeaveClassroom = async (
+    classroom: ClassroomWithVirtuals
+  ) => {
+    const cid =
+      classroom._id ||
+      (classroom as ClassroomWithVirtuals & { id?: string }).id;
+    if (!cid || leavingClassroomId) return;
+
+    const confirmed = window.confirm(
+      `Leave ${classroom.name}? You can rejoin later if you still have an available seat.`
+    );
+    if (!confirmed) return;
+
+    setLeavingClassroomId(cid);
+    try {
+      const response = await enrollmentService.leaveClass(cid);
+      const action = response?.data?.seatRelease?.action;
+      const message =
+        action === "released_to_org"
+          ? "You've left this class. Your organization seat is available for another student."
+          : action === "held"
+            ? "You've left this class. Your paid seat can be used for another class in this organization."
+            : "You've left this class.";
+      globalContext?.showToast?.(message, "success");
+      await fetchClassrooms();
+    } catch (err) {
+      console.error("Failed to leave classroom:", err);
+      const message =
+        err && typeof err === "object" && "response" in err
+          ? (err as { response?: { data?: { error?: string } } }).response
+              ?.data?.error
+          : undefined;
+      globalContext?.showToast?.(
+        message || "Failed to leave classroom.",
+        "error"
+      );
+    } finally {
+      setLeavingClassroomId(null);
+    }
+  };
+
   const otherClassrooms = useMemo(() => {
     return orgClassrooms.filter((classroom) => {
       const classroomId =
@@ -347,15 +391,20 @@ const Dashboard: React.FC = () => {
               <div className="card mb-6 border border-red-500/30 bg-red-500/5">
                 <p className="text-red-400 text-sm">{classroomsError}</p>
                 {checkoutClassroomId && (
-                  <button
-                    className="btn-teal mt-4"
-                    disabled={isStartingCheckout}
-                    onClick={() => void startCheckout()}
-                  >
-                    {isStartingCheckout
-                      ? "Starting checkout..."
-                      : "Buy Class Access"}
-                  </button>
+                  <>
+                    <button
+                      className="btn-teal mt-4"
+                      disabled={isStartingCheckout}
+                      onClick={() => void startCheckout()}
+                    >
+                      {isStartingCheckout
+                        ? "Starting checkout..."
+                        : "Buy Class Access"}
+                    </button>
+                    <p className="text-text-muted text-xs mt-3">
+                      For refund requests, please contact support.
+                    </p>
+                  </>
                 )}
               </div>
             )}
@@ -446,6 +495,13 @@ const Dashboard: React.FC = () => {
                               className="btn-teal py-1.5 px-4 text-sm font-medium whitespace-nowrap"
                             >
                               {joiningClassroomId === cid ? "Entering..." : "Enter Class"}
+                            </button>
+                            <button
+                              onClick={() => void handleLeaveClassroom(cls)}
+                              disabled={leavingClassroomId === cid}
+                              className="btn-outline py-1.5 px-4 text-sm font-medium whitespace-nowrap"
+                            >
+                              {leavingClassroomId === cid ? "Leaving..." : "Leave Class"}
                             </button>
                           </div>
                         </div>

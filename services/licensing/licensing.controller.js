@@ -1,10 +1,12 @@
 const Classroom = require("../classroom/classroom.model");
 const RosterSeat = require("./rosterSeat.model");
 const SeatClaim = require("./seatClaim.model");
+const Member = require("../members/member.model");
 const { PLAN_CATALOG, PLAN_KEYS } = require("./planCatalog");
 const {
   getBillingSummary,
   getClassroomSeatSummary,
+  grantOrgSeatAndEnroll,
 } = require("./licensing.service");
 const {
   listReservations,
@@ -302,6 +304,7 @@ exports.getStudentAccess = async function getStudentAccess(req, res, next) {
     const claims = await SeatClaim.find({
       organization: req.organization._id,
       userId: req.user._id,
+      status: { $in: ["active", "held"] },
     })
       .populate("classroomId", "name description")
       .populate("seatPoolId", "planKey status")
@@ -383,6 +386,57 @@ exports.revokeSeatReservation = async function revokeSeatReservation(
     });
 
     return res.json({ success: true, data: reservation });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: error.message,
+        code: error.code,
+        details: error.details,
+      });
+    }
+    return next(error);
+  }
+};
+
+exports.grantSeat = async function grantSeat(req, res, next) {
+  try {
+    const { userId, classroomId, source, reason } = req.body || {};
+
+    if (!userId || !classroomId) {
+      return res.status(400).json({
+        success: false,
+        error: "userId and classroomId are required",
+      });
+    }
+
+    const classroom = await Classroom.validateAdminAccess(
+      classroomId,
+      req.clerkUser.id,
+      req.organization._id
+    );
+
+    const member = await Member.findById(userId);
+    if (!member) {
+      return res.status(404).json({
+        success: false,
+        error: "Member not found",
+      });
+    }
+
+    const result = await grantOrgSeatAndEnroll({
+      classroom,
+      organization: req.organization,
+      member,
+      source,
+      reason,
+      grantedBy: req.clerkUser.id,
+    });
+
+    return res.status(201).json({
+      success: true,
+      data: result,
+    });
   } catch (error) {
     if (error.statusCode) {
       return res.status(error.statusCode).json({

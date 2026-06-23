@@ -1,14 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog } from "primereact/dialog";
 import { Button } from "primereact/button";
+import { InputText } from "primereact/inputtext";
 import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { ClassroomPrompt, ClassroomWithVirtuals } from "@/types/classroom";
 import type { StudentDisplay } from "@/types/components";
 import { useAuth } from "@/context/AuthContext";
+import { useGlobalContext } from "@/context/GlobalContext";
 import BasicLayout from "@/components/Layouts/BasicLayout";
 import StudentList from "@/components/StudentList";
 import classroomService from "@/services/classroom";
 import enrollmentService from "@/services/enrollment";
+import licensingService from "@/services/licensing";
 import Image from "@/components/AIComponents/Image/Image";
 import ClassroomResetVariablesAction from "@/components/ClassroomResetVariablesAction";
 import ClassroomRestoreTemplateAction from "@/components/ClassroomRestoreTemplateAction";
@@ -67,6 +70,7 @@ const SAVE_TABS = new Set<ClassroomTab>(["details", "automation", "prompts"]);
 
 const TeacherClassroom: React.FC = () => {
   const { userRole, isLoading } = useAuth();
+  const globalContext = useGlobalContext();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { id } = useParams<{ id: string }>();
@@ -148,6 +152,14 @@ const TeacherClassroom: React.FC = () => {
     useState(false);
   const [transferStudent, setTransferStudent] =
     useState<StudentDisplay | null>(null);
+  const [isGrantStudentDialogOpen, setIsGrantStudentDialogOpen] =
+    useState(false);
+  const [grantStudent, setGrantStudent] = useState<StudentDisplay | null>(null);
+  const [grantReason, setGrantReason] = useState("");
+  const [isGrantingStudent, setIsGrantingStudent] = useState(false);
+  const [grantStudentError, setGrantStudentError] = useState<string | null>(
+    null
+  );
 
   useEffect(() => {
     if (!classroomId) return;
@@ -365,12 +377,61 @@ const TeacherClassroom: React.FC = () => {
     setIsTransferStudentDialogOpen(true);
   };
 
+  const openGrantStudentDialog = (student: StudentDisplay) => {
+    setGrantStudent(student);
+    setGrantReason("");
+    setGrantStudentError(null);
+    setIsGrantStudentDialogOpen(true);
+  };
+
+  const handleGrantStudent = async () => {
+    if (!grantStudent || isGrantingStudent) return;
+    setIsGrantingStudent(true);
+    setGrantStudentError(null);
+    try {
+      await licensingService.grantSeat({
+        userId: grantStudent.id,
+        classroomId,
+        source: "manual_comp",
+        reason: grantReason.trim() || undefined,
+      });
+      globalContext?.showToast?.(
+        "Seat granted and student enrolled successfully.",
+        "success"
+      );
+      setIsGrantStudentDialogOpen(false);
+      setGrantStudent(null);
+      setGrantReason("");
+      setRosterRefreshKey((k) => k + 1);
+    } catch (e) {
+      console.error("Failed to grant seat:", e);
+      const errorMessage =
+        e && typeof e === "object" && "response" in e
+          ? (e as { response?: { data?: { error?: string } } }).response?.data
+              ?.error
+          : undefined;
+      setGrantStudentError(
+        errorMessage || "Failed to grant seat. Please try again."
+      );
+    } finally {
+      setIsGrantingStudent(false);
+    }
+  };
+
   const handleRemoveStudent = async () => {
     if (!selectedStudent || isRemovingStudent) return;
     setIsRemovingStudent(true);
     setRemoveStudentError(null);
     try {
-      await enrollmentService.removeStudent(classroomId, selectedStudent.id);
+      const response = await enrollmentService.removeStudent(classroomId, selectedStudent.id);
+      const seatAction = response?.data?.seatRelease?.action;
+      const seatMessage =
+        seatAction === "released_to_org"
+          ? "Student removed. Organization seat returned to the pool."
+          : seatAction === "held"
+            ? "Student removed. Their paid seat is held for reuse in another class."
+            : "Student removed from classroom";
+      globalContext?.showToast?.(seatMessage, "success");
       setIsRemoveStudentDialogOpen(false);
       setSelectedStudent(null);
       setRosterRefreshKey((k) => k + 1);
@@ -820,6 +881,7 @@ const TeacherClassroom: React.FC = () => {
             <ClassroomBillingSettings
               classroom={classroom}
               onClassroomUpdated={(updated) => setClassroom(updated)}
+              onSeatGranted={() => setRosterRefreshKey((k) => k + 1)}
             />
             <ClassroomJoinLinkPanel classroomId={classroomId} />
             <div className="card">
@@ -851,6 +913,7 @@ const TeacherClassroom: React.FC = () => {
                 classroomId={classroomId}
                 onDelete={(student) => openRemoveStudentDialog(student)}
                 onTransfer={(student) => openTransferStudentDialog(student)}
+                onGrant={(student) => openGrantStudentDialog(student)}
               />
             </div>
           </div>
@@ -877,6 +940,7 @@ const TeacherClassroom: React.FC = () => {
                 key={`${classroomId}:${rosterRefreshKey}`}
                 classroomId={classroomId}
                 onDelete={(student) => openRemoveStudentDialog(student)}
+                onGrant={(student) => openGrantStudentDialog(student)}
               />
             </div>
           </div>
@@ -983,6 +1047,64 @@ const TeacherClassroom: React.FC = () => {
           <p className="text-danger font-semibold">
             This action cannot be undone.
           </p>
+        </div>
+      </Dialog>
+
+      <Dialog
+        header="Grant Seat"
+        visible={isGrantStudentDialogOpen}
+        onHide={() => !isGrantingStudent && setIsGrantStudentDialogOpen(false)}
+        modal
+        closable={!isGrantingStudent}
+        dismissableMask={!isGrantingStudent}
+        className="modal w-full max-w-2xl"
+        maskClassName="modal-mask"
+        headerClassName="modal-header"
+        contentClassName="modal-content"
+        pt={{
+          headerTitle: { className: "modal-title" },
+          footer: { className: "modal-footer" },
+        }}
+        footer={
+          <div className="flex gap-2 justify-end">
+            <Button
+              label="Cancel"
+              icon="pi pi-times"
+              onClick={() => setIsGrantStudentDialogOpen(false)}
+              text
+              disabled={isGrantingStudent}
+            />
+            <Button
+              label="Grant seat"
+              icon="pi pi-ticket"
+              onClick={handleGrantStudent}
+              loading={isGrantingStudent}
+            />
+          </div>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          {grantStudentError ? (
+            <p className="text-danger font-medium">{grantStudentError}</p>
+          ) : null}
+          <p className="text-text-muted">
+            Grant an organization seat to{" "}
+            <strong>
+              {grantStudent?.name || grantStudent?.email || "this student"}
+            </strong>{" "}
+            and enroll them in this class. This consumes one seat from your
+            organization pool.
+          </p>
+          <label className="flex flex-col gap-1">
+            <span className="label">Reason (optional)</span>
+            <InputText
+              value={grantReason}
+              onChange={(e) => setGrantReason(e.target.value)}
+              placeholder="e.g. TA access, makeup enrollment"
+              disabled={isGrantingStudent}
+              className="w-full"
+            />
+          </label>
         </div>
       </Dialog>
 

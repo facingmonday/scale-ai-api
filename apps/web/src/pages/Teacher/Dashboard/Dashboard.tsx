@@ -244,8 +244,15 @@ const Dashboard: React.FC = () => {
     setRemoveStudentError(null);
     try {
       const id = selectedStudent.userId || selectedStudent.id;
-      await enrollmentService.removeStudent(classroomId, id);
-      globalContext?.showToast?.("Student removed from classroom", "success");
+      const response = await enrollmentService.removeStudent(classroomId, id);
+      const seatAction = response?.data?.seatRelease?.action;
+      const seatMessage =
+        seatAction === "released_to_org"
+          ? "Student removed. Organization seat returned to the pool."
+          : seatAction === "held"
+            ? "Student removed. Their paid seat is held for reuse in another class."
+            : "Student removed from classroom";
+      globalContext?.showToast?.(seatMessage, "success");
       setIsRemoveStudentDialogOpen(false);
       setSelectedStudent(null);
       setRosterRefreshKey((k) => k + 1);
@@ -350,6 +357,7 @@ const Dashboard: React.FC = () => {
     );
     const usedSeats = seatPools.reduce((sum, pool) => sum + (pool.usedSeats || 0), 0);
     const remainingSeats = Math.max(totalSeats - usedSeats, 0);
+    const hasOrgSeats = totalSeats > 0;
 
     return (
       <BasicLayout>
@@ -516,15 +524,10 @@ const Dashboard: React.FC = () => {
                 <div className="space-y-1">
                   <p className="text-xs text-text-muted uppercase tracking-wider font-semibold">Active Plan</p>
                   <h3 className="text-xl font-extrabold text-brand-teal">
-                    {billing?.plans?.[0]?.planKey
-                      ? PLAN_LABELS[billing.plans[0].planKey] || billing.plans[0].planKey
+                    {hasOrgSeats
+                      ? PLAN_LABELS.org_seats
                       : "Free Teacher Workspace"}
                   </h3>
-                  {billing?.plans?.[0]?.status && (
-                    <span className="inline-flex items-center rounded-full bg-emerald-500/10 text-emerald-500 px-2 py-0.5 text-xs font-semibold uppercase">
-                      {billing.plans[0].status}
-                    </span>
-                  )}
                 </div>
 
                 {/* Classroom limit */}
