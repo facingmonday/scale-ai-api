@@ -1,9 +1,7 @@
 const { getUsersRoutes } = require("../../lib/routes");
 const { clerkClient } = require("@clerk/express");
 const Classroom = require("../classroom/classroom.model");
-const {
-  getBillingSummary,
-} = require("../licensing/licensing.service");
+const SeatPool = require("../licensing/seatPool.model");
 
 exports.me = async function (req, res, next) {
   try {
@@ -56,7 +54,7 @@ exports.me = async function (req, res, next) {
       };
     }
 
-    const billing = await getBillingSummary({
+    const billing = await SeatPool.getBillingSummary({
       user: req.user,
       organization: req.organization,
     });

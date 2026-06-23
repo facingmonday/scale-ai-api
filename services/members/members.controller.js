@@ -231,8 +231,8 @@ exports.removeMember = async (req, res) => {
       return res.status(404).json({ message: "Member not found" });
     }
 
-    const { releaseSeatsOnOrgRemoval } = require("../licensing/seatLifecycle.service");
-    const seatCleanup = await releaseSeatsOnOrgRemoval({
+    const Enrollment = require("../enrollment/enrollment.model");
+    const seatCleanup = await Enrollment.releaseSeatsOnOrgRemoval({
       organizationId: organization._id,
       userId: member._id,
       updatedBy: req.clerkUser?.id || "org_admin",

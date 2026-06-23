@@ -4,13 +4,7 @@ const StripeCheckoutRecord = require("../licensing/stripeCheckoutRecord.model");
 const SeatClaim = require("../licensing/seatClaim.model");
 const Classroom = require("../classroom/classroom.model");
 const Member = require("../members/member.model");
-const {
-  findOrCreateOrgSeatPool,
-} = require("../licensing/licensing.service");
-const {
-  findReusableStudentClaim,
-  repointStudentClaim,
-} = require("../licensing/seatLifecycle.service");
+const SeatPool = require("../licensing/seatPool.model");
 
 function verifyWebhookSignature(rawBody, signature) {
   const { secretKey, webhookSecret } = getStripeConfig();
@@ -77,7 +71,7 @@ async function processCheckoutSessionCompleted(session) {
   let result = {};
 
   if (type === "org_seats") {
-    const pool = await findOrCreateOrgSeatPool(
+    const pool = await SeatPool.findOrCreateOrgSeatPool(
       { _id: organizationId },
       "stripe_webhook"
     );
@@ -109,13 +103,13 @@ async function processCheckoutSessionCompleted(session) {
     if (existingClaim) {
       result = { claim: existingClaim, alreadyClaimed: true };
     } else {
-      const reusableClaim = await findReusableStudentClaim({
+      const reusableClaim = await SeatClaim.findReusableStudentClaim({
         organizationId,
         userId: purchaserUserId,
       });
 
       if (reusableClaim) {
-        const repointed = await repointStudentClaim({
+        const repointed = await SeatClaim.repointStudentClaim({
           claim: reusableClaim,
           classroom,
           member,

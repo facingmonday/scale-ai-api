@@ -146,8 +146,8 @@ exports.submitWeeklyDecisions = async function (req, res) {
     );
 
     // Trigger student submission tasks asynchronously (do not block the response)
-    const AutomationTaskService = require("../ai/automationTask.service");
-    AutomationTaskService.trigger("AFTER_STUDENT_SUBMISSION", {
+    const AutomationTask = require("../ai/automationTask.model");
+    AutomationTask.trigger("AFTER_STUDENT_SUBMISSION", {
       classroomId: decision.classroomId,
       challengeId: decision.challengeId,
       decisionId: decision._id,

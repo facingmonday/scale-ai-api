@@ -2,7 +2,6 @@ const Classroom = require("./classroom.model");
 const Member = require("../members/member.model");
 const Enrollment = require("../enrollment/enrollment.model");
 const { sendEmail } = require("../../lib/sendGrid/sendEmail");
-const { requireCanCreateClassroom } = require("../licensing/licensing.service");
 
 /**
  * Create a new class
@@ -34,7 +33,7 @@ exports.createClass = async function (req, res) {
       return res.status(400).json({ error: "Class name is required" });
     }
 
-    await requireCanCreateClassroom({ organization: req.organization });
+    await Classroom.requireCanCreateClassroom({ organization: req.organization });
 
     // If a templateId was provided, validate it belongs to this organization before creating the class
     let templateToApply = null;

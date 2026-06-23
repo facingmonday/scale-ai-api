@@ -342,10 +342,10 @@ class SimulationWorker {
 
       if (pendingOrRunningCount === 0) {
         console.log(`All simulation jobs completed/failed for challenge ${job.challengeId}. Triggering AFTER_CHALLENGE_CLOSED.`);
-        const AutomationTaskService = require("../../ai/automationTask.service");
+        const AutomationTask = require("../../ai/automationTask.model");
         const challenge = await Challenge.findById(job.challengeId).lean();
         if (challenge) {
-          await AutomationTaskService.trigger("AFTER_CHALLENGE_CLOSED", {
+          await AutomationTask.trigger("AFTER_CHALLENGE_CLOSED", {
             classroomId: challenge.classroomId,
             challengeId: challenge._id,
             organizationId: challenge.organization,

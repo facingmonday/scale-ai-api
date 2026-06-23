@@ -1057,6 +1057,78 @@ classroomSchema.statics.deleteClassroom = async function (
   return stats;
 };
 
+const { getDefaultFreeTeacherLimits } = require("../licensing/planCatalog");
+const { makeLicensingError } = require("../licensing/licensing.errors");
+
+/**
+ * Check whether the organization can create another classroom under free-tier limits.
+ */
+classroomSchema.statics.canCreateClassroom = async function ({ organization }) {
+  const freeLimits = getDefaultFreeTeacherLimits();
+  const activeClassrooms = await this.countDocuments({
+    organization: organization._id,
+    isActive: true,
+  });
+
+  if (activeClassrooms >= freeLimits.classroomLimit) {
+    return {
+      allowed: false,
+      reason: "free_classroom_limit_reached",
+      limit: freeLimits.classroomLimit,
+      activeClassrooms,
+    };
+  }
+
+  return {
+    allowed: true,
+    reason: "free_teacher_workspace",
+    limit: freeLimits.classroomLimit,
+    activeClassrooms,
+  };
+};
+
+/**
+ * Require that the organization can create another classroom; throws if not.
+ */
+classroomSchema.statics.requireCanCreateClassroom = async function ({
+  organization,
+}) {
+  const decision = await this.canCreateClassroom({ organization });
+  if (!decision.allowed) {
+    throw makeLicensingError(
+      "Your free classroom limit has been reached. Buy seats or contact support to add more classrooms.",
+      402,
+      "CLASSROOM_LIMIT_REACHED",
+      decision,
+    );
+  }
+  return decision;
+};
+
+/**
+ * Summarize seat claims and roster seat status for a classroom.
+ */
+classroomSchema.statics.getClassroomSeatSummary = async function (classroomId) {
+  const SeatClaim = require("../licensing/seatClaim.model");
+  const RosterSeat = require("../licensing/rosterSeat.model");
+
+  const [claimedSeats, rosterSeats] = await Promise.all([
+    SeatClaim.countActiveClassroomClaims(classroomId),
+    RosterSeat.find({ classroomId }).lean(),
+  ]);
+
+  return {
+    claimedSeats,
+    roster: {
+      total: rosterSeats.length,
+      reserved: rosterSeats.filter((seat) => seat.status === "reserved").length,
+      claimed: rosterSeats.filter((seat) => seat.status === "claimed").length,
+      revoked: rosterSeats.filter((seat) => seat.status === "revoked").length,
+      invalid: rosterSeats.filter((seat) => seat.status === "invalid").length,
+    },
+  };
+};
+
 const Classroom = mongoose.model("Classroom", classroomSchema);
 
 module.exports = Classroom;

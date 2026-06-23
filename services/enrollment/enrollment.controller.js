@@ -2,11 +2,6 @@ const Classroom = require("../classroom/classroom.model");
 const Member = require("../members/member.model");
 const Enrollment = require("./enrollment.model");
 const Organization = require("../organizations/organization.model");
-const { ensureJoin } = require("../join/join.service");
-const { leaveClassroom } = require("./leaveClassroom.service");
-const {
-  transferStudentBetweenClassrooms,
-} = require("./transfer.service");
 
 /**
  * Student joins class
@@ -47,7 +42,7 @@ exports.joinClass = async function (req, res) {
     );
     const studentEmail = primaryEmailObj?.emailAddress;
 
-    const { enrollment } = await ensureJoin({
+    const { enrollment } = await Enrollment.ensureJoin({
       orgId: organization.clerkOrganizationId,
       classroomId,
       clerkUserId,
@@ -221,7 +216,7 @@ exports.removeStudent = async function (req, res) {
       organizationId
     );
 
-    const { seatRelease } = await leaveClassroom({
+    const { seatRelease } = await Enrollment.leaveClassroom({
       classroomId,
       userId,
       organizationId,
@@ -280,7 +275,7 @@ exports.leaveClass = async function (req, res) {
       return res.status(404).json({ error: "Class not found" });
     }
 
-    const { seatRelease } = await leaveClassroom({
+    const { seatRelease } = await Enrollment.leaveClassroom({
       classroomId,
       userId,
       organizationId,
@@ -327,7 +322,7 @@ exports.transferStudent = async function (req, res) {
       });
     }
 
-    const result = await transferStudentBetweenClassrooms({
+    const result = await Enrollment.transferStudentBetweenClassrooms({
       organizationId,
       fromClassroomId,
       toClassroomId,

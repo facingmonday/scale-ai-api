@@ -99,6 +99,38 @@ organizationSchema.statics.findBySlug = function (slug) {
   return this.findOne({ slug });
 };
 
+organizationSchema.statics.ensureByClerkId = async function (clerkOrganizationId) {
+  const { clerkClient } = require("@clerk/express");
+
+  let organization = await this.findByClerkId(clerkOrganizationId);
+  if (organization) return organization;
+
+  const clerkOrg = await clerkClient.organizations.getOrganization({
+    organizationId: clerkOrganizationId,
+  });
+
+  const organizationData = {
+    clerkOrganizationId: clerkOrg.id,
+    name: clerkOrg.name,
+    slug: clerkOrg.slug,
+    imageUrl: clerkOrg.imageUrl,
+    maxAllowedMemberships: clerkOrg.maxAllowedMemberships || 1000,
+    adminDeleteEnabled: clerkOrg.adminDeleteEnabled !== false,
+    publicMetadata: clerkOrg.publicMetadata || {},
+    privateMetadata: clerkOrg.privateMetadata || {},
+    clerkCreatedAt: new Date(clerkOrg.createdAt),
+    clerkUpdatedAt: new Date(clerkOrg.updatedAt),
+  };
+
+  organization = await this.findOneAndUpdate(
+    { clerkOrganizationId: clerkOrg.id },
+    { $set: organizationData },
+    { new: true, upsert: true },
+  );
+
+  return organization;
+};
+
 organizationSchema.statics.calculateApplicationFeeAmount = function (
   organization,
   totalAmount
