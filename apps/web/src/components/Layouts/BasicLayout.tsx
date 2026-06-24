@@ -25,7 +25,7 @@ const BasicLayout: React.FC<Props> = ({ children }: Props) => {
   return (
     <>
       <Header />
-      <div className="flex flex-row w-full min-h-screen bg-brand-dark sm:pt-16 pt-32 pb-12">
+      <div className="flex flex-row w-full min-h-screen bg-ui-bg sm:pt-16 pt-32 pb-12">
         <main
           className="flex-grow py-2 flex flex-col"
           style={{

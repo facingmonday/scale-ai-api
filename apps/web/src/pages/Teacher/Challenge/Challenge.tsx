@@ -110,11 +110,13 @@ const Challenge: React.FC = () => {
         const varDefsResponse = await variableDefinitionsService.getAll(
           next.classroomId,
           "challenge",
-          next._id
+          next._id,
         );
-        const scenarioDefs = ((varDefsResponse?.data ?? varDefsResponse ?? []) as VariableDefinition[]).filter(
-          (def) => def.appliesTo === "challenge"
-        );
+        const scenarioDefs = (
+          (varDefsResponse?.data ??
+            varDefsResponse ??
+            []) as VariableDefinition[]
+        ).filter((def) => def.appliesTo === "challenge");
 
         // Merge variable definitions with existing challenge values
         // This ensures all definitions are shown, even if challenge hasn't filled them out yet
@@ -125,7 +127,7 @@ const Challenge: React.FC = () => {
         const scenarioDefsForForm = scenarioDefs.filter(
           (def) =>
             def.isActive ||
-            Object.prototype.hasOwnProperty.call(scenarioVariables, def.key)
+            Object.prototype.hasOwnProperty.call(scenarioVariables, def.key),
         );
         const variablesWithValues: VariableDefinitionWithValue[] =
           scenarioDefsForForm.map((def) => ({
@@ -139,10 +141,13 @@ const Challenge: React.FC = () => {
         setScenarioVariableDefinitions(variablesWithValues);
 
         // Convert to Record format for form
-        const variablesRecord = variablesWithValues.reduce((acc, variable) => {
-          acc[variable.key] = variable.value;
-          return acc;
-        }, {} as Record<string, unknown>);
+        const variablesRecord = variablesWithValues.reduce(
+          (acc, variable) => {
+            acc[variable.key] = variable.value;
+            return acc;
+          },
+          {} as Record<string, unknown>,
+        );
 
         form.reset(
           {
@@ -151,7 +156,7 @@ const Challenge: React.FC = () => {
             imageUrl: next.imageUrl || "",
             publishAt: toDateTimeLocalValue(next.publishAt),
             submissionDeadlineAt: toDateTimeLocalValue(
-              next.submissionDeadlineAt
+              next.submissionDeadlineAt,
             ),
             closeSubmissionsAt: toDateTimeLocalValue(next.closeSubmissionsAt),
             processAt: toDateTimeLocalValue(next.processAt),
@@ -159,14 +164,15 @@ const Challenge: React.FC = () => {
             feedbackReleaseMode: next.feedbackReleaseMode || "IMMEDIATE",
             allowLateSubmissions: !!next.allowLateSubmissions,
             lateSubmissionPolicy: {
-              penaltyPercentPerDay: next.lateSubmissionPolicy?.penaltyPercentPerDay ?? 0,
+              penaltyPercentPerDay:
+                next.lateSubmissionPolicy?.penaltyPercentPerDay ?? 0,
             },
             automationMode: next.automationMode || "MANUAL",
             missingSubmissionPolicy: next.missingSubmissionPolicy || "SKIP",
             punishAbsentStudents: next.punishAbsentStudents || "none",
             variables: variablesRecord,
           },
-          { keepDirty: false }
+          { keepDirty: false },
         );
 
         // Auto-enable editing for newly created challenges (no variables set yet)
@@ -185,14 +191,16 @@ const Challenge: React.FC = () => {
         }
       }
     },
-    [form, id, activeClassroom]
+    [form, id, activeClassroom],
   );
 
   const fetchStoreTypes = useCallback(async () => {
     const classroomId = activeClassroom?._id;
     if (!classroomId) return;
     try {
-      const response = await profileTypeService.getAll("admin", { classroomId });
+      const response = await profileTypeService.getAll("admin", {
+        classroomId,
+      });
       const raw = response?.data ?? response;
       const fetchedStoreTypes: StoreTypeModel[] = Array.isArray(raw)
         ? (raw as StoreTypeModel[])
@@ -242,7 +250,6 @@ const Challenge: React.FC = () => {
   const watchedDescription = form.watch("description");
   const watchedAllowLateSubmissions = form.watch("allowLateSubmissions");
   const watchedFeedbackReleaseMode = form.watch("feedbackReleaseMode");
-  const watchedMissingSubmissionPolicy = form.watch("missingSubmissionPolicy");
 
   const onSave = form.handleSubmit(async (values) => {
     if (!id) return;
@@ -265,7 +272,9 @@ const Challenge: React.FC = () => {
         feedbackReleaseMode: values.feedbackReleaseMode || "IMMEDIATE",
         allowLateSubmissions: values.allowLateSubmissions,
         lateSubmissionPolicy: {
-          penaltyPercentPerDay: Number(values.lateSubmissionPolicy?.penaltyPercentPerDay ?? 0),
+          penaltyPercentPerDay: Number(
+            values.lateSubmissionPolicy?.penaltyPercentPerDay ?? 0,
+          ),
         },
         automationMode: values.automationMode || "MANUAL",
         missingSubmissionPolicy: values.missingSubmissionPolicy || "SKIP",
@@ -314,7 +323,9 @@ const Challenge: React.FC = () => {
           feedbackReleaseMode: currentValues.feedbackReleaseMode || "IMMEDIATE",
           allowLateSubmissions: currentValues.allowLateSubmissions,
           lateSubmissionPolicy: {
-            penaltyPercentPerDay: Number(currentValues.lateSubmissionPolicy?.penaltyPercentPerDay ?? 0),
+            penaltyPercentPerDay: Number(
+              currentValues.lateSubmissionPolicy?.penaltyPercentPerDay ?? 0,
+            ),
           },
           automationMode: currentValues.automationMode || "MANUAL",
           missingSubmissionPolicy:
@@ -341,6 +352,15 @@ const Challenge: React.FC = () => {
     }
   };
 
+  const handleExtendDeadline = useCallback(() => {
+    setIsEditing(true);
+    requestAnimationFrame(() => {
+      document
+        .getElementById("challenge-automation-schedule")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, []);
+
   const handleUnpublish = async () => {
     if (!id) return;
     if (isPublishing) return;
@@ -351,7 +371,7 @@ const Challenge: React.FC = () => {
       await challengeService.unpublish(id);
       globalContext?.showToast?.(
         "Challenge unpublished successfully",
-        "success"
+        "success",
       );
       await fetchScenario();
     } catch (e) {
@@ -416,83 +436,88 @@ const Challenge: React.FC = () => {
                     </span>
                   )}
                 </h1>
-                {!challenge.isClosed && (
-                  <div className="flex gap-2">
-                    {!isEditing ? (
+                <div className="flex gap-2">
+                  {!isEditing && !challenge.isClosed ? (
+                    <button
+                      className="btn-outline"
+                      onClick={() => setIsEditing(true)}
+                      type="button"
+                    >
+                      Edit
+                    </button>
+                  ) : null}
+                  {isEditing ? (
+                    <>
                       <button
                         className="btn-outline"
-                        onClick={() => setIsEditing(true)}
+                        onClick={() => {
+                          setIsEditing(false);
+                          const variablesRecord =
+                            scenarioVariableDefinitions.reduce(
+                              (acc, variable) => {
+                                acc[variable.key] = variable.value;
+                                return acc;
+                              },
+                              {} as Record<string, unknown>,
+                            );
+                          form.reset({
+                            title:
+                              challenge.title ||
+                              (challenge as { name?: string }).name ||
+                              "",
+                            description: challenge.description || "",
+                            imageUrl: challenge.imageUrl || "",
+                            publishAt: toDateTimeLocalValue(
+                              challenge.publishAt,
+                            ),
+                            submissionDeadlineAt: toDateTimeLocalValue(
+                              challenge.submissionDeadlineAt,
+                            ),
+                            closeSubmissionsAt: toDateTimeLocalValue(
+                              challenge.closeSubmissionsAt,
+                            ),
+                            processAt: toDateTimeLocalValue(
+                              challenge.processAt,
+                            ),
+                            feedbackReleaseAt: toDateTimeLocalValue(
+                              challenge.feedbackReleaseAt,
+                            ),
+                            feedbackReleaseMode:
+                              challenge.feedbackReleaseMode || "IMMEDIATE",
+                            allowLateSubmissions:
+                              !!challenge.allowLateSubmissions,
+                            lateSubmissionPolicy: {
+                              penaltyPercentPerDay:
+                                challenge.lateSubmissionPolicy
+                                  ?.penaltyPercentPerDay ?? 0,
+                            },
+                            automationMode:
+                              challenge.automationMode || "MANUAL",
+                            missingSubmissionPolicy:
+                              challenge.missingSubmissionPolicy || "SKIP",
+                            punishAbsentStudents:
+                              challenge.punishAbsentStudents || "none",
+                            variables: variablesRecord,
+                          });
+                        }}
                         type="button"
                       >
-                        Edit
+                        Cancel
                       </button>
-                    ) : (
-                      <>
-                        <button
-                          className="btn-outline"
-                          onClick={() => {
-                            setIsEditing(false);
-                            // Reset form with current challenge variable definitions
-                            const variablesRecord =
-                              scenarioVariableDefinitions.reduce(
-                                (acc, variable) => {
-                                  acc[variable.key] = variable.value;
-                                  return acc;
-                                },
-                                {} as Record<string, unknown>
-                              );
-                            form.reset({
-                              title:
-                                challenge.title ||
-                                (challenge as { name?: string }).name ||
-                                "",
-                              description: challenge.description || "",
-                              imageUrl: challenge.imageUrl || "",
-                              publishAt: toDateTimeLocalValue(
-                                challenge.publishAt
-                              ),
-                              submissionDeadlineAt: toDateTimeLocalValue(
-                                challenge.submissionDeadlineAt
-                              ),
-                              closeSubmissionsAt: toDateTimeLocalValue(
-                                challenge.closeSubmissionsAt
-                              ),
-                              processAt: toDateTimeLocalValue(
-                                challenge.processAt
-                              ),
-                              feedbackReleaseAt: toDateTimeLocalValue(
-                                challenge.feedbackReleaseAt
-                              ),
-                              feedbackReleaseMode: challenge.feedbackReleaseMode || "IMMEDIATE",
-                              allowLateSubmissions: !!challenge.allowLateSubmissions,
-                              lateSubmissionPolicy: {
-                                penaltyPercentPerDay: challenge.lateSubmissionPolicy?.penaltyPercentPerDay ?? 0,
-                              },
-                              automationMode:
-                                challenge.automationMode || "MANUAL",
-                              missingSubmissionPolicy:
-                                challenge.missingSubmissionPolicy || "SKIP",
-                              punishAbsentStudents:
-                                challenge.punishAbsentStudents || "none",
-                              variables: variablesRecord,
-                            });
-                          }}
-                          type="button"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          className={`btn-teal ${!form.formState.isDirty ? "disabled:opacity-50" : ""
-                            }`}
-                          onClick={() => void onSave()}
-                          type="button"
-                          disabled={!form.formState.isDirty}
-                        >
-                          Save
-                        </button>
-                      </>
-                    )}
-                    {challenge.isPublished ? (
+                      <button
+                        className={`btn-teal ${
+                          !form.formState.isDirty ? "disabled:opacity-50" : ""
+                        }`}
+                        onClick={() => void onSave()}
+                        type="button"
+                        disabled={!form.formState.isDirty}
+                      >
+                        Save
+                      </button>
+                    </>
+                  ) : null}
+                  {!isEditing && !challenge.isClosed ? (
+                    challenge.isPublished ? (
                       <button
                         className="btn-outline"
                         type="button"
@@ -510,9 +535,9 @@ const Challenge: React.FC = () => {
                       >
                         {isPublishing ? "Publishing..." : "Publish"}
                       </button>
-                    )}
-                  </div>
-                )}
+                    )
+                  ) : null}
+                </div>
               </div>
 
               <div className="flex flex-col sm:flex-row gap-4 w-full">
@@ -546,8 +571,9 @@ const Challenge: React.FC = () => {
                             value={field.value}
                             onChange={(e) => field.onChange(e.target.value)}
                             disabled={!isEditing}
-                            className={`input ${fieldState.error ? "p-invalid" : ""
-                              }`}
+                            className={`input ${
+                              fieldState.error ? "p-invalid" : ""
+                            }`}
                           />
                         )}
                       />
@@ -574,7 +600,10 @@ const Challenge: React.FC = () => {
                       />
                     </div>
 
-                    <div className="rounded-lg border border-ui-border bg-ui-surface-muted p-4">
+                    <div
+                      id="challenge-automation-schedule"
+                      className="rounded-lg border border-ui-border bg-ui-surface-muted p-4"
+                    >
                       <div className="mb-3">
                         <h2 className="heading-sm">Automation</h2>
                         <p className="text-sm text-text-muted">
@@ -614,9 +643,7 @@ const Challenge: React.FC = () => {
                           control={form.control}
                           render={({ field }) => (
                             <label className="flex flex-col gap-2">
-                              <span className="label">
-                                Submission deadline
-                              </span>
+                              <span className="label">Submission deadline</span>
                               <input
                                 type="datetime-local"
                                 className="input"
@@ -635,7 +662,9 @@ const Challenge: React.FC = () => {
                           control={form.control}
                           render={({ field }) => (
                             <label className="flex flex-col gap-2">
-                              <span className="label">Submissions lock date</span>
+                              <span className="label">
+                                Submissions lock date
+                              </span>
                               <input
                                 type="datetime-local"
                                 className="input"
@@ -654,7 +683,9 @@ const Challenge: React.FC = () => {
                           control={form.control}
                           render={({ field }) => (
                             <label className="flex flex-col gap-2">
-                              <span className="label">Outcome calculation date</span>
+                              <span className="label">
+                                Outcome calculation date
+                              </span>
                               <input
                                 type="datetime-local"
                                 className="input"
@@ -673,7 +704,9 @@ const Challenge: React.FC = () => {
                           control={form.control}
                           render={({ field }) => (
                             <label className="flex flex-col gap-2">
-                              <span className="label">Feedback release mode</span>
+                              <span className="label">
+                                Feedback release mode
+                              </span>
                               <select
                                 className="input"
                                 value={field.value || "IMMEDIATE"}
@@ -682,8 +715,12 @@ const Challenge: React.FC = () => {
                                 }
                                 disabled={!isEditing}
                               >
-                                <option value="IMMEDIATE">Immediate (on process)</option>
-                                <option value="DELAYED">Delayed (scheduled)</option>
+                                <option value="IMMEDIATE">
+                                  Immediate (on process)
+                                </option>
+                                <option value="DELAYED">
+                                  Delayed (scheduled)
+                                </option>
                                 <option value="MANUAL">Manual release</option>
                               </select>
                             </label>
@@ -696,7 +733,9 @@ const Challenge: React.FC = () => {
                             control={form.control}
                             render={({ field }) => (
                               <label className="flex flex-col gap-2">
-                                <span className="label">Feedback release date</span>
+                                <span className="label">
+                                  Feedback release date
+                                </span>
                                 <input
                                   type="datetime-local"
                                   className="input"
@@ -716,7 +755,9 @@ const Challenge: React.FC = () => {
                           control={form.control}
                           render={({ field }) => (
                             <label className="flex flex-col gap-2">
-                              <span className="label">Allow late submissions</span>
+                              <span className="label">
+                                Allow late submissions
+                              </span>
                               <select
                                 className="input"
                                 value={field.value ? "true" : "false"}
@@ -781,19 +822,13 @@ const Challenge: React.FC = () => {
                           control={form.control}
                           render={({ field }) => (
                             <label className="flex flex-col gap-2">
-                              <span className="label">
-                                Missing decisions
-                              </span>
+                              <span className="label">Missing decisions</span>
                               <select
                                 className="input"
                                 value={field.value || "SKIP"}
-                                onChange={(event) => {
-                                  const val = event.target.value;
-                                  field.onChange(val);
-                                  if (val === "SKIP") {
-                                    form.setValue("punishAbsentStudents", "none");
-                                  }
-                                }}
+                                onChange={(event) =>
+                                  field.onChange(event.target.value)
+                                }
                                 disabled={!isEditing}
                               >
                                 <option value="SKIP">Skip week</option>
@@ -808,32 +843,30 @@ const Challenge: React.FC = () => {
                           )}
                         />
 
-                        {(watchedMissingSubmissionPolicy || "SKIP") !== "SKIP" && (
-                          <Controller
-                            name="punishAbsentStudents"
-                            control={form.control}
-                            render={({ field }) => (
-                              <label className="flex flex-col gap-2 md:col-span-2">
-                                <span className="label">
-                                  Punishment for forwarded decisions
-                                </span>
-                                <select
-                                  className="input"
-                                  value={field.value || "none"}
-                                  onChange={(event) =>
-                                    field.onChange(event.target.value)
-                                  }
-                                  disabled={!isEditing}
-                                >
-                                  <option value="none">None</option>
-                                  <option value="low">Low</option>
-                                  <option value="medium">Medium</option>
-                                  <option value="high">High</option>
-                                </select>
-                              </label>
-                            )}
-                          />
-                        )}
+                        <Controller
+                          name="punishAbsentStudents"
+                          control={form.control}
+                          render={({ field }) => (
+                            <label className="flex flex-col gap-2 md:col-span-2">
+                              <span className="label">
+                                Punishment for forwarded decisions
+                              </span>
+                              <select
+                                className="input"
+                                value={field.value || "none"}
+                                onChange={(event) =>
+                                  field.onChange(event.target.value)
+                                }
+                                disabled={!isEditing}
+                              >
+                                <option value="none">None</option>
+                                <option value="low">Low</option>
+                                <option value="medium">Medium</option>
+                                <option value="high">High</option>
+                              </select>
+                            </label>
+                          )}
+                        />
                       </div>
                     </div>
                   </div>
@@ -878,7 +911,12 @@ const Challenge: React.FC = () => {
               {isLoading ? (
                 <p>Loading...</p>
               ) : (
-                <Outcome challengeId={id} challenge={challenge} />
+                <Outcome
+                  challengeId={id}
+                  challenge={challenge}
+                  onExtendDeadline={handleExtendDeadline}
+                  onChallengeUpdated={() => fetchScenario(true)}
+                />
               )}
             </div>
 
@@ -915,7 +953,7 @@ const Challenge: React.FC = () => {
                                   []
                                 }
                               />
-                            )
+                            ),
                           )}
                         </div>
                       </div>
