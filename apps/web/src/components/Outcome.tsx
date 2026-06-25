@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import outcomeService from "@/services/outcome";
+import challengeService from "@/services/challenge";
 import decisionService from "@/services/decision";
 import type { Outcome as ScenarioOutcomeModel } from "@/types/outcome";
 import { useAuth } from "@/context/AuthContext";
@@ -20,6 +21,8 @@ export type ScenarioOutcomeProps = {
   title?: string;
   onChange?: (outcome: ScenarioOutcomeModel | null) => void;
   challenge?: Challenge;
+  onExtendDeadline?: () => void;
+  onChallengeUpdated?: () => void | Promise<void>;
 };
 
 const Outcome: React.FC<ScenarioOutcomeProps> = ({
@@ -28,6 +31,8 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
   className,
   title = "Challenge outcome",
   onChange,
+  onExtendDeadline,
+  onChallengeUpdated,
 }) => {
   const { userRole } = useAuth();
   const global = useGlobalContext();
@@ -40,6 +45,7 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
 
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isReleasingFeedback, setIsReleasingFeedback] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
   const [hiddenNotesDraft, setHiddenNotesDraft] = useState("");
   const [randomEventChancePercent, setRandomEventChancePercent] = useState<
@@ -51,9 +57,9 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
   const [
     autoGenerateSubmissionsOnOutcome,
     setAutoGenerateSubmissionsOnOutcome,
-  ] = useState<
-    "USE_AI" | "FORWARD_PREVIOUS" | "USE_DEFAULTS" | "SKIP" | null
-  >(null);
+  ] = useState<"USE_AI" | "FORWARD_PREVIOUS" | "USE_DEFAULTS" | "SKIP" | null>(
+    null,
+  );
   const [punishAbsentStudents, setPunishAbsentStudents] = useState<
     "high" | "medium" | "low" | "none" | null
   >(null);
@@ -92,7 +98,7 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
         setHiddenNotesDraft(next.hiddenNotes || "");
         setRandomEventChancePercent(next.randomEventChancePercent ?? 0);
         setAutoGenerateSubmissionsOnOutcome(
-          next.autoGenerateSubmissionsOnOutcome || null
+          next.autoGenerateSubmissionsOnOutcome || null,
         );
         setPunishAbsentStudents(next.punishAbsentStudents || null);
       } else {
@@ -129,9 +135,9 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
     if (!challengeId || !isAdmin) return;
 
     try {
-      const { data: { missingSubmissions } } = await decisionService.getMissingSubmissionsForScenario(
-        challengeId
-      );
+      const {
+        data: { missingSubmissions },
+      } = await decisionService.getMissingSubmissionsForScenario(challengeId);
       setMissingSubmissionCount(missingSubmissions?.length ?? 0);
     } catch (err) {
       console.error("Failed to fetch missing decisions:", err);
@@ -150,7 +156,9 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
       notes: notesDraft.trim() || undefined,
       hiddenNotes: hiddenNotesDraft.trim() || undefined,
       randomEventChancePercent:
-        randomEventChancePercent !== null ? randomEventChancePercent : undefined,
+        randomEventChancePercent !== null
+          ? randomEventChancePercent
+          : undefined,
       autoGenerateSubmissionsOnOutcome:
         autoGenerateSubmissionsOnOutcome || undefined,
       punishAbsentStudents: punishAbsentStudents || undefined,
@@ -161,7 +169,7 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
       randomEventChancePercent,
       autoGenerateSubmissionsOnOutcome,
       punishAbsentStudents,
-    ]
+    ],
   );
 
   const handleSaveDraft = useCallback(async () => {
@@ -208,26 +216,49 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
     return !challenge;
   }, [challenge]);
 
+  const showReleaseFeedback = useMemo(() => {
+    if (!isAdmin || !challenge) return false;
+    return (
+      !!challenge.isClosed &&
+      !challenge.isFeedbackReleased &&
+      challenge.automationStatus !== "feedbackReleased"
+    );
+  }, [isAdmin, challenge]);
+
+  const handleReleaseFeedback = useCallback(async () => {
+    if (!challengeId) return;
+
+    setIsReleasingFeedback(true);
+    try {
+      global?.showToast("Releasing feedback...", "loading");
+      await challengeService.releaseFeedback(challengeId);
+      global?.showToast("Feedback released and students notified", "success");
+      await onChallengeUpdated?.();
+    } catch (err) {
+      console.error("Failed to release feedback:", err);
+      const errorMessage = getErrorMessage(err);
+      global?.showToast(errorMessage, "error");
+    } finally {
+      setIsReleasingFeedback(false);
+    }
+  }, [challengeId, global, onChallengeUpdated]);
+
   const headerAction = useMemo(() => {
     if (!isAdmin) return null;
     if (isLoading) return null;
 
-    if (!outcome) {
-      return (
-        <button
-          type="button"
-          className={`btn-teal ${
-            addOutcomeDisabled ? "disabled:opacity-50" : ""
-          }`}
-          onClick={() => setIsEditing(true)}
-          disabled={addOutcomeDisabled}
-        >
-          + Add outcome
-        </button>
-      );
-    }
-
-    return (
+    const outcomeAction = !outcome ? (
+      <button
+        type="button"
+        className={`btn-teal ${
+          addOutcomeDisabled ? "disabled:opacity-50" : ""
+        }`}
+        onClick={() => setIsEditing(true)}
+        disabled={addOutcomeDisabled}
+      >
+        + Add outcome
+      </button>
+    ) : (
       <button
         type="button"
         className="btn-outline"
@@ -237,7 +268,42 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
         Edit outcome
       </button>
     );
-  }, [isAdmin, isLoading, outcome, canEdit, addOutcomeDisabled]);
+
+    return (
+      <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+        {onExtendDeadline ? (
+          <button
+            type="button"
+            className="btn-outline"
+            onClick={onExtendDeadline}
+          >
+            Extend Deadline
+          </button>
+        ) : null}
+        {showReleaseFeedback ? (
+          <button
+            type="button"
+            className="btn-teal"
+            onClick={() => void handleReleaseFeedback()}
+            disabled={isReleasingFeedback}
+          >
+            Release Feedback
+          </button>
+        ) : null}
+        {outcomeAction}
+      </div>
+    );
+  }, [
+    isAdmin,
+    isLoading,
+    outcome,
+    canEdit,
+    addOutcomeDisabled,
+    onExtendDeadline,
+    showReleaseFeedback,
+    handleReleaseFeedback,
+    isReleasingFeedback,
+  ]);
 
   return (
     <div className={className ? `card ${className}` : "card"}>
@@ -441,68 +507,69 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
               </div>
               {autoGenerateSubmissionsOnOutcome !== null &&
                 autoGenerateSubmissionsOnOutcome !== "SKIP" && (
-                <div className="mt-4">
-                  <label className="label">
-                    Punishment level for absent students
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      className={
-                        punishAbsentStudents === null
-                          ? "btn-teal"
-                          : "btn-outline"
-                      }
-                      onClick={() => setPunishAbsentStudents(null)}
-                      disabled={!isAdmin || isSaving}
-                    >
-                      No punishment
-                    </button>
-                    <button
-                      type="button"
-                      className={
-                        punishAbsentStudents === "low"
-                          ? "btn-teal"
-                          : "btn-outline"
-                      }
-                      onClick={() => setPunishAbsentStudents("low")}
-                      disabled={!isAdmin || isSaving}
-                    >
-                      Low
-                    </button>
-                    <button
-                      type="button"
-                      className={
-                        punishAbsentStudents === "medium"
-                          ? "btn-teal"
-                          : "btn-outline"
-                      }
-                      onClick={() => setPunishAbsentStudents("medium")}
-                      disabled={!isAdmin || isSaving}
-                    >
-                      Medium
-                    </button>
-                    <button
-                      type="button"
-                      className={
-                        punishAbsentStudents === "high"
-                          ? "btn-teal"
-                          : "btn-outline"
-                      }
-                      onClick={() => setPunishAbsentStudents("high")}
-                      disabled={!isAdmin || isSaving}
-                    >
-                      High
-                    </button>
+                  <div className="mt-4">
+                    <label className="label">
+                      Punishment level for absent students
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className={
+                          punishAbsentStudents === null
+                            ? "btn-teal"
+                            : "btn-outline"
+                        }
+                        onClick={() => setPunishAbsentStudents(null)}
+                        disabled={!isAdmin || isSaving}
+                      >
+                        No punishment
+                      </button>
+                      <button
+                        type="button"
+                        className={
+                          punishAbsentStudents === "low"
+                            ? "btn-teal"
+                            : "btn-outline"
+                        }
+                        onClick={() => setPunishAbsentStudents("low")}
+                        disabled={!isAdmin || isSaving}
+                      >
+                        Low
+                      </button>
+                      <button
+                        type="button"
+                        className={
+                          punishAbsentStudents === "medium"
+                            ? "btn-teal"
+                            : "btn-outline"
+                        }
+                        onClick={() => setPunishAbsentStudents("medium")}
+                        disabled={!isAdmin || isSaving}
+                      >
+                        Medium
+                      </button>
+                      <button
+                        type="button"
+                        className={
+                          punishAbsentStudents === "high"
+                            ? "btn-teal"
+                            : "btn-outline"
+                        }
+                        onClick={() => setPunishAbsentStudents("high")}
+                        disabled={!isAdmin || isSaving}
+                      >
+                        High
+                      </button>
+                    </div>
+                    {autoGenerateSubmissionsOnOutcome ===
+                      "FORWARD_PREVIOUS" && (
+                      <p className="text-xs text-text-muted mt-2">
+                        Note: Will only apply to students who have never made a
+                        decision.
+                      </p>
+                    )}
                   </div>
-                  {autoGenerateSubmissionsOnOutcome === "FORWARD_PREVIOUS" && (
-                    <p className="text-xs text-text-muted mt-2">
-                      Note: Will only apply to students who have never made a
-                      decision.
-                    </p>
-                  )}
-                </div>
-              )}
+                )}
             </div>
           )}
 
@@ -515,10 +582,10 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
                 setNotesDraft(outcome?.notes || "");
                 setHiddenNotesDraft(outcome?.hiddenNotes || "");
                 setRandomEventChancePercent(
-                  outcome?.randomEventChancePercent ?? 0
+                  outcome?.randomEventChancePercent ?? 0,
                 );
                 setAutoGenerateSubmissionsOnOutcome(
-                  outcome?.autoGenerateSubmissionsOnOutcome || null
+                  outcome?.autoGenerateSubmissionsOnOutcome || null,
                 );
                 setPunishAbsentStudents(outcome?.punishAbsentStudents || null);
               }}
