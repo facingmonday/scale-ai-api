@@ -6,12 +6,10 @@ const Decision = require("../decision/decision.model");
 const JobService = require("../job/lib/jobService");
 const LedgerEntry = require("../ledger/ledger.model");
 const SimulationWorker = require("../job/lib/simulationWorker");
+const SimulationBatch = require("../job/simulationBatch.model");
 const {
   enqueueSimulationBatchSubmit,
 } = require("../../lib/queues/simulation-batch-worker");
-const {
-  cancelInProgressBatchForScenario,
-} = require("../job/simulationBatch.service");
 
 
 const SCHEDULE_FIELDS = [
@@ -224,8 +222,8 @@ exports.createScenario = async function (req, res) {
     );
 
     // Trigger challenge created tasks asynchronously (do not block the response)
-    const AutomationTaskService = require("../ai/automationTask.service");
-    AutomationTaskService.trigger("AFTER_CHALLENGE_CREATED", {
+    const AutomationTask = require("../ai/automationTask.model");
+    AutomationTask.trigger("AFTER_CHALLENGE_CREATED", {
       classroomId: challenge.classroomId,
       challengeId: challenge._id,
       organizationId,
@@ -738,7 +736,7 @@ exports.cancelBatchAndRerunScenario = async function (req, res) {
     const simulationMode = String(process.env.SIMULATION_MODE || "direct");
     if (simulationMode === "batch") {
       const cancelResult =
-        await cancelInProgressBatchForScenario(challengeId);
+        await SimulationBatch.cancelInProgressBatchForScenario(challengeId);
       batchCancelled = cancelResult.cancelled;
       openaiBatchId = cancelResult.openaiBatchId || null;
     }

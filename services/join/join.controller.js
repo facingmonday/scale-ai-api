@@ -1,4 +1,4 @@
-const { ensureJoin } = require("./join.service");
+const Enrollment = require("../enrollment/enrollment.model");
 
 /**
  * POST /v1/join  (also mounted at /api/join)
@@ -35,7 +35,7 @@ exports.join = async function join(req, res) {
     );
     const studentEmail = primaryEmailObj?.emailAddress;
 
-    const { organization, classroom, enrollment } = await ensureJoin({
+    const { organization, classroom, enrollment } = await Enrollment.ensureJoin({
       orgId,
       classroomId,
       clerkUserId,

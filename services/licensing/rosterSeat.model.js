@@ -80,6 +80,42 @@ rosterSeatSchema.statics.findReservableForEmail = function (
   });
 };
 
+rosterSeatSchema.statics.releaseForClaim = async function (claim, updatedBy) {
+  if (!claim?.rosterSeatId) return;
+
+  const rosterSeat = await this.findById(claim.rosterSeatId);
+  if (!rosterSeat) return;
+
+  rosterSeat.status = "reserved";
+  rosterSeat.claimedBy = undefined;
+  rosterSeat.claimedAt = undefined;
+  rosterSeat.updatedBy = updatedBy;
+  await rosterSeat.save();
+};
+
+rosterSeatSchema.statics.attachForClaim = async function ({
+  claim,
+  member,
+  classroomId,
+  updatedBy,
+}) {
+  const SeatClaim = require("./seatClaim.model");
+  const email = SeatClaim.getPrimaryEmail(member);
+  if (!email) return null;
+
+  const rosterSeat = await this.findReservableForEmail(classroomId, email);
+  if (!rosterSeat) return null;
+
+  rosterSeat.status = "claimed";
+  rosterSeat.claimedBy = member._id;
+  rosterSeat.claimedAt = new Date();
+  rosterSeat.updatedBy = updatedBy;
+  await rosterSeat.save();
+
+  claim.rosterSeatId = rosterSeat._id;
+  return rosterSeat;
+};
+
 const RosterSeat = mongoose.model("RosterSeat", rosterSeatSchema);
 
 module.exports = RosterSeat;

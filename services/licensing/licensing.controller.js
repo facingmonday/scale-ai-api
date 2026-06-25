@@ -1,23 +1,15 @@
 const Classroom = require("../classroom/classroom.model");
 const RosterSeat = require("./rosterSeat.model");
 const SeatClaim = require("./seatClaim.model");
+const SeatPool = require("./seatPool.model");
+const OrgSeatReservation = require("./orgSeatReservation.model");
+const Enrollment = require("../enrollment/enrollment.model");
 const Member = require("../members/member.model");
-const { PLAN_CATALOG, PLAN_KEYS } = require("./planCatalog");
-const {
-  getBillingSummary,
-  getClassroomSeatSummary,
-  grantOrgSeatAndEnroll,
-} = require("./licensing.service");
-const {
-  listReservations,
-  createReservation,
-  revokeReservation,
-} = require("./orgSeatReservation.service");
 const {
   createOrgSeatCheckoutSession,
   createStudentSeatCheckoutSession,
 } = require("../stripe/stripe.service");
-const { isStripeConfigured } = require("../stripe/stripe.config");
+const { PLAN_CATALOG, PLAN_KEYS } = require("./planCatalog");
 
 function getClerkPrimaryEmail(clerkUser) {
   const primaryEmailObj = clerkUser?.emailAddresses?.find(
@@ -89,7 +81,7 @@ exports.getPlans = async function getPlans(req, res) {
 
 exports.getSummary = async function getSummary(req, res, next) {
   try {
-    const data = await getBillingSummary({
+    const data = await SeatPool.getBillingSummary({
       user: req.user,
       organization: req.organization,
     });
@@ -111,7 +103,7 @@ exports.getClassroomSummary = async function getClassroomSummary(
       req.clerkUser.id,
       req.organization._id,
     );
-    const summary = await getClassroomSeatSummary(classroom._id);
+    const summary = await Classroom.getClassroomSeatSummary(classroom._id);
     return res.json({
       success: true,
       data: {
@@ -318,8 +310,7 @@ exports.getStudentAccess = async function getStudentAccess(req, res, next) {
 
 exports.getSeatPools = async function getSeatPools(req, res, next) {
   try {
-    const { findOrCreateOrgSeatPool } = require("./licensing.service");
-    const pool = await findOrCreateOrgSeatPool(
+    const pool = await SeatPool.findOrCreateOrgSeatPool(
       req.organization,
       req.clerkUser.id,
     );
@@ -331,7 +322,7 @@ exports.getSeatPools = async function getSeatPools(req, res, next) {
 
 exports.getSeatReservations = async function getSeatReservations(req, res, next) {
   try {
-    const reservations = await listReservations(req.organization._id);
+    const reservations = await OrgSeatReservation.listReservations(req.organization._id);
     return res.json({ success: true, data: reservations });
   } catch (error) {
     return next(error);
@@ -352,7 +343,7 @@ exports.createSeatReservation = async function createSeatReservation(
       });
     }
 
-    const reservation = await createReservation({
+    const reservation = await OrgSeatReservation.createReservation({
       organization: req.organization,
       email,
       createdBy: req.clerkUser.id,
@@ -379,7 +370,7 @@ exports.revokeSeatReservation = async function revokeSeatReservation(
 ) {
   try {
     const { id } = req.params;
-    const reservation = await revokeReservation({
+    const reservation = await OrgSeatReservation.revokeReservation({
       organization: req.organization,
       reservationId: id,
       updatedBy: req.clerkUser.id,
@@ -424,7 +415,7 @@ exports.grantSeat = async function grantSeat(req, res, next) {
       });
     }
 
-    const result = await grantOrgSeatAndEnroll({
+    const result = await Enrollment.grantOrgSeatAndEnroll({
       classroom,
       organization: req.organization,
       member,

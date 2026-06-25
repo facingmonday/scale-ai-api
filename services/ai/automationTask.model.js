@@ -37,4 +37,60 @@ const automationTaskSchema = new mongoose.Schema({
   },
 }).add(baseSchema);
 
+/**
+ * Trigger automation tasks of a specific lifecycle type
+ * @param {string} triggerType - The trigger enum value
+ * @param {Object} data - Payload parameters (classroomId, challengeId, etc.)
+ */
+automationTaskSchema.statics.trigger = async function (triggerType, data) {
+  try {
+    const { enqueueAutomationTaskRun } = require("../../lib/queues/automation-task-worker");
+    const AutomationTaskRun = require("./automationTaskRun.model");
+    const { classroomId, challengeId, decisionId, userId, organizationId, clerkUserId } = data;
+    if (!classroomId || !challengeId) {
+      throw new Error("classroomId and challengeId are required to trigger automation tasks");
+    }
+
+    console.log(`📡 Triggering tasks for classroom: ${classroomId}, challenge: ${challengeId}, event: ${triggerType}`);
+
+    const activeTasks = await this.find({
+      classroomId,
+      trigger: triggerType,
+      isActive: true,
+    }).lean();
+
+    if (activeTasks.length === 0) {
+      console.log(`No active automation tasks configured for event "${triggerType}" in classroom ${classroomId}`);
+      return { success: true, count: 0 };
+    }
+
+    console.log(`Found ${activeTasks.length} active automation tasks to process.`);
+
+    const enqueuedRuns = [];
+
+    for (const task of activeTasks) {
+      const run = new AutomationTaskRun({
+        automationTaskId: task._id,
+        classroomId,
+        challengeId,
+        decisionId: decisionId || null,
+        userId: userId || null,
+        status: "pending",
+        organization: organizationId || task.organization,
+        createdBy: clerkUserId || "system",
+        updatedBy: clerkUserId || "system",
+      });
+
+      await run.save();
+      await enqueueAutomationTaskRun(run._id);
+      enqueuedRuns.push(run._id);
+    }
+
+    return { success: true, count: enqueuedRuns.length, runIds: enqueuedRuns };
+  } catch (error) {
+    console.error(`Error in AutomationTask.trigger for ${triggerType}:`, error);
+    return { success: false, error: error.message };
+  }
+};
+
 module.exports = mongoose.model("AutomationTask", automationTaskSchema);

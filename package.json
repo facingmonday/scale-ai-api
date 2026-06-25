@@ -31,7 +31,9 @@
     "build:admin": "npm --prefix apps/admin run build",
     "preview:web": "npm --prefix apps/web run preview",
     "lint:web": "npm --prefix apps/web run lint",
-    "test": "node --test",
+    "test": "node --require ./test/helpers/env.js --test --test-concurrency=1 --test-force-exit 'services/**/*.test.js' 'services/**/*.integration.test.js' 'test/helpers/**/*.test.js'",
+    "test:unit": "node --require ./test/helpers/env.js --test --test-concurrency=4 --test-force-exit 'services/**/*.test.js' 'test/helpers/**/*.test.js'",
+    "test:integration": "node --require ./test/helpers/env.js --test --test-concurrency=1 --test-force-exit 'services/**/*.integration.test.js'",
     "docs:generate-spec": "node scripts/generate-swagger-json.js",
     "docs:build": "npm run docs:generate-spec && vitepress build apps/docs",
     "docs:preview": "vitepress preview apps/docs"
@@ -116,6 +118,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@vitejs/plugin-react": "^5.1.1",
     "concurrently": "^9.1.0",
     "connect-livereload": "^0.6.1",
     "esbuild": "^0.25.10",
@@ -124,9 +127,9 @@
     "livereload": "^0.10.3",
     "mongodb-memory-server": "^8.16.1",
     "nodemon": "^3.1.10",
+    "supertest": "^7.2.2",
     "swagger-jsdoc": "^6.3.0",
     "vite": "^7.2.4",
-    "@vitejs/plugin-react": "^5.1.1",
     "vitepress": "^1.6.4"
   }
 }

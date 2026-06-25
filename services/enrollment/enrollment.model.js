@@ -39,7 +39,7 @@ const enrollmentSchema = new mongoose.Schema({
 // Partial unique index - only enforce uniqueness for non-removed enrollments
 enrollmentSchema.index(
   { classroomId: 1, userId: 1 },
-  { unique: true, partialFilterExpression: { isRemoved: false } }
+  { unique: true, partialFilterExpression: { isRemoved: false } },
 );
 enrollmentSchema.index({ classroomId: 1, role: 1 });
 enrollmentSchema.index({ classroomId: 1, isRemoved: 1 });
@@ -99,7 +99,7 @@ enrollmentSchema.statics.countByClass = async function (classroomId) {
     const orgMembership = member.organizationMemberships.find(
       (membership) =>
         membership.organizationId.toString() === organizationId.toString() &&
-        membership.role === "org:member"
+        membership.role === "org:member",
     );
 
     return !!orgMembership;
@@ -122,7 +122,7 @@ enrollmentSchema.statics.enrollUser = async function (
   userId,
   role = "member",
   organizationId,
-  clerkUserId
+  clerkUserId,
 ) {
   // Check if already enrolled
   const existing = await this.findByClassAndUser(classroomId, userId);
@@ -223,7 +223,7 @@ enrollmentSchema.statics.getClassRoster = async function (classroomId) {
     const orgMembership = member.organizationMemberships.find(
       (membership) =>
         membership.organizationId.toString() === organizationId.toString() &&
-        membership.role === "org:member"
+        membership.role === "org:member",
     );
 
     return !!orgMembership;
@@ -278,7 +278,7 @@ enrollmentSchema.statics.getClassRoster = async function (classroomId) {
 enrollmentSchema.statics.removeEnrollment = async function (
   classroomId,
   userId,
-  clerkUserId
+  clerkUserId,
 ) {
   const enrollment = await this.findOne({
     classroomId,
@@ -315,7 +315,7 @@ enrollmentSchema.statics.getEnrollment = function (classroomId, userId) {
  */
 enrollmentSchema.statics.getEnrollmentsByUser = function (
   userId,
-  options = {}
+  options = {},
 ) {
   return this.findByUser(userId, options);
 };
@@ -328,7 +328,7 @@ enrollmentSchema.statics.getEnrollmentsByUser = function (
  */
 enrollmentSchema.statics.getEnrollmentsByClassAndRole = function (
   classroomId,
-  role
+  role,
 ) {
   return this.findByClassAndRole(classroomId, role);
 };
@@ -341,7 +341,7 @@ enrollmentSchema.statics.getEnrollmentsByClassAndRole = function (
  */
 enrollmentSchema.statics.processRosterExport = async function (
   classroomId,
-  organizationId
+  organizationId,
 ) {
   const { Parser } = require("json2csv");
 
@@ -385,7 +385,9 @@ enrollmentSchema.statics.processRosterExport = async function (
     // ProfileType label/description should come from the populated profileType doc when available,
     // else fall back to the backward-compatible top-level storeTypeLabel/storeTypeKey.
     const storeTypeLabel =
-      (profileType && profileType.label !== undefined && profileType.label !== null
+      (profileType &&
+      profileType.label !== undefined &&
+      profileType.label !== null
         ? profileType.label
         : profile?.storeTypeLabel || profile?.storeTypeKey) || "";
     const storeTypeDescription =
@@ -404,7 +406,9 @@ enrollmentSchema.statics.processRosterExport = async function (
         ? profile.variables
         : null;
     const storeTypeVariables =
-      profileType && profileType.variables && typeof profileType.variables === "object"
+      profileType &&
+      profileType.variables &&
+      typeof profileType.variables === "object"
         ? profileType.variables
         : null;
 
@@ -489,6 +493,530 @@ enrollmentSchema.methods.restore = function () {
   this.isRemoved = false;
   this.removedAt = null;
   return this;
+};
+
+enrollmentSchema.statics.getActiveEnrollmentCountForUser = async function (
+  userId,
+  organizationId,
+) {
+  return this.countDocuments({
+    userId,
+    organization: organizationId,
+    isRemoved: false,
+  });
+};
+
+/**
+ * Release all seat claims and remove enrollments when a user leaves an organization.
+ */
+enrollmentSchema.statics.releaseSeatsOnOrgRemoval = async function ({
+  organizationId,
+  userId,
+  updatedBy,
+}) {
+  const Member = require("../members/member.model");
+  const SeatClaim = require("../licensing/seatClaim.model");
+
+  const enrollments = await this.find({
+    userId,
+    organization: organizationId,
+    isRemoved: false,
+  });
+
+  let enrollmentsRemoved = 0;
+  let orgSeatsReleased = 0;
+  let studentSeatsHeld = 0;
+
+  for (const enrollment of enrollments) {
+    await this.removeEnrollment(enrollment.classroomId, userId, updatedBy);
+    enrollmentsRemoved += 1;
+
+    const seatRelease = await SeatClaim.releaseSeatOnRemoval({
+      classroomId: enrollment.classroomId,
+      userId,
+      organizationId,
+      updatedBy,
+    });
+
+    if (seatRelease.action === "released_to_org") {
+      orgSeatsReleased += 1;
+    } else if (seatRelease.action === "held") {
+      studentSeatsHeld += 1;
+    }
+  }
+
+  const activeClaims = await SeatClaim.find({
+    organization: organizationId,
+    userId,
+    status: "active",
+  });
+
+  for (const claim of activeClaims) {
+    const seatRelease = await SeatClaim.releaseSeatOnRemoval({
+      classroomId: claim.classroomId,
+      userId,
+      organizationId,
+      updatedBy,
+    });
+
+    if (seatRelease.action === "released_to_org") {
+      orgSeatsReleased += 1;
+    } else if (seatRelease.action === "held") {
+      studentSeatsHeld += 1;
+    }
+  }
+
+  const member = await Member.findById(userId);
+  if (member?.activeClassroom?.classroomId) {
+    await member.clearActiveClassroomIfMatches(member.activeClassroom.classroomId);
+  }
+
+  const heldCount = await SeatClaim.countDocuments({
+    organization: organizationId,
+    userId,
+    status: "held",
+    source: { $in: SeatClaim.STUDENT_PAID_SOURCES },
+  });
+
+  return {
+    enrollmentsRemoved,
+    orgSeatsReleased,
+    studentSeatsHeld: Math.max(studentSeatsHeld, heldCount),
+  };
+};
+
+/**
+ * Grant an org seat to a student and enroll them in a classroom.
+ */
+enrollmentSchema.statics.grantOrgSeatAndEnroll = async function ({
+  classroom,
+  organization,
+  member,
+  source = "manual_comp",
+  reason = "",
+  grantedBy,
+}) {
+  const SeatClaim = require("../licensing/seatClaim.model");
+  const SeatPool = require("../licensing/seatPool.model");
+  const { makeLicensingError } = require("../licensing/licensing.errors");
+
+  const GRANT_SOURCES = ["manual_comp", "teacher_assigned"];
+  const grantSource = GRANT_SOURCES.includes(source) ? source : "manual_comp";
+
+  const existingEnrollment = await this.findByClassAndUser(
+    classroom._id,
+    member._id,
+  );
+  if (existingEnrollment) {
+    throw makeLicensingError(
+      "Student is already enrolled in this classroom.",
+      409,
+      "ALREADY_ENROLLED",
+    );
+  }
+
+  const existingClaim = await SeatClaim.findActiveClaim(
+    classroom._id,
+    member._id,
+  );
+  if (existingClaim) {
+    const enrollment = await this.enrollUser(
+      classroom._id,
+      member._id,
+      "member",
+      organization._id,
+      grantedBy,
+    );
+    return { claim: existingClaim, enrollment, decision: "already_claimed" };
+  }
+
+  const prepaidPool = await SeatPool.claimFloatingPrepaidSeatAtomically({
+    organizationId: organization._id,
+    createdBy: grantedBy,
+  });
+
+  if (!prepaidPool) {
+    throw makeLicensingError(
+      "No organization seats available to grant.",
+      409,
+      "NO_SEATS_AVAILABLE",
+      { organizationId: organization._id },
+    );
+  }
+
+  const { claim } = await SeatClaim.createClaim({
+    classroom,
+    member,
+    source: grantSource,
+    seatPool: prepaidPool,
+    createdBy: grantedBy,
+    metadata: {
+      reason: reason || undefined,
+      grantedBy,
+      grantedAt: new Date().toISOString(),
+    },
+  });
+
+  const enrollment = await this.enrollUser(
+    classroom._id,
+    member._id,
+    "member",
+    organization._id,
+    grantedBy,
+  );
+
+  return { claim, enrollment, pool: prepaidPool, decision: grantSource };
+};
+
+/**
+ * Ensures the final state is valid (auth/org/classroom/membership/enrollment) and returns it.
+ */
+enrollmentSchema.statics.ensureJoin = async function ({
+  orgId,
+  classroomId,
+  clerkUserId,
+  member,
+  studentEmail,
+  studentId,
+  joinSource = "invite_link",
+}) {
+  const Organization = require("../organizations/organization.model");
+  const Classroom = require("../classroom/classroom.model");
+  const Member = require("../members/member.model");
+  const SeatClaim = require("../licensing/seatClaim.model");
+
+  const [organization, classroom] = await Promise.all([
+    Organization.ensureByClerkId(orgId),
+    Classroom.findById(classroomId),
+  ]);
+
+  if (!classroom) {
+    const err = new Error("Classroom not found");
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (!classroom.isActive) {
+    const err = new Error("Classroom is not active");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (classroom.organization.toString() !== organization._id.toString()) {
+    const err = new Error(
+      "Invalid join request: classroom does not belong to organization",
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const existingClerkMembership = await Member.getExistingClerkOrgMembership(
+    orgId,
+    clerkUserId,
+  );
+
+  const isOrgAdmin = existingClerkMembership?.role === "org:admin";
+  const isOwner =
+    classroom.ownership?.toString?.() &&
+    member?._id?.toString?.() &&
+    classroom.ownership.toString() === member._id.toString();
+  const role = isOrgAdmin || isOwner ? "admin" : "member";
+
+  if (role === "member") {
+    await SeatClaim.claimSeatOrRequireCheckout({
+      classroom,
+      organization,
+      member,
+      clerkUserId,
+      studentEmail,
+      studentId,
+      joinSource,
+    });
+  }
+
+  const clerkMembership = await Member.getOrCreateClerkOrgMembership(
+    orgId,
+    clerkUserId,
+  );
+  await Member.syncOrgMembership(member, organization, clerkMembership);
+
+  let enrollment = await this.findOne({
+    classroomId: classroom._id,
+    userId: member._id,
+  });
+
+  if (enrollment && !enrollment.isRemoved) {
+    return { organization, classroom, enrollment };
+  }
+
+  if (enrollment && enrollment.isRemoved) {
+    enrollment.restore();
+    enrollment.role = role;
+    enrollment.organization = organization._id;
+    enrollment.updatedBy = clerkUserId;
+    await enrollment.save();
+    return { organization, classroom, enrollment };
+  }
+
+  enrollment = new this({
+    classroomId: classroom._id,
+    userId: member._id,
+    role,
+    joinedAt: new Date(),
+    organization: organization._id,
+    createdBy: clerkUserId,
+    updatedBy: clerkUserId,
+  });
+
+  await enrollment.save();
+  return { organization, classroom, enrollment };
+};
+
+/**
+ * Remove a user from a classroom and release their seat
+ * @param {Object} options
+ * @param {string} options.classroomId
+ * @param {string} options.userId
+ * @param {string} options.organizationId
+ * @param {string} options.updatedBy
+ * @param {boolean} [options.allowAdminEnrollment=false]
+ * @returns {Promise<Object>} Removed enrollment and seat release result
+ */
+enrollmentSchema.statics.leaveClassroom = async function ({
+  classroomId,
+  userId,
+  organizationId,
+  updatedBy,
+  allowAdminEnrollment = false,
+}) {
+  const Member = require("../members/member.model");
+  const SeatClaim = require("../licensing/seatClaim.model");
+  const { makeLeaveError } = require("./leave.errors");
+
+  const enrollment = await this.findByClassAndUser(classroomId, userId);
+  if (!enrollment) {
+    throw makeLeaveError("Enrollment not found.", 404, "NOT_ENROLLED");
+  }
+
+  if (!allowAdminEnrollment && enrollment.role === "admin") {
+    throw makeLeaveError(
+      "Classroom admins cannot leave via this action.",
+      403,
+      "ADMIN_CANNOT_LEAVE",
+    );
+  }
+
+  const member = await Member.findById(userId);
+
+  const removedEnrollment = await this.removeEnrollment(
+    classroomId,
+    userId,
+    updatedBy,
+  );
+
+  const seatRelease = await SeatClaim.releaseSeatOnRemoval({
+    classroomId,
+    userId,
+    organizationId,
+    updatedBy,
+  });
+
+  if (member) {
+    await member.clearActiveClassroomIfMatches(classroomId);
+  }
+
+  return {
+    enrollment: removedEnrollment,
+    seatRelease,
+  };
+};
+
+/**
+ * Move a student from one classroom to another within the same organization.
+ * The student's active org seat claim moves with them (usedSeats unchanged).
+ * @param {Object} options
+ * @param {string} options.organizationId
+ * @param {string} options.fromClassroomId
+ * @param {string} options.toClassroomId
+ * @param {string} options.userId
+ * @param {string} options.performedByClerkUserId
+ * @returns {Promise<Object>} Transfer result
+ */
+enrollmentSchema.statics.transferStudentBetweenClassrooms = async function ({
+  organizationId,
+  fromClassroomId,
+  toClassroomId,
+  userId,
+  performedByClerkUserId,
+}) {
+  const Classroom = require("../classroom/classroom.model");
+  const Member = require("../members/member.model");
+  const SeatClaim = require("../licensing/seatClaim.model");
+  const OrgSeatReservation = require("../licensing/orgSeatReservation.model");
+  const RosterSeat = require("../licensing/rosterSeat.model");
+  const { makeTransferError } = require("./transfer.errors");
+
+  if (fromClassroomId.toString() === toClassroomId.toString()) {
+    throw makeTransferError(
+      "Source and target classrooms must be different.",
+      400,
+      "SAME_CLASSROOM",
+    );
+  }
+
+  const [fromClassroom, toClassroom, member] = await Promise.all([
+    Classroom.findOne({ _id: fromClassroomId, organization: organizationId }),
+    Classroom.findOne({ _id: toClassroomId, organization: organizationId }),
+    Member.findById(userId),
+  ]);
+
+  if (!fromClassroom) {
+    throw makeTransferError(
+      "Source classroom not found.",
+      404,
+      "SOURCE_NOT_FOUND",
+    );
+  }
+  if (!toClassroom) {
+    throw makeTransferError(
+      "Target classroom not found.",
+      404,
+      "TARGET_NOT_FOUND",
+    );
+  }
+  if (!toClassroom.isActive) {
+    throw makeTransferError(
+      "Target classroom is not active.",
+      400,
+      "TARGET_INACTIVE",
+    );
+  }
+  if (!member) {
+    throw makeTransferError("Student not found.", 404, "STUDENT_NOT_FOUND");
+  }
+
+  const sourceEnrollment = await this.findOne({
+    classroomId: fromClassroomId,
+    userId: member._id,
+    isRemoved: false,
+  });
+  if (!sourceEnrollment) {
+    throw makeTransferError(
+      "Student is not enrolled in the source classroom.",
+      404,
+      "NOT_ENROLLED_IN_SOURCE",
+    );
+  }
+
+  const existingTargetEnrollment = await this.findOne({
+    classroomId: toClassroomId,
+    userId: member._id,
+    isRemoved: false,
+  });
+  if (existingTargetEnrollment) {
+    throw makeTransferError(
+      "Student is already enrolled in the target classroom.",
+      409,
+      "ALREADY_ENROLLED_IN_TARGET",
+    );
+  }
+
+  const seatClaim = await SeatClaim.findActiveClaim(
+    fromClassroomId,
+    member._id,
+  );
+
+  sourceEnrollment.softRemove();
+  sourceEnrollment.updatedBy = performedByClerkUserId;
+  await sourceEnrollment.save();
+
+  let targetEnrollment = await this.findOne({
+    classroomId: toClassroomId,
+    userId: member._id,
+  });
+
+  if (targetEnrollment?.isRemoved) {
+    targetEnrollment.restore();
+    targetEnrollment.role = "member";
+    targetEnrollment.organization = organizationId;
+    targetEnrollment.updatedBy = performedByClerkUserId;
+    await targetEnrollment.save();
+  } else if (!targetEnrollment) {
+    targetEnrollment = await this.enrollUser(
+      toClassroomId,
+      member._id,
+      "member",
+      organizationId,
+      performedByClerkUserId,
+    );
+  }
+
+  let transferredSeat = null;
+  if (seatClaim) {
+    await RosterSeat.releaseForClaim(seatClaim, performedByClerkUserId);
+
+    seatClaim.classroomId = toClassroom._id;
+    seatClaim.rosterSeatId = undefined;
+    seatClaim.updatedBy = performedByClerkUserId;
+    seatClaim.metadata = {
+      ...(seatClaim.metadata || {}),
+      transferredFrom: fromClassroomId.toString(),
+      transferredAt: new Date().toISOString(),
+      transferredBy: performedByClerkUserId,
+    };
+
+    await RosterSeat.attachForClaim({
+      claim: seatClaim,
+      member,
+      classroomId: toClassroom._id,
+      updatedBy: performedByClerkUserId,
+    });
+
+    await seatClaim.save();
+
+    if (seatClaim.orgSeatReservationId) {
+      await OrgSeatReservation.findByIdAndUpdate(
+        seatClaim.orgSeatReservationId,
+        {
+          $set: {
+            claimedClassroomId: toClassroom._id,
+            updatedBy: performedByClerkUserId,
+          },
+        },
+      );
+    } else {
+      await OrgSeatReservation.findOneAndUpdate(
+        {
+          organization: organizationId,
+          claimedBy: member._id,
+          status: "claimed",
+          claimedClassroomId: fromClassroomId,
+        },
+        {
+          $set: {
+            claimedClassroomId: toClassroom._id,
+            updatedBy: performedByClerkUserId,
+          },
+        },
+      );
+    }
+
+    transferredSeat = seatClaim;
+  }
+
+  await member.updateActiveClassroomForTransfer({
+    fromClassroomId,
+    toClassroom,
+    enrollmentRole: targetEnrollment.role,
+  });
+
+  return {
+    fromClassroomId,
+    toClassroomId,
+    userId: member._id,
+    enrollment: targetEnrollment,
+    seatClaim: transferredSeat,
+  };
 };
 
 const Enrollment = mongoose.model("Enrollment", enrollmentSchema);

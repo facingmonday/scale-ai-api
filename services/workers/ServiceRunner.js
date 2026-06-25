@@ -119,8 +119,8 @@ class ServiceRunner {
 
     // Execute worker based on type
     if (workerType === "challenge-lifecycle-check") {
-      const { runScenarioLifecycleCheck } = require("../challenge/challengeAutomation.service");
-      return runScenarioLifecycleCheck(options);
+      const Challenge = require("../challenge/challenge.model");
+      return Challenge.runScenarioLifecycleCheck(options);
     }
 
 

@@ -1969,6 +1969,179 @@ memberSchema.statics.clearActiveClassroomForAll = async function (classroomId) {
   return stats;
 };
 
+/**
+ * Clear active classroom for this member when it matches the given classroom
+ * Also updates Clerk publicMetadata to keep it in sync
+ * @param {string} classroomId - Classroom ID to clear
+ * @returns {Promise<void>}
+ */
+memberSchema.methods.clearActiveClassroomIfMatches = async function (classroomId) {
+  const activeId = this.activeClassroom?.classroomId?.toString?.();
+  if (!activeId || activeId !== classroomId.toString()) {
+    return;
+  }
+
+  this.activeClassroom = undefined;
+  this.publicMetadata = {
+    ...(this.publicMetadata || {}),
+    activeClassroom: undefined,
+  };
+  await this.save();
+
+  if (this.clerkUserId) {
+    try {
+      await clerkClient.users.updateUserMetadata(this.clerkUserId, {
+        publicMetadata: this.publicMetadata,
+      });
+    } catch (error) {
+      console.error(
+        "Failed to clear active classroom from Clerk metadata:",
+        error.message,
+      );
+    }
+  }
+};
+
+/**
+ * Update active classroom for this member when transferring between classrooms
+ * @param {Object} options
+ * @param {string} options.fromClassroomId - Source classroom ID
+ * @param {Object} options.toClassroom - Target classroom document
+ * @param {string} options.enrollmentRole - Role in target classroom
+ * @returns {Promise<void>}
+ */
+memberSchema.methods.updateActiveClassroomForTransfer = async function ({
+  fromClassroomId,
+  toClassroom,
+  enrollmentRole,
+}) {
+  const activeId = this.activeClassroom?.classroomId?.toString?.();
+  if (!activeId || activeId !== fromClassroomId.toString()) {
+    return;
+  }
+
+  const activeClassroomData = {
+    classroomId: toClassroom._id.toString(),
+    classroomName: toClassroom.name,
+    role: enrollmentRole,
+    setAt: new Date().toISOString(),
+  };
+
+  this.activeClassroom = {
+    classroomId: toClassroom._id,
+    role: enrollmentRole,
+    setAt: new Date(),
+  };
+  this.publicMetadata = {
+    ...(this.publicMetadata || {}),
+    activeClassroom: activeClassroomData,
+  };
+  await this.save();
+
+  if (this.clerkUserId) {
+    try {
+      await clerkClient.users.updateUserMetadata(this.clerkUserId, {
+        publicMetadata: this.publicMetadata,
+      });
+    } catch (error) {
+      console.error(
+        "Failed to sync transferred student active classroom to Clerk:",
+        error.message
+      );
+    }
+  }
+};
+
+memberSchema.statics.getExistingClerkOrgMembership = async function (
+  clerkOrganizationId,
+  clerkUserId,
+) {
+  const memberships =
+    await clerkClient.organizations.getOrganizationMembershipList({
+      organizationId: clerkOrganizationId,
+      userId: clerkUserId,
+    });
+
+  return memberships?.data?.find(
+    (m) => m.publicUserData?.userId === clerkUserId,
+  );
+};
+
+memberSchema.statics.getOrCreateClerkOrgMembership = async function (
+  clerkOrganizationId,
+  clerkUserId,
+) {
+  const memberships =
+    await clerkClient.organizations.getOrganizationMembershipList({
+      organizationId: clerkOrganizationId,
+      userId: clerkUserId,
+    });
+
+  const existing = memberships?.data?.find(
+    (m) => m.publicUserData?.userId === clerkUserId,
+  );
+  if (existing) return existing;
+
+  try {
+    return await clerkClient.organizations.createOrganizationMembership({
+      organizationId: clerkOrganizationId,
+      userId: clerkUserId,
+      role: "org:member",
+    });
+  } catch (clerkError) {
+    const isAlreadyMember =
+      (clerkError.status === 422 &&
+        clerkError.errors?.[0]?.code === "form_membership_exists") ||
+      (clerkError.status === 400 &&
+        clerkError.errors?.[0]?.code === "already_a_member_in_organization");
+
+    if (!isAlreadyMember) throw clerkError;
+
+    const membershipsRetry =
+      await clerkClient.organizations.getOrganizationMembershipList({
+        organizationId: clerkOrganizationId,
+        userId: clerkUserId,
+      });
+
+    const existingRetry = membershipsRetry?.data?.find(
+      (m) => m.publicUserData?.userId === clerkUserId,
+    );
+
+    if (!existingRetry) {
+      throw new Error(
+        "Could not verify organization membership after Clerk reported membership exists",
+      );
+    }
+
+    return existingRetry;
+  }
+};
+
+memberSchema.statics.syncOrgMembership = async function (
+  member,
+  organization,
+  clerkMembership,
+) {
+  if (!member || !organization || !clerkMembership) return;
+
+  const membershipData = {
+    id: clerkMembership.id,
+    role: clerkMembership.role,
+    publicMetadata: clerkMembership.publicMetadata || {},
+    createdAt: new Date(clerkMembership.createdAt),
+    updatedAt: new Date(clerkMembership.updatedAt),
+  };
+
+  const existing = member.getOrganizationMembership(organization);
+  if (existing) {
+    member.updateOrganizationMembership(organization, membershipData);
+  } else {
+    member.addOrganizationMembership(organization, membershipData);
+  }
+
+  await member.save();
+};
+
 const Member = mongoose.model("Member", memberSchema);
 
 module.exports = Member;

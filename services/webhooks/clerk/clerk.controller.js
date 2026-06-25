@@ -491,8 +491,8 @@ const organizationMembershipDeleted = async (membershipData) => {
     const organization = await Organization.findByClerkId(clerkOrganizationId);
 
     if (member && organization) {
-      const { releaseSeatsOnOrgRemoval } = require("../../licensing/seatLifecycle.service");
-      await releaseSeatsOnOrgRemoval({
+      const Enrollment = require("../../enrollment/enrollment.model");
+      await Enrollment.releaseSeatsOnOrgRemoval({
         organizationId: organization._id,
         userId: member._id,
         updatedBy: "clerk_webhook",

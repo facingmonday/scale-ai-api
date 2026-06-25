@@ -1365,6 +1365,284 @@ scenarioSchema.statics.processScenarioExport = async function (
   };
 };
 
+const AUTOMATION_SYSTEM_USER = "system";
+
+/**
+ * Mark this challenge as blocked from automated lifecycle progression
+ * @param {string} message - Reason the challenge was blocked
+ * @returns {Promise<Object>} Updated challenge
+ */
+scenarioSchema.methods.markAutomationBlocked = async function (message) {
+  this.automationStatus = "BLOCKED";
+  this.automationError = message;
+  this.automationLastCheckedAt = new Date();
+  await this.save();
+  return this;
+};
+
+/**
+ * Publish all due scheduled challenges in FULL automation mode
+ * @param {Date} now - Reference time for due-date comparison
+ * @returns {Promise<Array>} Per-challenge result entries
+ */
+scenarioSchema.statics.publishDueScenarios = async function (now) {
+  const dueScenarios = await this.find({
+    automationMode: "FULL",
+    isPublished: false,
+    isClosed: false,
+    publishAt: { $ne: null, $lte: now },
+  }).sort({ publishAt: 1, week: 1 });
+
+  const results = [];
+
+  for (const challenge of dueScenarios) {
+    try {
+      const activeScenario = await this.getActiveScenario(challenge.classroomId);
+      if (
+        activeScenario &&
+        activeScenario._id.toString() !== challenge._id.toString()
+      ) {
+        await challenge.markAutomationBlocked(
+          `Another challenge is already active: ${activeScenario.title}`
+        );
+        results.push({
+          challengeId: challenge._id,
+          action: "publish",
+          status: "blocked",
+        });
+        continue;
+      }
+
+      await challenge.publish(AUTOMATION_SYSTEM_USER);
+      results.push({
+        challengeId: challenge._id,
+        action: "publish",
+        status: "published",
+      });
+    } catch (error) {
+      challenge.automationStatus = "FAILED";
+      challenge.automationError = error.message;
+      challenge.automationLastCheckedAt = new Date();
+      await challenge.save();
+      results.push({
+        challengeId: challenge._id,
+        action: "publish",
+        status: "failed",
+        error: error.message,
+      });
+    }
+  }
+
+  return results;
+};
+
+/**
+ * Lock submissions for challenges whose closeSubmissionsAt has passed
+ * @param {Date} now - Reference time for due-date comparison
+ * @returns {Promise<Array>} Per-challenge result entries
+ */
+scenarioSchema.statics.closeDueSubmissions = async function (now) {
+  const dueLocks = await this.find({
+    automationMode: "FULL",
+    isPublished: true,
+    isClosed: false,
+    isLockedForStudents: false,
+    closeSubmissionsAt: { $ne: null, $lte: now },
+  }).sort({ closeSubmissionsAt: 1, week: 1 });
+
+  const results = [];
+
+  for (const challenge of dueLocks) {
+    try {
+      challenge.isLockedForStudents = true;
+      challenge.automationStatus = "submissionsClosed";
+      challenge.automationLastCheckedAt = now;
+      await challenge.save();
+      results.push({
+        challengeId: challenge._id,
+        action: "lock",
+        status: "locked",
+      });
+    } catch (error) {
+      challenge.automationStatus = "FAILED";
+      challenge.automationError = error.message;
+      challenge.automationLastCheckedAt = new Date();
+      await challenge.save();
+      results.push({
+        challengeId: challenge._id,
+        action: "lock",
+        status: "failed",
+        error: error.message,
+      });
+    }
+  }
+
+  return results;
+};
+
+/**
+ * Queue outcome processing for challenges whose processAt has passed
+ * @param {Date} now - Reference time for due-date comparison
+ * @returns {Promise<Array>} Per-challenge result entries
+ */
+scenarioSchema.statics.processDueOutcomes = async function (now) {
+  const Outcome = require("../outcome/outcome.model");
+  const { enqueueOutcomeProcessing } = require("../../lib/queues/outcome-processing-worker");
+
+  const dueScenarios = await this.find({
+    automationMode: "FULL",
+    isPublished: true,
+    isClosed: false,
+    processAt: { $ne: null, $lte: now },
+    automationStatus: { $nin: ["queuedForProcessing", "processing", "processed", "feedbackReleased", "FAILED"] },
+  }).sort({ processAt: 1, week: 1 });
+
+  const results = [];
+
+  for (const challenge of dueScenarios) {
+    try {
+      const outcome = await Outcome.getOutcomeByScenario(challenge._id);
+      if (!outcome) {
+        await challenge.markAutomationBlocked(
+          "A hidden outcome must be saved before automated processing can run"
+        );
+        results.push({
+          challengeId: challenge._id,
+          action: "process",
+          status: "blocked",
+        });
+        continue;
+      }
+
+      if (!challenge.isLockedForStudents) {
+        challenge.isLockedForStudents = true;
+      }
+
+      if (!outcome.autoGenerateSubmissionsOnOutcome) {
+        outcome.autoGenerateSubmissionsOnOutcome =
+          challenge.missingSubmissionPolicy === "FORWARD_PREVIOUS"
+            ? "FORWARD_PREVIOUS"
+            : challenge.missingSubmissionPolicy === "USE_DEFAULTS"
+            ? "USE_DEFAULTS"
+            : "SKIP";
+      }
+      if (!outcome.punishAbsentStudents) {
+        outcome.punishAbsentStudents = challenge.punishAbsentStudents || "none";
+      }
+      outcome.updatedBy = AUTOMATION_SYSTEM_USER;
+      await outcome.save();
+
+      challenge.automationStatus = "queuedForProcessing";
+      challenge.automationError = null;
+      challenge.automationLastCheckedAt = now;
+      await challenge.save();
+
+      const queuedJob = await enqueueOutcomeProcessing({
+        challengeId: challenge._id,
+        organizationId: challenge.organization,
+        clerkUserId: AUTOMATION_SYSTEM_USER,
+      });
+
+      results.push({
+        challengeId: challenge._id,
+        action: "process",
+        status: "queued",
+        outcomeProcessingJobId: queuedJob?.id,
+      });
+    } catch (error) {
+      challenge.automationStatus = "FAILED";
+      challenge.automationError = error.message;
+      challenge.automationLastCheckedAt = new Date();
+      await challenge.save();
+      results.push({
+        challengeId: challenge._id,
+        action: "process",
+        status: "failed",
+        error: error.message,
+      });
+    }
+  }
+
+  return results;
+};
+
+/**
+ * Release delayed feedback for closed challenges whose feedbackReleaseAt has passed
+ * @param {Date} now - Reference time for due-date comparison
+ * @returns {Promise<Array>} Per-challenge result entries
+ */
+scenarioSchema.statics.releaseDelayedFeedback = async function (now) {
+  const dueReleases = await this.find({
+    automationMode: "FULL",
+    isPublished: true,
+    isClosed: true,
+    isFeedbackReleased: false,
+    feedbackReleaseMode: "DELAYED",
+    feedbackReleaseAt: { $ne: null, $lte: now },
+  }).sort({ feedbackReleaseAt: 1, week: 1 });
+
+  const results = [];
+
+  for (const challenge of dueReleases) {
+    try {
+      challenge.isFeedbackReleased = true;
+      challenge.automationStatus = "feedbackReleased";
+      challenge.automationLastCheckedAt = now;
+      await challenge.save();
+
+      const LedgerEntry = require("../ledger/ledger.model");
+      await LedgerEntry.sendResultsNotifications(challenge._id);
+
+      results.push({
+        challengeId: challenge._id,
+        action: "release",
+        status: "released",
+      });
+    } catch (error) {
+      challenge.automationStatus = "FAILED";
+      challenge.automationError = error.message;
+      challenge.automationLastCheckedAt = new Date();
+      await challenge.save();
+      results.push({
+        challengeId: challenge._id,
+        action: "release",
+        status: "failed",
+        error: error.message,
+      });
+    }
+  }
+
+  return results;
+};
+
+/**
+ * Run the full automated scenario lifecycle check (publish, lock, process, release)
+ * @param {Object} options
+ * @param {Date|string} [options.now] - Override reference time (defaults to now)
+ * @returns {Promise<Object>} Summary of lifecycle actions taken
+ */
+scenarioSchema.statics.runScenarioLifecycleCheck = async function (options = {}) {
+  const now = options.now ? new Date(options.now) : new Date();
+  const published = await this.publishDueScenarios(now);
+  const locked = await this.closeDueSubmissions(now);
+  const processed = await this.processDueOutcomes(now);
+  const released = await this.releaseDelayedFeedback(now);
+
+  return {
+    now,
+    published,
+    locked,
+    processed,
+    released,
+    publishedCount: published.filter((result) => result.status === "published").length,
+    lockedCount: locked.filter((result) => result.status === "locked").length,
+    queuedCount: processed.filter((result) => result.status === "queued").length,
+    releasedCount: released.filter((result) => result.status === "released").length,
+    blockedCount: [...published, ...processed].filter((result) => result.status === "blocked").length,
+    failedCount: [...published, ...locked, ...processed, ...released].filter((result) => result.status === "failed").length,
+  };
+};
+
 const Challenge = mongoose.model("Challenge", scenarioSchema);
 
 module.exports = Challenge;
