@@ -67,7 +67,7 @@ export interface ClassroomWithVirtuals extends Classroom {
 export interface AutomationTask extends BaseSchema {
   classroomId: string;
   name: string;
-  trigger: "AFTER_CHALLENGE_CREATED" | "AFTER_STUDENT_SUBMISSION" | "AFTER_CHALLENGE_CLOSED";
+  trigger: "AFTER_CHALLENGE_CREATED" | "AFTER_STUDENT_SUBMISSION" | "AFTER_CHALLENGE_CLOSED" | "AFTER_CHALLENGE_CLOSED_PER_STUDENT";
   promptTemplate: string;
   isActive: boolean;
   actionType: "GENERATE_SLIDES" | "GENERATE_REPORT" | "SEND_NOTIFICATION" | "CUSTOM_PROMPT";

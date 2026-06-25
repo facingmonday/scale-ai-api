@@ -114,12 +114,76 @@ class AfterChallengeClosedBuilder extends BasePromptContextBuilder {
   }
 }
 
+class AfterChallengeClosedPerStudentBuilder extends BasePromptContextBuilder {
+  async build() {
+    const context = await this.buildBaseContext();
+
+    const LedgerEntry = require("../../ledger/ledger.model");
+
+    // Fetch the decision document and load virtual variables via the plugin
+    const decisionDoc = await Decision.findById(this.run.decisionId);
+    if (!decisionDoc) {
+      throw new Error(`Decision not found: ${this.run.decisionId}`);
+    }
+    await Decision.populateVariablesForMany([decisionDoc]);
+    const decision = decisionDoc.toObject();
+
+    const profile = await ProfileModel.findOne({
+      classroomId: this.run.classroomId,
+      userId: this.run.userId,
+    }).lean();
+
+    const student = await Member.findById(this.run.userId)
+      .select("firstName lastName maskedEmail")
+      .lean();
+
+    context.student = {
+      name: student ? `${student.firstName} ${student.lastName}` : "Unknown Student",
+      shopName: profile?.shopName || "Unknown Shop",
+      profileType: profile?.profileTypeLabel || profile?.profileType?.label || "Unknown Type",
+    };
+
+    // Grab student's specific simulation metrics & ledger summary
+    const ledgerEntry = await LedgerEntry.findOne({
+      classroomId: this.run.classroomId,
+      challengeId: this.run.challengeId,
+      userId: this.run.userId,
+    }).lean();
+
+    if (ledgerEntry) {
+      const metrics = ledgerEntry.metrics;
+      context.studentResults = {
+        metrics: metrics instanceof Map ? Object.fromEntries(metrics) : metrics || {},
+        summary: ledgerEntry.summary || "",
+        randomEvent: ledgerEntry.randomEvent || "",
+      };
+    }
+
+    context.submissionVariables = decision.variables || {};
+
+    // Load class stats for benchmark/comparison context
+    const allSubmissions = await Decision.getSubmissionsByScenario(this.run.challengeId);
+    const metricDefinitions = await MetricDefinition.getActive(this.run.classroomId);
+    const submissionsWithStores = await Promise.all(
+      allSubmissions.map(async (dec) => {
+        const prof = await Profile.getStoreByUser(this.run.classroomId, dec.userId);
+        return { ...dec, profile: prof };
+      })
+    );
+    const storeTypeStats = await Challenge.getStoreTypeStats(submissionsWithStores, metricDefinitions);
+    context.classroomAverages = storeTypeStats;
+
+    return context;
+  }
+}
+
 class PromptContextBuilderFactory {
   static getBuilder(trigger, run) {
     const builders = {
       AFTER_CHALLENGE_CREATED: AfterChallengeCreatedBuilder,
       AFTER_STUDENT_SUBMISSION: AfterStudentSubmissionBuilder,
       AFTER_CHALLENGE_CLOSED: AfterChallengeClosedBuilder,
+      AFTER_CHALLENGE_CLOSED_PER_STUDENT: AfterChallengeClosedPerStudentBuilder,
     };
 
     const BuilderClass = builders[trigger];
@@ -136,5 +200,6 @@ module.exports = {
   AfterChallengeCreatedBuilder,
   AfterStudentSubmissionBuilder,
   AfterChallengeClosedBuilder,
+  AfterChallengeClosedPerStudentBuilder,
   PromptContextBuilderFactory,
 };

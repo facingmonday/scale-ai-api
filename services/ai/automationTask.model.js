@@ -14,7 +14,7 @@ const automationTaskSchema = new mongoose.Schema({
   },
   trigger: {
     type: String,
-    enum: ["AFTER_CHALLENGE_CREATED", "AFTER_STUDENT_SUBMISSION", "AFTER_CHALLENGE_CLOSED"],
+    enum: ["AFTER_CHALLENGE_CREATED", "AFTER_STUDENT_SUBMISSION", "AFTER_CHALLENGE_CLOSED", "AFTER_CHALLENGE_CLOSED_PER_STUDENT"],
     required: true,
     index: true,
   },
@@ -53,9 +53,16 @@ automationTaskSchema.statics.trigger = async function (triggerType, data) {
 
     console.log(`📡 Triggering tasks for classroom: ${classroomId}, challenge: ${challengeId}, event: ${triggerType}`);
 
+    // Find all active automation tasks for this classroom and trigger
+    // If triggerType is AFTER_CHALLENGE_CLOSED, we also find AFTER_CHALLENGE_CLOSED_PER_STUDENT tasks.
+    const triggerTypes = [triggerType];
+    if (triggerType === "AFTER_CHALLENGE_CLOSED") {
+      triggerTypes.push("AFTER_CHALLENGE_CLOSED_PER_STUDENT");
+    }
+
     const activeTasks = await this.find({
       classroomId,
-      trigger: triggerType,
+      trigger: { $in: triggerTypes },
       isActive: true,
     }).lean();
 
@@ -69,21 +76,48 @@ automationTaskSchema.statics.trigger = async function (triggerType, data) {
     const enqueuedRuns = [];
 
     for (const task of activeTasks) {
-      const run = new AutomationTaskRun({
-        automationTaskId: task._id,
-        classroomId,
-        challengeId,
-        decisionId: decisionId || null,
-        userId: userId || null,
-        status: "pending",
-        organization: organizationId || task.organization,
-        createdBy: clerkUserId || "system",
-        updatedBy: clerkUserId || "system",
-      });
+      if (task.trigger === "AFTER_CHALLENGE_CLOSED_PER_STUDENT") {
+        const Decision = require("../decision/decision.model");
+        const decisions = await Decision.find({ challengeId }).lean();
+        for (const dec of decisions) {
+          const run = new AutomationTaskRun({
+            automationTaskId: task._id,
+            classroomId,
+            challengeId,
+            decisionId: dec._id,
+            userId: dec.userId,
+            status: "pending",
+            organization: organizationId || task.organization,
+            createdBy: clerkUserId || "system",
+            updatedBy: clerkUserId || "system",
+          });
 
-      await run.save();
-      await enqueueAutomationTaskRun(run._id);
-      enqueuedRuns.push(run._id);
+          await run.save();
+
+          // Enqueue Bull queue job
+          await enqueueAutomationTaskRun(run._id);
+          enqueuedRuns.push(run._id);
+        }
+      } else {
+        // Create an AutomationTaskRun audit log in 'pending' status
+        const run = new AutomationTaskRun({
+          automationTaskId: task._id,
+          classroomId,
+          challengeId,
+          decisionId: decisionId || null,
+          userId: userId || null,
+          status: "pending",
+          organization: organizationId || task.organization,
+          createdBy: clerkUserId || "system",
+          updatedBy: clerkUserId || "system",
+        });
+
+        await run.save();
+
+        // Enqueue Bull queue job
+        await enqueueAutomationTaskRun(run._id);
+        enqueuedRuns.push(run._id);
+      }
     }
 
     return { success: true, count: enqueuedRuns.length, runIds: enqueuedRuns };

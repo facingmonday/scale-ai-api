@@ -137,20 +137,25 @@ automationTaskRunSchema.statics.executeTaskRun = async function (runId) {
         });
       }
 
+      const isStudentTask = !!run.userId;
       await ClassroomReport.findOneAndUpdate(
         {
           classroomId: run.classroomId,
           challengeId: run.challengeId,
           reportType: "CUSTOM_TASK_OUTPUT",
           createdBy: task._id.toString(),
+          userId: isStudentTask ? run.userId : null,
         },
         {
           $set: {
-            title: task.name,
-            name: `${slugify(task.name, { lower: true, strict: true })}.json`,
+            title: isStudentTask ? `${task.name} (${context.student?.name || "Student"})` : task.name,
+            name: isStudentTask
+              ? `${slugify(task.name, { lower: true, strict: true })}-${run.userId}.json`
+              : `${slugify(task.name, { lower: true, strict: true })}.json`,
             type: "report",
             tags: [tagDoc._id],
-            visibility: "everyone",
+            visibility: isStudentTask ? "student" : "everyone",
+            userId: isStudentTask ? run.userId : null,
             payload: agentResult,
             updatedBy: "system",
             updatedDate: new Date(),

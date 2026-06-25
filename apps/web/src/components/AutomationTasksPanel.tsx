@@ -16,6 +16,7 @@ const TRIGGER_LABELS: Record<string, string> = {
   AFTER_CHALLENGE_CREATED: "After Challenge Created",
   AFTER_STUDENT_SUBMISSION: "After Student Submission",
   AFTER_CHALLENGE_CLOSED: "After Challenge Closed",
+  AFTER_CHALLENGE_CLOSED_PER_STUDENT: "After Challenge Closed (Per Student)",
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -402,6 +403,7 @@ const AutomationTaskCard: React.FC<{
                 <option value="AFTER_CHALLENGE_CREATED">After Challenge Created</option>
                 <option value="AFTER_STUDENT_SUBMISSION">After Student Submission</option>
                 <option value="AFTER_CHALLENGE_CLOSED">After Challenge Closed</option>
+                <option value="AFTER_CHALLENGE_CLOSED_PER_STUDENT">After Challenge Closed (Per Student)</option>
               </select>
             </div>
             <div>
