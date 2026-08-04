@@ -235,6 +235,7 @@ exports.getStudentDashboard = async function (req, res) {
     const dashboard = await Classroom.getStudentDashboard(
       classroomId,
       organizationId,
+      req.user._id,
     );
 
     res.json({

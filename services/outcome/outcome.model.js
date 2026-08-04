@@ -79,6 +79,11 @@ const scenarioOutcomeSchema = new mongoose.Schema({
     enum: ["high", "medium", "low", "none"],
     default: null,
   },
+  approved: {
+    type: Boolean,
+    default: false,
+    index: true,
+  },
 }).add(baseSchema);
 
 // Indexes for performance
@@ -127,6 +132,11 @@ scenarioOutcomeSchema.statics.createOrUpdateOutcome = async function (
       ? outcomeData.punishAbsentStudents || "none"
       : "none";
 
+  const normalizedApproved =
+    outcomeData.approved !== undefined
+      ? !!outcomeData.approved
+      : undefined;
+
   if (outcome) {
     outcome.notes =
       outcomeData.notes !== undefined ? outcomeData.notes : outcome.notes;
@@ -143,6 +153,9 @@ scenarioOutcomeSchema.statics.createOrUpdateOutcome = async function (
     if (normalizedPunishAbsent !== undefined) {
       outcome.punishAbsentStudents = normalizedPunishAbsent;
     }
+    if (normalizedApproved !== undefined) {
+      outcome.approved = normalizedApproved;
+    }
     if (classroomId && !outcome.classroomId) {
       outcome.classroomId = classroomId;
     }
@@ -158,6 +171,7 @@ scenarioOutcomeSchema.statics.createOrUpdateOutcome = async function (
         normalizedChancePercent !== undefined ? normalizedChancePercent : 0,
       autoGenerateSubmissionsOnOutcome: normalizedAutoGenerate || null,
       punishAbsentStudents: normalizedPunishAbsent || null,
+      approved: normalizedApproved !== undefined ? normalizedApproved : false,
       organization: organizationId,
       createdBy: clerkUserId,
       updatedBy: clerkUserId,

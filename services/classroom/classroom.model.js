@@ -382,7 +382,8 @@ classroomSchema.statics.getDashboard = async function (
 
 classroomSchema.statics.getStudentDashboard = async function (
   classroomId,
-  organizationId
+  organizationId,
+  memberId
 ) {
   const classDoc = await this.findOne({
     _id: classroomId,
@@ -405,11 +406,13 @@ classroomSchema.statics.getStudentDashboard = async function (
     : null;
 
   // Get the subission for the student for the active challenge
-  const decision = await Decision.getSubmission(
-    classroomId,
-    activeScenario._id,
-    member._id
-  );
+  const decision = activeScenario
+    ? await Decision.getSubmission(
+        classroomId,
+        activeScenario._id,
+        memberId
+      )
+    : null;
 
   const submissionData = decision
     ? {

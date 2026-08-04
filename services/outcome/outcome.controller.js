@@ -60,6 +60,7 @@ exports.setScenarioOutcome = async function (req, res) {
         randomEventChancePercent,
         autoGenerateSubmissionsOnOutcome,
         punishAbsentStudents,
+        approved: true,
       },
       organizationId,
       clerkUserId,
@@ -144,6 +145,7 @@ exports.saveScenarioOutcomeDraft = async function (req, res) {
         randomEventChancePercent,
         autoGenerateSubmissionsOnOutcome,
         punishAbsentStudents,
+        approved: false,
       },
       organizationId,
       clerkUserId,
@@ -207,6 +209,10 @@ exports.approveScenarioOutcome = async function (req, res) {
         error: "Challenge outcome must be saved before approval",
       });
     }
+
+    outcome.approved = true;
+    outcome.updatedBy = clerkUserId;
+    await outcome.save();
 
     const queuedJob = await enqueueOutcomeProcessing({
       challengeId,
