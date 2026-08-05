@@ -127,7 +127,6 @@
     "connect-livereload": "^0.6.1",
     "esbuild": "^0.25.10",
     "kill-port": "^2.0.1",
-    "lightningcss-darwin-arm64": "^1.32.0",
     "livereload": "^0.10.3",
     "mongodb-memory-server": "^8.16.1",
     "nodemon": "^3.1.10",
