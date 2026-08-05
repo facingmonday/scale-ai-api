@@ -36,7 +36,11 @@
     "test:integration": "node --require ./test/helpers/env.js --test --test-concurrency=1 --test-force-exit 'services/**/*.integration.test.js'",
     "docs:generate-spec": "node scripts/generate-swagger-json.js",
     "docs:build": "npm run docs:generate-spec && vitepress build apps/docs",
-    "docs:preview": "vitepress preview apps/docs"
+    "docs:preview": "vitepress preview apps/docs",
+    "do:validate:dev": "node scripts/deploy-do-app.mjs dev",
+    "do:validate:prod": "node scripts/deploy-do-app.mjs prod",
+    "do:deploy:dev": "node scripts/deploy-do-app.mjs dev --apply",
+    "do:deploy:prod": "node scripts/deploy-do-app.mjs prod --apply"
   },
   "keywords": [],
   "author": "",

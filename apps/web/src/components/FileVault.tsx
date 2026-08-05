@@ -51,6 +51,7 @@ interface VaultFile {
   tags: Tag[];
   visibility: string;
   userId: string | null;
+  classroomId?: string | null;
   user: {
     _id: string;
     firstName: string;
@@ -120,7 +121,7 @@ const FileVault: React.FC<FileVaultProps> = ({ role }) => {
 
   // Drag and drop states
   const [isDragging, setIsDragging] = useState(false);
-  const [dragCounter, setDragCounter] = useState(0);
+  const [, setDragCounter] = useState(0);
 
   // Form states - Drag & Drop Upload
   const [showMultiUploadDialog, setShowMultiUploadDialog] = useState(false);

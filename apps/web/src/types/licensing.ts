@@ -1,5 +1,7 @@
 export type JoinPolicy = "invite_link" | "open" | "roster_only" | "closed";
 
+export type BillingMode = "student_paid" | "teacher_paid_roster";
+
 export interface SeatPool {
   _id: string;
   planKey: string;

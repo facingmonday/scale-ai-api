@@ -6,6 +6,6 @@ export interface ClassroomTemplate {
   version?: number;
   isActive?: boolean;
   sourceTemplateId?: string | null;
+  variablesCount?: number;
 }
-
 

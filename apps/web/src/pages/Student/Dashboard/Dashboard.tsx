@@ -20,7 +20,7 @@ import challengeService from "../../../services/challenge";
 import enrollmentService from "../../../services/enrollment";
 import classroomService from "../../../services/classroom";
 import licensingService from "../../../services/licensing";
-import ClassroomCard from "../../../components/ClassroomCard";
+import profileService from "../../../services/profile";
 import type { ClassroomWithVirtuals } from "../../../types/classroom";
 import {
   canSelfJoinFromClassList,
@@ -225,13 +225,19 @@ const Dashboard: React.FC = () => {
               challengeService.getCurrent(cid),
             ]);
             profilesMap[cid] = profileRes.data || null;
-            scenariosMap[cid] = (unwrap(scenarioRes) as {
+            const scenarioData = unwrap(scenarioRes) as {
               challenge?: ScenarioWithVariables;
               submissionStatus?: {
                 submitted: boolean;
                 submittedAt: string | null;
               };
-            } | null) || null;
+            } | null;
+            scenariosMap[cid] = scenarioData
+              ? {
+                  challenge: scenarioData.challenge ?? null,
+                  submissionStatus: scenarioData.submissionStatus ?? null,
+                }
+              : null;
           } catch (e) {
             console.error(`Failed to fetch stats for classroom ${cid}:`, e);
           }
