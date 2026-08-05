@@ -1,6 +1,13 @@
 #!/usr/bin/env node
 
-require("dotenv").config();
+const path = require("path");
+const fs = require("fs");
+const dotenvPath = path.resolve(__dirname, "../../.env");
+if (fs.existsSync(dotenvPath)) {
+  require("dotenv").config({ path: dotenvPath });
+} else {
+  require("dotenv").config();
+}
 
 const express = require("express");
 const mongoose = require("mongoose");

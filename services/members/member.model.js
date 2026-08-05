@@ -20,12 +20,12 @@ const organizationMembershipSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    // Store publicMetadata as Clerk does - no custom field mapping
+    // Profile publicMetadata as Clerk does - no custom field mapping
     publicMetadata: {
       type: mongoose.Schema.Types.Mixed,
       default: {},
     },
-    // Store minimal organization reference (full org data available via ref)
+    // Profile minimal organization reference (full org data available via ref)
     organization: {
       id: String, // Clerk organization ID
       name: String,
@@ -47,6 +47,61 @@ const organizationMembershipSchema = new mongoose.Schema(
   }
 );
 
+/**
+ * @openapi
+ * components:
+ *   schemas:
+ *     Member:
+ *       type: object
+ *       required:
+ *         - clerkUserId
+ *         - createdAt
+ *       properties:
+ *         _id:
+ *           type: string
+ *         clerkUserId:
+ *           type: string
+ *           description: Unique user ID from Clerk.
+ *         firstName:
+ *           type: string
+ *         lastName:
+ *           type: string
+ *         username:
+ *           type: string
+ *         imageUrl:
+ *           type: string
+ *         hasImage:
+ *           type: boolean
+ *         emailAddresses:
+ *           type: array
+ *           items:
+ *             type: object
+ *         phoneNumbers:
+ *           type: array
+ *           items:
+ *             type: object
+ *         organizationMemberships:
+ *           type: array
+ *           items:
+ *             type: object
+ *         activeClassroom:
+ *           type: object
+ *           properties:
+ *             classroomId:
+ *               type: string
+ *             role:
+ *               type: string
+ *               enum: [admin, member]
+ *             setAt:
+ *               type: string
+ *               format: date-time
+ *         createdAt:
+ *           type: string
+ *           format: date-time
+ *         updatedAt:
+ *           type: string
+ *           format: date-time
+ */
 // Schema that mirrors Clerk's User object structure
 const memberSchema = new mongoose.Schema(
   {
@@ -71,7 +126,7 @@ const memberSchema = new mongoose.Schema(
     primaryPhoneNumberId: String,
     primaryWeb3WalletId: String,
 
-    // Contact arrays (simplified - store key info, full objects available via Clerk API)
+    // Contact arrays (simplified - profile key info, full objects available via Clerk API)
     emailAddresses: [
       {
         id: String,
@@ -200,7 +255,7 @@ const memberSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
-    // Active classroom - stores user's currently selected classroom with their role
+    // Active classroom - profiles user's currently selected classroom with their role
     activeClassroom: {
       classroomId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -605,7 +660,7 @@ memberSchema.statics.findOrCreateForCheckout = async function (
       }
     }
 
-    // Step 2: Handle member found scenarios
+    // Step 2: Handle member found challenges
     if (member && orgMembership) {
       // Member exists and is in organization - return formatted member
       return await this.formatForCheckout(member, orgMembership);
@@ -865,7 +920,7 @@ memberSchema.statics.addMemberToOrganizationInClerk = async function (
       organizationId: clerkOrganizationId,
       userId: clerkUserId,
       role: "org:member",
-      publicMetadata: publicMetadata, // Store exactly as provided
+      publicMetadata: publicMetadata, // Profile exactly as provided
     };
 
     await clerkClient.organizations.createOrganizationMembership(
@@ -993,7 +1048,7 @@ memberSchema.statics.formatForCheckout = async function (
 
 /**
  * Populate masked email and phone fields from Clerk data
- * This method fetches the full user profile from Clerk once and stores only masked versions
+ * This method fetches the full user profile from Clerk once and profiles only masked versions
  * @param {String} clerkUserId - Clerk user ID
  * @returns {Promise<Object>} - Updated member with masked fields populated
  */
@@ -1778,7 +1833,7 @@ memberSchema.statics.addUserToOrganization = async function (
   const membershipData = {
     organizationId: clerkOrganizationId,
     userId: clerkUserId,
-    publicMetadata: publicMetadata, // Store exactly as provided
+    publicMetadata: publicMetadata, // Profile exactly as provided
     role: "org:member",
   };
 
@@ -1912,6 +1967,179 @@ memberSchema.statics.clearActiveClassroomForAll = async function (classroomId) {
   }
 
   return stats;
+};
+
+/**
+ * Clear active classroom for this member when it matches the given classroom
+ * Also updates Clerk publicMetadata to keep it in sync
+ * @param {string} classroomId - Classroom ID to clear
+ * @returns {Promise<void>}
+ */
+memberSchema.methods.clearActiveClassroomIfMatches = async function (classroomId) {
+  const activeId = this.activeClassroom?.classroomId?.toString?.();
+  if (!activeId || activeId !== classroomId.toString()) {
+    return;
+  }
+
+  this.activeClassroom = undefined;
+  this.publicMetadata = {
+    ...(this.publicMetadata || {}),
+    activeClassroom: undefined,
+  };
+  await this.save();
+
+  if (this.clerkUserId) {
+    try {
+      await clerkClient.users.updateUserMetadata(this.clerkUserId, {
+        publicMetadata: this.publicMetadata,
+      });
+    } catch (error) {
+      console.error(
+        "Failed to clear active classroom from Clerk metadata:",
+        error.message,
+      );
+    }
+  }
+};
+
+/**
+ * Update active classroom for this member when transferring between classrooms
+ * @param {Object} options
+ * @param {string} options.fromClassroomId - Source classroom ID
+ * @param {Object} options.toClassroom - Target classroom document
+ * @param {string} options.enrollmentRole - Role in target classroom
+ * @returns {Promise<void>}
+ */
+memberSchema.methods.updateActiveClassroomForTransfer = async function ({
+  fromClassroomId,
+  toClassroom,
+  enrollmentRole,
+}) {
+  const activeId = this.activeClassroom?.classroomId?.toString?.();
+  if (!activeId || activeId !== fromClassroomId.toString()) {
+    return;
+  }
+
+  const activeClassroomData = {
+    classroomId: toClassroom._id.toString(),
+    classroomName: toClassroom.name,
+    role: enrollmentRole,
+    setAt: new Date().toISOString(),
+  };
+
+  this.activeClassroom = {
+    classroomId: toClassroom._id,
+    role: enrollmentRole,
+    setAt: new Date(),
+  };
+  this.publicMetadata = {
+    ...(this.publicMetadata || {}),
+    activeClassroom: activeClassroomData,
+  };
+  await this.save();
+
+  if (this.clerkUserId) {
+    try {
+      await clerkClient.users.updateUserMetadata(this.clerkUserId, {
+        publicMetadata: this.publicMetadata,
+      });
+    } catch (error) {
+      console.error(
+        "Failed to sync transferred student active classroom to Clerk:",
+        error.message
+      );
+    }
+  }
+};
+
+memberSchema.statics.getExistingClerkOrgMembership = async function (
+  clerkOrganizationId,
+  clerkUserId,
+) {
+  const memberships =
+    await clerkClient.organizations.getOrganizationMembershipList({
+      organizationId: clerkOrganizationId,
+      userId: clerkUserId,
+    });
+
+  return memberships?.data?.find(
+    (m) => m.publicUserData?.userId === clerkUserId,
+  );
+};
+
+memberSchema.statics.getOrCreateClerkOrgMembership = async function (
+  clerkOrganizationId,
+  clerkUserId,
+) {
+  const memberships =
+    await clerkClient.organizations.getOrganizationMembershipList({
+      organizationId: clerkOrganizationId,
+      userId: clerkUserId,
+    });
+
+  const existing = memberships?.data?.find(
+    (m) => m.publicUserData?.userId === clerkUserId,
+  );
+  if (existing) return existing;
+
+  try {
+    return await clerkClient.organizations.createOrganizationMembership({
+      organizationId: clerkOrganizationId,
+      userId: clerkUserId,
+      role: "org:member",
+    });
+  } catch (clerkError) {
+    const isAlreadyMember =
+      (clerkError.status === 422 &&
+        clerkError.errors?.[0]?.code === "form_membership_exists") ||
+      (clerkError.status === 400 &&
+        clerkError.errors?.[0]?.code === "already_a_member_in_organization");
+
+    if (!isAlreadyMember) throw clerkError;
+
+    const membershipsRetry =
+      await clerkClient.organizations.getOrganizationMembershipList({
+        organizationId: clerkOrganizationId,
+        userId: clerkUserId,
+      });
+
+    const existingRetry = membershipsRetry?.data?.find(
+      (m) => m.publicUserData?.userId === clerkUserId,
+    );
+
+    if (!existingRetry) {
+      throw new Error(
+        "Could not verify organization membership after Clerk reported membership exists",
+      );
+    }
+
+    return existingRetry;
+  }
+};
+
+memberSchema.statics.syncOrgMembership = async function (
+  member,
+  organization,
+  clerkMembership,
+) {
+  if (!member || !organization || !clerkMembership) return;
+
+  const membershipData = {
+    id: clerkMembership.id,
+    role: clerkMembership.role,
+    publicMetadata: clerkMembership.publicMetadata || {},
+    createdAt: new Date(clerkMembership.createdAt),
+    updatedAt: new Date(clerkMembership.updatedAt),
+  };
+
+  const existing = member.getOrganizationMembership(organization);
+  if (existing) {
+    member.updateOrganizationMembership(organization, membershipData);
+  } else {
+    member.addOrganizationMembership(organization, membershipData);
+  }
+
+  await member.save();
 };
 
 const Member = mongoose.model("Member", memberSchema);

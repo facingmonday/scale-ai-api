@@ -10,6 +10,7 @@ exports.createVariableDefinition = async function (req, res) {
   try {
     const {
       classroomId,
+      challengeId,
       key,
       label,
       description,
@@ -42,9 +43,9 @@ exports.createVariableDefinition = async function (req, res) {
     }
 
     // Validate appliesTo enum
-    if (!["store", "scenario", "submission", "storeType"].includes(appliesTo)) {
+    if (!["profile", "profileType", "challenge", "decision", "outcome"].includes(appliesTo)) {
       throw new Error(
-        "appliesTo must be one of: store, scenario, submission, storeType",
+        "appliesTo must be one of: profile, profileType, challenge, decision, outcome",
       );
     }
 
@@ -66,6 +67,7 @@ exports.createVariableDefinition = async function (req, res) {
     const definition = await VariableDefinition.createDefinition(
       classroomId,
       {
+        challengeId,
         key,
         label,
         description,
@@ -115,7 +117,7 @@ exports.createVariableDefinition = async function (req, res) {
 exports.updateVariableDefinition = async function (req, res) {
   try {
     const { key } = req.params;
-    const { classroomId } = req.query;
+    const { classroomId, challengeId } = req.query;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
@@ -136,6 +138,7 @@ exports.updateVariableDefinition = async function (req, res) {
     const definition = await VariableDefinition.getDefinitionByKey(
       classroomId,
       key,
+      { challengeId }
     );
 
     if (!definition) {
@@ -205,11 +208,11 @@ exports.updateVariableDefinition = async function (req, res) {
 
 /**
  * Get variable definitions
- * GET /api/admin/variables?classroomId=...&appliesTo=...
+ * GET /api/admin/variables?classroomId=...&appliesTo=...&challengeId=...
  */
 exports.getVariableDefinitions = async function (req, res) {
   try {
-    const { classroomId, appliesTo } = req.query;
+    const { classroomId, appliesTo, challengeId } = req.query;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
@@ -251,6 +254,14 @@ exports.getVariableDefinitions = async function (req, res) {
     if (appliesTo) {
       query.appliesTo = appliesTo;
     }
+    if (challengeId) {
+      query.$or = [
+        { challengeId: null },
+        { challengeId }
+      ];
+    } else {
+      query.challengeId = null;
+    }
     const definitions = await VariableDefinition.find(query).sort({ label: 1 });
 
     res.json({
@@ -268,12 +279,12 @@ exports.getVariableDefinitions = async function (req, res) {
 
 /**
  * Delete variable definition (soft delete)
- * DELETE /api/admin/variables/:key
+ * DELETE /api/admin/variables/:key?classroomId=...&challengeId=...
  */
 exports.deleteVariableDefinition = async function (req, res) {
   try {
     const { key } = req.params;
-    const { classroomId } = req.query;
+    const { classroomId, challengeId } = req.query;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
@@ -294,6 +305,7 @@ exports.deleteVariableDefinition = async function (req, res) {
     const definition = await VariableDefinition.getDefinitionByKey(
       classroomId,
       key,
+      { challengeId }
     );
 
     if (!definition) {

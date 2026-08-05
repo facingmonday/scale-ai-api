@@ -15,7 +15,7 @@ const NotificationSchema = new mongoose.Schema(
         enum: ["User", "Member", "Admin", "Guest"],
         required: true,
       },
-      ref: { type: String, required: true }, // Stores the model name dynamically
+      ref: { type: String, required: true }, // Profiles the model name dynamically
     },
     sender: { type: String, required: false },
     title: { type: String, required: true },
@@ -24,7 +24,7 @@ const NotificationSchema = new mongoose.Schema(
     html: { type: String, required: false },
     text: { type: String, required: false },
     templateData: { type: Object, required: false },
-    modelData: { type: Object, required: false }, // New field to store IDs for template population
+    modelData: { type: Object, required: false }, // New field to profile IDs for template population
     status: {
       type: String,
       enum: ["Pending", "Sent", "Failed", "Read", "Deleted", "Unread"],
@@ -122,7 +122,7 @@ NotificationSchema.statics.getReceiver = async function (
 
       // IMPORTANT:
       // Avoid hitting Clerk in the API process when we create notifications in bulk
-      // (e.g. scenario publish). Email can be resolved later in the email worker.
+      // (e.g. challenge publish). Email can be resolved later in the email worker.
       const email = resolveEmail ? await member.getEmailFromClerk() : "";
 
       return {
@@ -258,7 +258,7 @@ NotificationSchema.statics.sendEmailNotification = async function (
     return true;
   } catch (error) {
     console.error("Error enqueuing email notification:", error);
-    // Store the error
+    // Profile the error
     await notification.constructor.findByIdAndUpdate(notification._id, {
       "metadata.emailError": error.message,
     });
@@ -306,7 +306,7 @@ NotificationSchema.statics.sendSmsNotification = async function (
     return true;
   } catch (error) {
     console.error("Error enqueuing SMS notification:", error);
-    // Store the error
+    // Profile the error
     await notification.constructor.findByIdAndUpdate(notification._id, {
       "metadata.smsError": error.message,
     });
@@ -351,7 +351,7 @@ NotificationSchema.statics.sendPushNotification = async function (
     return true;
   } catch (error) {
     console.error("Error enqueuing push notification:", error);
-    // Store the error
+    // Profile the error
     await notification.constructor.findByIdAndUpdate(notification._id, {
       "metadata.pushError": error.message,
     });

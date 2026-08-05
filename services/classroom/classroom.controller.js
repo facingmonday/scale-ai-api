@@ -9,7 +9,18 @@ const { sendEmail } = require("../../lib/sendGrid/sendEmail");
  */
 exports.createClass = async function (req, res) {
   try {
-    const { name, description, imageUrl, templateId } = req.body;
+    const {
+      name,
+      description,
+      imageUrl,
+      templateId,
+      billingMode,
+      joinPolicy,
+      studentPaysAllowed,
+      allowedDomains,
+      accessCode,
+      allowAnonymousJoin,
+    } = req.body;
     const memberId = req.user._id;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
@@ -21,6 +32,8 @@ exports.createClass = async function (req, res) {
     if (!name) {
       return res.status(400).json({ error: "Class name is required" });
     }
+
+    await Classroom.requireCanCreateClassroom({ organization: req.organization });
 
     // If a templateId was provided, validate it belongs to this organization before creating the class
     let templateToApply = null;
@@ -42,6 +55,12 @@ exports.createClass = async function (req, res) {
       description: description || "",
       imageUrl: imageUrl || null,
       isActive: true,
+      billingMode: billingMode || "student_paid",
+      joinPolicy: joinPolicy || "invite_link",
+      studentPaysAllowed: studentPaysAllowed !== false,
+      allowedDomains: Array.isArray(allowedDomains) ? allowedDomains : [],
+      accessCode: accessCode || "",
+      allowAnonymousJoin: allowAnonymousJoin !== false,
       ownership: memberId, // Set ownership to the creator
       organization: organizationId,
       createdBy: clerkUserId,
@@ -56,7 +75,7 @@ exports.createClass = async function (req, res) {
       memberId,
       "admin",
       organizationId,
-      clerkUserId
+      clerkUserId,
     );
 
     // Apply classroom template (create-only)
@@ -77,7 +96,7 @@ exports.createClass = async function (req, res) {
         if (!templateToApply) {
           await ClassroomTemplate.copyGlobalToOrganization(
             organizationId,
-            clerkUserId
+            clerkUserId,
           );
           templateToApply = await ClassroomTemplate.findOne({
             organization: organizationId,
@@ -95,7 +114,7 @@ exports.createClass = async function (req, res) {
         });
 
         // Persist template prompts onto the classroom (create-only).
-        // Prompts are used to build OpenAI messages and should exist even if no store/scenario exists yet.
+        // Prompts are used to build OpenAI messages and should exist even if no profile/challenge exists yet.
         const prompts = templateToApply.payload?.prompts;
         if (
           Array.isArray(prompts) &&
@@ -121,7 +140,7 @@ exports.createClass = async function (req, res) {
         // Ensure org has a default template copy, then use its prompts.
         await ClassroomTemplate.copyGlobalToOrganization(
           organizationId,
-          clerkUserId
+          clerkUserId,
         );
         const defaultTemplate = await ClassroomTemplate.findOne({
           organization: organizationId,
@@ -155,6 +174,13 @@ exports.createClass = async function (req, res) {
     if (error.name === "ValidationError") {
       return res.status(400).json({ error: error.message });
     }
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+        code: error.code,
+        details: error.details,
+      });
+    }
     res.status(500).json({ error: error.message });
   }
 };
@@ -173,7 +199,7 @@ exports.getClassDashboard = async function (req, res) {
     await Classroom.validateAdminAccess(
       classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     // Get dashboard data
@@ -202,13 +228,14 @@ exports.getStudentDashboard = async function (req, res) {
     await Classroom.validateStudentAccess(
       classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     // Get dashboard data
     const dashboard = await Classroom.getStudentDashboard(
       classroomId,
-      organizationId
+      organizationId,
+      req.user._id,
     );
 
     res.json({
@@ -227,7 +254,20 @@ exports.getStudentDashboard = async function (req, res) {
 exports.updateClass = async function (req, res) {
   try {
     const { classroomId } = req.params;
-    const { name, description, imageUrl, isActive, prompts } = req.body;
+    const {
+      name,
+      description,
+      imageUrl,
+      isActive,
+      prompts,
+      billingMode,
+      joinPolicy,
+      studentPaysAllowed,
+      allowedDomains,
+      accessCode,
+      allowAnonymousJoin,
+      automationSettings,
+    } = req.body;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
@@ -235,7 +275,7 @@ exports.updateClass = async function (req, res) {
     const classroom = await Classroom.validateAdminAccess(
       classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     // Update allowed fields
@@ -250,6 +290,31 @@ exports.updateClass = async function (req, res) {
     }
     if (isActive !== undefined) {
       classroom.isActive = isActive;
+    }
+    if (billingMode !== undefined) {
+      classroom.billingMode = billingMode;
+    }
+    if (joinPolicy !== undefined) {
+      classroom.joinPolicy = joinPolicy;
+    }
+    if (studentPaysAllowed !== undefined) {
+      classroom.studentPaysAllowed = !!studentPaysAllowed;
+    }
+    if (allowedDomains !== undefined) {
+      classroom.allowedDomains = Array.isArray(allowedDomains)
+        ? allowedDomains
+            .map((domain) => String(domain).trim().toLowerCase())
+            .filter(Boolean)
+        : [];
+    }
+    if (accessCode !== undefined) {
+      classroom.accessCode = accessCode || "";
+    }
+    if (allowAnonymousJoin !== undefined) {
+      classroom.allowAnonymousJoin = !!allowAnonymousJoin;
+    }
+    if (automationSettings !== undefined) {
+      classroom.automationSettings = automationSettings;
     }
 
     // Update classroom prompts (optional)
@@ -312,6 +377,13 @@ exports.updateClass = async function (req, res) {
     if (error.name === "ValidationError") {
       return res.status(400).json({ error: error.message });
     }
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+        code: error.code,
+        details: error.details,
+      });
+    }
     res.status(500).json({ error: error.message });
   }
 };
@@ -352,14 +424,14 @@ exports.deleteClassroomVariables = async function (req, res) {
     await Classroom.validateAdminAccess(
       classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     const result =
       await Classroom.adminDeleteAllVariableDefinitionsForClassroom(
         classroomId,
         organizationId,
-        { deleteValues: true }
+        { deleteValues: true },
       );
 
     return res.json({
@@ -393,14 +465,14 @@ exports.restoreClassroomTemplate = async function (req, res) {
     await Classroom.validateAdminAccess(
       classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     const result = await Classroom.adminRestoreTemplateForClassroom(
       classroomId,
       organizationId,
       clerkUserId,
-      { templateId, templateKey }
+      { templateId, templateKey },
     );
 
     return res.json({
@@ -437,7 +509,7 @@ exports.deleteClass = async function (req, res) {
     await Classroom.validateAdminAccess(
       classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     // Clear this classroom from any member's activeClassroom before deleting
@@ -485,11 +557,14 @@ exports.inviteStudent = async function (req, res) {
     const classDoc = await Classroom.validateAdminAccess(
       classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
-    // Generate join link
-    const joinLink = Classroom.generateJoinLink(classroomId);
+    // Generate join link for the canonical auth/join flow.
+    const baseUrl = process.env.SCALE_APP_HOST || "http://localhost:5173";
+    const joinLink = `${baseUrl}/?orgId=${encodeURIComponent(
+      req.organization.clerkOrganizationId,
+    )}&classroomId=${encodeURIComponent(classroomId)}`;
 
     // Get sender info
     const senderMember = await Member.findOne({ clerkUserId });
@@ -502,8 +577,8 @@ exports.inviteStudent = async function (req, res) {
           email: email,
         },
         from: {
-          email: process.env.SENDGRID_FROM_EMAIL || "noreply@scale.ai",
-          name: process.env.SENDGRID_FROM_NAME || "SCALE.ai",
+          email: process.env.SENDGRID_FROM_EMAIL || "noreply@scalelxp.com",
+          name: process.env.SENDGRID_FROM_NAME || "SCALE LXP",
         },
         subject: `Invitation to join ${classDoc.name}`,
         html: `
@@ -529,7 +604,7 @@ exports.inviteStudent = async function (req, res) {
       // Provide more helpful error information
       if (emailError.code === 401) {
         console.error(
-          "SendGrid authentication failed. Please check SENDGRID_API_KEY environment variable."
+          "SendGrid authentication failed. Please check SENDGRID_API_KEY environment variable.",
         );
       }
 

@@ -4,8 +4,8 @@ const baseSchema = require("../../lib/baseSchema");
 /**
  * Polymorphic variable value storage.
  *
- * Stores a value for a VariableDefinition key, scoped to:
- * - appliesTo: which kind of document this value belongs to (store/scenario/submission/...)
+ * Profiles a value for a VariableDefinition key, scoped to:
+ * - appliesTo: which kind of document this value belongs to (profile/challenge/decision/...)
  * - ownerId: the _id of the owning document
  *
  * This replaces the old per-model collections:
@@ -54,7 +54,7 @@ variableValueSchema.index({ organization: 1, classroomId: 1, appliesTo: 1, owner
 
 /**
  * Get all variables for an owner
- * @param {string} appliesTo - Scope ("store", "scenario", "submission", ...)
+ * @param {string} appliesTo - Scope ("profile", "challenge", "decision", ...)
  * @param {string} ownerId - Owning document ID
  * @returns {Promise<Array>} Array of variable value documents
  */
@@ -64,7 +64,7 @@ variableValueSchema.statics.findByOwner = function (appliesTo, ownerId) {
 
 /**
  * Get variable value by key for an owner
- * @param {string} appliesTo - Scope ("store", "scenario", "submission", ...)
+ * @param {string} appliesTo - Scope ("profile", "challenge", "decision", ...)
  * @param {string} ownerId - Owning document ID
  * @param {string} variableKey - Variable key
  * @returns {Promise<Object|null>} Variable value document or null
@@ -80,7 +80,7 @@ variableValueSchema.statics.findByOwnerAndKey = function (
 /**
  * Set or update a variable value
  * @param {string} classroomId - Classroom ID
- * @param {string} appliesTo - Scope ("store", "scenario", "submission", "storeType")
+ * @param {string} appliesTo - Scope ("profile", "challenge", "decision", "profileType")
  * @param {string} ownerId - Owning document ID
  * @param {string} variableKey - Variable key
  * @param {*} value - Variable value

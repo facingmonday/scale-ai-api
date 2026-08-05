@@ -1,11 +1,77 @@
 const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 
+/**
+ * @openapi
+ * components:
+ *   schemas:
+ *     VariableDefinition:
+ *       type: object
+ *       properties:
+ *         _id:
+ *           type: string
+ *           description: The Mongoose ObjectId of the variable definition.
+ *         classroomId:
+ *           type: string
+ *           description: The associated classroom ID.
+ *         organization:
+ *           type: string
+ *           description: The associated organization ID.
+ *         key:
+ *           type: string
+ *           description: Unique variable identifier key.
+ *           example: price_elasticity
+ *         label:
+ *           type: string
+ *           description: Human-readable label for the variable.
+ *           example: Price Elasticity
+ *         description:
+ *           type: string
+ *           description: Description of the variable's function.
+ *         appliesTo:
+ *           type: string
+ *           enum: [profile, profileType, challenge, decision, outcome]
+ *           description: Scope of application.
+ *         dataType:
+ *           type: string
+ *           enum: [number, string, boolean, select]
+ *           description: The raw data type of the variable.
+ *         inputType:
+ *           type: string
+ *           enum: [text, number, slider, dropdown, checkbox, knob, selectbutton, switch, multiple-choice]
+ *           description: The input field type displayed in the UI.
+ *         options:
+ *           type: array
+ *           items:
+ *             type: object
+ *           description: List of options for select data types.
+ *         defaultValue:
+ *           type: object
+ *           description: Default value.
+ *         min:
+ *           type: number
+ *           description: Minimum numeric range.
+ *         max:
+ *           type: number
+ *           description: Maximum numeric range.
+ *         required:
+ *           type: boolean
+ *           description: Whether this variable is required to submit decisions/outcomes.
+ *         isActive:
+ *           type: boolean
+ *           description: Soft deletion indicator flag.
+ */
 const variableDefinitionSchema = new mongoose.Schema({
   classroomId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Classroom",
     required: true,
+    index: true,
+  },
+  challengeId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Challenge",
+    default: null,
     index: true,
   },
   key: {
@@ -23,7 +89,7 @@ const variableDefinitionSchema = new mongoose.Schema({
   },
   appliesTo: {
     type: String,
-    enum: ["store", "scenario", "submission", "storeType"],
+    enum: ["profile", "profileType", "challenge", "decision", "outcome"],
     required: true,
     index: true,
   },
@@ -75,9 +141,9 @@ const variableDefinitionSchema = new mongoose.Schema({
 }).add(baseSchema);
 
 // Compound indexes for performance
-// All definitions are classroom-scoped: unique on organization + classroomId + appliesTo + key
+// All definitions are classroom-scoped: unique on organization + classroomId + appliesTo + key + challengeId
 variableDefinitionSchema.index(
-  { organization: 1, classroomId: 1, appliesTo: 1, key: 1 },
+  { organization: 1, classroomId: 1, appliesTo: 1, key: 1, challengeId: 1 },
   {
     unique: true,
     sparse: true, // keep sparse to avoid impacting older docs during transition
@@ -108,12 +174,13 @@ variableDefinitionSchema.statics.createDefinition = async function (
     throw new Error("classroomId is required");
   }
 
-  // Check uniqueness within org + classroom + appliesTo
+  // Check uniqueness within org + classroom + appliesTo + challengeId
   const existing = await this.findOne({
     organization: organizationId,
     classroomId,
     appliesTo: payload.appliesTo,
     key: payload.key,
+    challengeId: payload.challengeId || null,
   });
 
   if (existing) {
@@ -167,6 +234,7 @@ variableDefinitionSchema.statics.createDefinition = async function (
 
   const definition = new this({
     classroomId,
+    challengeId: payload.challengeId || null,
     key: payload.key,
     label: payload.label,
     description: payload.description || "",
@@ -192,7 +260,7 @@ variableDefinitionSchema.statics.createDefinition = async function (
 /**
  * Get variable definitions for a specific scope
  * @param {string} classroomId - Class ID
- * @param {string} appliesTo - Scope ("store", "scenario", "submission", "storeType")
+ * @param {string} appliesTo - Scope ("profile", "challenge", "decision", "profileType")
  * @param {Object} options - Options (includeInactive)
  * @returns {Promise<Array>} Array of variable definitions
  */
@@ -213,6 +281,15 @@ variableDefinitionSchema.statics.getDefinitionsForScope = async function (
     delete query.isActive;
   }
 
+  if (options.challengeId) {
+    query.$or = [
+      { challengeId: null },
+      { challengeId: options.challengeId }
+    ];
+  } else {
+    query.challengeId = null;
+  }
+
   const definitions = await this.find(query).sort({ label: 1 });
   return definitions;
 };
@@ -220,7 +297,7 @@ variableDefinitionSchema.statics.getDefinitionsForScope = async function (
 /**
  * Get all variable definitions for a class
  * @param {string} classroomId - Class ID
- * @param {Object} options - Options (includeInactive)
+ * @param {Object} options - Options (includeInactive, challengeId)
  * @returns {Promise<Array>} Array of variable definitions
  */
 variableDefinitionSchema.statics.getDefinitionsByClass = async function (
@@ -234,23 +311,34 @@ variableDefinitionSchema.statics.getDefinitionsByClass = async function (
     delete query.isActive;
   }
 
+  if (options.challengeId) {
+    query.$or = [
+      { challengeId: null },
+      { challengeId: options.challengeId }
+    ];
+  } else {
+    query.challengeId = null;
+  }
+
   const definitions = await this.find(query).sort({ appliesTo: 1, label: 1 });
   return definitions;
 };
 
 /**
  * Validate values against definitions
- * @param {string} classroomId - Class ID (required for store/scenario/submission)
- * @param {string} appliesTo - Scope ("store", "scenario", "submission", "storeType")
+ * @param {string} classroomId - Class ID (required for profile/challenge/decision)
+ * @param {string} appliesTo - Scope ("profile", "challenge", "decision", "profileType")
  * @param {Object} valuesObject - Values to validate
+ * @param {Object} options - Options (challengeId)
  * @returns {Promise<Object>} Validation result with errors array
  */
 variableDefinitionSchema.statics.validateValues = async function (
   classroomId,
   appliesTo,
   valuesObject,
+  options = {},
 ) {
-  const definitions = await this.getDefinitionsForScope(classroomId, appliesTo);
+  const definitions = await this.getDefinitionsForScope(classroomId, appliesTo, options);
   const errors = [];
 
   const activeDefinitions = definitions.filter(
@@ -313,7 +401,7 @@ variableDefinitionSchema.statics.validateValues = async function (
 
       case "select":
         // Support both primitive options (["a","b"]) and structured options ([{label,value}])
-        // because UI layers often store select options as objects.
+        // because UI layers often profile select options as objects.
         {
           const rawOptions = Array.isArray(definition.options)
             ? definition.options
@@ -356,17 +444,19 @@ variableDefinitionSchema.statics.validateValues = async function (
 
 /**
  * Apply default values to an object based on definitions
- * @param {string} classroomId - Class ID (required for store/scenario/submission)
- * @param {string} appliesTo - Scope ("store", "scenario", "submission", "storeType")
+ * @param {string} classroomId - Class ID (required for profile/challenge/decision)
+ * @param {string} appliesTo - Scope ("profile", "challenge", "decision", "profileType")
  * @param {Object} valuesObject - Values object to apply defaults to
+ * @param {Object} options - Options (challengeId)
  * @returns {Promise<Object>} Values object with defaults applied
  */
 variableDefinitionSchema.statics.applyDefaults = async function (
   classroomId,
   appliesTo,
   valuesObject,
+  options = {},
 ) {
-  const definitions = await this.getDefinitionsForScope(classroomId, appliesTo);
+  const definitions = await this.getDefinitionsForScope(classroomId, appliesTo, options);
   const result = { ...valuesObject };
 
   for (const definition of definitions) {
@@ -394,16 +484,17 @@ variableDefinitionSchema.statics.applyDefaults = async function (
  * are excluded from the calculation context.
  *
  * @param {string} classroomId - Classroom ID
- * @param {string} appliesTo - "store", "storeType", "scenario", or "submission"
+ * @param {string} appliesTo - "profile", "profileType", "challenge", or "decision"
  * @param {Object} variables - { [key]: value }
+ * @param {Object} options - Options (challengeId)
  * @returns {Promise<Object>} Filtered variables (only keys with active definitions)
  */
 variableDefinitionSchema.statics.filterVariablesByActiveDefinitions =
-  async function (classroomId, appliesTo, variables) {
+  async function (classroomId, appliesTo, variables, options = {}) {
     if (!variables || typeof variables !== "object" || Array.isArray(variables)) {
       return {};
     }
-    const definitions = await this.getDefinitionsForScope(classroomId, appliesTo);
+    const definitions = await this.getDefinitionsForScope(classroomId, appliesTo, options);
     const activeKeys = new Set(definitions.map((d) => d.key));
     const filtered = {};
     for (const [key, value] of Object.entries(variables)) {
@@ -416,32 +507,36 @@ variableDefinitionSchema.statics.filterVariablesByActiveDefinitions =
 
 /**
  * Filter all variable collections for AI simulation context.
- * Store variables are filtered by both "store" and "storeType" (union of active keys).
+ * Profile variables are filtered by both "profile" and "profileType" (union of active keys).
  *
  * @param {string} classroomId - Classroom ID
- * @param {Object} ctx - { storeVariables, scenarioVariables, submissionVariables, outcomeVariables }
+ * @param {Object} ctx - { profileVariables, challengeVariables, decisionVariables, outcomeVariables }
+ * @param {Object} options - Options (challengeId)
  * @returns {Promise<Object>} Filtered context with same shape
  */
 variableDefinitionSchema.statics.filterVariablesForAIContext = async function (
   classroomId,
-  ctx
+  ctx,
+  options = {}
 ) {
   if (!classroomId) {
     return ctx;
   }
-  const [storeDefs, storeTypeDefs, scenarioDefs, submissionDefs] =
+  const [profileDefs, profileTypeDefs, challengeDefs, decisionDefs, outcomeDefs] =
     await Promise.all([
-      this.getDefinitionsForScope(classroomId, "store"),
-      this.getDefinitionsForScope(classroomId, "storeType"),
-      this.getDefinitionsForScope(classroomId, "scenario"),
-      this.getDefinitionsForScope(classroomId, "submission"),
+      this.getDefinitionsForScope(classroomId, "profile"),
+      this.getDefinitionsForScope(classroomId, "profileType"),
+      this.getDefinitionsForScope(classroomId, "challenge", options),
+      this.getDefinitionsForScope(classroomId, "decision", options),
+      this.getDefinitionsForScope(classroomId, "outcome", options),
     ]);
-  const storeActiveKeys = new Set([
-    ...storeDefs.map((d) => d.key),
-    ...storeTypeDefs.map((d) => d.key),
+  const profileActiveKeys = new Set([
+    ...profileDefs.map((d) => d.key),
+    ...profileTypeDefs.map((d) => d.key),
   ]);
-  const scenarioActiveKeys = new Set(scenarioDefs.map((d) => d.key));
-  const submissionActiveKeys = new Set(submissionDefs.map((d) => d.key));
+  const challengeActiveKeys = new Set(challengeDefs.map((d) => d.key));
+  const decisionActiveKeys = new Set(decisionDefs.map((d) => d.key));
+  const outcomeActiveKeys = new Set(outcomeDefs.map((d) => d.key));
 
   const filterByKeys = (obj, keys) => {
     if (!obj || typeof obj !== "object" || Array.isArray(obj)) return {};
@@ -453,13 +548,10 @@ variableDefinitionSchema.statics.filterVariablesForAIContext = async function (
   };
 
   return {
-    storeVariables: filterByKeys(ctx.storeVariables, storeActiveKeys),
-    scenarioVariables: filterByKeys(ctx.scenarioVariables, scenarioActiveKeys),
-    submissionVariables: filterByKeys(
-      ctx.submissionVariables,
-      submissionActiveKeys
-    ),
-    outcomeVariables: filterByKeys(ctx.outcomeVariables, scenarioActiveKeys),
+    profileVariables: filterByKeys(ctx.profileVariables, profileActiveKeys),
+    challengeVariables: filterByKeys(ctx.challengeVariables, challengeActiveKeys),
+    decisionVariables: filterByKeys(ctx.decisionVariables, decisionActiveKeys),
+    outcomeVariables: filterByKeys(ctx.outcomeVariables, outcomeActiveKeys),
   };
 };
 
@@ -482,6 +574,12 @@ variableDefinitionSchema.statics.getDefinitionByKey = async function (
   query.classroomId = classroomId;
   if (options.appliesTo) {
     query.appliesTo = options.appliesTo;
+  }
+
+  if (options.challengeId) {
+    query.challengeId = options.challengeId;
+  } else {
+    query.challengeId = null;
   }
 
   return await this.findOne(query);
@@ -514,11 +612,11 @@ variableDefinitionSchema.methods.restore = async function (clerkUserId) {
 
 /**
  * Check if definition is in use (has values stored)
- * This is a placeholder - actual implementation would check Store/Submission/Scenario models
+ * This is a placeholder - actual implementation would check Profile/Decision/Challenge models
  * @returns {Promise<boolean>} True if in use
  */
 variableDefinitionSchema.methods.isInUse = async function () {
-  // TODO: Check if any Store/Submission/Scenario has values for this variable
+  // TODO: Check if any Profile/Decision/Challenge has values for this variable
   // For now, return false to allow deletion
   return false;
 };

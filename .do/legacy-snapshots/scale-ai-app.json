@@ -1,0 +1,65 @@
+{
+  "name": "scale-ai-app",
+  "static_sites": [
+    {
+      "name": "scale-ai-app",
+      "github": {
+        "repo": "facingmonday/scale-ai-app",
+        "branch": "main",
+        "deploy_on_push": true
+      },
+      "build_command": "npm run build",
+      "source_dir": "/",
+      "environment_slug": "node-js",
+      "output_dir": "dist",
+      "envs": [
+        {
+          "key": "VITE_API_HOST",
+          "value": "<redacted>",
+          "scope": "BUILD_TIME"
+        },
+        {
+          "key": "VITE_CLERK_PUBLISHABLE_KEY",
+          "value": "<redacted>",
+          "scope": "BUILD_TIME"
+        }
+      ],
+      "catchall_document": "index.html"
+    }
+  ],
+  "domains": [
+    {
+      "domain": "app.scalelxp.com",
+      "type": "PRIMARY"
+    }
+  ],
+  "region": "nyc",
+  "alerts": [
+    {
+      "rule": "DEPLOYMENT_FAILED"
+    },
+    {
+      "rule": "DOMAIN_FAILED"
+    }
+  ],
+  "ingress": {
+    "rules": [
+      {
+        "match": {
+          "path": {
+            "prefix": "/"
+          },
+          "authority": {
+            "exact": ""
+          }
+        },
+        "component": {
+          "name": "scale-ai-app"
+        }
+      }
+    ]
+  },
+  "features": [
+    "buildpack-stack=ubuntu-22"
+  ]
+}

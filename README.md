@@ -1,16 +1,16 @@
-# SCALE.ai API
+# SCALE LXP API
 
-A classroom-based supply chain simulation platform built with Node.js, Express, and MongoDB. Students manage pizza shops through weekly scenarios, with AI-driven outcomes calculated per student.
+A classroom-based supply chain simulation platform built with Node.js, Express, and MongoDB. Students manage pizza shops through weekly challenges, with AI-driven outcomes calculated per student.
 
 ## Table of Contents
 
 - [Overview](#overview)
 - [Tech Stack](#tech-stack)
-- [Architecture](#architecture)
+- [Architecture & Apps](#architecture--apps)
 - [Project Structure](#project-structure)
 - [Services & Models](#services--models)
 - [API Routes](#api-routes)
-- [Store Types & Stores](#store-types--stores)
+- [Profile Types & Profiles](#profile-types--profiles)
 - [Authentication](#authentication)
 - [Setup & Development](#setup--development)
 - [Deployment](#deployment)
@@ -18,11 +18,11 @@ A classroom-based supply chain simulation platform built with Node.js, Express, 
 
 ## Overview
 
-SCALE.ai is a learning platform where:
+SCALE LXP is a learning platform where:
 
-- **Instructors** create classes, define scenarios, and set global outcomes
-- **Students** join classes, set up stores, and submit weekly decisions
-- **AI** calculates individualized results based on store config, scenario, and student decisions
+- **Instructors** create classes, define challenges, and set global outcomes
+- **Students** join classes, set up profiles, and submit weekly decisions
+- **AI** calculates individualized results based on profile config, challenge context, and student decisions
 - **Results** are stored in a ledger and displayed on dashboards
 
 ### Key Features
@@ -46,47 +46,61 @@ SCALE.ai is a learning platform where:
 - **Email Templates**: React Email
 - **Deployment**: DigitalOcean App Platform (Docker)
 
-## Architecture
+## Architecture & Apps
 
-The application consists of three main services:
+The application consists of six deployable or development components inside the [apps](file:///Users/jasonprice/Apps/scale-ai-api/apps) directory:
 
-1. **API Service** (`apps/api/`) - Main REST API
-2. **Webhooks Service** (`apps/webhooks/`) - External webhook handlers
-3. **Workers Service** (`apps/workers/`) - Background job processing
+1. **Web App** ([apps/web/](file:///Users/jasonprice/Apps/scale-ai-api/apps/web)) - React + Vite + TypeScript frontend. It is student/instructor UI (deployed as a static site on DigitalOcean).
+2. **API Service** ([apps/api/](file:///Users/jasonprice/Apps/scale-ai-api/apps/api)) - Express/Node REST API service. It handles requests, interacts with MongoDB, and enqueues jobs to Redis.
+3. **Webhooks Service** ([apps/webhooks/](file:///Users/jasonprice/Apps/scale-ai-api/apps/webhooks)) - Specialized webhook receiver handling external triggers (such as Clerk and Stripe webhooks).
+4. **Workers Service** ([apps/workers/](file:///Users/jasonprice/Apps/scale-ai-api/apps/workers)) - Background queue worker service (Bull/Redis) processing simulations, batches, and emails, and managing cron jobs. Mounts the Bull Board UI at `/admin/queues`.
+5. **Email Preview** ([apps/email-preview/](file:///Users/jasonprice/Apps/scale-ai-api/apps/email-preview)) - Developer-only web tool to preview React-rendered email templates with custom JSON fixtures and live-reloading.
+6. **Simulation CLI** ([apps/sim-cli/](file:///Users/jasonprice/Apps/scale-ai-api/apps/sim-cli)) - Developer command-line tool for local database seeding, generating simulated student users, and executing batch simulation tests using LLMs.
 
-All services share the same codebase and are deployed separately.
+Backend services share the same Node codebase and are deployed separately. The web app is a self-contained Vite project with its own `package.json` (not an npm workspace).
 
 ## Project Structure
 
 ```
 scale-ai-api/
 ├── apps/
-│   ├── api/              # Main API server
+│   ├── web/               # React frontend (Vite, separate package.json)
+│   ├── api/               # Main API server
 │   ├── webhooks/          # Webhook handlers
 │   ├── workers/           # Background workers
-│   └── email-preview/     # Email template preview
+│   ├── email-preview/     # Email template preview
+│   └── sim-cli/           # Simulation CLI (dev tool)
 ├── services/              # Business logic services
 │   ├── auth/
-│   ├── classroom/
-│   ├── enrollment/
-│   ├── store/
-│   ├── variableDefinition/
-│   ├── scenario/
-│   ├── submission/
-│   ├── members/
-│   ├── organizations/
-│   ├── notifications/
-│   ├── openai/
-│   ├── utils/
-│   └── webhooks/
+│   ├── challenge/         # Challenge creation and execution
+│   ├── classroom/         # Classroom management
+│   ├── classroomTemplate/ # Default classroom setups
+│   ├── cron/              # Cron schedule models
+│   ├── decision/          # Decision collection and validation
+│   ├── enrollment/        # Student enrollment in classrooms
+│   ├── job/               # Background simulation job models and workers
+│   ├── join/              # Public join link processing
+│   ├── ledger/            # Financial/metrics ledger entries
+│   ├── licensing/         # License verification
+│   ├── members/           # User records (synced from Clerk)
+│   ├── metricDefinition/  # Custom metrics defined for classroom ledgers
+│   ├── notifications/     # In-app notifications
+│   ├── openai/            # OpenAI service calls
+│   ├── organizations/     # Multi-tenant organization records
+│   ├── outcome/           # Challenge global outcome definition
+│   ├── profile/           # Student store profiles and overrides
+│   ├── profileType/       # Templates for student stores (e.g. food truck)
+│   ├── variableDefinition/# Dynamic variable schemas
+│   ├── webhooks/          # Webhook business logic
+│   └── workers/           # Background worker orchestration and registry
 ├── lib/                   # Shared utilities
-│   ├── emails/           # Email templates
-│   ├── queues/           # Queue workers
-│   ├── sendGrid/         # Email sending
-│   └── openai/           # AI integrations
-├── middleware/           # Express middleware
-├── models/              # Mongoose model loader
-└── constants/           # Constants and enums
+│   ├── emails/            # Email templates
+│   ├── queues/            # Queue workers
+│   ├── sendGrid/          # Email sending
+│   └── openai/            # AI integrations
+├── middleware/            # Express middleware
+├── models/                # Mongoose model loader
+└── constants/             # Constants and enums
 ```
 
 ## Services & Models
@@ -103,27 +117,32 @@ scale-ai-api/
 - **Model**: `Enrollment` - Links users to classes with roles
 - **Purpose**: Manages class membership and role-based access
 
-#### Store Service
+#### Profile Service
 
-- **Models**: `Store`, `StoreType`, `VariableValue`
-- **Purpose**: Manages student business setup (one store per student per class)
-- **Store Types**: Organization-scoped templates that define default variable values
-- **Stores**: Classroom-scoped student instances created from store types
+- **Models**: `Profile`, `ProfileType`, `VariableValue`
+- **Purpose**: Manages student business setup (one profile per student per class)
+- **Profile Types**: Organization-scoped templates that define default variable values
+- **Profiles**: Classroom-scoped student instances created from profile types
 
 #### VariableDefinition Service
 
 - **Model**: `VariableDefinition`
-- **Purpose**: Defines dynamic questions/variables for stores, scenarios, and submissions
+- **Purpose**: Defines dynamic questions/variables for profiles, challenges, and decisions
 
-#### Scenario Service
+#### Challenge Service
 
-- **Models**: `Scenario`, `ScenarioOutcome`
-- **Purpose**: Manages weekly simulation contexts and global outcomes
+- **Model**: `Challenge`
+- **Purpose**: Manages weekly simulation contexts (formerly scenarios)
 
-#### Submission Service
+#### Outcome Service
 
-- **Model**: `Submission`
-- **Purpose**: Collects weekly student decisions
+- **Model**: `Outcome`
+- **Purpose**: Manages weekly global outcome variables (formerly scenario outcomes)
+
+#### Decision Service
+
+- **Model**: `Decision`
+- **Purpose**: Collects weekly student decisions (formerly submissions)
 
 ### Supporting Services
 
@@ -339,103 +358,103 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
 - **Description**: Remove student from class (soft delete enrollment)
 
-### Store Routes
+### Profile Routes
 
 #### Student Routes
 
-##### `POST /v1/student/store`
+##### `POST /v1/student/profile`
 
 - **Auth**: `requireMemberAuth()`
-- **Description**: Create store for authenticated student
-- **Body**: `{ classroomId, shopName, storeDescription, storeLocation, storeType (ObjectId), variables? }`
-- **See**: [Store Types & Stores](#store-types--stores) section for detailed documentation
+- **Description**: Create profile for authenticated student (formerly store)
+- **Body**: `{ classroomId, shopName, storeDescription, storeLocation, profileType (ObjectId), variables? }`
+- **See**: [Profile Types & Profiles](#profile-types--profiles) section for detailed documentation
 
-##### `PUT /v1/student/store`
-
-- **Auth**: `requireMemberAuth()`
-- **Description**: Update or create (upsert) student's store
-- **Body**: `{ classroomId, shopName?, storeDescription?, storeLocation?, storeType? (ObjectId), variables? }`
-- **See**: [Store Types & Stores](#store-types--stores) section for detailed documentation
-
-##### `GET /v1/student/store`
+##### `PUT /v1/student/profile`
 
 - **Auth**: `requireMemberAuth()`
-- **Description**: Get student's store for a class
+- **Description**: Update or create (upsert) student's profile (formerly store)
+- **Body**: `{ classroomId, shopName?, storeDescription?, storeLocation?, profileType? (ObjectId), variables? }`
+- **See**: [Profile Types & Profiles](#profile-types--profiles) section for detailed documentation
+
+##### `GET /v1/student/profile`
+
+- **Auth**: `requireMemberAuth()`
+- **Description**: Get student's profile for a class (formerly store)
 - **Query Params**: `classroomId` (required)
 
 #### Admin Routes
 
-##### `GET /v1/admin/class/:classroomId/store/:userId`
+##### `GET /v1/admin/class/:classroomId/profile/:userId`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Get student's store (admin view)
+- **Description**: Get student's profile (admin view, formerly store)
 
-### StoreType Routes (`/v1/admin/store-types`)
+### ProfileType Routes (`/v1/admin/profile-types`)
 
 All routes require `requireAuth()` and `checkRole('org:admin')`.
 
-#### `GET /v1/admin/store-types`
+#### `GET /v1/admin/profile-types`
 
-- **Description**: Get all store types for the organization
+- **Description**: Get all profile types for the organization (formerly store types)
 
-#### `GET /v1/admin/store-types/:storeTypeId`
+#### `GET /v1/admin/profile-types/:storeTypeId`
 
-- **Description**: Get a specific store type by ID
+- **Description**: Get a specific profile type by ID
 
-#### `POST /v1/admin/store-types`
+#### `POST /v1/admin/profile-types`
 
-- **Description**: Create a new store type
+- **Description**: Create a new profile type
 - **Body**: `{ key, label, description?, variables? }`
 
-#### `PUT /v1/admin/store-types/:storeTypeId`
+#### `PUT /v1/admin/profile-types/:storeTypeId`
 
-- **Description**: Update a store type
+- **Description**: Update a profile type
 - **Body**: `{ label?, description?, variables? }`
 
-#### `DELETE /v1/admin/store-types/:storeTypeId`
+#### `DELETE /v1/admin/profile-types/:storeTypeId`
 
-- **Description**: Soft delete a store type
+- **Description**: Soft delete a profile type
 
-#### `POST /v1/admin/store-types/seed`
+#### `POST /v1/admin/profile-types/seed`
 
-- **Description**: Seed default store types for the organization
+- **Description**: Seed default profile types for the organization (deprecated/removed)
 
-**See**: [Store Types & Stores](#store-types--stores) section for detailed documentation.
+**See**: [Profile Types & Profiles](#profile-types--profiles) section for detailed documentation.
 
-### StoreType Student Routes (`/v1/student/store-types`)
+### ProfileType Student Routes (`/v1/student/profile-types`)
 
-#### `GET /v1/student/store-types`
+#### `GET /v1/student/profile-types`
 
 - **Auth**: `requireMemberAuth()`
-- **Description**: Get all active store types for a classroom (for students to select when creating a store)
+- **Description**: Get all active profile types for a classroom (for students to select when creating a profile)
 - **Query Params**: `classroomId` (required)
-- **Response**: Returns array of store types with their variables populated
-- **Note**: Only returns active store types (inactive ones are hidden from students)
+- **Response**: Returns array of profile types with their variables populated
+- **Note**: Only returns active profile types (inactive ones are hidden from students)
 
-## Store Types & Stores
+## Profile Types & Profiles
 
-This section explains how store types and stores work, how to define variables, and how to set values. This is essential for building the frontend UI for store configuration.
+This section explains how profile types and profiles work, how to define variables, and how to set values. This is essential for building the frontend UI for profile configuration.
 
 ### Overview
 
-**Store Types** are organization-scoped templates that define default variable values for different types of stores (e.g., "Food Truck", "Café", "Fine Dining"). Each organization can have its own set of store types with customizable default values.
+**Profile Types** are organization-scoped templates that define default variable values for different types of profiles (e.g., "Food Truck", "Café", "Fine Dining"). Each organization can have its own set of profile types with customizable default values.
 
-**Stores** are student-specific business instances created from store types. Each student can have one store per classroom, and stores inherit default values from their store type but can be customized.
+**Profiles** are student-specific business instances created from profile types. Each student can have one profile per classroom, and profiles inherit default values from their profile type but can be customized.
 
-### Store Types (Organization-Level)
+### Profile Types (Organization-Level)
 
-Store types are **organization-scoped** templates that define:
+Profile types are **organization-scoped** templates that define:
 
 - **Basic Info**: `key` (unique identifier), `label` (display name), `description`
-- **Default Variables**: All variable values stored in the `VariableValue` collection with `appliesTo: "storeType"`
+- **Default Variables**: All variable values stored in the `VariableValue` collection with `appliesTo: "profileType"`
 
-#### Store Type API Endpoints
+#### Profile Type API Endpoints
 
 ##### Student Routes
 
-##### `GET /v1/student/store-types`
+##### `GET /v1/student/profile-types`
 
-Get all active store types for a classroom. Students use this to see available store types when creating their store.
+Get all active profile types for a classroom. Students use this to see available profile types when creating their profile.
 
 **Query Parameters:**
 
@@ -448,7 +467,7 @@ Get all active store types for a classroom. Students use this to see available s
   "success": true,
   "data": [
     {
-      "_id": "storeTypeId",
+      "_id": "profileTypeId",
       "key": "food_truck",
       "label": "Food Truck",
       "description": "A scrappy, mobile kitchen...",
@@ -470,15 +489,15 @@ Get all active store types for a classroom. Students use this to see available s
 }
 ```
 
-**Note**: Only returns active store types (inactive ones are hidden from students).
+**Note**: Only returns active profile types (inactive ones are hidden from students).
 
 ##### Admin Routes
 
 All admin routes require `requireAuth()` and `checkRole("org:admin")`.
 
-##### `GET /v1/admin/store-types`
+##### `GET /v1/admin/profile-types`
 
-Get all store types for the organization.
+Get all profile types for the organization.
 
 **Response:**
 
@@ -487,7 +506,7 @@ Get all store types for the organization.
   "success": true,
   "data": [
     {
-      "_id": "storeTypeId",
+      "_id": "profileTypeId",
       "key": "food_truck",
       "label": "Food Truck",
       "description": "A scrappy, mobile kitchen...",
@@ -509,13 +528,13 @@ Get all store types for the organization.
 }
 ```
 
-##### `GET /v1/admin/store-types/:storeTypeId`
+##### `GET /v1/admin/profile-types/:profileTypeId`
 
-Get a specific store type by ID.
+Get a specific profile type by ID.
 
-##### `POST /v1/admin/store-types`
+##### `POST /v1/admin/profile-types`
 
-Create a new store type.
+Create a new profile type.
 
 **Request Body:**
 
@@ -536,11 +555,11 @@ Create a new store type.
 }
 ```
 
-**Note**: The `variables` object can contain any key-value pairs. These are stored as `VariableValue` documents with `appliesTo: "storeType"`.
+**Note**: The `variables` object can contain any key-value pairs. These are stored as `VariableValue` documents with `appliesTo: "profileType"`.
 
-##### `PUT /v1/admin/store-types/:storeTypeId`
+##### `PUT /v1/admin/profile-types/:profileTypeId`
 
-Update a store type. You can update `label`, `description`, and `variables`.
+Update a profile type. You can update `label`, `description`, and `variables`.
 
 **Request Body:**
 
@@ -558,54 +577,54 @@ Update a store type. You can update `label`, `description`, and `variables`.
 
 **Important**: When updating `variables`, the entire object replaces the existing variables. Variables not included in the request will be deleted.
 
-##### `DELETE /v1/admin/store-types/:storeTypeId`
+##### `DELETE /v1/admin/profile-types/:profileTypeId`
 
-Soft delete a store type (sets `isActive: false`).
+Soft delete a profile type (sets `isActive: false`).
 
-##### `POST /v1/admin/store-types/seed`
+##### `POST /v1/admin/profile-types/seed`
 
-**Deprecated / removed**: store type preset seeding is no longer supported. Create StoreTypes (and their variables) via the StoreType API/UI.
+**Deprecated / removed**: profile type preset seeding is no longer supported. Create ProfileTypes (and their variables) via the ProfileType API/UI.
 
-#### Store Type Variables
+#### Profile Type Variables
 
-Store type variables are stored in the `VariableValue` collection with:
+Profile type variables are stored in the `VariableValue` collection with:
 
-- `appliesTo: "storeType"`
-- `ownerId: storeType._id`
+- `appliesTo: "profileType"`
+- `ownerId: profileType._id`
 - `variableKey: "startingBalance"` (or any key)
 - `value: 5000` (the actual value)
 
-Variables are automatically included in the response via the `variablePopulationPlugin`, which adds a `variables` object to the store type when calling `toObject()` or `toJSON()`.
+Variables are automatically included in the response via the `variablePopulationPlugin`, which adds a `variables` object to the profile type when calling `toObject()` or `toJSON()`.
 
-### Stores (Student-Level)
+### Profiles (Student-Level)
 
-Stores are **classroom-scoped** and represent a student's business instance. Each student can have **one store per classroom**.
+Profiles are **classroom-scoped** and represent a student's business instance. Each student can have **one profile per classroom**.
 
-#### Store Structure
+#### Profile Structure
 
-A store contains:
+A profile contains:
 
 - **Basic Info**: `shopName`, `storeDescription`, `storeLocation`
-- **Store Type Reference**: `storeType` (ObjectId reference to a `StoreType`)
-- **Variables**: Stored in `VariableValue` collection with `appliesTo: "store"`
+- **Profile Type Reference**: `profileType` (ObjectId reference to a `ProfileType`)
+- **Variables**: Stored in `VariableValue` collection with `appliesTo: "profile"`
 
-#### Store Variable Value Precedence
+#### Profile Variable Value Precedence
 
-When a store is created, variable values are determined in this order (highest to lowest priority):
+When a profile is created, variable values are determined in this order (highest to lowest priority):
 
-1. **Provided Values** - Values explicitly passed when creating/updating the store
-2. **Store Type Values** - Default values stored on the selected StoreType (via `VariableValue` with `appliesTo: "storeType"`)
+1. **Provided Values** - Values explicitly passed when creating/updating the profile
+2. **Profile Type Values** - Default values stored on the selected ProfileType (via `VariableValue` with `appliesTo: "profileType"`)
 3. **Variable Definition Defaults** - Default values from `VariableDefinition`
 
-#### Store API Endpoints
+#### Profile API Endpoints
 
 ##### Student Routes
 
 All student routes require `requireMemberAuth()`.
 
-##### `POST /v1/student/store`
+##### `POST /v1/student/profile`
 
-Create a store for the authenticated student.
+Create a profile for the authenticated student.
 
 **Request Body:**
 
@@ -615,9 +634,9 @@ Create a store for the authenticated student.
   "shopName": "Tony's Pizza",
   "storeDescription": "Best pizza in town",
   "storeLocation": "123 Main St",
-  "storeType": "storeTypeId", // ObjectId of the store type
+  "profileType": "profileTypeId", // ObjectId of the profile type
   "variables": {
-    "startingBalance": 6000, // Optional: override store type default
+    "startingBalance": 6000, // Optional: override profile type default
     "customVariable": "value" // Optional: add custom variables
   }
 }
@@ -628,23 +647,23 @@ Create a store for the authenticated student.
 ```json
 {
   "success": true,
-  "message": "Store created successfully",
+  "message": "Profile created successfully",
   "data": {
-    "_id": "storeId",
+    "_id": "profileId",
     "shopName": "Tony's Pizza",
     "storeDescription": "Best pizza in town",
     "storeLocation": "123 Main St",
-    "storeType": {
-      "_id": "storeTypeId",
+    "profileType": {
+      "_id": "profileTypeId",
       "key": "food_truck",
       "label": "Food Truck"
     },
     "storeTypeKey": "food_truck", // For backward compatibility
     "storeTypeLabel": "Food Truck",
     "variables": {
-      "startingBalance": 6000, // From provided values or store type
-      "startingInventory": 1000, // From store type
-      "weeklyRent": 200 // From store type
+      "startingBalance": 6000, // From provided values or profile type
+      "startingInventory": 1000, // From profile type
+      "weeklyRent": 200 // From profile type
       // ... all variables merged
     },
     "currentDetails": {
@@ -656,17 +675,17 @@ Create a store for the authenticated student.
 }
 ```
 
-##### `PUT /v1/student/store`
+##### `PUT /v1/student/profile`
 
-Update or create (upsert) a store.
+Update or create (upsert) a profile.
 
-**Request Body:** Same as `POST`, but `shopName`, `storeDescription`, `storeLocation`, and `storeType` are only required if creating a new store.
+**Request Body:** Same as `POST`, but `shopName`, `storeDescription`, `storeLocation`, and `profileType` are only required if creating a new profile.
 
 **Note**: When updating `variables`, the entire object replaces existing variables. Variables not included will be deleted.
 
-##### `GET /v1/student/store?classroomId=classroomId`
+##### `GET /v1/student/profile?classroomId=classroomId`
 
-Get the authenticated student's store for a classroom.
+Get the authenticated student's profile for a classroom.
 
 **Response:** Same format as `POST` response.
 
@@ -674,13 +693,13 @@ Get the authenticated student's store for a classroom.
 
 All admin routes require `requireAuth()` and `checkRole("org:admin")`.
 
-##### `GET /v1/admin/class/:classroomId/store/:userId`
+##### `GET /v1/admin/class/:classroomId/profile/:userId`
 
-Get a specific student's store (admin view).
+Get a specific student's profile (admin view).
 
-### Variable Definitions for Stores
+### Variable Definitions for Profiles
 
-Variable definitions define the structure and validation rules for store variables. They are **classroom-scoped** and apply to all stores in that classroom.
+Variable definitions define the structure and validation rules for profile variables. They are **classroom-scoped** and apply to all profiles in that classroom.
 
 #### Creating Variable Definitions
 
@@ -688,7 +707,7 @@ Use the VariableDefinition API to create definitions:
 
 ##### `POST /v1/admin/variables`
 
-Create a variable definition for stores.
+Create a variable definition for profiles.
 
 **Request Body:**
 
@@ -698,7 +717,7 @@ Create a variable definition for stores.
   "key": "startingBalance",
   "label": "Starting Balance",
   "description": "Initial cash available to the business",
-  "appliesTo": "store", // Must be "store" for store variables
+  "appliesTo": "profile", // Must be "profile" for profile variables
   "dataType": "number",
   "inputType": "number", // or "slider"
   "defaultValue": 5000,
@@ -713,7 +732,7 @@ Create a variable definition for stores.
 - `key` - Unique identifier (used in `variables` object)
 - `label` - Display name for UI
 - `description` - Help text/tooltip
-- `appliesTo` - Must be `"store"` for store variables
+- `appliesTo` - Must be `"profile"` for profile variables
 - `dataType` - `"number"`, `"string"`, `"boolean"`, or `"select"`
 - `inputType` - UI input type: `"text"`, `"number"`, `"slider"`, `"dropdown"`, `"checkbox"`, `"switch"`, etc.
 - `defaultValue` - Default value if not provided
@@ -727,9 +746,9 @@ Create a variable definition for stores.
 - `dataType: "boolean"` → `inputType: "checkbox"` or `"switch"`
 - `dataType: "select"` → `inputType: "dropdown"` (requires `options` array)
 
-##### `GET /v1/admin/variables?classroomId=classroomId&appliesTo=store`
+##### `GET /v1/admin/variables?classroomId=classroomId&appliesTo=profile`
 
-Get all variable definitions for stores in a classroom.
+Get all variable definitions for profiles in a classroom.
 
 **Response:**
 
@@ -742,7 +761,7 @@ Get all variable definitions for stores in a classroom.
       "key": "startingBalance",
       "label": "Starting Balance",
       "description": "Initial cash available",
-      "appliesTo": "store",
+      "appliesTo": "profile",
       "dataType": "number",
       "inputType": "number",
       "defaultValue": 5000,
@@ -757,21 +776,21 @@ Get all variable definitions for stores in a classroom.
 
 ### Frontend Implementation Guide
 
-#### 1. Store Type Configuration UI (Admin)
+#### 1. Profile Type Configuration UI (Admin)
 
-**Step 1: Fetch Store Types**
+**Step 1: Fetch Profile Types**
 
 ```javascript
-GET / v1 / admin / store - types;
-// Returns list of all store types with their variables
+GET /v1/admin/profile-types;
+// Returns list of all profile types with their variables
 ```
 
-**Step 2: Display Store Types List**
+**Step 2: Display Profile Types List**
 
-- Show `label` and `description` for each store type
+- Show `label` and `description` for each profile type
 - Display `variables` object (can be shown as key-value pairs or in a structured form)
 
-**Step 3: Create/Edit Store Type**
+**Step 3: Create/Edit Profile Type**
 
 - Form fields: `key`, `label`, `description`
 - Dynamic variables editor:
@@ -779,39 +798,38 @@ GET / v1 / admin / store - types;
   - Variables can be any JSON-serializable values (numbers, strings, booleans, arrays, objects)
   - Store as `variables` object in request body
 
-**Step 4: Delete Store Type**
+**Step 4: Delete Profile Type**
 
-- Call `DELETE /v1/admin/store-types/:storeTypeId`
+- Call `DELETE /v1/admin/profile-types/:profileTypeId`
 - Note: This is a soft delete (`isActive: false`)
 
-#### 2. Store Creation UI (Student)
+#### 2. Profile Creation UI (Student)
 
-**Step 1: Fetch Available Store Types**
+**Step 1: Fetch Available Profile Types**
 
 ```javascript
-GET /v1/student/store-types?classroomId={classroomId}
-// Note: Students might need a different endpoint or filtered view
+GET /v1/student/profile-types?classroomId={classroomId}
 ```
 
 **Step 2: Fetch Variable Definitions**
 
 ```javascript
-GET /v1/admin/variables?classroomId={classroomId}&appliesTo=store
-// Returns all variable definitions for stores in this classroom
+GET /v1/admin/variables?classroomId={classroomId}&appliesTo=profile
+// Returns all variable definitions for profiles in this classroom
 ```
 
-**Step 3: Display Store Creation Form**
+**Step 3: Display Profile Creation Form**
 
 1. **Basic Fields:**
    - `shopName` (text input)
    - `storeDescription` (textarea)
    - `storeLocation` (text input)
-   - `storeType` (dropdown/select from available store types)
+   - `profileType` (dropdown/select from available profile types)
 
 2. **Dynamic Variables Form:**
-   - When a store type is selected, fetch its variables
+   - When a profile type is selected, fetch its variables
    - For each variable definition:
-     - If variable exists in store type's `variables`, use that as default
+     - If variable exists in profile type's `variables`, use that as default
      - Otherwise, use `defaultValue` from variable definition
      - Render appropriate input based on `inputType`:
        - `number` → number input with min/max
@@ -821,42 +839,42 @@ GET /v1/admin/variables?classroomId={classroomId}&appliesTo=store
        - `checkbox`/`switch` → checkbox/switch
    - Allow students to override defaults
 
-**Step 4: Submit Store Creation**
+**Step 4: Submit Profile Creation**
 
 ```javascript
-POST /v1/student/store
+POST /v1/student/profile
 {
   "classroomId": "...",
   "shopName": "...",
   "storeDescription": "...",
   "storeLocation": "...",
-  "storeType": "storeTypeId",
+  "profileType": "profileTypeId",
   "variables": {
-    "startingBalance": 6000,  // Override store type default
+    "startingBalance": 6000,  // Override profile type default
     "customVar": "value"      // Custom variable
   }
 }
 ```
 
-#### 3. Store Edit UI (Student)
+#### 3. Profile Edit UI (Student)
 
-**Step 1: Fetch Current Store**
+**Step 1: Fetch Current Profile**
 
 ```javascript
-GET /v1/student/store?classroomId={classroomId}
+GET /v1/student/profile?classroomId={classroomId}
 ```
 
 **Step 2: Display Edit Form**
 
-- Pre-populate with current store values
-- Show store type info (read-only, can't change after creation)
+- Pre-populate with current profile values
+- Show profile type info (read-only, can't change after creation)
 - Allow editing `shopName`, `storeDescription`, `storeLocation`
 - Allow editing `variables` (same dynamic form as creation)
 
 **Step 3: Submit Updates**
 
 ```javascript
-PUT /v1/student/store
+PUT /v1/student/profile
 {
   "classroomId": "...",
   "shopName": "Updated Name",
@@ -872,7 +890,7 @@ PUT /v1/student/store
 **Step 1: Fetch Definitions**
 
 ```javascript
-GET /v1/admin/variables?classroomId={classroomId}&appliesTo=store
+GET /v1/admin/variables?classroomId={classroomId}&appliesTo=profile
 ```
 
 **Step 2: Create Definition Form**
@@ -897,61 +915,61 @@ DELETE /v1/admin/variables/:key?classroomId={classroomId}
 
 ### Key Concepts for Frontend Developers
 
-1. **Store Types are Organization-Scoped**: Each organization has its own set of store types. They're not shared across organizations.
+1. **Profile Types are Organization-Scoped**: Each organization has its own set of profile types. They're not shared across organizations.
 
-2. **Stores are Classroom-Scoped**: Each student has one store per classroom. Store variables are specific to that classroom's variable definitions.
+2. **Profiles are Classroom-Scoped**: Each student has one profile per classroom. Profile variables are specific to that classroom's variable definitions.
 
-3. **Variable Value Merging**: When creating a store, values are merged from:
+3. **Variable Value Merging**: When creating a profile, values are merged from:
    - Provided values (highest priority)
-   - Store type defaults
+   - Profile type defaults
    - Variable definition defaults (lowest priority)
 
 4. **Variables are Dynamic**: The `variables` object can contain any key-value pairs. The structure is defined by variable definitions, but values can be any JSON-serializable data.
 
-5. **Variable Updates Replace All**: When updating `variables` in a store or store type, the entire object replaces existing variables. Variables not included are deleted.
+5. **Variable Updates Replace All**: When updating `variables` in a profile or profile type, the entire object replaces existing variables. Variables not included are deleted.
 
-6. **Store Type Variables vs Store Variables**:
-   - Store type variables (`appliesTo: "storeType"`) are defaults/templates
-   - Store variables (`appliesTo: "store"`) are actual values for a student's store
-   - Store variables inherit from store type variables when the store is created
+6. **Profile Type Variables vs Profile Variables**:
+   - Profile type variables (`appliesTo: "profileType"`) are defaults/templates
+   - Profile variables (`appliesTo: "profile"`) are actual values for a student's profile
+   - Profile variables inherit from profile type variables when the profile is created
 
-7. **Variable Definitions Define Structure**: Variable definitions (`appliesTo: "store"`) define what variables are available, their types, validation rules, and UI hints. They don't store values.
+7. **Variable Definitions Define Structure**: Variable definitions (`appliesTo: "profile"`) define what variables are available, their types, validation rules, and UI hints. They don't store values.
 
-### Example: Complete Store Creation Flow
+### Example: Complete Profile Creation Flow
 
 ```javascript
-// 1. Fetch store types (for dropdown)
-const storeTypes = await fetch(
-  `/v1/student/store-types?classroomId=${classroomId}`
+// 1. Fetch profile types (for dropdown)
+const profileTypes = await fetch(
+  `/v1/student/profile-types?classroomId=${classroomId}`
 );
 // Returns: [{ _id: "...", key: "food_truck", label: "Food Truck", variables: {...} }]
-// Note: Only returns active store types
+// Note: Only returns active profile types
 
 // 2. Fetch variable definitions (for form structure)
 const definitions = await fetch(
-  "/v1/admin/variables?classroomId=xxx&appliesTo=store"
+  `/v1/admin/variables?classroomId=${classroomId}&appliesTo=profile`
 );
 // Returns: [{ key: "startingBalance", label: "Starting Balance", dataType: "number", ... }]
 
-// 3. User selects store type "food_truck"
-const selectedStoreType = storeTypes.find((st) => st.key === "food_truck");
+// 3. User selects profile type "food_truck"
+const selectedProfileType = profileTypes.find((pt) => pt.key === "food_truck");
 
 // 4. Build form with:
 //    - Basic fields (shopName, etc.)
 //    - For each definition, use:
-//      - selectedStoreType.variables[def.key] as default (if exists)
+//      - selectedProfileType.variables[def.key] as default (if exists)
 //      - OR def.defaultValue
 //    - Render input based on def.inputType
 
 // 5. User fills form and submits
-await fetch("/v1/student/store", {
+await fetch("/v1/student/profile", {
   method: "POST",
   body: JSON.stringify({
     classroomId: "xxx",
     shopName: "Tony's Pizza",
     storeDescription: "...",
     storeLocation: "...",
-    storeType: selectedStoreType._id,
+    profileType: selectedProfileType._id,
     variables: {
       startingBalance: 6000, // User overrode default of 5000
       // ... other variables from form
@@ -986,168 +1004,208 @@ await fetch("/v1/student/store", {
 - **Description**: Delete variable definition (soft delete)
 - **Query Params**: `classroomId` (required)`
 
-### Scenario Routes (`/v1/admin/scenarios` and `/v1/student/scenarios`)
+### Challenge Routes (`/v1/admin/challenges` and `/v1/student/challenges`)
 
 #### Admin Routes
 
-##### `POST /v1/admin/scenarios`
+##### `POST /v1/admin/challenges`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Create a new scenario
+- **Description**: Create a new challenge (formerly scenario)
 - **Body**: `{ classroomId, title, description?, variables? }`
 - **Note**: Automatically queues email notifications to all enrolled students
 
-##### `GET /v1/admin/scenarios`
+##### `GET /v1/admin/challenges`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Get all scenarios for the organization
+- **Description**: Get all challenges for the organization
 
-##### `GET /v1/admin/scenarios/current`
+##### `GET /v1/admin/challenges/current`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Get current active scenario for admin view
+- **Description**: Get current active challenge for admin view
 - **Query Params**: `classroomId` (required)
-- **Notes**: Returns `200` with `{ success: true, data: null }` if there is no active scenario.
+- **Notes**: Returns `200` with `{ success: true, data: null }` if there is no active challenge.
 
-##### `GET /v1/admin/scenarios/:id`
-
-- **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Get scenario by ID
-
-##### `PUT /v1/admin/scenarios/:scenarioId`
+##### `GET /v1/admin/challenges/:id`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Update scenario (before publish/close)
+- **Description**: Get challenge by ID
 
-##### `POST /v1/admin/scenarios/:scenarioId/publish`
-
-- **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Publish scenario to students (makes it visible and active)
-
-##### `POST /v1/admin/scenarios/:scenarioId/unpublish`
+##### `PUT /v1/admin/challenges/:challengeId`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Unpublish scenario (hide from students)
+- **Description**: Update challenge (before publish/close)
 
-##### `POST /v1/admin/scenarios/:scenarioId/preview`
-
-- **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Preview AI outcomes for a scenario (does not write ledger entries)
-
-##### `POST /v1/admin/scenarios/:scenarioId/rerun`
+##### `POST /v1/admin/challenges/:challengeId/publish`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Rerun scenario (delete existing ledger entries and recalculate)
+- **Description**: Publish challenge to students (makes it visible and active)
+
+##### `POST /v1/admin/challenges/:challengeId/unpublish`
+
+- **Auth**: `requireAuth()`, `checkRole('org:admin')`
+- **Description**: Unpublish challenge (hide from students)
+
+##### `POST /v1/admin/challenges/:challengeId/preview`
+
+- **Auth**: `requireAuth()`, `checkRole('org:admin')`
+- **Description**: Preview AI outcomes for a challenge (does not write ledger entries)
+
+##### `POST /v1/admin/challenges/:challengeId/rerun`
+
+- **Auth**: `requireAuth()`, `checkRole('org:admin')`
+- **Description**: Rerun challenge (delete existing ledger entries and recalculate)
+
+##### `POST /v1/admin/challenges/:challengeId/cancel-batch-and-rerun`
+
+- **Auth**: `requireAuth()`, `checkRole('org:admin')`
+- **Description**: Cancel a running batch job and rerun the challenge
+
+##### `POST /v1/admin/challenges/:challengeId/export`
+
+- **Auth**: `requireAuth()`, `checkRole('org:admin')`
+- **Description**: Export challenge outcomes and details
+
+##### `DELETE /v1/admin/challenges/:challengeId`
+
+- **Auth**: `requireAuth()`, `checkRole('org:admin')`
+- **Description**: Soft delete a challenge
 
 #### Student Routes
 
-##### `GET /v1/student/scenarios`
+##### `GET /v1/student/challenges`
 
 - **Auth**: `requireMemberAuth()`
-- **Description**: Get all scenarios for a classroom
+- **Description**: Get all challenges for a classroom
 - **Query Params**: `classroomId` (required)
 
-##### `GET /v1/student/scenarios/current`
+##### `GET /v1/student/challenges/current`
 
 - **Auth**: `requireMemberAuth()`
-- **Description**: Get current active scenario for student
+- **Description**: Get current active challenge for student
 - **Query Params**: `classroomId` (required)
-- **Notes**: Returns `200` with `{ success: true, data: null }` if there is no active (published) scenario.
+- **Notes**: Returns `200` with `{ success: true, data: null }` if there is no active (published) challenge.
 
-##### `GET /v1/student/scenarios/:id`
+##### `GET /v1/student/challenges/:id`
 
 - **Auth**: `requireMemberAuth()`
-- **Description**: Get scenario by ID (student view)
+- **Description**: Get challenge by ID (student view)
 
-### ScenarioOutcome Routes (`/v1/admin/scenarioOutcomes` and `/v1/student/scenarioOutcomes`)
+### Outcome Routes (`/v1/admin/outcomes` and `/v1/student/outcomes`)
 
 #### Admin Routes
 
-##### `POST /v1/admin/scenarioOutcomes/:scenarioId/outcome`
+##### `POST /v1/admin/outcomes/:challengeId/outcome`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Set global scenario outcome (actual weather, demand shift, etc.)
+- **Description**: Set global challenge outcome (actual weather, demand shift, etc.)
 - **Body**: `{ variables? }` (dynamic based on variable definitions)
 
-##### `GET /v1/admin/scenarioOutcomes/:scenarioId/outcome`
+##### `POST /v1/admin/outcomes/:challengeId/outcome/draft`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Get scenario outcome for a scenario
+- **Description**: Save draft of the challenge outcome
+
+##### `POST /v1/admin/outcomes/:challengeId/outcome/approve`
+
+- **Auth**: `requireAuth()`, `checkRole('org:admin')`
+- **Description**: Approve and finalize the challenge outcome
+
+##### `GET /v1/admin/outcomes/:challengeId/outcome`
+
+- **Auth**: `requireAuth()`, `checkRole('org:admin')`
+- **Description**: Get challenge outcome details
 - **Notes**: Returns `200` with `{ success: true, data: null }` if an outcome hasn't been set yet.
 
-##### `DELETE /v1/admin/scenarioOutcomes/:scenarioId/outcome`
+##### `PUT /v1/admin/outcomes/:challengeId/outcome/variables`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Delete scenario outcome
+- **Description**: Update outcome variables
+
+##### `DELETE /v1/admin/outcomes/:challengeId/outcome`
+
+- **Auth**: `requireAuth()`, `checkRole('org:admin')`
+- **Description**: Delete challenge outcome
 
 #### Student Routes
 
-##### `GET /v1/student/scenarioOutcomes/:scenarioId/outcome`
+##### `GET /v1/student/outcomes/:challengeId/outcome`
 
 - **Auth**: `requireAuth()`, `checkRole('org:member')`
-- **Description**: Get scenario outcome (student view, after results are published)
+- **Description**: Get challenge outcome (student view, after results are published)
 - **Notes**: Returns `200` with `{ success: true, data: null }` if an outcome hasn't been set yet.
 
-### Submission Routes (`/v1/admin/submissions` and `/v1/student/submission`)
+### Decision Routes (`/v1/admin/decisions` and `/v1/student/decision`)
 
 #### Student Routes
 
-##### `POST /v1/student/submission`
+##### `POST /v1/student/decision`
 
 - **Auth**: `requireMemberAuth()`
-- **Description**: Submit weekly decisions for a scenario
-- **Body**: `{ scenarioId, variables }` (variables are dynamic based on variable definitions)
+- **Description**: Submit weekly decisions for a challenge (formerly submission)
+- **Body**: `{ challengeId, variables }` (variables are dynamic based on variable definitions)
 - **Note**: Validates variables, enforces submission order
 
-##### `PUT /v1/student/submission/:submissionId`
+##### `PUT /v1/student/decision/:decisionId`
 
 - **Auth**: `requireMemberAuth()`
-- **Description**: Update existing submission (only before results are published)
+- **Description**: Update existing decision (only before results are published)
 
-##### `GET /v1/student/submission/status`
-
-- **Auth**: `requireMemberAuth()`
-- **Description**: Get submission status for a scenario
-- **Query Params**: `scenarioId` (required)
-
-##### `GET /v1/student/submissions`
+##### `GET /v1/student/decision/status`
 
 - **Auth**: `requireMemberAuth()`
-- **Description**: Get all submissions for the authenticated student
-- **Query Params**: `classroomId`, `scenarioId` (optional filters)
+- **Description**: Get decision status for a challenge
+- **Query Params**: `challengeId` (required)
+
+##### `GET /v1/student/decisions`
+
+- **Auth**: `requireMemberAuth()`
+- **Description**: Get all decisions for the authenticated student
+- **Query Params**: `classroomId`, `challengeId` (optional filters)
 
 #### Admin Routes
 
-##### `GET /v1/admin/submissions`
+##### `GET /v1/admin/decisions/:decisionId`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Get all submissions (with filters)
+- **Description**: Get decision by ID
 
-##### `GET /v1/admin/submissions/:submissionId`
-
-- **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Get submission by ID
-
-##### `GET /v1/admin/scenarios/:scenarioId/submissions`
+##### `POST /v1/admin/decisions`
 
 - **Auth**: `requireAuth()`, `checkRole('org:admin')`
-- **Description**: Get all submissions for a scenario (includes list of students who haven't submitted)
+- **Description**: Get all decisions (with filters)
+
+##### `GET /v1/admin/decisions/student/:studentId`
+
+- **Auth**: `requireAuth()`, `checkRole('org:admin')`
+- **Description**: Get all decisions for a specific student
+
+##### `GET /v1/admin/challenges/:challengeId/decisions`
+
+- **Auth**: `requireAuth()`, `checkRole('org:admin')`
+- **Description**: Get all decisions for a challenge (includes list of students who haven't submitted)
+
+##### `GET /v1/admin/challenges/:challengeId/missing-decisions`
+
+- **Auth**: `requireAuth()`, `checkRole('org:admin')`
+- **Description**: Get all students who have not submitted decisions for a challenge
 
 ### Ledger Routes (`/v1/admin/ledger`)
 
-All routes require `requireAuth()` and `checkRole('org:admin')`.
+All routes require `requireAuth()` and `checkRole('org:admin')` (instructors/TAs can write, other roles might read).
 
 #### `GET /v1/admin/ledger/:classroomId/user/:userId`
 
 - **Description**: Get ledger history for a specific user in a classroom
 
-#### `GET /v1/admin/ledger/scenario/:scenarioId`
+#### `GET /v1/admin/ledger/challenge/:challengeId`
 
-- **Description**: Get all ledger entries for a scenario
+- **Description**: Get all ledger entries for a challenge
 
-#### `GET /v1/admin/ledger/scenario/:scenarioId/user/:userId`
+#### `GET /v1/admin/ledger/challenge/:challengeId/user/:userId`
 
-- **Description**: Get ledger entry for a specific scenario and user
+- **Description**: Get ledger entry for a specific challenge and user
 
 #### `PATCH /v1/admin/ledger/:ledgerId/override`
 
@@ -1157,9 +1215,9 @@ All routes require `requireAuth()` and `checkRole('org:admin')`.
 
 All routes require `requireAuth()` and `checkRole('org:admin')`.
 
-#### `GET /v1/admin/job/scenario/:scenarioId`
+#### `GET /v1/admin/job/challenge/:challengeId`
 
-- **Description**: Get all jobs for a scenario (simulation processing jobs)
+- **Description**: Get all jobs for a challenge (simulation processing jobs)
 
 #### `GET /v1/admin/job/:jobId`
 
@@ -1230,9 +1288,6 @@ npm install
 
 # Copy environment file
 cp .env.example .env
-
-# Install Puppeteer browsers (if not skipped)
-npm run postinstall
 ```
 
 ### Environment Variables
@@ -1251,9 +1306,18 @@ npm run dev:webhooks
 # Start workers service only
 npm run dev:workers
 
-# Start all services concurrently
+# Start all backend services concurrently
 npm run dev:all
+
+# API + web frontend together (http://localhost:1337 + http://localhost:5173)
+npm run install:web   # first time
+npm run dev
+
+# Or run individually:
+npm run dev:web
 ```
+
+Copy `apps/web/.env.example` to `apps/web/.env` and set `VITE_CLERK_PUBLISHABLE_KEY`. Use `npm run dev:all` for API, webhooks, workers, and web together.
 
 ### Production
 
@@ -1280,14 +1344,13 @@ npm run email:preview
 
 ## Deployment
 
-The application is deployed on **DigitalOcean App Platform** using Docker.
+Backend services are deployed on **DigitalOcean App Platform** using Docker. The web app is deployed as a **static site** component from `apps/web` (see [`apps/web/README.md`](apps/web/README.md) and [`.do/app.yaml`](.do/app.yaml)).
 
 ### Dockerfile
 
 The project includes a Dockerfile that:
 
 - Uses Node.js 18 Alpine
-- Installs Chromium for Puppeteer
 - Sets up production environment
 - Runs the service specified by `APP_NAME` environment variable
 
@@ -1320,7 +1383,7 @@ REDIS_URL=redis://your_redis_url
 # SendGrid
 SENDGRID_API_KEY=your_sendgrid_key
 SENDGRID_FROM_EMAIL=noreply@yourdomain.com
-SENDGRID_FROM_NAME=SCALE.ai
+SENDGRID_FROM_NAME=SCALE LXP
 
 # OpenAI
 OPENAI_API_KEY=your_openai_key
@@ -1336,8 +1399,8 @@ PORT_WORKERS=1341           # Workers service port
 
 # Application
 NODE_ENV=production
-SCALE_API_HOST=https://api.scale.ai
-SCALE_COM_HOST=https://scale.ai
+SCALE_API_HOST=https://api.scalelxp.com
+SCALE_COM_HOST=https://scalelxp.com
 SCALE_API_VERSION=v1
 
 # Workers
@@ -1357,12 +1420,12 @@ SEND_EMAIL=true             # Set to 'true' to actually send emails
 
 - **Classroom** - Course instances
 - **Enrollment** - User-class relationships with roles
-- **Store** - Student business setup
-- **VariableValue** - Dynamic variable values (store/scenario/submission/etc.)
+- **Profile** - Student business setup (formerly Store)
+- **VariableValue** - Dynamic variable values (profile/challenge/decision/outcome)
 - **VariableDefinition** - Dynamic variable definitions
-- **Scenario** - Weekly simulation contexts
-- **ScenarioOutcome** - Global scenario outcomes
-- **Submission** - Weekly student decisions
+- **Challenge** - Weekly simulation contexts (formerly Scenario)
+- **Outcome** - Global challenge outcomes (formerly ScenarioOutcome)
+- **Decision** - Weekly student decisions (formerly Submission)
 
 ### Supporting Models
 
@@ -1386,7 +1449,6 @@ The application uses **Bull** (Redis-based queue) for background job processing.
 
 - **Simulation** - AI-driven simulation job processing (env-configurable concurrency; defaults to 2)
 - **Email Sending** - Email notifications
-- **PDF Generation** - PDF document generation
 - **SMS Sending** - SMS notifications
 - **Push Sending** - Push notifications
 
@@ -1394,27 +1456,27 @@ The application uses **Bull** (Redis-based queue) for background job processing.
 
 Bull Board is available at `/admin/queues` on the workers service (requires basic auth in production).
 
-## Submission Outcome & Simulation Processing
+## Decision Outcome & Simulation Processing
 
-This section explains how student submissions are processed and how AI-driven simulation jobs are triggered and executed.
+This section explains how student decisions are processed and how AI-driven simulation jobs are triggered and executed.
 
 ### Overview
 
 The simulation processing flow consists of three main stages:
 
-1. **Student Submissions** - Students submit their weekly decisions
-2. **Scenario Outcome** - Instructor sets global outcome and triggers processing
+1. **Student Decisions** - Students submit their weekly decisions
+2. **Challenge Outcome** - Instructor sets global outcome and triggers processing
 3. **Job Processing** - Background jobs calculate results using AI
 
-### Stage 1: Student Submissions
+### Stage 1: Student Decisions
 
-Students submit their weekly decisions for a published scenario via `POST /v1/student/submission`. Each submission includes:
+Students submit their weekly decisions for a published challenge via `POST /v1/student/decision`. Each decision includes:
 
-- **Scenario ID** - The scenario being responded to
+- **Challenge ID** - The challenge being responded to
 - **Variables** - Dynamic decision variables (e.g., `plannedProduction`, `staffingLevel`, `marketingSpend`)
-- **Metadata** - Submission timestamp, user ID, classroom ID
+- **Metadata** - Decision timestamp, user ID, classroom ID
 
-**Submission States:**
+**Decision States:**
 
 - `pending` - Submitted, awaiting processing
 - `processing` - Currently being processed by a job
@@ -1423,35 +1485,35 @@ Students submit their weekly decisions for a published scenario via `POST /v1/st
 
 **Validation:**
 
-- Submissions are validated against variable definitions
-- Scenario must be published and not closed
-- Only one submission per student per scenario is allowed
-- Submissions cannot be edited after scenario is closed
+- Decisions are validated against variable definitions
+- Challenge must be published and not closed
+- Only one decision per student per challenge is allowed
+- Decisions cannot be edited after challenge is closed
 
-### Stage 2: Scenario Outcome & Job Creation
+### Stage 2: Challenge Outcome & Job Creation
 
-When an instructor sets the scenario outcome via `POST /v1/admin/scenarioOutcomes/:scenarioId/outcome`, the following happens automatically:
+When an instructor sets the challenge outcome via `POST /v1/admin/outcomes/:challengeId/outcome`, the following happens automatically:
 
-1. **Outcome Creation** - Global scenario outcome is created/updated with:
+1. **Outcome Creation** - Global challenge outcome is created/updated with:
    - Dynamic outcome variables (e.g., `actualWeather`, `demandMultiplier`)
    - Notes and metadata
    - Random events enabled flag
 
 2. **Job Creation** - For each student who submitted:
    - A `SimulationJob` document is created in MongoDB with status `pending`
-   - Job is linked to the submission via `submissionId`
+   - Job is linked to the decision via `decisionId`
    - Job is enqueued in the Bull queue (Redis) for processing
-   - Submission status is updated to `processing`
+   - Decision status is updated to `processing`
 
-3. **Scenario Closure** - The scenario is automatically closed:
+3. **Challenge Closure** - The challenge is automatically closed:
    - `isClosed` flag is set to `true`
-   - Prevents new submissions
-   - Prevents editing existing submissions
+   - Prevents new decisions
+   - Prevents editing existing decisions
 
 **Important Notes:**
 
 - Jobs are **only created for students who have submitted**
-- Missing submissions (students who didn't submit) are tracked separately
+- Missing decisions (students who didn't submit) are tracked separately
 - Jobs are processed asynchronously in the background
 - The API response returns immediately after job creation (does not wait for processing)
 
@@ -1473,10 +1535,10 @@ Jobs are processed by the **Workers Service** using Bull queue with the followin
 For each job, the worker:
 
 1. **Fetches Context** - Gathers all required data:
-   - **Store** - Student's store configuration and variables
-   - **Scenario** - Scenario data with variables populated
-   - **ScenarioOutcome** - Global outcome variables
-   - **Submission** - Student's decision variables
+   - **Profile** - Student's profile configuration and variables
+   - **Challenge** - Challenge data with variables populated
+   - **Outcome** - Global outcome variables
+   - **Decision** - Student's decision variables
    - **Ledger History** - Previous ledger entries (for cash continuity)
 
 2. **Calls AI Service** - Sends context to OpenAI API:
@@ -1493,10 +1555,10 @@ For each job, the worker:
    - Narrative summary
    - AI metadata (model, runId, timestamp)
 
-4. **Updates Status** - Updates job and submission:
+4. **Updates Status** - Updates job and decision:
    - Job status: `pending` → `processing` → `completed`
-   - Submission status: `processing` → `completed`
-   - Links ledger entry to submission
+   - Decision status: `processing` → `completed`
+   - Links ledger entry to decision
 
 **Error Handling:**
 
@@ -1505,40 +1567,40 @@ For each job, the worker:
 - Jobs can be manually retried via `POST /v1/admin/job/:jobId/retry`
 - Failed jobs don't create ledger entries
 
-### Missing Submissions
+### Missing Decisions
 
 Students who don't submit are handled according to classroom policy:
 
 - **Zero Action** (default) - No ledger entry created, balance carries forward
-- **Auto Default** - Conservative default submission auto-generated (future feature)
+- **Auto Default** - Conservative default decision auto-generated (future feature)
 - **Skip Week** - No ledger entry, balance carries forward
-- **Instructor Review** - Instructor manually handles each missing submission
+- **Instructor Review** - Instructor manually handles each missing decision
 
-Missing submissions are tracked via `GET /v1/admin/scenarios/:scenarioId/submissions` which returns:
+Missing decisions are tracked via `GET /v1/admin/challenges/:challengeId/decisions` which returns:
 
 - List of submitted students
 - List of missing students (who haven't submitted)
 
-### Rerunning Scenarios
+### Rerunning Challenges
 
-Instructors can rerun a scenario via `POST /v1/admin/scenarios/:scenarioId/rerun`:
+Instructors can rerun a challenge via `POST /v1/admin/challenges/:challengeId/rerun`:
 
-1. **Deletes** existing ledger entries for the scenario
+1. **Deletes** existing ledger entries for the challenge
 2. **Resets** all jobs to `pending` status
-3. **Recreates** jobs for all submissions
+3. **Recreates** jobs for all decisions
 4. **Processes** jobs automatically
 
 This allows instructors to:
 
-- Adjust scenario outcomes and recalculate
+- Adjust challenge outcomes and recalculate
 - Fix errors in calculations
-- Test different outcome scenarios
+- Test different outcome challenges
 
 ### Job Monitoring
 
 Instructors can monitor job status via:
 
-- `GET /v1/admin/job/scenario/:scenarioId` - Get all jobs for a scenario
+- `GET /v1/admin/job/challenge/:challengeId` - Get all jobs for a challenge
 - `GET /v1/admin/job/:jobId` - Get specific job details
 - `POST /v1/admin/job/:jobId/retry` - Retry a failed job
 - `POST /v1/admin/job/process-pending` - Manually trigger processing
@@ -1554,7 +1616,7 @@ Instructors can monitor job status via:
 
 Each successful job creates a ledger entry that:
 
-- Links to scenario, submission, and user
+- Links to challenge, decision, and user
 - Contains financial results and narrative
 - Maintains cash continuity (cashAfter = cashBefore + netProfit)
 - Can be overridden by instructors via `PATCH /v1/admin/ledger/:ledgerId/override`
@@ -1581,8 +1643,8 @@ Each successful job creates a ledger entry that:
 {
     "_id" : ObjectId("69533dd3a2d760069510c3c5"),
     "classroomId" : ObjectId("694ecce9f4f7c85a1cac7a61"),
-    "scenarioId" : ObjectId("69533b5ca2d760069510c037"),
-    "submissionId" : ObjectId("69533bc7a2d760069510c199"),
+    "challengeId" : ObjectId("69533b5ca2d760069510c037"),
+    "decisionId" : ObjectId("69533bc7a2d760069510c199"),
     "userId" : ObjectId("6947298125b16ceea4650339"),
     "sales" : NumberInt(50),
     "revenue" : NumberInt(950),
@@ -1637,7 +1699,7 @@ Each successful job creates a ledger entry that:
             "wasteDisposalCost" : NumberInt(30),
             "otherCost" : NumberInt(0)
         },
-        "teachingNotes" : "The student effectively managed cost volatility by adjusting staffing and inventory levels, which helped maintain profitability despite increased input costs. The decision to set a higher sale price was crucial in offsetting the cost increases, though it did result in some lost sales due to price sensitivity. This scenario underscores the need for dynamic pricing strategies and cost control in volatile environments."
+        "teachingNotes" : "The student effectively managed cost volatility by adjusting staffing and inventory levels, which helped maintain profitability despite increased input costs. The decision to set a higher sale price was crucial in offsetting the cost increases, though it did result in some lost sales due to price sensitivity. This challenge underscores the need for dynamic pricing strategies and cost control in volatile environments."
     },
     "aiMetadata" : {
         "model" : "gpt-4o",
@@ -1645,7 +1707,7 @@ Each successful job creates a ledger entry that:
         "generatedAt" : ISODate("2025-12-30T02:49:55.447+0000")
     },
     "calculationContext" : {
-        "storeVariables" : {
+        "profileVariables" : {
             "label" : "Street Cart",
             "description" : "Ultra-lean operation with massive foot traffic swings and razor-thin margins.",
             "startingInventory" : NumberInt(1000),
@@ -1669,12 +1731,12 @@ Each successful job creates a ledger entry that:
             "growthCeiling" : "very low",
             "aiFlavor" : "scrappy decisions, cash flow panic, opportunistic selling"
         },
-        "scenarioVariables" : {
+        "challengeVariables" : {
             "weather" : "Poor",
             "expected-demand" : "Average",
             "scenario-theme" : "Input Cost Volatility"
         },
-        "submissionVariables" : {
+        "decisionVariables" : {
             "staffing" : "Less than Average",
             "inventory-supply" : "Less Than Usual",
             "unit-sale-price" : NumberInt(19),
@@ -1689,36 +1751,36 @@ Each successful job creates a ledger entry that:
             "inventoryBefore" : NumberInt(1000),
             "ledgerHistory" : [
                 {
-                    "scenarioId" : ObjectId("694ed000f4f7c85a1cac7f4b"),
-                    "scenarioTitle" : "Back to School Week",
+                    "challengeId" : ObjectId("694ed000f4f7c85a1cac7f4b"),
+                    "challengeTitle" : "Back to School Week",
                     "netProfit" : NumberInt(400),
                     "cashAfter" : NumberInt(2900),
                     "_id" : ObjectId("69533dd3a2d760069510c3c6")
                 },
                 {
-                    "scenarioId" : ObjectId("69514a02ff5ba73716900561"),
-                    "scenarioTitle" : "Week 2 - Supply Crunch",
+                    "challengeId" : ObjectId("69514a02ff5ba73716900561"),
+                    "challengeTitle" : "Week 2 - Supply Crunch",
                     "netProfit" : NumberInt(-100),
                     "cashAfter" : NumberInt(2800),
                     "_id" : ObjectId("69533dd3a2d760069510c3c7")
                 },
                 {
-                    "scenarioId" : ObjectId("6952a32137727834f81df2d9"),
-                    "scenarioTitle" : "Week 2 – Demand Forecasting Variability",
+                    "challengeId" : ObjectId("6952a32137727834f81df2d9"),
+                    "challengeTitle" : "Week 2 – Demand Forecasting Variability",
                     "netProfit" : NumberInt(400),
                     "cashAfter" : NumberInt(3200),
                     "_id" : ObjectId("69533dd3a2d760069510c3c8")
                 },
                 {
-                    "scenarioId" : ObjectId("6952b2af37727834f81dfb9c"),
-                    "scenarioTitle" : "Week 4 - Labor Constraints",
+                    "challengeId" : ObjectId("6952b2af37727834f81dfb9c"),
+                    "challengeTitle" : "Week 4 - Labor Constraints",
                     "netProfit" : NumberInt(300),
                     "cashAfter" : NumberInt(3500),
                     "_id" : ObjectId("69533dd3a2d760069510c3c9")
                 }
             ]
         },
-        "prompt" : "[\n  {\n    \"role\": \"system\",\n    \"content\": \"You are the SCALE.ai simulation engine for a supply chain class using a pizza shop game. Calculate outcomes for one student based on store configuration, scenario context, global outcome, and the student's decisions. Apply realistic business logic and environmental effects.\\n\\nReturn ONLY valid JSON matching the provided schema. You may invent reasonable intermediate numbers when needed. Also compute the required education metrics so instructors can explain results (service level, stockouts/lost sales, by-bucket material flow, and cost breakdown).\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"STORE CONFIGURATION:\\n{\\n  \\\"shopName\\\": \\\"Fat Boys Pizza\\\",\\n  \\\"storeType\\\": \\\"street_cart\\\",\\n  \\\"storeDescription\\\": \\\"Fat Boys Pizza is a high-volume street cart located on campus that specializes in selling pizza by the slice to students, staff, and late-night crowds. Operating with limited space and equipment, the business focuses on fast service, predictable demand peaks, and tight margins. Success depends on smart inventory planning, efficient labor scheduling, and pricing decisions that balance affordability with profitability. Fat Boys Pizza serves as an ideal real-world example of quick-service operations, where small changes in cost, demand, or waste can have an outsized impact on daily cash flow and overall performance.\\\",\\n  \\\"storeLocation\\\": \\\"All over campus and outside the bars late at night\\\",\\n  \\\"label\\\": \\\"Street Cart\\\",\\n  \\\"description\\\": \\\"Ultra-lean operation with massive foot traffic swings and razor-thin margins.\\\",\\n  \\\"startingBalance\\\": 2500,\\n  \\\"startingInventory\\\": 1000,\\n  \\\"weeklyRent\\\": 50,\\n  \\\"maxDailyCapacity\\\": 60,\\n  \\\"staffRequired\\\": 1,\\n  \\\"weatherSensitivity\\\": \\\"very high\\\",\\n  \\\"mobility\\\": \\\"very high\\\",\\n  \\\"vibe\\\": \\\"gritty\\\",\\n  \\\"riskProfile\\\": \\\"survival\\\",\\n  \\\"peakHours\\\": [\\n    \\\"11:00-14:00\\\"\\n  ],\\n  \\\"customerPatience\\\": \\\"very low\\\",\\n  \\\"marketingPower\\\": \\\"location\\\",\\n  \\\"commonIssues\\\": [\\n    \\\"weather shutdowns\\\",\\n    \\\"permits\\\",\\n    \\\"supply runouts\\\"\\n  ],\\n  \\\"growthCeiling\\\": \\\"very low\\\",\\n  \\\"aiFlavor\\\": \\\"scrappy decisions, cash flow panic, opportunistic selling\\\"\\n}\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"SCENARIO:\\n{\\n  \\\"title\\\": \\\"Week 6 - Input Cost Volatility\\\",\\n  \\\"description\\\": \\\"Costs that were once stable begin to fluctuate unexpectedly. Key inputs increase in price, sometimes with little warning, compressing margins and increasing financial risk. Inventory purchased this week may cost significantly more than inventory purchased last week, forcing businesses to rethink pricing, output, or volume strategies. Vendor invoices rise faster than anticipated, and cash outflows accelerate. Decisions now require balancing customer price sensitivity against the need to protect margins. This scenario highlights how cost volatility can destabilize even well-run operations.\\\",\\n  \\\"variables\\\": {\\n    \\\"weather\\\": \\\"Poor\\\",\\n    \\\"expected-demand\\\": \\\"Average\\\",\\n    \\\"scenario-theme\\\": \\\"Input Cost Volatility\\\"\\n  }\\n}\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"GLOBAL SCENARIO OUTCOME:\\n{\\n  \\\"notes\\\": \\\"Higher costs exposed weak margin structures and punished businesses that failed to adapt. Those that adjusted pricing, moderated production, or prioritized cash protection weathered the volatility more effectively. This week highlights the importance of flexibility in cost management.\\\",\\n  \\\"hiddenNotes\\\": \\\"\\\"\\n}\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"STUDENT DECISIONS:\\n{\\n  \\\"staffing\\\": \\\"Less than Average\\\",\\n  \\\"inventory-supply\\\": \\\"Less Than Usual\\\",\\n  \\\"unit-sale-price\\\": 19,\\n  \\\"discount-intensity\\\": 0\\n}\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"LEDGER HISTORY:\\n{\\n  \\\"entries\\\": [\\n    {\\n      \\\"scenarioId\\\": \\\"694ed000f4f7c85a1cac7f4b\\\",\\n      \\\"scenarioTitle\\\": \\\"Back to School Week\\\",\\n      \\\"netProfit\\\": 400,\\n      \\\"cashAfter\\\": 2900\\n    },\\n    {\\n      \\\"scenarioId\\\": \\\"69514a02ff5ba73716900561\\\",\\n      \\\"scenarioTitle\\\": \\\"Week 2 - Supply Crunch\\\",\\n      \\\"netProfit\\\": -100,\\n      \\\"cashAfter\\\": 2800\\n    },\\n    {\\n      \\\"scenarioId\\\": \\\"6952a32137727834f81df2d9\\\",\\n      \\\"scenarioTitle\\\": \\\"Week 2 – Demand Forecasting Variability\\\",\\n      \\\"netProfit\\\": 400,\\n      \\\"cashAfter\\\": 3200\\n    },\\n    {\\n      \\\"scenarioId\\\": \\\"6952b2af37727834f81dfb9c\\\",\\n      \\\"scenarioTitle\\\": \\\"Week 4 - Labor Constraints\\\",\\n      \\\"netProfit\\\": 300,\\n      \\\"cashAfter\\\": 3500\\n    }\\n  ]\\n}\"\n  }\n]"
+        "prompt" : "[\n  {\n    \"role\": \"system\",\n    \"content\": \"You are the SCALE LXP simulation engine for a supply chain class using a pizza shop game. Calculate outcomes for one student based on profile configuration, challenge context, global outcome, and the student's decisions. Apply realistic business logic and environmental effects.\\n\\nReturn ONLY valid JSON matching the provided schema. You may invent reasonable intermediate numbers when needed. Also compute the required education metrics so instructors can explain results (service level, stockouts/lost sales, by-bucket material flow, and cost breakdown).\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"PROFILE CONFIGURATION:\\n{\\n  \\\"shopName\\\": \\\"Fat Boys Pizza\\\",\\n  \\\"profileType\\\": \\\"street_cart\\\",\\n  \\\"storeDescription\\\": \\\"Fat Boys Pizza is a high-volume street cart located on campus that specializes in selling pizza by the slice to students, staff, and late-night crowds. Operating with limited space and equipment, the business focuses on fast service, predictable demand peaks, and tight margins. Success depends on smart inventory planning, efficient labor scheduling, and pricing decisions that balance affordability with profitability. Fat Boys Pizza serves as an ideal real-world example of quick-service operations, where small changes in cost, demand, or waste can have an outsized impact on daily cash flow and overall performance.\\\",\\n  \\\"storeLocation\\\": \\\"All over campus and outside the bars late at night\\\",\\n  \\\"label\\\": \\\"Street Cart\\\",\\n  \\\"description\\\": \\\"Ultra-lean operation with massive foot traffic swings and razor-thin margins.\\\",\\n  \\\"startingBalance\\\": 2500,\\n  \\\"startingInventory\\\": 1000,\\n  \\\"weeklyRent\\\": 50,\\n  \\\"maxDailyCapacity\\\": 60,\\n  \\\"staffRequired\\\": 1,\\n  \\\"weatherSensitivity\\\": \\\"very high\\\",\\n  \\\"mobility\\\": \\\"very high\\\",\\n  \\\"vibe\\\": \\\"gritty\\\",\\n  \\\"riskProfile\\\": \\\"survival\\\",\\n  \\\"peakHours\\\": [\\n    \\\"11:00-14:00\\\"\\n  ],\\n  \\\"customerPatience\\\": \\\"very low\\\",\\n  \\\"marketingPower\\\": \\\"location\\\",\\n  \\\"commonIssues\\\": [\\n    \\\"weather shutdowns\\\",\\n    \\\"permits\\\",\\n    \\\"supply runouts\\\"\\n  ],\\n  \\\"growthCeiling\\\": \\\"very low\\\",\\n  \\\"aiFlavor\\\": \\\"scrappy decisions, cash flow panic, opportunistic selling\\\"\\n}\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"CHALLENGE:\\n{\\n  \\\"title\\\": \\\"Week 6 - Input Cost Volatility\\\",\\n  \\\"description\\\": \\\"Costs that were once stable begin to fluctuate unexpectedly. Key inputs increase in price, sometimes with little warning, compressing margins and increasing financial risk. Inventory purchased this week may cost significantly more than inventory purchased last week, forcing businesses to rethink pricing, output, or volume strategies. Vendor invoices rise faster than anticipated, and cash outflows accelerate. Decisions now require balancing customer price sensitivity against the need to protect margins. This challenge highlights how cost volatility can destabilize even well-run operations.\\\",\\n  \\\"variables\\\": {\\n    \\\"weather\\\": \\\"Poor\\\",\\n    \\\"expected-demand\\\": \\\"Average\\\",\\n    \\\"scenario-theme\\\": \\\"Input Cost Volatility\\\"\\n  }\\n}\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"GLOBAL CHALLENGE OUTCOME:\\n{\\n  \\\"notes\\\": \\\"Higher costs exposed weak margin structures and punished businesses that failed to adapt. Those that adjusted pricing, moderated production, or prioritized cash protection weathered the volatility more effectively. This week highlights the importance of flexibility in cost management.\\\",\\n  \\\"hiddenNotes\\\": \\\"\\\"\\n}\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"STUDENT DECISIONS:\\n{\\n  \\\"staffing\\\": \\\"Less than Average\\\",\\n  \\\"inventory-supply\\\": \\\"Less Than Usual\\\",\\n  \\\"unit-sale-price\\\": 19,\\n  \\\"discount-intensity\\\": 0\\n}\"\n  },\n  {\n    \"role\":\"user\",\n    \"content\": \"LEDGER HISTORY:\\n{\\n  \\\"entries\\\": [\\n    {\\n      \\\"challengeId\\\": \\\"694ed000f4f7c85a1cac7f4b\\\",\\n      \\\"challengeTitle\\\": \\\"Back to School Week\\\",\\n      \\\"netProfit\\\": 400,\\n      \\\"cashAfter\\\": 2900\\n    },\\n    {\\n      \\\"challengeId\\\": \\\"69514a02ff5ba73716900561\\\",\\n      \\\"challengeTitle\\\": \\\"Week 2 - Supply Crunch\\\",\\n      \\\"netProfit\\\": -100,\\n      \\\"cashAfter\\\": 2800\\n    },\\n    {\\n      \\\"challengeId\\\": \\\"6952a32137727834f81df2d9\\\",\\n      \\\"challengeTitle\\\": \\\"Week 2 – Demand Forecasting Variability\\\",\\n      \\\"netProfit\\\": 400,\\n      \\\"cashAfter\\\": 3200\\n    },\\n    {\\n      \\\"challengeId\\\": \\\"6952b2af37727834f81dfb9c\\\",\\n      \\\"challengeTitle\\\": \\\"Week 4 - Labor Constraints\\\",\\n      \\\"netProfit\\\": 300,\\n      \\\"cashAfter\\\": 3500\\n    }\\n  ]\\n}\"\n  }\n]"
     },
     "overridden" : false,
     "overriddenBy" : null,
@@ -1753,23 +1815,23 @@ The system supports email notifications through two approaches: **direct email q
 
 ### Direct Email Queuing
 
-For simple, event-driven emails (e.g., scenario creation), emails are queued directly without creating notification records.
+For simple, event-driven emails (e.g., challenge creation), emails are queued directly without creating notification records.
 
-**Example: Scenario Creation Emails**
+**Example: Challenge Creation Emails**
 
-When a new scenario is created, the `Scenario` model's post-save hook automatically:
+When a new challenge is created, the `Challenge` model's post-save hook automatically:
 
 1. Finds all enrolled students in the classroom
 2. Queues an email job for each student
-3. Uses the `scenario-created` template with scenario, classroom, and member data
+3. Uses the `challenge-created` template with challenge, classroom, and member data
 
 ```javascript
-// In scenario.model.js post-save hook
+// In services/challenge/challenge.model.js post-save hook
 await enqueueEmailSending({
   recipient: { email, name, memberId },
-  title: `New Scenario: ${scenario.title}`,
-  templateSlug: "scenario-created",
-  templateData: { scenario, classroom, member, organization, link },
+  title: `New Challenge: ${challenge.title}`,
+  templateSlug: "challenge-created",
+  templateData: { challenge, classroom, member, organization, link },
   organizationId,
 });
 ```
@@ -1802,10 +1864,10 @@ const notification = new Notification({
     type: "Member",
     ref: "Member",
   },
-  title: "Welcome to SCALE.ai",
+  title: "Welcome to SCALE LXP",
   message: "You've been enrolled in a new class",
-  templateSlug: "scenario-created",
-  templateData: { scenario, classroom, member },
+  templateSlug: "challenge-created",
+  templateData: { challenge, classroom, member },
   organization: organizationId,
 });
 
@@ -1818,15 +1880,15 @@ Email templates are built with **React Email** and located in `lib/emails/templa
 
 #### Available Templates
 
-- `scenario-created` - Notifies students when a new scenario is created
+- `challenge-created` - Notifies students when a new challenge is created
 
 #### Template Structure
 
 Templates are React components that receive `templateData` as props:
 
 ```jsx
-function ScenarioCreatedEmail(props) {
-  const { scenario, classroom, member, link } = props;
+function ChallengeCreatedEmail(props) {
+  const { challenge, classroom, member, link } = props;
   // ... render email
 }
 ```
@@ -1848,10 +1910,10 @@ Fixtures for email preview are in `apps/email-preview/fixtures/`. Run `npm run e
 If your database already has **at least one org admin** (a `Member` with Clerk org role `org:admin`), you can generate a large demo dataset for load-testing:
 
 - **6 classrooms**
-- **6 completed scenarios per classroom**
-- **100 students per classroom**, each with a store (various store types)
-- Variable definitions (store/scenario/submission)
-- Submissions + completed simulation jobs + ledger entries
+- **6 completed challenges per classroom**
+- **100 students per classroom**, each with a profile (various profile types)
+- Variable definitions (profile/challenge/decision)
+- Decisions + completed simulation jobs + ledger entries
 
 Run:
 
@@ -1863,15 +1925,15 @@ Options:
 - `npm run seed:demo -- --admin=<clerkUserId>`
 - `npm run seed:demo -- --force`
 
-## Auto-Generate Submissions on Scenario Publish (LLM)
+## Auto-Generate Decisions on Challenge Publish (LLM)
 
-When an instructor publishes a scenario (`POST /v1/admin/scenarios/:scenarioId/publish`), the API can automatically create a **Submission for every enrolled student** by using a cheap OpenAI model with structured JSON output.
+When an instructor publishes a challenge (`POST /v1/admin/challenges/:challengeId/publish`), the API can automatically create a **Decision for every enrolled student** by using a cheap OpenAI model with structured JSON output.
 
 **Environment Variables:**
 
 - `AUTO_GENERATE_SUBMISSIONS_ON_PUBLISH`: default `"true"`. Set to `"false"` to disable.
 - `AUTO_SUBMISSION_MODEL`: default `"gpt-4o-mini"` (cheap).
-- `AUTO_SUBMISSION_CONCURRENCY`: default `10` (parallel submission creation).
+- `AUTO_SUBMISSION_CONCURRENCY`: default `10` (parallel decision creation).
 
 If `OPENAI_API_KEY` is not set, auto-generation is skipped.
 
@@ -1886,7 +1948,7 @@ If `OPENAI_API_KEY` is not set, auto-generation is skipped.
 
 **Rate limiting (recommended):**
 
-To prevent bursts from hammering Clerk/SendGrid (e.g. publishing a scenario to a large class), the
+To prevent bursts from hammering Clerk/SendGrid (e.g. publishing a challenge to a large class), the
 `email-sending` Bull queue is **rate limited by default** to **1 job per 1000ms**.
 
 - `EMAIL_RATE_LIMIT_MAX` (default: `1`) and `EMAIL_RATE_LIMIT_DURATION_MS` (default: `1000`) tune throughput.
@@ -1935,7 +1997,7 @@ Recipient preferences are checked before sending (email/SMS/push preferences).
 
 ### Best Practices
 
-1. **Use Direct Queuing** for simple, event-driven emails (scenario creation, etc.)
+1. **Use Direct Queuing** for simple, event-driven emails (challenge creation, etc.)
 2. **Use Notifications** for emails that need tracking, status, or multiple channels
 3. **Always include unsubscribe links** (handled automatically)
 4. **Test with `SEND_EMAIL=false`** in development

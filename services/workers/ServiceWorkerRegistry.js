@@ -15,6 +15,20 @@ class ServiceWorkerRegistry {
    * Register default system workers
    */
   registerDefaultWorkers() {
+    this.registerWorker("challenge-lifecycle-check", {
+      name: "Challenge Lifecycle Check",
+      description:
+        "Publishes due scheduled challenges and queues automated outcome processing at deadlines",
+      isSystemWorker: true,
+      requiresOrganization: false,
+      defaultSchedule: "*/5 * * * *",
+      timezone: "America/Chicago",
+      maxExecutionTime: 5 * 60 * 1000,
+      retryOnFailure: true,
+      maxRetries: 2,
+      enabled: true,
+    });
+
     // Ticket Reminder Worker - System-wide job
     // this.registerWorker("ticket-reminder", {
     //   name: "Ticket Reminder Worker",

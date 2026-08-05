@@ -1,5 +1,42 @@
 const mongoose = require("mongoose");
-
+/**
+ * @openapi
+ * components:
+ *   schemas:
+ *     Organization:
+ *       type: object
+ *       required:
+ *         - clerkOrganizationId
+ *         - name
+ *         - slug
+ *       properties:
+ *         _id:
+ *           type: string
+ *         clerkOrganizationId:
+ *           type: string
+ *         name:
+ *           type: string
+ *         slug:
+ *           type: string
+ *         imageUrl:
+ *           type: string
+ *         maxAllowedMemberships:
+ *           type: number
+ *         adminDeleteEnabled:
+ *           type: boolean
+ *         stripeAccountId:
+ *           type: string
+ *         publicMetadata:
+ *           type: object
+ *         privateMetadata:
+ *           type: object
+ *         clerkCreatedAt:
+ *           type: string
+ *           format: date-time
+ *         clerkUpdatedAt:
+ *           type: string
+ *           format: date-time
+ */
 const organizationSchema = new mongoose.Schema(
   {
     // Clerk organization data
@@ -60,6 +97,38 @@ organizationSchema.statics.findByClerkId = function (clerkOrganizationId) {
 
 organizationSchema.statics.findBySlug = function (slug) {
   return this.findOne({ slug });
+};
+
+organizationSchema.statics.ensureByClerkId = async function (clerkOrganizationId) {
+  const { clerkClient } = require("@clerk/express");
+
+  let organization = await this.findByClerkId(clerkOrganizationId);
+  if (organization) return organization;
+
+  const clerkOrg = await clerkClient.organizations.getOrganization({
+    organizationId: clerkOrganizationId,
+  });
+
+  const organizationData = {
+    clerkOrganizationId: clerkOrg.id,
+    name: clerkOrg.name,
+    slug: clerkOrg.slug,
+    imageUrl: clerkOrg.imageUrl,
+    maxAllowedMemberships: clerkOrg.maxAllowedMemberships || 1000,
+    adminDeleteEnabled: clerkOrg.adminDeleteEnabled !== false,
+    publicMetadata: clerkOrg.publicMetadata || {},
+    privateMetadata: clerkOrg.privateMetadata || {},
+    clerkCreatedAt: new Date(clerkOrg.createdAt),
+    clerkUpdatedAt: new Date(clerkOrg.updatedAt),
+  };
+
+  organization = await this.findOneAndUpdate(
+    { clerkOrganizationId: clerkOrg.id },
+    { $set: organizationData },
+    { new: true, upsert: true },
+  );
+
+  return organization;
 };
 
 organizationSchema.statics.calculateApplicationFeeAmount = function (

@@ -13,5 +13,6 @@ const clerkWebhookRouter = require("./clerk");
 
 // Mount webhook routers
 router.use("/clerk", clerkWebhookRouter);
+router.use("/stripe", require("./stripe"));
 
 module.exports = router;

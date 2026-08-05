@@ -1,0 +1,121 @@
+const mongoose = require("mongoose");
+const baseSchema = require("../../lib/baseSchema");
+
+const rosterSeatSchema = new mongoose.Schema({
+  classroomId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Classroom",
+    required: true,
+    index: true,
+  },
+  allocationId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "ClassroomSeatAllocation",
+    index: true,
+  },
+  email: {
+    type: String,
+    required: true,
+    trim: true,
+    lowercase: true,
+    index: true,
+  },
+  studentId: {
+    type: String,
+    trim: true,
+    default: "",
+  },
+  firstName: {
+    type: String,
+    trim: true,
+    default: "",
+  },
+  lastName: {
+    type: String,
+    trim: true,
+    default: "",
+  },
+  section: {
+    type: String,
+    trim: true,
+    default: "",
+  },
+  status: {
+    type: String,
+    enum: ["reserved", "claimed", "revoked", "invalid"],
+    default: "reserved",
+    index: true,
+  },
+  claimedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Member",
+    index: true,
+  },
+  claimedAt: Date,
+  metadata: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {},
+  },
+}).add(baseSchema);
+
+rosterSeatSchema.index(
+  { classroomId: 1, email: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { status: { $ne: "revoked" } },
+  },
+);
+rosterSeatSchema.index({ organization: 1, classroomId: 1, status: 1 });
+
+rosterSeatSchema.statics.findReservableForEmail = function (
+  classroomId,
+  email,
+) {
+  return this.findOne({
+    classroomId,
+    email: String(email || "")
+      .trim()
+      .toLowerCase(),
+    status: "reserved",
+  });
+};
+
+rosterSeatSchema.statics.releaseForClaim = async function (claim, updatedBy) {
+  if (!claim?.rosterSeatId) return;
+
+  const rosterSeat = await this.findById(claim.rosterSeatId);
+  if (!rosterSeat) return;
+
+  rosterSeat.status = "reserved";
+  rosterSeat.claimedBy = undefined;
+  rosterSeat.claimedAt = undefined;
+  rosterSeat.updatedBy = updatedBy;
+  await rosterSeat.save();
+};
+
+rosterSeatSchema.statics.attachForClaim = async function ({
+  claim,
+  member,
+  classroomId,
+  updatedBy,
+}) {
+  const SeatClaim = require("./seatClaim.model");
+  const email = SeatClaim.getPrimaryEmail(member);
+  if (!email) return null;
+
+  const rosterSeat = await this.findReservableForEmail(classroomId, email);
+  if (!rosterSeat) return null;
+
+  rosterSeat.status = "claimed";
+  rosterSeat.claimedBy = member._id;
+  rosterSeat.claimedAt = new Date();
+  rosterSeat.updatedBy = updatedBy;
+  await rosterSeat.save();
+
+  claim.rosterSeatId = rosterSeat._id;
+  return rosterSeat;
+};
+
+const RosterSeat = mongoose.model("RosterSeat", rosterSeatSchema);
+
+module.exports = RosterSeat;
