@@ -13,21 +13,59 @@ const router = express.Router();
 
 const { requireAuth, checkRole } = require("../../middleware/auth");
 
+/**
+ * @openapi
+ * /v1/openai/completion:
+ *   post:
+ *     summary: Generate completion text
+ *     description: Submit prompts to fetch completion text from OpenAI.
+ *     tags:
+ *       - OpenAI Integration
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - prompt
+ *             properties:
+ *               prompt:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Completion response returned.
+ */
 router.post("/completion", requireAuth(), controller.completion);
+
+/**
+ * @openapi
+ * /v1/openai/generate:
+ *   post:
+ *     summary: Generate AI image
+ *     description: Generate an image using OpenAI models.
+ *     tags:
+ *       - OpenAI Integration
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - prompt
+ *             properties:
+ *               prompt:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Generated image metadata/URL returned.
+ */
 router.post("/generate", requireAuth(), controller.generateImage);
-router.post(
-  "/analyze-image",
-  requireAuth(),
-  checkRole("org:admin"),
-  upload("garbage").single("file"),
-  controller.analyzeImage
-);
-router.post(
-  "/transcribe-audio",
-  requireAuth(),
-  checkRole("org:admin"),
-  upload("garbage").single("file"),
-  controller.transcribeAudio
-);
+
 
 module.exports = router;

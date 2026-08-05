@@ -1,7 +1,7 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 .env
 # dependencies
-/node_modules
+node_modules/
 /.pnp
 .pnp.js
 private.md
@@ -10,6 +10,7 @@ private.md
 
 # production
 /build
+dist/
 
 .cache*
 
@@ -32,6 +33,17 @@ reason-x-4ad8c7d635a1.json
 .env.develop
 .env.production
 .env
+.env.deploy.*
+credentials.txt
 
 test/rendered-templates
 docker-compose.local.yml
+
+apps/web/node_modules/
+apps/web/dist/
+
+# Vitepress / Vite cache
+.vitepress/cache/
+**/.vitepress/cache/
+apps/docs/.vitepress/cache/
+apps/docs/.vitepress/dist/

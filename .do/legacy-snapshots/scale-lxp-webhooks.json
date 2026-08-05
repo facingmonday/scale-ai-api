@@ -1,0 +1,243 @@
+{
+  "name": "scale-lxp-webhooks",
+  "services": [
+    {
+      "name": "scale-lxp-webooks",
+      "github": {
+        "repo": "facingmonday/scale-ai-api",
+        "branch": "main",
+        "deploy_on_push": true
+      },
+      "run_command": "npm run start:webhooks",
+      "source_dir": "/",
+      "environment_slug": "node-js",
+      "envs": [
+        {
+          "key": "PORT",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "PORT_WEBHOOKS",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "PORT_WORKERS",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "SCALE_API_HOST",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "SCALE_API_VERSION",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "SCALE_APP_HOST",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "NODE_ENV",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "MONGO_SCHEME",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "MONGO_USERNAME",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "MONGO_PASSWORD",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "MONGO_HOSTNAME",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "MONGO_PORT",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "MONGO_DB",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "REDIS_HOST",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "REDIS_USERNAME",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "REDIS_PASSWORD",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "REDIS_PORT",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "REDIS_DB",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "OPENAI_API_KEY",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "SPACES_API_KEY",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "SPACES_BUCKET",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "SPACES_API_SECRET",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "SPACES_ENDPOINT",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "SENDGRID_API_KEY_ID",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "SENDGRID_API_KEY",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "SENDGRID_WEBHOOK_KEY",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "SENDGRID_WEBHOOK_RATE_LIMIT",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "SENDGRID_WEBHOOK_RATE_WINDOW",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "SENDGRID_FROM_EMAIL",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "SENDGRID_FROM_NAME",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "WORKERS_ENABLED",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "SEND_EMAIL",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "CLERK_PUBLISHABLE_KEY",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "CLERK_SECRET_KEY",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "CLERK_WEBHOOK_SECRET",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "AUTO_GENERATE_SUBMISSIONS_ON_PUBLISH",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "AUTO_SUBMISSION_MODEL",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        },
+        {
+          "key": "AI_MODEL",
+          "value": "<redacted>",
+          "scope": "RUN_AND_BUILD_TIME"
+        }
+      ],
+      "instance_size_slug": "apps-s-1vcpu-0.5gb",
+      "instance_count": 1,
+      "http_port": 1340
+    }
+  ],
+  "domains": [
+    {
+      "domain": "webhooks.scalelxp.com",
+      "type": "PRIMARY"
+    }
+  ],
+  "region": "nyc",
+  "alerts": [
+    {
+      "rule": "DEPLOYMENT_FAILED"
+    },
+    {
+      "rule": "DOMAIN_FAILED"
+    }
+  ],
+  "ingress": {
+    "rules": [
+      {
+        "match": {
+          "path": {
+            "prefix": "/"
+          },
+          "authority": {
+            "exact": ""
+          }
+        },
+        "component": {
+          "name": "scale-lxp-webooks"
+        }
+      }
+    ]
+  },
+  "features": [
+    "buildpack-stack=ubuntu-22"
+  ]
+}

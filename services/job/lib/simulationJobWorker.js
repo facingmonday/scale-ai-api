@@ -39,14 +39,14 @@ class SimulationJobWorker {
   }
 
   /**
-   * Process pending jobs for a specific scenario
-   * @param {string} scenarioId - Scenario ID
+   * Process pending jobs for a specific challenge
+   * @param {string} challengeId - Challenge ID
    * @returns {Promise<Object>} Processing result
    */
-  static async processPendingJobsForScenario(scenarioId) {
+  static async processPendingJobsForScenario(challengeId) {
     try {
       const results = await SimulationWorker.processPendingJobsForScenario(
-        scenarioId
+        challengeId
       );
 
       const successCount = results.filter((r) => r.success).length;
@@ -60,7 +60,7 @@ class SimulationJobWorker {
         results,
       };
     } catch (error) {
-      console.error("Error processing jobs for scenario:", error);
+      console.error("Error processing jobs for challenge:", error);
       return {
         success: false,
         error: error.message,

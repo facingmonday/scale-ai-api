@@ -1,0 +1,134 @@
+import React, { useMemo, useState } from "react";
+import { Dialog } from "primereact/dialog";
+import challengeService from "../services/challenge";
+import ChallengeForm, { type ScenarioFormValues } from "./ChallengeForm";
+
+interface ScenarioCreateFormProps {
+  visible: boolean;
+  onHide: () => void;
+  classroomId: string;
+  onSuccess: (challengeId: string) => void;
+}
+
+const ScenarioCreateForm: React.FC<ScenarioCreateFormProps> = ({
+  visible,
+  onHide,
+  classroomId,
+  onSuccess,
+}) => {
+  const [values, setValues] = useState<ScenarioFormValues>({
+    title: "",
+    description: "",
+    publishAt: "",
+    submissionDeadlineAt: "",
+    automationMode: "MANUAL",
+    missingSubmissionPolicy: "SKIP",
+    punishAbsentStudents: "none",
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const isValid = useMemo(() => values.title.trim().length > 0, [values.title]);
+
+  const reset = () => {
+    setValues({
+      title: "",
+      description: "",
+      publishAt: "",
+      submissionDeadlineAt: "",
+      automationMode: "MANUAL",
+      missingSubmissionPolicy: "SKIP",
+      punishAbsentStudents: "none",
+    });
+    setError(null);
+    setIsSubmitting(false);
+  };
+
+  const handleHide = () => {
+    if (isSubmitting) return;
+    reset();
+    onHide();
+  };
+
+  const handleSubmit = async () => {
+    if (!isValid || isSubmitting) return;
+
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      const payload = await challengeService.create({
+        classroomId,
+        title: values.title.trim(),
+        description: values.description.trim() || undefined,
+        publishAt: values.publishAt || null,
+        submissionDeadlineAt: values.submissionDeadlineAt || null,
+        automationMode: values.automationMode || "MANUAL",
+        missingSubmissionPolicy: values.missingSubmissionPolicy || "SKIP",
+        punishAbsentStudents: values.punishAbsentStudents || "none",
+      });
+
+      const challenge = payload?.data ?? payload;
+      const challengeId = challenge?._id ?? challenge?.id;
+
+      if (!challengeId) {
+        throw new Error("Create challenge succeeded but no id returned.");
+      }
+
+      reset();
+      onHide();
+      onSuccess(String(challengeId));
+    } catch (e) {
+      console.error("Failed to create challenge:", e);
+      setError("Failed to create challenge. Please try again.");
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog
+      header="Create Challenge"
+      visible={visible}
+      onHide={handleHide}
+      modal
+      closable={!isSubmitting}
+      dismissableMask={!isSubmitting}
+      className="modal w-full max-w-2xl"
+      maskClassName="modal-mask"
+      headerClassName="modal-header"
+      contentClassName="modal-content"
+      pt={{
+        headerTitle: { className: "modal-title" },
+        footer: { className: "modal-footer" },
+      }}
+      footer={
+        <div className="flex gap-2 justify-end">
+          <button
+            className="btn-outline"
+            onClick={handleHide}
+            disabled={isSubmitting}
+          >
+            Cancel
+          </button>
+          <button
+            className="btn-teal"
+            onClick={() => void handleSubmit()}
+            disabled={!isValid || isSubmitting}
+          >
+            {isSubmitting ? "Creating..." : "Create"}
+          </button>
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        {error && <p className="text-red-400 text-sm">{error}</p>}
+        <ChallengeForm
+          values={values}
+          onChange={setValues}
+          disabled={isSubmitting}
+        />
+      </div>
+    </Dialog>
+  );
+};
+
+export default ScenarioCreateForm;

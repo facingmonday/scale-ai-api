@@ -1,0 +1,1677 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+@import "tw-shimmer";
+
+@custom-variant dark (&:is(.dark *));
+
+/* =========================
+   THEME CONFIGURATION (Tailwind v4)
+========================= */
+@theme {
+  /* Brand Colors (same for light and dark) */
+  --color-brand-blue: #2f5f8f;
+  --color-brand-orange: #e98236;
+  --color-brand-teal: #78cfc4;
+  --color-text-dark: #0a0a0a;
+  --color-danger: #ef4444;
+
+  /* UI Colors - Light Mode (default) */
+  --color-ui-bg: #f6f7f8;
+  --color-ui-surface: #ffffff;
+  --color-ui-muted: #eceeef;
+  --color-ui-border: #d8dadd;
+
+  /* Text Colors - Light Mode (default) */
+  --color-text-primary: #111827;
+  --color-text-secondary: #4b5563;
+  --color-text-muted: #9ca3af;
+  --color-text-brand: #2f5f8f;
+
+  /* Border Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+
+  /* Box Shadow */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --shadow-focus: 0 0 0 3px rgba(120, 207, 196, 0.4);
+}
+
+/* Dark Mode Color Overrides */
+.dark {
+  --color-ui-bg: #121212;
+  --color-ui-surface: #1a1a1a;
+  --color-ui-muted: #2a2a2a;
+  --color-ui-border: #3a3a3a;
+
+  --color-text-primary: #f6f7f8;
+  --color-text-secondary: #d1d5db;
+  --color-text-muted: #9ca3af;
+  --color-text-brand: #78cfc4;
+  --color-text-dark: #2f5f8f;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-focus: 0 0 0 3px rgba(120, 207, 196, 0.4);
+}
+
+/* =========================
+   BASE
+========================= */
+@layer base {
+  html,
+  body {
+    @apply antialiased bg-ui-bg text-text-primary;
+  }
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* =========================
+   COMPONENTS
+========================= */
+@layer components {
+  /* ---------- Layout ---------- */
+
+  .page {
+    @apply min-h-screen bg-ui-bg;
+  }
+
+  .container {
+    @apply max-w-7xl mx-auto py-6;
+  }
+
+  .card {
+    @apply bg-ui-surface rounded-lg shadow-sm border border-ui-border p-6;
+  }
+  .classroom-card-grid {
+    @apply grid grid-cols-1 md:grid-cols-3 gap-6;
+  }
+
+  .danger-zone-card {
+    @apply bg-ui-surface rounded-lg shadow-sm p-6 border-2 border-danger/20;
+  }
+
+  .danger-zone-title {
+    @apply text-xl font-medium text-danger mb-4;
+  }
+
+  .danger-zone-row {
+    @apply flex items-center justify-between gap-4
+           p-4 border border-danger/20 rounded-lg;
+  }
+
+  .icon-button {
+    @apply inline-flex items-center justify-center
+           rounded-md border border-ui-border
+           bg-ui-surface p-2
+           text-text-secondary
+           transition-colors duration-200
+           hover:bg-ui-muted
+           focus:outline-none focus:ring-2 focus:ring-brand-teal;
+  }
+
+  .store-thumbnail {
+    @apply block h-16 w-16 shrink-0 rounded-md border border-ui-border bg-ui-muted object-cover;
+  }
+
+  .dashboard-classroom-header {
+    @apply flex items-center justify-between gap-3
+           rounded-lg border border-ui-border
+           bg-ui-surface px-4 py-3
+           shadow-xs;
+  }
+
+  /* ---------- Student Dashboard ---------- */
+
+  .student-dashboard-header {
+    @apply flex flex-col gap-2
+           rounded-lg border border-ui-border
+           bg-ui-surface px-5 py-4
+           shadow-xs;
+  }
+
+  .student-dashboard-header-top {
+    @apply flex items-start justify-between gap-4;
+  }
+
+  .student-dashboard-header-title {
+    @apply text-2xl font-semibold text-text-primary leading-tight;
+  }
+
+  .student-dashboard-header-subtitle {
+    @apply text-text-muted text-sm;
+  }
+
+  .student-dashboard-balance {
+    @apply text-right;
+  }
+
+  .student-dashboard-balance-label {
+    @apply text-text-muted text-xs;
+  }
+
+  .student-dashboard-balance-value {
+    @apply text-2xl font-semibold tabular-nums;
+  }
+
+  .student-dashboard-week-card {
+    @apply bg-ui-surface rounded-lg shadow-sm border border-ui-border p-6;
+  }
+
+  .student-dashboard-week-meta {
+    @apply flex flex-col gap-3 mb-3 min-w-0 sm:flex-row sm:items-center sm:justify-between;
+  }
+
+  .student-dashboard-week-title {
+    @apply text-xl font-medium text-text-primary;
+  }
+
+  .student-dashboard-week-description {
+    @apply text-text-muted text-sm;
+  }
+
+  .student-dashboard-primary-cta-row {
+    @apply mt-5 flex flex-wrap items-center justify-end gap-3;
+  }
+
+  .student-dashboard-action-banner {
+    @apply rounded-lg border border-ui-border
+           bg-ui-muted px-5 py-4;
+  }
+
+  .student-dashboard-action-banner-title {
+    @apply font-semibold;
+  }
+
+  .student-dashboard-action-banner-subtitle {
+    @apply text-text-muted text-sm mt-1;
+  }
+
+  .student-dashboard-kpi-grid {
+    @apply grid grid-cols-2 md:grid-cols-4 gap-3;
+  }
+
+  .student-dashboard-kpi {
+    @apply rounded-lg border border-ui-border bg-ui-surface px-4 py-3;
+  }
+
+  .student-dashboard-kpi-label {
+    @apply text-text-muted text-xs;
+  }
+
+  .student-dashboard-kpi-value {
+    @apply mt-1 text-lg font-semibold tabular-nums;
+  }
+
+  .student-dashboard-mini-chart {
+    @apply rounded-lg border border-ui-border bg-ui-surface px-4 py-3;
+  }
+
+  .student-dashboard {
+    @apply rounded-lg border border-ui-border bg-ui-surface px-5 py-4;
+  }
+
+  .student-dashboard-footnote {
+    @apply text-text-muted text-xs;
+  }
+
+  /* ---------- Metric Cards ---------- */
+
+  .metric-card {
+    @apply bg-ui-surface rounded-lg border border-ui-border p-3;
+  }
+
+  .metric-card-small {
+    @apply p-2;
+  }
+
+  .metric-card-small .metric-card-value {
+    @apply text-base;
+  }
+
+  .metric-card-header {
+    @apply flex items-center gap-2 mb-2;
+  }
+
+  .metric-card-icon {
+    @apply flex-shrink-0;
+  }
+
+  .metric-card-label {
+    @apply text-xs font-medium text-text-muted uppercase tracking-wide;
+  }
+
+  .metric-card-value {
+    @apply text-lg font-semibold text-text-primary tabular-nums;
+  }
+
+  .metric-card-progress {
+    @apply w-full h-1.5 rounded-full overflow-hidden mt-2;
+  }
+
+  .metric-card-progress-segment {
+    @apply h-full transition-all duration-300;
+  }
+
+  .metric-card-footer {
+    @apply mt-2 text-xs text-text-muted;
+  }
+
+  .metric-card-grid {
+    @apply grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3;
+  }
+
+  /* ---------- Modals (PrimeReact Dialog) ---------- */
+
+  .modal {
+    @apply bg-ui-surface border border-ui-border rounded-lg shadow-md;
+  }
+
+  .modal-mask {
+    @apply bg-black/60;
+  }
+
+  .modal-header {
+    @apply flex items-center justify-between gap-3 px-6 py-4 border-b border-ui-border bg-ui-surface;
+  }
+
+  .modal-title {
+    @apply text-xl font-semibold text-text-primary;
+  }
+
+  .modal-content {
+    @apply px-6 py-5 bg-ui-surface;
+  }
+
+  .modal-footer {
+    @apply px-6 py-4 border-t border-ui-border bg-ui-surface;
+  }
+
+  /* ---------- Typography ---------- */
+
+  .heading-xl {
+    @apply text-3xl font-semibold text-text-primary;
+  }
+
+  .heading-lg {
+    @apply text-2xl font-semibold text-text-primary;
+  }
+
+  .heading-md {
+    @apply text-xl font-medium text-text-primary;
+  }
+
+  .text-muted {
+    @apply text-text-muted;
+  }
+
+  .text-brand {
+    @apply text-brand-blue;
+  }
+
+  /* ---------- Buttons ---------- */
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2
+           rounded-md font-medium
+           transition-colors duration-200
+           focus:outline-none;
+  }
+
+  .btn-teal {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 
+           rounded-md font-medium
+           transition-colors duration-200
+           focus:outline-none
+           bg-brand-teal text-text-primary
+           hover:opacity-90
+           focus:ring-2 focus:ring-brand-teal;
+  }
+
+  .btn-orange {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 
+           rounded-md font-medium
+           transition-colors duration-200
+           focus:outline-none
+           bg-brand-orange text-text-primary
+           hover:opacity-90
+           focus:ring-2 focus:ring-brand-orange;
+  }
+
+  .btn-blue {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 
+           rounded-md font-medium
+           transition-colors duration-200
+           focus:outline-none
+           bg-brand-blue text-text-primary
+           hover:opacity-90
+           focus:ring-2 focus:ring-brand-blue;
+  }
+
+  .btn-orange {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2
+           rounded-md font-medium
+           transition-colors duration-200
+           focus:outline-none
+           bg-brand-orange text-text-primary
+           hover:opacity-90
+           focus:ring-2 focus:ring-brand-orange
+           text-text-primary;
+  }
+
+  .btn-outline {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2
+           rounded-md font-medium
+           transition-colors duration-200
+           focus:outline-none
+           border border-ui-border bg-transparent
+           text-text-primary
+           hover:bg-ui-muted;
+  }
+
+  .btn-disabled {
+    @apply opacity-50 cursor-not-allowed pointer-events-none;
+  }
+
+  /* ---------- Inputs ---------- */
+
+  .input {
+    @apply w-full rounded-md border border-ui-border
+           bg-ui-surface px-3 py-2
+           text-text-primary
+           placeholder:text-text-muted
+           focus:border-brand-teal
+           focus:ring-2 focus:ring-brand-teal;
+  }
+
+  .textarea {
+    @apply w-full rounded-md border border-ui-border
+           bg-ui-surface px-3 py-2
+           text-text-primary
+           placeholder:text-text-muted
+           focus:border-brand-teal
+           focus:ring-2 focus:ring-brand-teal
+           resize-y min-h-32;
+  }
+
+  .textarea-fixed {
+    @apply w-full rounded-md border border-ui-border
+           bg-ui-surface px-3 py-2
+           text-text-primary
+           placeholder:text-text-muted
+           focus:border-brand-teal
+           focus:ring-2 focus:ring-brand-teal
+           resize-none min-h-32;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-text-secondary mb-1;
+  }
+
+  /* ---------- PrimeReact Dropdown Input Styling ---------- */
+
+  .p-dropdown {
+    @apply w-full rounded-md border border-ui-border
+           bg-ui-surface
+           text-text-primary
+           focus-within:border-brand-teal
+           focus-within:ring-2 focus-within:ring-brand-teal;
+  }
+
+  .p-dropdown .p-dropdown-label {
+    @apply px-3 text-text-primary;
+    padding-top: 0.375rem;
+    padding-bottom: 0.375rem;
+  }
+
+  .p-dropdown .p-dropdown-label.p-placeholder {
+    @apply text-text-muted;
+  }
+
+  .p-dropdown:not(.p-disabled):hover {
+    @apply border-ui-border;
+  }
+
+  .p-dropdown:not(.p-disabled).p-focus {
+    @apply border-brand-teal ring-2 ring-brand-teal;
+  }
+
+  .p-dropdown .p-dropdown-trigger {
+    @apply text-text-muted;
+  }
+
+  .p-dropdown.p-invalid {
+    @apply border-red-400;
+  }
+
+  .p-dropdown.p-invalid.p-focus {
+    @apply border-red-400 ring-2 ring-red-400;
+  }
+
+  /* ---------- Badges / Status ---------- */
+
+  .badge {
+    @apply inline-flex items-center rounded-full
+           px-2.5 py-1 text-xs font-medium;
+  }
+
+  .badge-success {
+    @apply inline-flex items-center rounded-full
+           px-2.5 py-1 text-xs font-medium
+           bg-brand-teal text-text-primary;
+  }
+
+  .badge-warning {
+    @apply inline-flex items-center rounded-full
+           px-2.5 py-1 text-xs font-medium
+           bg-brand-orange text-text-primary;
+  }
+
+  .badge-danger {
+    @apply inline-flex items-center rounded-full
+           px-2.5 py-1 text-xs font-medium
+           bg-red-500 text-white;
+  }
+
+  .badge-info {
+    @apply inline-flex items-center rounded-full
+           px-2.5 py-1 text-xs font-medium
+           bg-blue-500 text-white;
+  }
+
+  .badge-muted {
+    @apply inline-flex items-center rounded-full
+           px-2.5 py-1 text-xs font-medium
+           bg-ui-muted text-text-secondary;
+  }
+
+  /* ---------- Alert ---------- */
+
+  .alert {
+    @apply rounded-lg border p-4 shadow-sm;
+  }
+
+  .alert-info {
+    @apply bg-blue-50 border-blue-200;
+  }
+
+  .alert-success {
+    @apply bg-brand-teal/10 border-brand-teal/30;
+  }
+
+  .alert-warning {
+    @apply bg-brand-orange/10 border-brand-orange/30;
+  }
+
+  .alert-error {
+    @apply bg-red-50 border-red-200;
+  }
+
+  .alert-content {
+    @apply flex items-start gap-3;
+  }
+
+  .alert-icon {
+    @apply flex-shrink-0 mt-0.5;
+  }
+
+  .alert-icon i {
+    @apply text-lg;
+  }
+
+  .alert-info .alert-icon i {
+    @apply text-blue-600;
+  }
+
+  .alert-success .alert-icon i {
+    @apply text-brand-teal;
+  }
+
+  .alert-warning .alert-icon i {
+    @apply text-brand-orange;
+  }
+
+  .alert-error .alert-icon i {
+    @apply text-red-600;
+  }
+
+  .alert-body {
+    @apply flex-1 min-w-0;
+  }
+
+  .alert-title {
+    @apply font-semibold text-text-primary mb-1;
+  }
+
+  .alert-message {
+    @apply text-sm text-text-secondary;
+  }
+
+  .alert-actions {
+    @apply flex items-center gap-2 mt-3;
+  }
+
+  .alert-close {
+    @apply flex-shrink-0 p-1 rounded-md
+           text-text-muted hover:text-text-primary
+           hover:bg-ui-muted transition-colors
+           focus:outline-none focus:ring-2 focus:ring-brand-teal;
+  }
+
+  /* ---------- Unsaved Changes Banner ---------- */
+
+  .unsaved-changes-banner {
+    @apply fixed bottom-0 left-0 right-0 z-40
+           flex items-center justify-center gap-3
+           bg-brand-orange/95 backdrop-blur-sm
+           border-t border-brand-orange
+           px-4 py-3
+           shadow-md;
+  }
+
+  .unsaved-changes-banner-text {
+    @apply text-text-primary font-medium;
+  }
+
+  /* ---------- Classroom Switcher ---------- */
+
+  .classroom-switcher {
+    @apply flex items-center justify-between gap-2 px-4 py-2
+           w-full md:w-auto
+           bg-white/10 hover:bg-white/20
+           border border-white/20
+           rounded-md
+           text-sm font-medium text-gray-200
+           transition-colors duration-200
+           focus:outline-none focus:ring-2 focus:ring-brand-teal;
+  }
+
+  .classroom-switcher-name {
+    @apply flex-1 min-w-0 md:min-w-[400px] truncate;
+  }
+
+  .classroom-switcher-icon {
+    @apply w-4 h-4 text-gray-300 transition-transform duration-200;
+  }
+
+  .classroom-switcher-dropdown {
+    @apply absolute top-full mt-2 left-0
+           w-full md:w-auto md:min-w-[460px]
+           bg-ui-surface border border-brand-blue
+           rounded-lg shadow-md
+           overflow-hidden
+           z-50;
+  }
+
+  .classroom-switcher-loading {
+    @apply px-4 py-8 text-center text-text-muted text-sm;
+  }
+
+  .classroom-switcher-list {
+    @apply max-h-[300px] overflow-y-auto;
+  }
+
+  .classroom-switcher-item {
+    @apply w-full flex items-center justify-between
+           px-4 py-3
+           text-left text-sm text-text-primary
+           hover:bg-ui-muted
+           transition-colors duration-150
+           disabled:opacity-50 disabled:cursor-default;
+  }
+
+  .classroom-switcher-item-active {
+    @apply bg-ui-muted;
+  }
+
+  .classroom-switcher-item-name {
+    @apply truncate flex-1;
+  }
+
+  .classroom-switcher-check {
+    @apply w-5 h-5 text-brand-teal flex-shrink-0;
+  }
+
+  .classroom-switcher-divider {
+    @apply border-t border-ui-border;
+  }
+
+  .classroom-switcher-view-all {
+    @apply w-full px-4 py-3
+           text-left text-sm font-medium
+           text-brand-blue hover:bg-ui-muted
+           transition-colors duration-150;
+  }
+
+  /* ---------- PrimeReact DataTable Overrides ---------- */
+
+  .p-datatable {
+    @apply bg-ui-surface border border-ui-border rounded-lg overflow-hidden;
+  }
+
+  .p-datatable .p-datatable-header {
+    @apply bg-ui-surface border-b border-ui-border px-4 py-3;
+  }
+
+  .p-datatable .p-datatable-thead > tr > th {
+    @apply bg-ui-muted border-b border-ui-border text-text-secondary font-medium text-sm px-4 py-3;
+  }
+
+  .p-datatable .p-datatable-tbody > tr {
+    @apply border-b border-ui-border;
+  }
+
+  .p-datatable .p-datatable-tbody > tr > td {
+    @apply bg-ui-surface text-text-primary px-4 py-3;
+  }
+
+  .p-datatable .p-datatable-tbody > tr:hover {
+    @apply bg-ui-muted;
+  }
+
+  .p-datatable .p-datatable-tbody > tr.p-highlight {
+    @apply bg-ui-muted;
+  }
+
+  .p-datatable .p-datatable-empty-message {
+    @apply text-text-muted px-4 py-8 text-center;
+  }
+
+  .p-datatable .p-sortable-column {
+    @apply text-text-secondary;
+  }
+
+  .p-datatable .p-sortable-column:hover {
+    @apply bg-ui-muted;
+  }
+
+  .p-datatable .p-sortable-column-icon {
+    @apply text-text-muted;
+  }
+
+  /* ---------- PrimeReact Dropdown Overrides ---------- */
+
+  .p-dropdown-panel {
+    @apply bg-ui-surface border border-ui-border rounded-lg shadow-md;
+  }
+
+  .p-dropdown-items-wrapper {
+    @apply rounded-lg;
+  }
+
+  .p-dropdown-items {
+    @apply py-2;
+  }
+
+  .p-dropdown-item {
+    @apply px-4 py-2.5 text-sm text-text-primary
+           transition-colors duration-150;
+  }
+
+  .p-dropdown-item:not(.p-highlight):not(.p-disabled):hover {
+    @apply bg-ui-muted;
+  }
+
+  .p-dropdown-item.p-highlight {
+    @apply bg-ui-muted text-text-primary;
+  }
+
+  .p-dropdown-item.p-disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  .p-dropdown-empty-message {
+    @apply px-4 py-3 text-text-muted text-sm;
+  }
+
+  /* ---------- PrimeReact Dropdown Overrides ---------- */
+
+  .p-dropdown-panel {
+    @apply bg-ui-surface border border-ui-border rounded-lg shadow-md;
+  }
+
+  .p-dropdown-items-wrapper {
+    @apply rounded-lg;
+  }
+
+  .p-dropdown-items {
+    @apply py-2;
+  }
+
+  .p-dropdown-item {
+    @apply px-4 py-2.5 text-sm text-text-primary
+           transition-colors duration-150;
+  }
+
+  .p-dropdown-item:not(.p-highlight):not(.p-disabled):hover {
+    @apply bg-ui-muted;
+  }
+
+  .p-dropdown-item.p-highlight {
+    @apply bg-ui-muted text-text-primary;
+  }
+
+  .p-dropdown-item.p-disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  .p-dropdown-empty-message {
+    @apply px-4 py-3 text-text-muted text-sm;
+  }
+
+  /* ---------- PrimeReact Slider Overrides ---------- */
+
+  .p-slider-horizontal {
+    @apply w-full;
+  }
+
+  .p-slider-horizontal .p-slider-handle {
+    @apply w-4 h-4 bg-brand-blue rounded-full;
+    @apply top-1/2 -translate-y-1/2;
+  }
+
+  .p-slider-horizontal .p-slider-range {
+    @apply bg-brand-blue;
+  }
+
+  .p-slider-horizontal .p-slider-handle:hover {
+    @apply bg-brand-blue/90;
+  }
+
+  .p-slider-horizontal .p-slider-handle.p-highlight {
+    @apply bg-brand-teal;
+  }
+
+  .p-slider-horizontal .p-slider-handle.p-highlight:hover {
+    @apply bg-brand-teal/90;
+  }
+
+  .p-slider-horizontal .p-slider-handle.p-disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  /* ---------- PrimeReact Knob Overrides ---------- */
+
+  .p-knob {
+    @apply w-full;
+  }
+
+  .p-knob .p-knob-handle {
+    @apply w-4 h-4 bg-brand-blue rounded-full;
+    @apply top-1/2 -translate-y-1/2;
+  }
+
+  .p-knob .p-knob-range {
+    @apply bg-brand-blue;
+  }
+
+  .p-knob .p-knob-handle:hover {
+    @apply bg-brand-blue/90;
+  }
+
+  .p-knob .p-knob-handle.p-highlight {
+    @apply bg-brand-teal;
+  }
+
+  .p-knob .p-knob-handle.p-highlight:hover {
+    @apply bg-brand-teal/90;
+  }
+
+  .p-knob .p-knob-handle.p-disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  /* ---------- PrimeReact VariableDefinition Component Overrides ---------- */
+
+  /* InputSwitch (Switch) */
+  .p-inputswitch {
+    @apply relative inline-flex items-center justify-center;
+  }
+
+  .p-inputswitch .p-inputswitch-slider {
+    @apply w-12 h-6 bg-ui-border rounded-full transition-all duration-200;
+    @apply border-2 border-brand-blue;
+    @apply relative;
+  }
+
+  .p-inputswitch .p-inputswitch-slider:before {
+    @apply absolute left-0.5 top-1/2 -translate-y-1/2;
+    @apply w-4 h-4 bg-brand-blue rounded-full transition-all duration-200;
+    @apply shadow-sm;
+    content: "";
+  }
+
+  .p-inputswitch.p-highlight .p-inputswitch-slider {
+    @apply !bg-brand-blue !border-brand-blue;
+  }
+
+  .p-inputswitch.p-highlight .p-inputswitch-slider:before {
+    @apply left-auto right-5.5 top-1/2 -translate-y-1/2 bg-white;
+  }
+
+  .p-inputswitch.p-disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  .p-inputswitch.p-disabled .p-inputswitch-slider {
+    @apply border-ui-border;
+  }
+  /* SelectButton */
+  .p-selectbutton {
+    @apply inline-flex gap-2 flex-wrap;
+  }
+
+  .p-selectbutton .p-button {
+    @apply px-4 py-2 text-sm font-medium;
+    @apply border-2 border-brand-blue bg-transparent text-brand-blue;
+    @apply transition-all duration-150;
+    @apply rounded-md;
+    @apply m-0;
+  }
+
+  .p-selectbutton .p-button:not(:first-child) {
+    @apply ml-0;
+  }
+
+  .p-selectbutton .p-button:hover:not(.p-disabled) {
+    @apply bg-brand-blue/10 border-brand-blue;
+  }
+
+  .p-selectbutton .p-button.p-highlight {
+    @apply bg-brand-blue text-white border-brand-blue;
+  }
+
+  .p-selectbutton .p-button.p-disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  /* InputText */
+  .p-inputtext {
+    @apply w-full px-3 py-2 text-sm;
+    @apply bg-ui-surface border-2 border-brand-blue rounded-md;
+    @apply text-text-primary placeholder:text-text-muted;
+    @apply transition-all duration-150;
+  }
+
+  .p-inputtext:focus {
+    @apply outline-none ring-2 ring-brand-blue/50 border-brand-blue;
+  }
+
+  .p-inputtext.p-invalid {
+    @apply border-red-400;
+  }
+
+  .p-inputtext:disabled {
+    @apply opacity-50 cursor-not-allowed bg-ui-muted;
+  }
+
+  /* InputNumber */
+  .p-inputnumber {
+    @apply w-full;
+  }
+
+  .p-inputnumber .p-inputtext {
+    @apply w-full px-3 py-2 text-sm;
+    @apply bg-ui-surface border-2 border-brand-blue rounded-md;
+    @apply text-text-primary;
+    @apply transition-all duration-150;
+  }
+
+  .p-inputnumber .p-inputtext:focus {
+    @apply outline-none ring-2 ring-brand-blue/50 border-brand-blue;
+  }
+
+  .p-inputnumber .p-inputtext.p-invalid {
+    @apply border-red-400;
+  }
+
+  .p-inputnumber .p-inputnumber-button {
+    @apply border-2 border-brand-blue bg-transparent text-brand-blue;
+    @apply transition-all duration-150;
+  }
+
+  .p-inputnumber .p-inputnumber-button:hover:not(.p-disabled) {
+    @apply bg-brand-blue/10 border-brand-blue;
+  }
+
+  .p-inputnumber .p-inputnumber-button.p-disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  /* ---------- PrimeReact Accordion Overrides ---------- */
+  .p-accordion {
+    @apply bg-transparent;
+  }
+
+  .p-accordion .p-accordion-tab {
+    @apply mb-0;
+  }
+
+  .p-accordion .p-accordion-header {
+    @apply bg-transparent border-0;
+  }
+
+  .p-accordion .p-accordion-header .p-accordion-header-link {
+    @apply bg-transparent border-0 p-0 transition-colors;
+  }
+
+  .p-accordion .p-accordion-header .p-accordion-header-link:hover {
+    @apply bg-transparent;
+  }
+
+  .p-accordion .p-accordion-content {
+    @apply bg-transparent border-0 p-0;
+  }
+
+  @layer components {
+    /* Accordion shell */
+    .scenario-accordion {
+      @apply rounded-xl border border-ui-border bg-ui-surface
+             transition-colors hover:bg-ui-muted;
+    }
+
+    /* Header container */
+    .scenario-accordion-header {
+      @apply flex flex-col gap-2 px-6 py-4;
+    }
+
+    /* Title */
+    .scenario-accordion-title {
+      @apply text-lg font-semibold text-text-primary;
+    }
+
+    /* Description */
+    .scenario-accordion-description {
+      @apply text-sm text-text-muted leading-relaxed;
+    }
+
+    /* Status row */
+    .scenario-accordion-status {
+      @apply flex items-center gap-2 text-sm;
+    }
+
+    /* Accordion content */
+    .scenario-accordion-content {
+      @apply flex items-start justify-between gap-6
+             px-6 py-4 border-t border-ui-border;
+    }
+
+    /* View badge / CTA */
+    .scenario-accordion-cta {
+      @apply flex-shrink-0 self-start;
+    }
+
+    /* Last Week Results Accordion */
+    .last-week-results-accordion-wrapper {
+      @apply space-y-6;
+    }
+
+    .last-week-results-accordion {
+      @apply border-b border-ui-border;
+    }
+
+    .last-week-results-accordion:not(:last-child) {
+      @apply mb-0;
+    }
+
+    .last-week-results-accordion .p-accordion-tab {
+      @apply mb-0;
+    }
+
+    .last-week-results-accordion .p-accordion-header {
+      @apply py-3;
+    }
+
+    .last-week-results-accordion .p-accordion-header .p-accordion-header-link {
+      @apply py-2 px-0 font-medium text-text-primary;
+    }
+
+    .last-week-results-accordion
+      .p-accordion-header
+      .p-accordion-header-link:hover {
+      @apply text-brand-blue;
+    }
+
+    .last-week-results-content {
+      @apply pt-4 pb-2;
+    }
+  }
+  /* ---------- PrimeReact Dropdown Overrides ---------- */
+
+  .p-dropdown {
+    @apply bg-ui-surface border-2 border-brand-blue rounded-md;
+  }
+
+  .p-dropdown-panel {
+    @apply bg-ui-surface border border-ui-border rounded-lg shadow-md;
+  }
+
+  .p-dropdown-items-wrapper {
+    @apply rounded-lg;
+  }
+
+  .p-dropdown-items {
+    @apply py-2;
+  }
+
+  .p-dropdown-item {
+    @apply px-4 py-2.5 text-sm text-text-primary
+             transition-colors duration-150;
+  }
+
+  .p-dropdown-item:not(.p-highlight):not(.p-disabled):hover {
+    @apply bg-ui-muted;
+  }
+
+  .p-dropdown-item.p-highlight {
+    @apply bg-ui-muted text-text-primary;
+  }
+
+  .p-dropdown-item.p-disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  .p-dropdown-empty-message {
+    @apply px-4 py-3 text-text-muted text-sm;
+  }
+
+  .p-dropdown {
+    @apply w-full border-2 border-ui-border rounded-md;
+  }
+
+  .p-dropdown:hover,
+  .p-dropdown.p-focus,
+  .p-dropdown:not(.p-disabled).p-focus {
+    @apply border-2 border-brand-blue;
+  }
+
+  .p-dropdown .p-dropdown-label {
+    @apply px-3 py-2 text-sm;
+    @apply bg-ui-surface rounded-md;
+    @apply text-text-primary;
+    @apply transition-all duration-150;
+    @apply border-none;
+  }
+
+  .p-dropdown .p-dropdown-label:focus {
+    @apply outline-none ring-2 ring-brand-blue/50 border-brand-blue;
+  }
+
+  .p-dropdown.p-invalid .p-dropdown-label {
+    @apply border-red-400;
+  }
+
+  .p-dropdown:not(.p-disabled):hover .p-dropdown-label {
+    @apply border-brand-blue;
+  }
+
+  .p-dropdown.p-disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  /* ---------- PrimeReact Checkbox Overrides ---------- */
+  /* Checkbox box */
+  .variable-def-form-checkbox .p-checkbox-box {
+    @apply w-5 h-5 border-2 border-ui-border rounded-sm;
+    @apply bg-transparent transition-all duration-150;
+  }
+
+  .variable-def-form-checkbox:not(.p-disabled) .p-checkbox-box:hover {
+    @apply border-brand-blue;
+  }
+
+  .variable-def-form-checkbox.p-highlight .p-checkbox-box {
+    @apply !bg-brand-blue !border-brand-blue;
+  }
+
+  .variable-def-form-checkbox .p-checkbox-icon {
+    @apply text-white text-xs;
+  }
+
+  .p-checkbox .p-checkbox-box {
+    @apply w-5 h-5 border-2 border-ui-border rounded-sm;
+    @apply bg-transparent transition-all duration-150;
+  }
+
+  .p-checkbox:not(.p-disabled) .p-checkbox-box:hover {
+    @apply border-brand-blue;
+  }
+
+  .p-checkbox.p-highlight .p-checkbox-box {
+    @apply !bg-brand-blue !border-brand-blue;
+  }
+
+  .p-checkbox .p-checkbox-icon {
+    @apply text-white text-xs;
+  }
+
+  .p-checkbox.p-highlight .p-checkbox-icon {
+    @apply text-white;
+  }
+
+  .p-checkbox.p-disabled .p-checkbox-box {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  /* ---------- StudentList Debug / Wrapper Variants ---------- */
+
+  /* ---------- PrimeReact RadioButton (Multiple Choice) ---------- */
+  /* ---------- PrimeReact RadioButton Overrides ---------- */
+  /* Ensure unselected radios remain visible (the original issue). */
+  .p-radiobutton .p-radiobutton-box {
+    @apply w-5 h-5 border-2 border-ui-border rounded-full;
+    @apply bg-ui-surface transition-colors duration-150;
+  }
+
+  .p-radiobutton:not(.p-disabled) .p-radiobutton-box:hover {
+    @apply border-brand-blue;
+  }
+
+  /* Selected (enabled) */
+  .p-radiobutton.p-highlight .p-radiobutton-box {
+    @apply !bg-brand-blue !border-brand-blue;
+  }
+
+  /* PrimeReact renders the inner dot via this element; make it readable on brand bg */
+  .p-radiobutton.p-highlight .p-radiobutton-icon {
+    @apply bg-ui-surface;
+  }
+
+  /* Disabled should be a gray circle (checked or unchecked). */
+  .p-radiobutton.p-disabled .p-radiobutton-box {
+    @apply cursor-not-allowed border-ui-border bg-ui-muted;
+    @apply opacity-100;
+  }
+
+  /* If disabled+selected, keep the "selected" dot gray as well. */
+  .p-radiobutton.p-disabled.p-highlight .p-radiobutton-box {
+    @apply !border-ui-border !bg-ui-muted;
+  }
+
+  .p-radiobutton.p-disabled .p-radiobutton-icon {
+    @apply bg-ui-border;
+  }
+
+  /* ---------- Native Radio Button Styling ---------- */
+  input[type="radio"] {
+    @apply w-4 h-4 cursor-pointer;
+    accent-color: var(--color-brand-blue);
+  }
+
+  input[type="radio"]:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+
+  /* ---------- PrimeReact Dropdown Overrides ---------- */
+
+  .p-dropdown-panel {
+    @apply bg-ui-surface border border-ui-border rounded-lg shadow-md;
+  }
+
+  .p-dropdown-items-wrapper {
+    @apply rounded-lg;
+  }
+
+  .p-dropdown-items {
+    @apply py-2;
+  }
+
+  .p-dropdown-item {
+    @apply px-4 py-2.5 text-sm text-text-primary
+           transition-colors duration-150;
+  }
+
+  .p-dropdown-item:not(.p-highlight):not(.p-disabled):hover {
+    @apply bg-ui-muted;
+  }
+
+  .p-dropdown-item.p-highlight {
+    @apply bg-ui-muted text-text-primary;
+  }
+
+  .p-dropdown-item.p-disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  .p-dropdown-empty-message {
+    @apply px-4 py-3 text-text-muted text-sm;
+  }
+
+  /* ---------- PrimeReact AutoComplete Overrides ---------- */
+
+  .p-autocomplete {
+    @apply w-full rounded-md border border-ui-border
+           bg-ui-surface
+           text-text-primary
+           focus-within:border-brand-teal
+           focus-within:ring-2 focus-within:ring-brand-teal;
+  }
+
+  .p-autocomplete .p-autocomplete-input {
+    @apply w-full px-3 py-2.5
+           text-text-primary
+           bg-transparent
+           border-0
+           outline-none
+           placeholder:text-text-muted;
+  }
+
+  .p-autocomplete:not(.p-disabled):hover {
+    @apply border-ui-border;
+  }
+
+  .p-autocomplete:not(.p-disabled).p-focus {
+    @apply border-brand-teal ring-2 ring-brand-teal;
+  }
+
+  .p-autocomplete .p-autocomplete-dropdown {
+    @apply text-text-muted;
+  }
+
+  .p-autocomplete-panel {
+    @apply bg-ui-surface border border-ui-border rounded-lg shadow-md;
+  }
+
+  .p-autocomplete-items-wrapper {
+    @apply rounded-lg;
+  }
+
+  .p-autocomplete-items {
+    @apply py-2;
+  }
+
+  .p-autocomplete-item {
+    @apply px-4 py-3 text-sm text-text-primary
+           transition-colors duration-150
+           border-b border-ui-border;
+  }
+
+  .p-autocomplete-item:last-child {
+    @apply border-b-0;
+  }
+
+  .p-autocomplete-item:not(.p-highlight):not(.p-disabled):hover {
+    @apply bg-ui-muted;
+  }
+
+  .p-autocomplete-item.p-highlight {
+    @apply bg-ui-muted text-text-primary;
+  }
+
+  .p-autocomplete-item.p-disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  .p-autocomplete-empty-message {
+    @apply px-4 py-3 text-text-muted text-sm;
+  }
+
+  /* Loading indicator in autocomplete panel */
+  .p-autocomplete-panel .p-autocomplete-loading-icon {
+    @apply flex items-center justify-center py-8 px-4;
+  }
+
+  .p-autocomplete-panel .p-autocomplete-loading-icon i {
+    @apply w-6 h-6;
+    border: 2px solid;
+    border-color: theme("colors.ui.border");
+    border-top-color: theme("colors.brand.teal");
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    display: inline-block;
+  }
+
+  /* Alternative: if PrimeReact uses a different structure */
+  .p-autocomplete-panel .p-autocomplete-loading {
+    @apply flex items-center justify-center py-8 px-4;
+  }
+
+  .p-autocomplete-panel .p-autocomplete-loading i,
+  .p-autocomplete-panel .p-autocomplete-loading .pi-spin {
+    @apply w-6 h-6;
+    border: 2px solid;
+    border-color: theme("colors.ui.border");
+    border-top-color: theme("colors.brand.teal");
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    display: inline-block;
+  }
+
+  /* Ensure loading indicator has proper spacing in items wrapper */
+  .p-autocomplete-items-wrapper:has(.p-autocomplete-loading-icon),
+  .p-autocomplete-items-wrapper:has(.p-autocomplete-loading) {
+    @apply min-h-[80px];
+  }
+
+  .student-list-red {
+    @apply w-full bg-red-400 p-4 rounded-lg;
+  }
+
+  /* Let wrapper background show through PrimeReact DataTable */
+  .student-list-red .p-datatable {
+    @apply bg-transparent w-full;
+  }
+
+  .student-list-red .p-datatable-wrapper {
+    @apply w-full;
+  }
+
+  .student-list-red .p-datatable-table {
+    @apply w-full;
+  }
+
+  .student-list-red .p-datatable .p-datatable-header {
+    @apply bg-transparent;
+  }
+
+  .student-list-red .p-datatable .p-datatable-thead > tr > th {
+    @apply bg-transparent;
+  }
+
+  .student-list-red .p-datatable .p-datatable-tbody > tr > td {
+    @apply bg-transparent;
+  }
+
+  /* ---------- Challenge Summary Row ---------- */
+
+  .scenario-summary-row {
+    @apply w-full px-4 py-3 border-b border-ui-border
+           transition-colors duration-150;
+  }
+
+  .scenario-summary-row-clickable {
+    @apply cursor-pointer hover:bg-ui-muted;
+  }
+
+  .scenario-summary-row-title {
+    @apply font-semibold text-text-primary text-base md:text-lg;
+  }
+
+  .scenario-summary-row-subtitle {
+    @apply text-sm md:text-base text-text-muted;
+  }
+
+  .scenario-summary-row-date {
+    @apply text-sm md:text-base text-text-muted;
+  }
+
+  /* PrimeReact Button Overrides */
+  .p-button {
+    @apply bg-transparent border-transparent text-text-secondary;
+  }
+
+  .p-button:hover {
+    @apply bg-ui-muted;
+  }
+
+  .p-button-text {
+    @apply text-text-secondary;
+  }
+
+  .p-button-text:hover {
+    @apply bg-ui-muted text-text-primary;
+  }
+
+  .p-button-danger {
+    @apply text-red-500;
+  }
+
+  .p-button-danger:hover {
+    @apply bg-red-50 text-red-600;
+  }
+
+  /* Dark Mode Overrides */
+  /* ---------- PrimeReact Paginator Overrides ---------- */
+
+  .p-paginator {
+    @apply bg-ui-surface border-t border-ui-border px-4 py-3;
+    display: flex !important;
+    margin: 0 auto;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+    width: 10%;
+  }
+
+  .p-paginator .p-paginator-first,
+  .p-paginator .p-paginator-prev,
+  .p-paginator .p-paginator-next,
+  .p-paginator .p-paginator-last {
+    @apply bg-transparent border-transparent text-text-secondary
+           hover:bg-ui-muted hover:text-text-primary
+           transition-colors duration-150;
+  }
+
+  .p-paginator .p-paginator-first:not(.p-disabled):hover,
+  .p-paginator .p-paginator-prev:not(.p-disabled):hover,
+  .p-paginator .p-paginator-next:not(.p-disabled):hover,
+  .p-paginator .p-paginator-last:not(.p-disabled):hover {
+    @apply bg-ui-muted text-text-primary;
+  }
+
+  .p-paginator .p-paginator-first.p-disabled,
+  .p-paginator .p-paginator-prev.p-disabled,
+  .p-paginator .p-paginator-next.p-disabled,
+  .p-paginator .p-paginator-last.p-disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  .p-paginator .p-paginator-pages {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .p-paginator .p-paginator-pages .p-paginator-page {
+    @apply bg-transparent border-transparent text-text-secondary
+           hover:bg-ui-muted hover:text-text-primary
+           transition-colors duration-150;
+  }
+
+  .p-paginator .p-paginator-pages .p-paginator-page.p-highlight {
+    @apply bg-ui-muted text-text-primary;
+  }
+
+  .p-paginator .p-dropdown {
+    @apply border-ui-border bg-ui-surface;
+  }
+
+  .p-paginator .p-dropdown:not(.p-disabled):hover {
+    @apply border-ui-border;
+  }
+
+  .p-paginator .p-dropdown .p-dropdown-label {
+    @apply text-text-primary;
+  }
+  .p-dropdown-label {
+    align-content: center;
+  }
+
+  .p-paginator .p-dropdown .p-dropdown-trigger {
+    @apply text-text-secondary;
+  }
+
+  .p-paginator .p-dropdown:not(.p-disabled).p-focus {
+    @apply border-ui-border ring-2 ring-ui-muted;
+  }
+
+  .dark .p-datatable {
+    @apply bg-ui-surface border-ui-border;
+  }
+
+  .dark .p-datatable .p-datatable-header {
+    @apply bg-ui-surface border-ui-border;
+  }
+
+  .dark .p-datatable .p-datatable-thead > tr > th {
+    @apply bg-ui-muted border-ui-border text-text-secondary;
+  }
+
+  .dark .p-datatable .p-datatable-tbody > tr > td {
+    @apply bg-ui-surface text-text-primary;
+  }
+
+  .dark .p-datatable .p-datatable-tbody > tr:hover {
+    @apply bg-ui-muted;
+  }
+
+  .dark .p-datatable .p-datatable-tbody > tr.p-highlight {
+    @apply bg-ui-muted;
+
+    .p-paginator .p-dropdown:not(.p-disabled).p-focus {
+      @apply border-ui-border ring-2 ring-ui-muted;
+    }
+  }
+
+  .dark .p-datatable .p-datatable-empty-message {
+    @apply text-text-muted;
+  }
+
+  .dark .p-button-danger:hover {
+    @apply bg-red-900/20 text-red-400;
+  }
+
+  /* ---------- PrimeReact Tooltip Overrides ---------- */
+
+  .p-tooltip {
+    @apply z-50;
+  }
+
+  .p-tooltip .p-tooltip-text {
+    @apply bg-ui-surface border border-ui-border rounded-md shadow-md
+           px-3 py-2 text-sm text-text-primary
+           max-w-xs;
+  }
+
+  .p-tooltip .p-tooltip-arrow {
+    @apply border-ui-border;
+  }
+
+  .text-error {
+    @apply text-red-500;
+  }
+}
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: "Geist Variable", sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}

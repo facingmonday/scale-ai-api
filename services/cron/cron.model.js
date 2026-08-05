@@ -15,7 +15,13 @@ const CronJobSchema = new mongoose.Schema(
     workerType: {
       type: String,
       required: true,
-      enum: ["ticket-reminder", "email-digest", "cart-cleanup", "simulation-jobs"], // Add more as needed
+      enum: [
+        "ticket-reminder",
+        "email-digest",
+        "cart-cleanup",
+        "simulation-jobs",
+        "challenge-lifecycle-check",
+      ],
     },
     schedule: {
       type: String,

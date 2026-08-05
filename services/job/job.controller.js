@@ -2,36 +2,36 @@ const JobService = require("./lib/jobService");
 const JobModel = require("./job.model");
 const SimulationWorker = require("./lib/simulationWorker");
 const Classroom = require("../classroom/classroom.model");
-const Scenario = require("../scenario/scenario.model");
+const Challenge = require("../challenge/challenge.model");
 const {
   enqueueSimulationBatchSubmit,
 } = require("../../lib/queues/simulation-batch-worker");
 
 /**
- * Get jobs for a scenario
- * GET /api/admin/job/scenario/:scenarioId
+ * Get jobs for a challenge
+ * GET /api/admin/job/challenge/:challengeId
  */
 exports.getJobsByScenario = async function (req, res) {
   try {
-    const { scenarioId } = req.params;
+    const { challengeId } = req.params;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
-    // Find scenario to get classroomId
-    const scenario = await Scenario.getScenarioById(scenarioId, organizationId);
+    // Find challenge to get classroomId
+    const challenge = await Challenge.getScenarioById(challengeId, organizationId);
 
-    if (!scenario) {
-      return res.status(404).json({ error: "Scenario not found" });
+    if (!challenge) {
+      return res.status(404).json({ error: "Challenge not found" });
     }
 
     // Verify admin access
     await Classroom.validateAdminAccess(
-      scenario.classroomId,
+      challenge.classroomId,
       clerkUserId,
       organizationId
     );
 
-    const jobs = await JobService.getJobsByScenario(scenarioId);
+    const jobs = await JobService.getJobsByScenario(challengeId);
 
     res.json({
       success: true,
@@ -61,27 +61,27 @@ exports.getJobById = async function (req, res) {
 
     const job = await JobModel.findById(jobId)
       .populate("userId")
-      .populate("submissionId")
+      .populate("decisionId")
       .populate("classroomId")
-      .populate("scenarioId");
+      .populate("challengeId");
 
     if (!job) {
       return res.status(404).json({ error: "Job not found" });
     }
 
-    // Find scenario to verify access
-    const scenario = await Scenario.getScenarioById(
-      job.scenarioId._id,
+    // Find challenge to verify access
+    const challenge = await Challenge.getScenarioById(
+      job.challengeId._id,
       organizationId
     );
 
-    if (!scenario) {
-      return res.status(404).json({ error: "Scenario not found" });
+    if (!challenge) {
+      return res.status(404).json({ error: "Challenge not found" });
     }
 
     // Verify admin access
     await Classroom.validateAdminAccess(
-      scenario.classroomId,
+      challenge.classroomId,
       clerkUserId,
       organizationId
     );
@@ -118,19 +118,19 @@ exports.retryJob = async function (req, res) {
       return res.status(404).json({ error: "Job not found" });
     }
 
-    // Find scenario to verify access
-    const scenario = await Scenario.getScenarioById(
-      job.scenarioId,
+    // Find challenge to verify access
+    const challenge = await Challenge.getScenarioById(
+      job.challengeId,
       organizationId
     );
 
-    if (!scenario) {
-      return res.status(404).json({ error: "Scenario not found" });
+    if (!challenge) {
+      return res.status(404).json({ error: "Challenge not found" });
     }
 
     // Verify admin access
     await Classroom.validateAdminAccess(
-      scenario.classroomId,
+      challenge.classroomId,
       clerkUserId,
       organizationId
     );
@@ -142,9 +142,9 @@ exports.retryJob = async function (req, res) {
     const useBatch = simulationMode === "batch";
 
     if (useBatch) {
-      // Re-submit as a (small) batch: submit all pending jobs for this scenario.
+      // Re-submit as a (small) batch: submit all pending jobs for this challenge.
       await enqueueSimulationBatchSubmit({
-        scenarioId: job.scenarioId,
+        challengeId: job.challengeId,
         classroomId: job.classroomId,
         organizationId,
         clerkUserId,
@@ -192,26 +192,26 @@ exports.processPendingJobs = async function (req, res) {
 
     let results;
     if (useBatch) {
-      // In batch mode, submit batches per scenario for pending jobs (up to limit jobs total).
+      // In batch mode, submit batches per challenge for pending jobs (up to limit jobs total).
       const pending = await JobModel.find({ status: "pending" })
         .sort({ createdDate: 1 })
         .limit(limit);
 
       const byScenario = new Map();
       for (const j of pending) {
-        const key = String(j.scenarioId);
+        const key = String(j.challengeId);
         if (!byScenario.has(key)) byScenario.set(key, j);
       }
 
       const enqueued = [];
       for (const [, j] of byScenario) {
         await enqueueSimulationBatchSubmit({
-          scenarioId: j.scenarioId,
+          challengeId: j.challengeId,
           classroomId: j.classroomId,
           organizationId: j.organization,
           clerkUserId,
         });
-        enqueued.push({ scenarioId: j.scenarioId, classroomId: j.classroomId });
+        enqueued.push({ challengeId: j.challengeId, classroomId: j.classroomId });
       }
       results = enqueued.map((x) => ({ success: true, ...x }));
     } else {

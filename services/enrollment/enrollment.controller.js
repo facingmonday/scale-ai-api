@@ -2,7 +2,6 @@ const Classroom = require("../classroom/classroom.model");
 const Member = require("../members/member.model");
 const Enrollment = require("./enrollment.model");
 const Organization = require("../organizations/organization.model");
-const { ensureJoin } = require("../join/join.service");
 
 /**
  * Student joins class
@@ -11,6 +10,7 @@ const { ensureJoin } = require("../join/join.service");
 exports.joinClass = async function (req, res) {
   try {
     const { classroomId } = req.params;
+    const { studentId } = req.body || {};
     const clerkUserId = req.clerkUser.id;
 
     // Verify classroom exists and is active
@@ -36,15 +36,24 @@ exports.joinClass = async function (req, res) {
       return res.status(404).json({ error: "Organization not found" });
     }
 
-    const { enrollment } = await ensureJoin({
+    const clerkUser = req.clerkUser;
+    const primaryEmailObj = clerkUser?.emailAddresses?.find(
+      (email) => email.id === clerkUser?.primaryEmailAddressId
+    );
+    const studentEmail = primaryEmailObj?.emailAddress;
+
+    const { enrollment } = await Enrollment.ensureJoin({
       orgId: organization.clerkOrganizationId,
       classroomId,
       clerkUserId,
       member,
+      studentEmail,
+      studentId,
+      joinSource: "classroom_list",
     });
 
-    // TODO: Trigger downstream initialization (store, variables)
-    // This will be implemented when Store service exists
+    // TODO: Trigger downstream initialization (profile, variables)
+    // This will be implemented when Profile service exists
 
     res.status(200).json({
       success: true,
@@ -60,7 +69,11 @@ exports.joinClass = async function (req, res) {
       return res.status(400).json({ error: "Already enrolled in this class" });
     }
     if (error?.statusCode) {
-      return res.status(error.statusCode).json({ error: error.message });
+      return res.status(error.statusCode).json({
+        error: error.message,
+        code: error.code,
+        details: error.details,
+      });
     }
     res.status(500).json({ error: error.message });
   }
@@ -72,7 +85,7 @@ exports.joinClass = async function (req, res) {
  * Query params:
  *   - page: Page number (default: 0)
  *   - pageSize: Items per page (default: 50)
- *   - search: Search by name, email, studentId, or store name (optional)
+ *   - search: Search by name, email, studentId, or profile name (optional)
  *   - sortBy: Field to sort by - "name", "email", "studentId", "storeName", "joinedAt" (default: "name")
  *   - sortOrder: "asc" or "desc" (default: "asc")
  */
@@ -109,8 +122,8 @@ exports.getClassRoster = async function (req, res) {
         const lastName = (student.lastName || "").toLowerCase();
         const displayName = (student.displayName || "").toLowerCase();
         const email = (student.email || "").toLowerCase();
-        const studentId = (student.store?.studentId || "").toLowerCase();
-        const storeName = (student.store?.shopName || "").toLowerCase();
+        const studentId = (student.profile?.studentId || "").toLowerCase();
+        const storeName = (student.profile?.shopName || "").toLowerCase();
 
         // Match if search term is found in any of these fields
         return (
@@ -140,14 +153,14 @@ exports.getClassRoster = async function (req, res) {
       });
     } else if (sortBy === "studentId") {
       roster.sort((a, b) => {
-        const studentIdA = (a.store?.studentId || "").toLowerCase();
-        const studentIdB = (b.store?.studentId || "").toLowerCase();
+        const studentIdA = (a.profile?.studentId || "").toLowerCase();
+        const studentIdB = (b.profile?.studentId || "").toLowerCase();
         return studentIdA.localeCompare(studentIdB) * sortOrder;
       });
     } else if (sortBy === "storeName") {
       roster.sort((a, b) => {
-        const storeNameA = (a.store?.shopName || "").toLowerCase();
-        const storeNameB = (b.store?.shopName || "").toLowerCase();
+        const storeNameA = (a.profile?.shopName || "").toLowerCase();
+        const storeNameB = (b.profile?.shopName || "").toLowerCase();
         return storeNameA.localeCompare(storeNameB) * sortOrder;
       });
     } else if (sortBy === "joinedAt") {
@@ -203,16 +216,27 @@ exports.removeStudent = async function (req, res) {
       organizationId
     );
 
-    // Remove enrollment using Enrollment model
-    await Enrollment.removeEnrollment(classroomId, userId, clerkUserId);
+    const { seatRelease } = await Enrollment.leaveClassroom({
+      classroomId,
+      userId,
+      organizationId,
+      updatedBy: clerkUserId,
+      allowAdminEnrollment: true,
+    });
 
     res.json({
       success: true,
       message: "Student removed successfully",
+      data: {
+        seatRelease: {
+          action: seatRelease.action,
+          claimId: seatRelease.claim?._id || null,
+        },
+      },
     });
   } catch (error) {
     console.error("Error removing student:", error);
-    if (error.message === "Enrollment not found") {
+    if (error.message === "Enrollment not found" || error.message === "Enrollment not found.") {
       return res.status(404).json({ error: error.message });
     }
     if (error.message === "Class not found") {
@@ -220,6 +244,105 @@ exports.removeStudent = async function (req, res) {
     }
     if (error.message.includes("Insufficient permissions")) {
       return res.status(403).json({ error: error.message });
+    }
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+        code: error.code,
+        details: error.details,
+      });
+    }
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Student leaves class
+ * POST /v1/enrollment/class/:classroomId/leave
+ */
+exports.leaveClass = async function (req, res) {
+  try {
+    const { classroomId } = req.params;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+    const userId = req.user._id;
+
+    const classDoc = await Classroom.findOne({
+      _id: classroomId,
+      organization: organizationId,
+    });
+    if (!classDoc) {
+      return res.status(404).json({ error: "Class not found" });
+    }
+
+    const { seatRelease } = await Enrollment.leaveClassroom({
+      classroomId,
+      userId,
+      organizationId,
+      updatedBy: clerkUserId,
+      allowAdminEnrollment: false,
+    });
+
+    res.json({
+      success: true,
+      message: "Left classroom successfully",
+      data: {
+        seatRelease: {
+          action: seatRelease.action,
+          claimId: seatRelease.claim?._id || null,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error leaving class:", error);
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+        code: error.code,
+        details: error.details,
+      });
+    }
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Transfer student to another classroom within the organization (org:admin only).
+ * POST /v1/enrollment/admin/transfer
+ */
+exports.transferStudent = async function (req, res) {
+  try {
+    const { userId, fromClassroomId, toClassroomId } = req.body || {};
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    if (!userId || !fromClassroomId || !toClassroomId) {
+      return res.status(400).json({
+        error: "userId, fromClassroomId, and toClassroomId are required",
+      });
+    }
+
+    const result = await Enrollment.transferStudentBetweenClassrooms({
+      organizationId,
+      fromClassroomId,
+      toClassroomId,
+      userId,
+      performedByClerkUserId: clerkUserId,
+    });
+
+    res.json({
+      success: true,
+      message: "Student transferred successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error transferring student:", error);
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+        code: error.code,
+        details: error.details,
+      });
     }
     res.status(500).json({ error: error.message });
   }

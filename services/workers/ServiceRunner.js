@@ -118,6 +118,12 @@ class ServiceRunner {
     await this.ensureDatabaseConnection();
 
     // Execute worker based on type
+    if (workerType === "challenge-lifecycle-check") {
+      const Challenge = require("../challenge/challenge.model");
+      return Challenge.runScenarioLifecycleCheck(options);
+    }
+
+
     throw new Error(`Unknown worker type: ${workerType}`);
   }
 

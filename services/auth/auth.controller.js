@@ -1,6 +1,7 @@
 const { getUsersRoutes } = require("../../lib/routes");
 const { clerkClient } = require("@clerk/express");
 const Classroom = require("../classroom/classroom.model");
+const SeatPool = require("../licensing/seatPool.model");
 
 exports.me = async function (req, res, next) {
   try {
@@ -35,27 +36,34 @@ exports.me = async function (req, res, next) {
       classroomRole: req.classroomRole,
     });
 
-    // Prepare activeClassroom response with variableDefinitions if classroom exists
+    // Prepare activeClassroom response with variableDefinitions + metricDefinitions
     let activeClassroomResponse = req.activeClassroom;
     if (req.activeClassroom) {
-      // Get all variableDefinitions grouped by type
-      const variableDefinitions =
-        await Classroom.getAllVariableDefinitionsForClassroom(
+      const [variableDefinitions, metricDefinitions] = await Promise.all([
+        Classroom.getAllVariableDefinitionsForClassroom(
           req.activeClassroom._id
-        );
+        ),
+        Classroom.getAllMetricDefinitionsForClassroom(req.activeClassroom._id),
+      ]);
 
-      // Convert activeClassroom to plain object and add variableDefinitions and role
       activeClassroomResponse = {
         ...req.activeClassroom.toObject(),
         variableDefinitions,
+        metricDefinitions,
         role: req.classroomRole,
       };
     }
+
+    const billing = await SeatPool.getBillingSummary({
+      user: req.user,
+      organization: req.organization,
+    });
 
     res.status(200).json({
       routes,
       organization: req.organization,
       activeClassroom: activeClassroomResponse,
+      billing,
       user: {
         _id: req.user._id,
         firstName: req.user.firstName,
@@ -126,9 +134,10 @@ exports.setActiveClassroom = async function (req, res, next) {
       });
     }
 
-    // Get all variableDefinitions grouped by type
-    const variableDefinitions =
-      await Classroom.getAllVariableDefinitionsForClassroom(classroomId);
+    const [variableDefinitions, metricDefinitions] = await Promise.all([
+      Classroom.getAllVariableDefinitionsForClassroom(classroomId),
+      Classroom.getAllMetricDefinitionsForClassroom(classroomId),
+    ]);
 
     // Prepare activeClassroom data
     const activeClassroomData = {
@@ -163,6 +172,7 @@ exports.setActiveClassroom = async function (req, res, next) {
         name: classroom.name,
         role: enrollment.role,
         variableDefinitions,
+        metricDefinitions,
       },
     });
   } catch (error) {

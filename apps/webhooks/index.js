@@ -3,7 +3,14 @@ const mongoose = require("mongoose");
 const morgan = require("morgan");
 const cors = require("cors");
 
-require("dotenv").config();
+const path = require("path");
+const fs = require("fs");
+const dotenvPath = path.resolve(__dirname, "../../.env");
+if (fs.existsSync(dotenvPath)) {
+  require("dotenv").config({ path: dotenvPath });
+} else {
+  require("dotenv").config();
+}
 // Load all models (Stripe webhook processing uses models)
 require("../../models");
 

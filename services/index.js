@@ -13,6 +13,11 @@ router.use("/members", require("./members"));
 router.use("/organizations", require("./organizations"));
 router.use("/notifications", require("./notifications"));
 router.use("/openai", require("./openai")); // Remove direct access to openai
+router.use("/ai", require("./ai"));
+router.use("/files", require("./files"));
+router.use("/folders", require("./folders"));
+router.use("/tags", require("./tags"));
+router.use("/licensing", require("./licensing"));
 //router.use("/workers", require("./workers"));
 
 // Public join route (idempotent)
@@ -24,26 +29,29 @@ router.use("/admin/class", require("./classroom"));
 // Enrollment routes
 router.use("/enrollment", require("./enrollment"));
 
-// Store routes
-router.use("/", require("./store"));
+// Profile routes
+router.use("/", require("./profile"));
 
 // VariableDefinition routes
 router.use("/", require("./variableDefinition"));
 
-// StoreType routes
-router.use("/", require("./storeType"));
+// MetricDefinition routes
+router.use("/", require("./metricDefinition"));
+
+// ProfileType routes
+router.use("/", require("./profileType"));
 
 // ClassroomTemplate routes
 router.use("/", require("./classroomTemplate"));
 
-// Scenario routes
-router.use("/", require("./scenario"));
+// Challenge routes
+router.use("/", require("./challenge"));
 
-// ScenarioOutcome routes
-router.use("/", require("./scenarioOutcome"));
+// Outcome routes
+router.use("/", require("./outcome"));
 
-// Submission routes
-router.use("/", require("./submission"));
+// Decision routes
+router.use("/", require("./decision"));
 
 // Ledger routes
 router.use("/admin/ledger", require("./ledger"));

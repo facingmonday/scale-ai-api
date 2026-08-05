@@ -267,8 +267,6 @@ function setupJobRefreshSchedule(scheduledJobs) {
  */
 function initializeQueueWorkers() {
   try {
-    // PDF generation disabled for now
-    // const { initPdfWorker } = require("../../lib/queues/pdf-worker");
     const { initEmailWorker } = require("../../lib/queues/email-worker");
     const { initSimulationWorker } = require("../../lib/queues/simulation-worker");
     const {
@@ -277,16 +275,19 @@ function initializeQueueWorkers() {
     const {
       initOutcomeProcessingWorker,
     } = require("../../lib/queues/outcome-processing-worker");
+    const {
+      initAutomationTaskWorker,
+    } = require("../../lib/queues/automation-task-worker");
     // SMS worker disabled - not sending SMS messages
     // const { initSmsWorker } = require("../../lib/queues/sms-worker");
     // Push notifications disabled - not using push notifications
     // const { initPushWorker } = require("../../lib/queues/push-worker");
 
-    // initPdfWorker();
     initEmailWorker();
     initSimulationWorker();
     initSimulationBatchWorker();
     initOutcomeProcessingWorker();
+    initAutomationTaskWorker();
     // initSmsWorker();
     // initPushWorker();
 
