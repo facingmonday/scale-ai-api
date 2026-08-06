@@ -39,15 +39,31 @@ test("automationTask trigger enqueues runs for active tasks", async (t) => {
   queue.enqueueAutomationTaskRun = async () => {};
 
   try {
-    const result = await AutomationTask.trigger("AFTER_CHALLENGE_CLOSED", {
+    const triggerData = {
       classroomId,
       challengeId,
       organizationId: orgId,
       clerkUserId,
-    });
+    };
+    const triggerOptions = {
+      idempotencyPrefix: `ledger-completion-event:${challengeId}`,
+      throwOnError: true,
+    };
+    const result = await AutomationTask.trigger(
+      "AFTER_CHALLENGE_CLOSED",
+      triggerData,
+      triggerOptions,
+    );
+    const repeatedResult = await AutomationTask.trigger(
+      "AFTER_CHALLENGE_CLOSED",
+      triggerData,
+      triggerOptions,
+    );
 
     assert.equal(result.success, true);
     assert.equal(result.count, 1);
+    assert.equal(repeatedResult.success, true);
+    assert.deepEqual(repeatedResult.runIds, result.runIds);
 
     const runs = await AutomationTaskRun.find({ automationTaskId: task._id });
     assert.equal(runs.length, 1);

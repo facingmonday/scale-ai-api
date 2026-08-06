@@ -15,6 +15,7 @@ interface AutomationTasksPanelProps {
 const TRIGGER_LABELS: Record<string, string> = {
   AFTER_CHALLENGE_CREATED: "After Challenge Created",
   AFTER_STUDENT_SUBMISSION: "After Student Submission",
+  AFTER_STUDENT_LEDGER_COMPLETE: "After Student Ledger Complete",
   AFTER_CHALLENGE_CLOSED: "After Challenge Closed",
   AFTER_CHALLENGE_CLOSED_PER_STUDENT: "After Challenge Closed (Per Student)",
 };
@@ -402,6 +403,7 @@ const AutomationTaskCard: React.FC<{
               >
                 <option value="AFTER_CHALLENGE_CREATED">After Challenge Created</option>
                 <option value="AFTER_STUDENT_SUBMISSION">After Student Submission</option>
+                <option value="AFTER_STUDENT_LEDGER_COMPLETE">After Student Ledger Complete (Per Student)</option>
                 <option value="AFTER_CHALLENGE_CLOSED">After Challenge Closed</option>
                 <option value="AFTER_CHALLENGE_CLOSED_PER_STUDENT">After Challenge Closed (Per Student)</option>
               </select>
@@ -430,6 +432,12 @@ const AutomationTaskCard: React.FC<{
               onChange={(e) => setPromptTemplate(e.target.value)}
               placeholder="e.g. Analyze student waste ratio..."
             />
+            {trigger === "AFTER_STUDENT_LEDGER_COMPLETE" && (
+              <p className="text-xs text-text-muted mt-2">
+                Runs once for each student only after that student&apos;s ledger is durably written.
+                The email action is always addressed to that student and receives no other students&apos; data.
+              </p>
+            )}
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
@@ -528,4 +536,3 @@ const AutomationTaskCard: React.FC<{
     </div>
   );
 };
-

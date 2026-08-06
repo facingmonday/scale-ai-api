@@ -9,6 +9,7 @@ const {
   createOrgSeatCheckoutSession,
   createStudentSeatCheckoutSession,
 } = require("../stripe/stripe.service");
+const { isStripeConfigured } = require("../stripe/stripe.config");
 const { PLAN_CATALOG, PLAN_KEYS } = require("./planCatalog");
 
 function getClerkPrimaryEmail(clerkUser) {
