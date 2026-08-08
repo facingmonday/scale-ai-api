@@ -91,3 +91,59 @@ test("challenge exports lifecycle statics", () => {
   assert.equal(typeof Challenge.closeDueSubmissions, "function");
   assert.equal(typeof Challenge.processDueOutcomes, "function");
 });
+
+const leaderboardMetricDefinitions = [
+  {
+    key: "revenue",
+    dataType: "number",
+    isActive: true,
+    displayIn: { leaderboard: true },
+  },
+];
+
+function createLeaderboardSubmission(id, revenue) {
+  return {
+    _id: id,
+    userId: { _id: `user-${id}` },
+    profile: {
+      _id: `profile-${id}`,
+      studentId: `student-${id}`,
+      shopName: `Shop ${id}`,
+      profileType: { label: "restaurant" },
+    },
+    ledgerEntryId: { metrics: { revenue } },
+  };
+}
+
+test("a sole top performer is not also a lowest performer", async () => {
+  const stats = await Challenge.getStoreTypeStats(
+    [createLeaderboardSubmission("decision-1", 100)],
+    leaderboardMetricDefinitions
+  );
+
+  assert.deepEqual(
+    stats.restaurant.winners.map((entry) => entry.decisionId),
+    ["decision-1"]
+  );
+  assert.deepEqual(stats.restaurant.losers, []);
+});
+
+test("lowest performers exclude every top performer in a small class", async () => {
+  const submissions = [500, 400, 300, 200, 100].map((revenue, index) =>
+    createLeaderboardSubmission(`decision-${index + 1}`, revenue)
+  );
+
+  const stats = await Challenge.getStoreTypeStats(
+    submissions,
+    leaderboardMetricDefinitions
+  );
+  const winners = stats.restaurant.winners.map((entry) => entry.decisionId);
+  const losers = stats.restaurant.losers.map((entry) => entry.decisionId);
+
+  assert.deepEqual(winners, ["decision-1", "decision-2", "decision-3"]);
+  assert.deepEqual(losers, ["decision-5", "decision-4"]);
+  assert.deepEqual(
+    winners.filter((decisionId) => losers.includes(decisionId)),
+    []
+  );
+});

@@ -945,7 +945,14 @@ scenarioSchema.statics.getStoreTypeStats = async function (
         primaryMetricValue: sub.ledger.metrics?.[leaderboardDef.key] ?? 0,
       }));
 
+      const winnerDecisionIds = new Set(
+        stats.winners.map((winner) => winner.decisionId.toString())
+      );
+
       stats.losers = sorted
+        .filter(
+          (sub) => !winnerDecisionIds.has(sub.decisionId.toString())
+        )
         .slice(-3)
         .reverse()
         .map((sub) => ({
