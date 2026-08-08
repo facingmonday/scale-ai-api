@@ -8,8 +8,13 @@ const Member = require("../members/member.model");
 const {
   createOrgSeatCheckoutSession,
   createStudentSeatCheckoutSession,
+  getStripeClient,
 } = require("../stripe/stripe.service");
 const { isStripeConfigured } = require("../stripe/stripe.config");
+const {
+  processCheckoutSessionCompleted,
+} = require("../stripe/stripe.webhook.service");
+const StripeCheckoutRecord = require("./stripeCheckoutRecord.model");
 const { PLAN_CATALOG, PLAN_KEYS } = require("./planCatalog");
 
 function getClerkPrimaryEmail(clerkUser) {
@@ -285,6 +290,78 @@ exports.createOrgCheckout = async function createOrgCheckout(req, res, next) {
         sessionId: session.id,
         planKey: PLAN_KEYS.ORG_SEATS,
         quantity: seatCount,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+exports.getStudentCheckoutStatus = async function getStudentCheckoutStatus(
+  req,
+  res,
+  next,
+) {
+  try {
+    const sessionId = String(req.query.sessionId || "");
+    if (!sessionId) {
+      return res.status(400).json({
+        success: false,
+        error: "sessionId is required",
+      });
+    }
+
+    if (!isStripeConfigured()) {
+      return res.status(501).json({
+        success: false,
+        error: "Stripe checkout is not configured.",
+      });
+    }
+
+    const session = await getStripeClient().checkout.sessions.retrieve(sessionId);
+    const metadata = session.metadata || {};
+    const isOwnedStudentCheckout =
+      metadata.type === "student_seat" &&
+      String(metadata.organizationId || "") === String(req.organization._id) &&
+      String(metadata.purchaserUserId || "") === String(req.user._id);
+
+    if (!isOwnedStudentCheckout) {
+      return res.status(404).json({
+        success: false,
+        error: "Checkout session not found",
+      });
+    }
+
+    if (session.payment_status !== "paid") {
+      return res.json({
+        success: true,
+        data: {
+          status: "pending",
+          paymentStatus: session.payment_status || "unpaid",
+        },
+      });
+    }
+
+    let record = await StripeCheckoutRecord.findOne({
+      stripeSessionId: session.id,
+      organization: req.organization._id,
+      purchaserUserId: req.user._id,
+      type: "student_seat",
+    });
+
+    if (record?.status !== "completed") {
+      // Stripe normally invokes this through the webhook endpoint. Replaying the
+      // same idempotent handler here recovers a delayed or failed delivery.
+      const result = await processCheckoutSessionCompleted(session);
+      record = result.record;
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        status: "completed",
+        paymentStatus: session.payment_status,
+        processedAt: record?.processedAt || null,
       },
     });
   } catch (error) {

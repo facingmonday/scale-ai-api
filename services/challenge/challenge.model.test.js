@@ -56,6 +56,35 @@ test("new challenge automation fields are validated successfully", async () => {
   assert.equal(challenge.lateSubmissionPolicy.penaltyPercentPerDay, 5);
 });
 
+test("all lifecycle automation statuses validate successfully", async () => {
+  const lifecycleStatuses = [
+    "SCHEDULED",
+    "acceptingSubmissions",
+    "submissionsClosed",
+    "queuedForProcessing",
+    "processing",
+    "processed",
+    "feedbackReleased",
+    "BLOCKED",
+    "FAILED",
+  ];
+
+  for (const automationStatus of lifecycleStatuses) {
+    const challenge = new Challenge({
+      classroomId: "507f1f77bcf86cd799439011",
+      title: `Lifecycle status: ${automationStatus}`,
+      automationMode: "FULL",
+      automationStatus,
+      organization: "507f1f77bcf86cd799439012",
+      createdBy: "test",
+      updatedBy: "test",
+    });
+
+    await challenge.validate();
+    assert.equal(challenge.automationStatus, automationStatus);
+  }
+});
+
 test("challenge exports lifecycle statics", () => {
   assert.equal(typeof Challenge.createScenario, "function");
   assert.equal(typeof Challenge.publishDueScenarios, "function");

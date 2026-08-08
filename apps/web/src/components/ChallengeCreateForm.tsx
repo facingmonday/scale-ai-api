@@ -19,8 +19,15 @@ const ScenarioCreateForm: React.FC<ScenarioCreateFormProps> = ({
   const [values, setValues] = useState<ScenarioFormValues>({
     title: "",
     description: "",
+    imageUrl: "",
     publishAt: "",
     submissionDeadlineAt: "",
+    closeSubmissionsAt: "",
+    processAt: "",
+    feedbackReleaseAt: "",
+    feedbackReleaseMode: "IMMEDIATE",
+    allowLateSubmissions: false,
+    lateSubmissionPolicy: { penaltyPercentPerDay: 0 },
     automationMode: "MANUAL",
     missingSubmissionPolicy: "SKIP",
     punishAbsentStudents: "none",
@@ -34,8 +41,15 @@ const ScenarioCreateForm: React.FC<ScenarioCreateFormProps> = ({
     setValues({
       title: "",
       description: "",
+      imageUrl: "",
       publishAt: "",
       submissionDeadlineAt: "",
+      closeSubmissionsAt: "",
+      processAt: "",
+      feedbackReleaseAt: "",
+      feedbackReleaseMode: "IMMEDIATE",
+      allowLateSubmissions: false,
+      lateSubmissionPolicy: { penaltyPercentPerDay: 0 },
       automationMode: "MANUAL",
       missingSubmissionPolicy: "SKIP",
       punishAbsentStudents: "none",
@@ -60,8 +74,19 @@ const ScenarioCreateForm: React.FC<ScenarioCreateFormProps> = ({
         classroomId,
         title: values.title.trim(),
         description: values.description.trim() || undefined,
+        imageUrl: values.imageUrl?.trim() || undefined,
         publishAt: values.publishAt || null,
         submissionDeadlineAt: values.submissionDeadlineAt || null,
+        closeSubmissionsAt: values.closeSubmissionsAt || null,
+        processAt: values.processAt || null,
+        feedbackReleaseAt: values.feedbackReleaseAt || null,
+        feedbackReleaseMode: values.feedbackReleaseMode || "IMMEDIATE",
+        allowLateSubmissions: values.allowLateSubmissions || false,
+        lateSubmissionPolicy: {
+          penaltyPercentPerDay: Number(
+            values.lateSubmissionPolicy?.penaltyPercentPerDay ?? 0,
+          ),
+        },
         automationMode: values.automationMode || "MANUAL",
         missingSubmissionPolicy: values.missingSubmissionPolicy || "SKIP",
         punishAbsentStudents: values.punishAbsentStudents || "none",
@@ -123,7 +148,9 @@ const ScenarioCreateForm: React.FC<ScenarioCreateFormProps> = ({
         {error && <p className="text-red-400 text-sm">{error}</p>}
         <ChallengeForm
           values={values}
-          onChange={setValues}
+          onChange={(field, value) =>
+            setValues((current) => ({ ...current, [field]: value }))
+          }
           disabled={isSubmitting}
         />
       </div>

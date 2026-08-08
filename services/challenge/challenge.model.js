@@ -168,6 +168,7 @@ const scenarioSchema = new mongoose.Schema({
       "acceptingSubmissions",
       "submissionsClosed",
       "queuedForProcessing",
+      "processing",
       "processed",
       "feedbackReleased",
     ],

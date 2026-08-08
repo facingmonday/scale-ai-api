@@ -3,6 +3,7 @@ const { getStripeConfig } = require("./stripe.config");
 const { PLAN_KEYS } = require("../licensing/planCatalog");
 
 let stripeClient = null;
+const CHECKOUT_SESSION_ID_PLACEHOLDER = "{CHECKOUT_SESSION_ID}";
 
 function getStripeClient() {
   if (!stripeClient) {
@@ -10,6 +11,14 @@ function getStripeClient() {
     stripeClient = new Stripe(secretKey);
   }
   return stripeClient;
+}
+
+function serializeCheckoutSuccessUrl(url) {
+  // Stripe replaces the literal placeholder in the redirect URL. URLSearchParams
+  // percent-encodes its braces, so restore them after safely constructing the URL.
+  return url
+    .toString()
+    .replace(/%7BCHECKOUT_SESSION_ID%7D/gi, CHECKOUT_SESSION_ID_PLACEHOLDER);
 }
 
 function buildSuccessUrl({
@@ -24,8 +33,8 @@ function buildSuccessUrl({
     const url = new URL(`${appHost}/settings`);
     url.searchParams.set("tab", "billing");
     url.searchParams.set("checkout", "success");
-    url.searchParams.set("session_id", "{CHECKOUT_SESSION_ID}");
-    return url.toString();
+    url.searchParams.set("session_id", CHECKOUT_SESSION_ID_PLACEHOLDER);
+    return serializeCheckoutSuccessUrl(url);
   }
 
   const base =
@@ -44,10 +53,10 @@ function buildSuccessUrl({
   }
 
   if (!url.searchParams.has("session_id")) {
-    url.searchParams.set("session_id", "{CHECKOUT_SESSION_ID}");
+    url.searchParams.set("session_id", CHECKOUT_SESSION_ID_PLACEHOLDER);
   }
 
-  return url.toString();
+  return serializeCheckoutSuccessUrl(url);
 }
 
 function buildCancelUrl({
@@ -161,6 +170,7 @@ async function createStudentSeatCheckoutSession({
 
 module.exports = {
   getStripeClient,
+  buildSuccessUrl,
   createOrgSeatCheckoutSession,
   createStudentSeatCheckoutSession,
 };

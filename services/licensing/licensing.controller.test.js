@@ -129,6 +129,44 @@ test("licensing controller", async (t) => {
     });
   });
 
+  await t.test("student checkout status remains pending until Stripe marks the session paid", async (t) => {
+    configureStripe(t);
+    const stripe = stripeService.getStripeClient();
+    const retrieveSession = t.mock.method(
+      stripe.checkout.sessions,
+      "retrieve",
+      async () => ({
+        id: "cs_test_pending",
+        payment_status: "unpaid",
+        metadata: {
+          type: "student_seat",
+          organizationId: "507f1f77bcf86cd799439011",
+          purchaserUserId: "507f191e810c19729de860ea",
+          classroomId: "507f1f77bcf86cd799439012",
+        },
+      }),
+    );
+    const req = createRequest();
+    req.query = { sessionId: "cs_test_pending" };
+    const res = createResponse();
+    let nextError;
+
+    await controller.getStudentCheckoutStatus(req, res, (error) => {
+      nextError = error;
+    });
+
+    assert.equal(nextError, undefined);
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.body, {
+      success: true,
+      data: {
+        status: "pending",
+        paymentStatus: "unpaid",
+      },
+    });
+    assert.equal(retrieveSession.mock.callCount(), 1);
+  });
+
   await t.test("configured student checkout creates a Stripe session", async (t) => {
     configureStripe(t);
     const classroom = {

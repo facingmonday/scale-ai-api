@@ -18,12 +18,13 @@ export default function Auth() {
   const [isSubmittingStudentId, setIsSubmittingStudentId] = useState(false);
   const [isJoiningAfterCheckout, setIsJoiningAfterCheckout] = useState(false);
 
-  const { orgId, classroomId, checkoutStatus } = useMemo(() => {
+  const { orgId, classroomId, checkoutStatus, checkoutSessionId } = useMemo(() => {
     const params = new URLSearchParams(location.search);
     return {
       orgId: params.get("orgId"),
       classroomId: params.get("classroomId"),
       checkoutStatus: params.get("checkout"),
+      checkoutSessionId: params.get("session_id"),
     };
   }, [location.search]);
 
@@ -44,9 +45,7 @@ export default function Auth() {
     if (!isSignedIn) return;
     if (!orgId || !classroomId) return;
 
-    if (isCheckoutSuccess) {
-      didJoinRef.current = false;
-    }
+    if (isCheckoutSuccess) return;
 
     if (didJoinRef.current) return;
     didJoinRef.current = true;
@@ -88,6 +87,50 @@ export default function Auth() {
     isSignedIn,
     navigate,
     orgId,
+  ]);
+
+  useEffect(() => {
+    if (!isJoinFlow || !isLoaded || !isSignedIn || !isCheckoutSuccess) return;
+
+    let cancelled = false;
+    let pollTimer: number | undefined;
+
+    const checkCheckout = async () => {
+      if (cancelled) return;
+      setIsJoiningAfterCheckout(true);
+
+      try {
+        const canCheckStripeSession =
+          checkoutSessionId && checkoutSessionId !== "{CHECKOUT_SESSION_ID}";
+
+        if (canCheckStripeSession) {
+          const checkout = await licensingService.getStudentCheckoutStatus(
+            checkoutSessionId,
+          );
+          if (checkout.status !== "completed" || cancelled) return;
+        }
+
+        await attemptJoin();
+      } catch (error) {
+        // Keep polling: this also lets a paid checkout recover if the original
+        // webhook delivery was delayed or failed.
+        console.warn("Waiting for checkout confirmation:", error);
+      }
+    };
+
+    void checkCheckout();
+    pollTimer = window.setInterval(() => void checkCheckout(), 3000);
+
+    return () => {
+      cancelled = true;
+      if (pollTimer) window.clearInterval(pollTimer);
+    };
+  }, [
+    checkoutSessionId,
+    isCheckoutSuccess,
+    isJoinFlow,
+    isLoaded,
+    isSignedIn,
   ]);
 
   if (!isLoaded) return null;
@@ -194,10 +237,14 @@ export default function Auth() {
               <>
                 <h1 className="heading-lg mb-2">
                   {isJoiningAfterCheckout
-                    ? "Payment received. Joining classroom…"
+                    ? "Confirming payment and joining classroom…"
                     : "Joining classroom…"}
                 </h1>
-                <p className="text-text-muted">Please wait.</p>
+                <p className="text-text-muted">
+                  {isJoiningAfterCheckout
+                    ? "This can take a few seconds. Please keep this page open."
+                    : "Please wait."}
+                </p>
               </>
             )}
           </div>

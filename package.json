@@ -19,6 +19,7 @@
     "dev:admin": "npm --prefix apps/admin run dev",
     "dev": "concurrently -k -n api,web,docs -c blue,cyan,yellow \"npm:dev:api\" \"npm:dev:web\" \"npm:dev:docs\"",
     "dev:all": "concurrently -k -n api,webhooks,workers,web,docs,admin -c blue,green,magenta,cyan,yellow,bgMagenta \"npm:dev:api\" \"npm:dev:webhooks\" \"npm:dev:workers\" \"npm:dev:web\" \"npm:dev:docs\" \"npm:dev:admin\"",
+    "dev:integrations": "concurrently -k -n app,stripe,clerk -c blue,magenta,green \"npm:dev:all\" \"npm:stripe:webhooks\" \"npm:clerk:webhooks\"",
     "start:all": "concurrently -k -n api,webhooks,workers,web,admin -c blue,green,magenta,cyan,bgMagenta \"npm:start:api\" \"npm:start:webhooks\" \"npm:start:workers\" \"npm:start:web\" \"npm:start:admin\"",
     "ngrok": "ngrok start --config ~/.ngrok/ngrok.yml --all",
     "email:preview": "npm --prefix apps/admin run start",
@@ -40,7 +41,9 @@
     "do:validate:dev": "node scripts/deploy-do-app.mjs dev",
     "do:validate:prod": "node scripts/deploy-do-app.mjs prod",
     "do:deploy:dev": "node scripts/deploy-do-app.mjs dev --apply",
-    "do:deploy:prod": "node scripts/deploy-do-app.mjs prod --apply"
+    "do:deploy:prod": "node scripts/deploy-do-app.mjs prod --apply",
+    "stripe:webhooks": "stripe listen --forward-to http://localhost:1340/v1/webhooks/stripe",
+    "clerk:webhooks": "npx --yes clerk webhooks listen --token \"$CLERK_WEBHOOK_RELAY_TOKEN\" --forward-to http://localhost:1340/v1/webhooks/clerk"
   },
   "keywords": [],
   "author": "",

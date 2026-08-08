@@ -55,6 +55,20 @@ const formatAutomationStatus = (status?: string) => {
   return labels[status] ?? status;
 };
 
+const getServiceErrorMessage = (error: unknown, fallback: string) => {
+  if (typeof error !== "object" || error === null || !("response" in error)) {
+    return fallback;
+  }
+
+  const response = (
+    error as { response?: { data?: { error?: unknown } } }
+  ).response;
+
+  return typeof response?.data?.error === "string"
+    ? response.data.error
+    : fallback;
+};
+
 const Challenges: React.FC = () => {
   const { activeClassroom } = useAuth();
   const globalContext = useGlobalContext();
@@ -70,10 +84,10 @@ const Challenges: React.FC = () => {
         "success",
       );
       void fetchScenarios();
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("Failed to process outcome:", e);
       globalContext?.showToast?.(
-        e?.response?.data?.error || "Failed to process outcome",
+        getServiceErrorMessage(e, "Failed to process outcome"),
         "error",
       );
     }
@@ -88,10 +102,10 @@ const Challenges: React.FC = () => {
         "success",
       );
       void fetchScenarios();
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("Failed to release feedback:", e);
       globalContext?.showToast?.(
-        e?.response?.data?.error || "Failed to release feedback",
+        getServiceErrorMessage(e, "Failed to release feedback"),
         "error",
       );
     }
@@ -118,49 +132,51 @@ const Challenges: React.FC = () => {
       activeIndex = 4;
 
     return (
-      <div className="mt-3 flex items-center justify-between w-full max-w-lg bg-ui-surface-muted/30 p-2.5 rounded-lg border border-ui-border/50">
-        {stages.map((stage, idx) => {
-          const isCompleted = idx < activeIndex;
-          const isActive = idx === activeIndex;
+      <div
+        className="mt-5 w-full rounded-lg border border-ui-border/70 bg-ui-muted/35 px-3 py-3 sm:px-5"
+        aria-label="Challenge progress"
+      >
+        <div className="flex w-full items-start">
+          {stages.map((stage, idx) => {
+            const isCompleted = idx < activeIndex;
+            const isActive = idx === activeIndex;
 
-          return (
-            <React.Fragment key={stage.key}>
-              {idx > 0 && (
-                <div
-                  className={`flex-1 h-0.5 mx-1.5 ${
-                    isCompleted
-                      ? "bg-green-500"
-                      : isActive
-                        ? "bg-brand-blue"
-                        : "bg-ui-border"
-                  }`}
-                />
-              )}
-              <div className="flex flex-col items-center">
-                <div
-                  className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold ${
-                    isCompleted
-                      ? "bg-green-500 text-white"
-                      : isActive
-                        ? "bg-brand-blue text-white ring-2 ring-brand-blue/30"
-                        : "bg-ui-surface text-text-muted border border-ui-border"
-                  }`}
-                >
-                  {isCompleted ? "✓" : idx + 1}
+            return (
+              <React.Fragment key={stage.key}>
+                <div className="flex min-w-10 flex-col items-center text-center">
+                  <div
+                    className={`flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold ${
+                      isCompleted
+                        ? "bg-green-500 text-white"
+                        : isActive
+                          ? "bg-brand-blue text-white ring-2 ring-brand-blue/25"
+                          : "border border-ui-border bg-ui-surface text-text-muted"
+                    }`}
+                    aria-current={isActive ? "step" : undefined}
+                  >
+                    {isCompleted ? "✓" : idx + 1}
+                  </div>
+                  <span
+                    className={`mt-1.5 text-[9px] font-medium sm:text-[11px] ${
+                      isActive
+                        ? "font-semibold text-brand-blue"
+                        : "text-text-muted"
+                    }`}
+                  >
+                    {stage.label}
+                  </span>
                 </div>
-                <span
-                  className={`text-[9px] mt-1 whitespace-nowrap font-medium ${
-                    isActive
-                      ? "text-brand-blue font-semibold"
-                      : "text-text-muted"
-                  }`}
-                >
-                  {stage.label}
-                </span>
-              </div>
-            </React.Fragment>
-          );
-        })}
+                {idx < stages.length - 1 && (
+                  <div
+                    className={`mx-1.5 mt-2.5 h-0.5 min-w-3 flex-1 sm:mx-3 ${
+                      idx < activeIndex ? "bg-green-500" : "bg-ui-border"
+                    }`}
+                  />
+                )}
+              </React.Fragment>
+            );
+          })}
+        </div>
       </div>
     );
   };
@@ -216,8 +232,8 @@ const Challenges: React.FC = () => {
     <BasicLayout>
       <LoadingOverlay loading={isLoading} />
       <div className="page">
-        <div className="container">
-          <div className="flex items-center justify-between mb-6">
+        <div className="container w-full">
+          <div className="mb-6 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
             <h1 className="heading-xl">Teacher Challenges</h1>
             <button
               className="btn-teal"
@@ -256,17 +272,17 @@ const Challenges: React.FC = () => {
               </button>
             </div>
           ) : (
-            <div className="grid gap-6">
-              <div className="card">
-                <div className="flex items-center justify-between gap-4 mb-4">
-                  <div>
+            <div className="flex w-full flex-col gap-6">
+              <section className="w-full overflow-hidden rounded-xl border border-ui-border bg-ui-surface shadow-sm">
+                <div className="border-b border-ui-border px-5 py-5 sm:px-6">
+                  <div className="max-w-2xl">
                     <h2 className="heading-md">Challenge Calendar</h2>
-                    <p className="text-sm text-text-muted">
+                    <p className="mt-1 text-sm text-text-muted">
                       Scheduled starts, deadlines, and automation status.
                     </p>
                   </div>
                 </div>
-                <div className="grid gap-3">
+                <div className="flex w-full flex-col gap-4 p-4 sm:p-6">
                   {[...challenges]
                     .sort((a, b) => {
                       const aDate = new Date(
@@ -299,46 +315,38 @@ const Challenges: React.FC = () => {
                         challenge.automationStatus !== "feedbackReleased";
 
                       return (
-                        <div
+                        <article
                           key={`calendar-${id}`}
-                          className="rounded-lg border border-ui-border bg-ui-surface px-4 py-3 text-left hover:border-brand-blue cursor-pointer"
+                          className="w-full cursor-pointer overflow-hidden rounded-xl border border-ui-border bg-ui-surface text-left transition-[border-color,box-shadow] hover:border-brand-blue/60 hover:shadow-xs"
                           onClick={() => id && navigate(`/challenges/${id}`)}
                         >
-                          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                            <div className="flex-1">
-                              <div className="font-semibold text-text-primary text-base">
-                                {title}
-                              </div>
-                              <div className="text-sm text-text-muted mt-0.5">
-                                Opens {formatDateTime(challenge.publishAt)} ·
-                                Due{" "}
-                                {formatDateTime(challenge.submissionDeadlineAt)}
-                              </div>
-
-                              {challenge.automationStatus === "BLOCKED" && (
-                                <div className="mt-2 flex items-center gap-1.5 text-xs text-yellow-400 bg-yellow-400/10 px-2.5 py-1 rounded-md border border-yellow-400/20 max-w-fit">
-                                  <i className="pi pi-exclamation-triangle" />
-                                  <span>
-                                    Outcome Required:{" "}
-                                    {challenge.automationError}
+                          <div className="p-4 sm:p-5">
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="min-w-0 flex-1">
+                                <div className="text-base font-semibold text-text-primary sm:text-lg">
+                                  {title}
+                                </div>
+                                <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm text-text-muted">
+                                  <span className="flex items-center gap-1.5">
+                                    <i
+                                      className="pi pi-calendar text-xs"
+                                      aria-hidden="true"
+                                    />
+                                    Opens {formatDateTime(challenge.publishAt)}
+                                  </span>
+                                  <span className="flex items-center gap-1.5">
+                                    <i
+                                      className="pi pi-clock text-xs"
+                                      aria-hidden="true"
+                                    />
+                                    Due{" "}
+                                    {formatDateTime(
+                                      challenge.submissionDeadlineAt,
+                                    )}
                                   </span>
                                 </div>
-                              )}
-
-                              {challenge.automationStatus === "FAILED" && (
-                                <div className="mt-2 flex items-center gap-1.5 text-xs text-red-400 bg-red-400/10 px-2.5 py-1 rounded-md border border-red-400/20 max-w-fit">
-                                  <i className="pi-times-circle" />
-                                  <span>
-                                    Automation Failed:{" "}
-                                    {challenge.automationError}
-                                  </span>
-                                </div>
-                              )}
-
-                              {renderTimeline(challenge.automationStatus)}
-                            </div>
-                            <div className="flex flex-col items-end gap-2">
-                              <div className="flex flex-wrap gap-2">
+                              </div>
+                              <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
                                 <span className="badge badge-muted">
                                   {challenge.automationMode === "FULL"
                                     ? "Automated"
@@ -362,50 +370,70 @@ const Challenges: React.FC = () => {
                                   )}
                                 </span>
                               </div>
-
-                              <div
-                                className="flex gap-2 mt-2"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                {showProcessNow && (
-                                  <button
-                                    type="button"
-                                    className="btn-teal py-1 px-3 text-xs font-semibold"
-                                    onClick={() =>
-                                      id && void handleProcessNow(id)
-                                    }
-                                  >
-                                    Process Now
-                                  </button>
-                                )}
-                                {showReleaseFeedback && (
-                                  <button
-                                    type="button"
-                                    className="btn-teal py-1 px-3 text-xs font-semibold"
-                                    onClick={() =>
-                                      id && void handleReleaseFeedback(id)
-                                    }
-                                  >
-                                    Release Feedback
-                                  </button>
-                                )}
-                                <button
-                                  type="button"
-                                  className="btn-outline py-1 px-3 text-xs font-semibold"
-                                  onClick={() =>
-                                    id && navigate(`/challenges/${id}`)
-                                  }
-                                >
-                                  Extend Deadline
-                                </button>
-                              </div>
                             </div>
+
+                            {challenge.automationStatus === "BLOCKED" && (
+                              <div className="mt-4 flex max-w-fit items-center gap-1.5 rounded-md border border-yellow-400/20 bg-yellow-400/10 px-2.5 py-1 text-xs text-yellow-500">
+                                <i className="pi pi-exclamation-triangle" />
+                                <span>
+                                  Outcome Required: {challenge.automationError}
+                                </span>
+                              </div>
+                            )}
+
+                            {challenge.automationStatus === "FAILED" && (
+                              <div className="mt-4 flex max-w-fit items-center gap-1.5 rounded-md border border-red-400/20 bg-red-400/10 px-2.5 py-1 text-xs text-red-400">
+                                <i className="pi pi-times-circle" />
+                                <span>
+                                  Automation Failed: {challenge.automationError}
+                                </span>
+                              </div>
+                            )}
+
+                            {renderTimeline(challenge.automationStatus)}
                           </div>
-                        </div>
+
+                          <div
+                            className="flex flex-wrap items-center justify-end gap-2 border-t border-ui-border bg-ui-muted/25 px-4 py-3 sm:px-5"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {showProcessNow && (
+                              <button
+                                type="button"
+                                className="btn-teal px-3 py-1.5 text-xs font-semibold"
+                                onClick={() =>
+                                  id && void handleProcessNow(id)
+                                }
+                              >
+                                Process Now
+                              </button>
+                            )}
+                            {showReleaseFeedback && (
+                              <button
+                                type="button"
+                                className="btn-teal px-3 py-1.5 text-xs font-semibold"
+                                onClick={() =>
+                                  id && void handleReleaseFeedback(id)
+                                }
+                              >
+                                Release Feedback
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              className="btn-outline px-3 py-1.5 text-xs font-semibold"
+                              onClick={() =>
+                                id && navigate(`/challenges/${id}`)
+                              }
+                            >
+                              Extend Deadline
+                            </button>
+                          </div>
+                        </article>
                       );
                     })}
                 </div>
-              </div>
+              </section>
             </div>
           )}
         </div>

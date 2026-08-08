@@ -1,5 +1,21 @@
 # SCALE LXP API
 
+## Start the Development Servers
+
+From the repository root, use the standard development command to start the API, web app, and documentation server:
+
+```bash
+npm run dev
+```
+
+To start every local application service—including webhooks, workers, and the admin app—use:
+
+```bash
+npm run dev:all
+```
+
+Use `npm run dev:integrations` when local Stripe and Clerk webhook relays are also needed. See [Setup & Development](#setup--development) for first-time installation, environment configuration, and individual service commands.
+
 A classroom-based supply chain simulation platform built with Node.js, Express, and MongoDB. Students manage pizza shops through weekly challenges, with AI-driven outcomes calculated per student.
 
 ## Table of Contents
@@ -1309,6 +1325,9 @@ npm run dev:workers
 # Start all backend services concurrently
 npm run dev:all
 
+# Start the full app plus local Stripe and Clerk webhook relays
+npm run dev:integrations
+
 # API + web frontend together (http://localhost:1337 + http://localhost:5173)
 npm run install:web   # first time
 npm run dev
@@ -1318,6 +1337,14 @@ npm run dev:web
 ```
 
 Copy `apps/web/.env.example` to `apps/web/.env` and set `VITE_CLERK_PUBLISHABLE_KEY`. Use `npm run dev:all` for API, webhooks, workers, and web together.
+
+For Clerk webhooks, generate a stable relay token once:
+
+```bash
+npx clerk webhooks token
+```
+
+Store that `c_...` token as `CLERK_WEBHOOK_RELAY_TOKEN` in `.env`, then run `npm run dev:integrations`. Start it once, copy the stable Clerk relay URL it prints, and configure that URL in the Clerk Dashboard. The relay forwards it to the local `/v1/webhooks/clerk` endpoint. This replaces the recurring ngrok setup for Clerk. Stripe remains local through its own CLI relay.
 
 ### Production
 
