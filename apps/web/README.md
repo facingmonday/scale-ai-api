@@ -7,7 +7,7 @@ React + TypeScript + Vite frontend for student and instructor dashboards.
 From the repository root:
 
 ```bash
-cp apps/web/.env.example apps/web/.env
+cp apps/web/.env.example apps/web/.env.local
 # Add VITE_CLERK_PUBLISHABLE_KEY (Clerk test key for local dev)
 
 npm run install:web

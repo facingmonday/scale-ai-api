@@ -17,7 +17,7 @@
  */
 const mongoose = require("mongoose");
 
-require("dotenv").config();
+require("../lib/load-local-env")();
 
 function parseArgs(argv) {
   return { dryRun: argv.includes("--dry-run") };

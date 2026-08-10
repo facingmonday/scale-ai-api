@@ -1,12 +1,6 @@
 // Load environment variables FIRST before any other imports that might use them
 const path = require("path");
-const fs = require("fs");
-const dotenvPath = path.resolve(__dirname, "../../.env");
-if (fs.existsSync(dotenvPath)) {
-  require("dotenv").config({ path: dotenvPath });
-} else {
-  require("dotenv").config();
-}
+require("../../lib/load-local-env")();
 
 const express = require("express");
 const mongoose = require("mongoose");

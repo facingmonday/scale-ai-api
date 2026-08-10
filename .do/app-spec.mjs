@@ -15,7 +15,7 @@ const ENVIRONMENTS = {
     webhookDomain: "webhooks-dev.scalelxp.com",
     mongoDatabase: "scale_dev",
     sendEmail: "false",
-    envFile: ".env",
+    envFile: ".env.development",
   },
   prod: {
     appName: "scalelxp-prod",

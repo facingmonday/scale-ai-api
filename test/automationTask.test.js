@@ -1,5 +1,4 @@
-const path = require("path");
-require("dotenv").config({ path: path.resolve(__dirname, "../.env") });
+require("../lib/load-local-env")();
 const mongoose = require("mongoose");
 const Classroom = require("../services/classroom/classroom.model");
 const Challenge = require("../services/challenge/challenge.model");
