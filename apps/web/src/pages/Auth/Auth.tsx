@@ -93,7 +93,6 @@ export default function Auth() {
     if (!isJoinFlow || !isLoaded || !isSignedIn || !isCheckoutSuccess) return;
 
     let cancelled = false;
-    let pollTimer: number | undefined;
 
     const checkCheckout = async () => {
       if (cancelled) return;
@@ -119,11 +118,11 @@ export default function Auth() {
     };
 
     void checkCheckout();
-    pollTimer = window.setInterval(() => void checkCheckout(), 3000);
+    const pollTimer = window.setInterval(() => void checkCheckout(), 3000);
 
     return () => {
       cancelled = true;
-      if (pollTimer) window.clearInterval(pollTimer);
+      window.clearInterval(pollTimer);
     };
   }, [
     checkoutSessionId,
@@ -189,24 +188,114 @@ export default function Auth() {
       <div className="page">
         <div className="container">
           <div className="card text-center py-8 md:py-12 px-4 md:px-6">
-            {joinError ? (
-              <>
-                <h1 className="heading-lg mb-2">Unable to join classroom</h1>
-                <p className="text-text-muted mb-6">{joinError}</p>
-                {joinErrorCode === "PAYMENT_REQUIRED" && (
-                  <>
+            {joinErrorCode === "PAYMENT_REQUIRED" ? (
+              <div className="mx-auto max-w-4xl overflow-hidden rounded-2xl border border-brand-teal/30 bg-ui-surface text-left shadow-md">
+                <div className="grid md:grid-cols-[1.15fr_0.85fr]">
+                  <div className="relative overflow-hidden bg-gradient-to-br from-brand-blue via-brand-blue to-brand-blue/90 p-6 text-white sm:p-9">
+                    <div
+                      className="absolute -right-10 -top-10 h-36 w-36 rounded-full bg-brand-teal/20"
+                      aria-hidden="true"
+                    />
+                    <div
+                      className="absolute -bottom-14 -left-10 h-40 w-40 rounded-full bg-brand-orange/20"
+                      aria-hidden="true"
+                    />
+
+                    <div className="relative">
+                      <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 text-3xl shadow-sm ring-1 ring-white/15">
+                        <span aria-hidden="true">🍕</span>
+                      </div>
+                      <p className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-brand-teal">
+                        Individual access required
+                      </p>
+                      <h1 className="mb-3 text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+                        You’re one pass away from class
+                      </h1>
+                      <p className="max-w-xl text-sm leading-6 text-white/80 sm:text-base">
+                        This classroom requires each student to have their own
+                        SCALE Individual Class Pass. Grab yours and get back to
+                        building your pizza shop.
+                      </p>
+
+                      <div className="mt-7 space-y-3">
+                        {[
+                          "Join this classroom after checkout",
+                          "Make decisions in every class challenge",
+                          "Track your shop’s results and performance",
+                        ].map((benefit) => (
+                          <div key={benefit} className="flex items-center gap-3">
+                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-teal text-xs text-brand-blue">
+                              <i className="pi pi-check" aria-hidden="true" />
+                            </span>
+                            <span className="text-sm font-medium text-white/90">
+                              {benefit}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col justify-center p-6 sm:p-9">
+                    <span className="mb-3 inline-flex w-fit items-center rounded-full bg-brand-orange/10 px-3 py-1 text-xs font-bold uppercase tracking-wider text-brand-orange">
+                      One-time class pass
+                    </span>
+                    <div className="mb-1 flex items-end gap-2">
+                      <span className="text-4xl font-extrabold tracking-tight text-text-primary">
+                        $24.99
+                      </span>
+                      <span className="pb-1 text-sm font-medium text-text-muted">
+                        USD
+                      </span>
+                    </div>
+                    <p className="mb-6 text-sm leading-6 text-text-secondary">
+                      One individual pass unlocks your access to this SCALE
+                      classroom.
+                    </p>
+
+                    {joinError &&
+                      joinError !== "Payment is required to join this classroom." && (
+                        <div
+                          className="mb-4 rounded-lg border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-400"
+                          role="alert"
+                        >
+                          {joinError}
+                        </div>
+                      )}
+
                     <button
-                      className="btn-teal"
+                      className="btn-teal w-full py-3 text-base font-bold shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
                       disabled={isStartingCheckout}
                       onClick={() => void startCheckout()}
                     >
-                      {isStartingCheckout ? "Starting checkout..." : "Buy Class Access"}
+                      {isStartingCheckout ? (
+                        <>
+                          <i className="pi pi-spin pi-spinner" aria-hidden="true" />
+                          Starting secure checkout…
+                        </>
+                      ) : (
+                        <>
+                          Buy my pass — $24.99
+                          <i className="pi pi-arrow-right" aria-hidden="true" />
+                        </>
+                      )}
                     </button>
-                    <p className="text-text-muted text-sm mt-4">
-                      For refund requests, please contact support.
+                    <p className="mt-3 text-center text-xs text-text-muted">
+                      Secure checkout powered by Stripe
                     </p>
-                  </>
-                )}
+
+                    <div className="mt-6 border-t border-ui-border pt-5 text-center">
+                      <p className="text-xs leading-5 text-text-muted">
+                        Need a refund? Please contact support and we’ll help.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : joinError ? (
+              <>
+                <h1 className="heading-lg mb-2">Unable to join classroom</h1>
+                <p className="text-text-muted mb-6">{joinError}</p>
                 {joinErrorCode === "ROSTER_ONLY" && (
                   <div className="max-w-sm mx-auto mt-4 p-4 border border-ui-border rounded-lg bg-ui-background/50">
                     <p className="text-sm text-text-muted mb-3">
