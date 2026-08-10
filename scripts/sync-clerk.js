@@ -27,9 +27,8 @@
  *   - OR MONGO_SCHEME/MONGO_USERNAME/MONGO_PASSWORD/MONGO_HOSTNAME/MONGO_DB
  */
 const mongoose = require("mongoose");
-const path = require("path");
 
-require("dotenv").config();
+require("../lib/load-local-env")();
 
 const { clerkClient } = require("@clerk/express");
 const Member = require("../services/members/member.model");
@@ -419,5 +418,3 @@ main().catch((err) => {
   console.error("Sync failed:", err?.message || err);
   process.exit(1);
 });
-
-

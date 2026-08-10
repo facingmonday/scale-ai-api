@@ -1302,8 +1302,9 @@ All data is organization-scoped. Queries automatically filter by `organization: 
 # Install dependencies
 npm install
 
-# Copy environment file
-cp .env.example .env
+# Copy local environment files
+cp .env.example .env.local
+cp apps/web/.env.example apps/web/.env.local
 ```
 
 ### Environment Variables
@@ -1336,7 +1337,7 @@ npm run dev
 npm run dev:web
 ```
 
-Copy `apps/web/.env.example` to `apps/web/.env` and set `VITE_CLERK_PUBLISHABLE_KEY`. Use `npm run dev:all` for API, webhooks, workers, and web together.
+Set `VITE_CLERK_PUBLISHABLE_KEY` in `apps/web/.env.local`. Use `npm run dev:all` for API, webhooks, workers, and web together.
 
 For Clerk webhooks, generate a stable relay token once:
 
@@ -1344,7 +1345,7 @@ For Clerk webhooks, generate a stable relay token once:
 npx clerk webhooks token
 ```
 
-Store that `c_...` token as `CLERK_WEBHOOK_RELAY_TOKEN` in `.env`, then run `npm run dev:integrations`. Start it once, copy the stable Clerk relay URL it prints, and configure that URL in the Clerk Dashboard. The relay forwards it to the local `/v1/webhooks/clerk` endpoint. This replaces the recurring ngrok setup for Clerk. Stripe remains local through its own CLI relay.
+Store that `c_...` token as `CLERK_WEBHOOK_RELAY_TOKEN` in `.env.local`, then run `npm run dev:integrations`. Start it once, copy the stable Clerk relay URL it prints, and configure that URL in the Clerk Dashboard. The relay forwards it to the local `/v1/webhooks/clerk` endpoint. This replaces the recurring ngrok setup for Clerk. Stripe remains local through its own CLI relay.
 
 ### Production
 

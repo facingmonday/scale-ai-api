@@ -14,12 +14,7 @@ try {
 } catch (_) {}
 
 // Load models and configs
-const dotenvPath = path.resolve(__dirname, "../../.env");
-if (fs.existsSync(dotenvPath)) {
-  require("dotenv").config({ path: dotenvPath });
-} else {
-  require("dotenv").config();
-}
+require("../../lib/load-local-env")();
 require("../../models");
 
 const { renderReactEmail } = require("../../lib/emails/reactRenderer");
