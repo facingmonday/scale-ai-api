@@ -709,8 +709,12 @@ exports.cancelBatchAndRerunScenario = async function (req, res) {
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
-    // Find challenge
-    const challenge = await Challenge.getScenarioById(challengeId, organizationId);
+    // Fetch a Mongoose document so the existing close() lifecycle method can
+    // reconcile challenges left open/FAILED by an earlier processing error.
+    const challenge = await Challenge.findOne({
+      _id: challengeId,
+      organization: organizationId,
+    });
 
     if (!challenge) {
       return res.status(404).json({ error: "Challenge not found" });
@@ -769,6 +773,12 @@ exports.cancelBatchAndRerunScenario = async function (req, res) {
       });
     }
 
+    // Outcome processing normally closes the challenge after successfully
+    // enqueueing simulations. Apply the same lifecycle transition here so a
+    // recovery rerun clears any stale FAILED status instead of leaving a
+    // completed simulation attached to an open/failed challenge.
+    await challenge.close(clerkUserId);
+
     res.json({
       success: true,
       message: "Batch cancelled and challenge rerun initiated.",
@@ -776,6 +786,7 @@ exports.cancelBatchAndRerunScenario = async function (req, res) {
         batchCancelled,
         openaiBatchId,
         jobsCreated: jobs.length,
+        challenge,
       },
     });
   } catch (error) {
