@@ -20,10 +20,10 @@ function getStripeConfig() {
     productId: process.env.STRIPE_SEAT_PRODUCT_ID || null,
     successUrl:
       process.env.STRIPE_CHECKOUT_SUCCESS_URL ||
-      `${process.env.SCALE_APP_ADMIN || "http://localhost:5173"}/?checkout=success`,
+      `${process.env.SCALE_APP_HOST || "http://localhost:5173"}/?checkout=success`,
     cancelUrl:
       process.env.STRIPE_CHECKOUT_CANCEL_URL ||
-      `${process.env.SCALE_APP_ADMIN || "http://localhost:5173"}/?checkout=cancelled`,
+      `${process.env.SCALE_APP_HOST || "http://localhost:5173"}/?checkout=cancelled`,
   };
 }
 

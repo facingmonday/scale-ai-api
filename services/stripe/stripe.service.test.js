@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { buildSuccessUrl } = require("./stripe.service");
+const { buildSuccessUrl, buildCancelUrl } = require("./stripe.service");
 
 test("Stripe Checkout success URL preserves the session placeholder", () => {
   const originalAppHost = process.env.SCALE_APP_HOST;
@@ -20,6 +20,38 @@ test("Stripe Checkout success URL preserves the session placeholder", () => {
       delete process.env.SCALE_APP_HOST;
     } else {
       process.env.SCALE_APP_HOST = originalAppHost;
+    }
+  }
+});
+
+test("Stripe Checkout cancel URL falls back to the app host", () => {
+  const originalAppHost = process.env.SCALE_APP_HOST;
+  const originalCancelUrl = process.env.STRIPE_CHECKOUT_CANCEL_URL;
+  process.env.SCALE_APP_HOST = "https://app.scalelxp.com";
+  delete process.env.STRIPE_CHECKOUT_CANCEL_URL;
+
+  try {
+    const url = buildCancelUrl({
+      type: "student_seat",
+      organization: { clerkOrganizationId: "org_test" },
+      classroom: { _id: "classroom_test" },
+    });
+
+    assert.equal(
+      url,
+      "https://app.scalelxp.com/?checkout=cancelled&checkoutType=student_seat&orgId=org_test&classroomId=classroom_test",
+    );
+  } finally {
+    if (originalAppHost === undefined) {
+      delete process.env.SCALE_APP_HOST;
+    } else {
+      process.env.SCALE_APP_HOST = originalAppHost;
+    }
+
+    if (originalCancelUrl === undefined) {
+      delete process.env.STRIPE_CHECKOUT_CANCEL_URL;
+    } else {
+      process.env.STRIPE_CHECKOUT_CANCEL_URL = originalCancelUrl;
     }
   }
 });
