@@ -51,6 +51,11 @@ router.get("/summary", requireAuth(), controller.getSummary);
  *         description: Access settings data.
  */
 router.get("/student/access", requireAuth(), controller.getStudentAccess);
+router.get(
+  "/student/checkout-status",
+  requireAuth(),
+  controller.getStudentCheckoutStatus,
+);
 
 /**
  * @openapi

@@ -18,6 +18,11 @@ const NotificationSchema = new mongoose.Schema(
       ref: { type: String, required: true }, // Profiles the model name dynamically
     },
     sender: { type: String, required: false },
+    automationTaskRunId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "AutomationTaskRun",
+      required: false,
+    },
     title: { type: String, required: true },
     message: { type: String, required: true },
     templateSlug: { type: String, required: false },
@@ -57,6 +62,11 @@ NotificationSchema.virtual("id").get(function () {
 NotificationSchema.set("toJSON", {
   virtuals: true,
 });
+
+NotificationSchema.index(
+  { automationTaskRunId: 1 },
+  { unique: true, sparse: true },
+);
 
 // Static method: getReceiver
 NotificationSchema.statics.getReceiver = async function (
@@ -225,7 +235,8 @@ NotificationSchema.statics.checkRecipientPreferences = function (
 // Static method: sendEmailNotification
 NotificationSchema.statics.sendEmailNotification = async function (
   notification,
-  receiver
+  receiver,
+  options = {},
 ) {
   try {
     // Check if email has already been sent or is already queued
@@ -262,6 +273,7 @@ NotificationSchema.statics.sendEmailNotification = async function (
     await notification.constructor.findByIdAndUpdate(notification._id, {
       "metadata.emailError": error.message,
     });
+    if (options.throwOnError) throw error;
     return false;
   }
 };

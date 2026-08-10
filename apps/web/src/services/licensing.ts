@@ -100,6 +100,21 @@ async function createOrgCheckout(quantity: number): Promise<{
   return response.data.data;
 }
 
+async function getStudentCheckoutStatus(sessionId: string): Promise<{
+  status: "pending" | "completed";
+  paymentStatus: string;
+  processedAt?: string | null;
+}> {
+  const response = await axios.get(
+    `${API_HOST}/${API_VERSION}/licensing/student/checkout-status`,
+    {
+      params: { sessionId },
+      headers: await TokenHandler.getHeaders(),
+    },
+  );
+  return response.data.data;
+}
+
 async function getStudentAccess(): Promise<SeatClaim[]> {
   const response = await axios.get(
     `${API_HOST}/${API_VERSION}/licensing/student/access`,
@@ -165,6 +180,7 @@ const licensingService = {
   getRosterSeats,
   createStudentCheckout,
   createOrgCheckout,
+  getStudentCheckoutStatus,
   getStudentAccess,
   getSeatReservations,
   createSeatReservation,

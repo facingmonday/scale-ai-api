@@ -14,7 +14,13 @@ const automationTaskSchema = new mongoose.Schema({
   },
   trigger: {
     type: String,
-    enum: ["AFTER_CHALLENGE_CREATED", "AFTER_STUDENT_SUBMISSION", "AFTER_CHALLENGE_CLOSED", "AFTER_CHALLENGE_CLOSED_PER_STUDENT"],
+    enum: [
+      "AFTER_CHALLENGE_CREATED",
+      "AFTER_STUDENT_SUBMISSION",
+      "AFTER_STUDENT_LEDGER_COMPLETE",
+      "AFTER_CHALLENGE_CLOSED",
+      "AFTER_CHALLENGE_CLOSED_PER_STUDENT",
+    ],
     required: true,
     index: true,
   },
@@ -42,13 +48,25 @@ const automationTaskSchema = new mongoose.Schema({
  * @param {string} triggerType - The trigger enum value
  * @param {Object} data - Payload parameters (classroomId, challengeId, etc.)
  */
-automationTaskSchema.statics.trigger = async function (triggerType, data) {
+automationTaskSchema.statics.trigger = async function (
+  triggerType,
+  data,
+  options = {},
+) {
   try {
     const { enqueueAutomationTaskRun } = require("../../lib/queues/automation-task-worker");
     const AutomationTaskRun = require("./automationTaskRun.model");
     const { classroomId, challengeId, decisionId, userId, organizationId, clerkUserId } = data;
     if (!classroomId || !challengeId) {
       throw new Error("classroomId and challengeId are required to trigger automation tasks");
+    }
+    if (
+      triggerType === "AFTER_STUDENT_LEDGER_COMPLETE" &&
+      (!decisionId || !userId)
+    ) {
+      throw new Error(
+        "decisionId and userId are required for AFTER_STUDENT_LEDGER_COMPLETE",
+      );
     }
 
     console.log(`📡 Triggering tasks for classroom: ${classroomId}, challenge: ${challengeId}, event: ${triggerType}`);
@@ -75,12 +93,39 @@ automationTaskSchema.statics.trigger = async function (triggerType, data) {
 
     const enqueuedRuns = [];
 
+    const createOrReuseRun = async (task, runData, scope) => {
+      if (!options.idempotencyPrefix) {
+        const run = new AutomationTaskRun(runData);
+        await run.save();
+        return run;
+      }
+
+      const idempotencyKey = `${options.idempotencyPrefix}:${task._id}:${scope}`;
+      try {
+        return await AutomationTaskRun.findOneAndUpdate(
+          { idempotencyKey },
+          { $setOnInsert: { ...runData, idempotencyKey } },
+          { upsert: true, new: true, setDefaultsOnInsert: true },
+        );
+      } catch (error) {
+        if (error?.code !== 11000) throw error;
+        return AutomationTaskRun.findOne({ idempotencyKey });
+      }
+    };
+
+    const enqueueRun = async (run) => {
+      if (run.status !== "completed") {
+        await enqueueAutomationTaskRun(run._id);
+      }
+      enqueuedRuns.push(run._id);
+    };
+
     for (const task of activeTasks) {
       if (task.trigger === "AFTER_CHALLENGE_CLOSED_PER_STUDENT") {
         const Decision = require("../decision/decision.model");
         const decisions = await Decision.find({ challengeId }).lean();
         for (const dec of decisions) {
-          const run = new AutomationTaskRun({
+          const run = await createOrReuseRun(task, {
             automationTaskId: task._id,
             classroomId,
             challengeId,
@@ -90,17 +135,14 @@ automationTaskSchema.statics.trigger = async function (triggerType, data) {
             organization: organizationId || task.organization,
             createdBy: clerkUserId || "system",
             updatedBy: clerkUserId || "system",
-          });
-
-          await run.save();
+          }, `decision:${dec._id}`);
 
           // Enqueue Bull queue job
-          await enqueueAutomationTaskRun(run._id);
-          enqueuedRuns.push(run._id);
+          await enqueueRun(run);
         }
       } else {
         // Create an AutomationTaskRun audit log in 'pending' status
-        const run = new AutomationTaskRun({
+        const run = await createOrReuseRun(task, {
           automationTaskId: task._id,
           classroomId,
           challengeId,
@@ -110,19 +152,17 @@ automationTaskSchema.statics.trigger = async function (triggerType, data) {
           organization: organizationId || task.organization,
           createdBy: clerkUserId || "system",
           updatedBy: clerkUserId || "system",
-        });
-
-        await run.save();
+        }, decisionId ? `decision:${decisionId}` : "classroom");
 
         // Enqueue Bull queue job
-        await enqueueAutomationTaskRun(run._id);
-        enqueuedRuns.push(run._id);
+        await enqueueRun(run);
       }
     }
 
     return { success: true, count: enqueuedRuns.length, runIds: enqueuedRuns };
   } catch (error) {
     console.error(`Error in AutomationTask.trigger for ${triggerType}:`, error);
+    if (options.throwOnError) throw error;
     return { success: false, error: error.message };
   }
 };

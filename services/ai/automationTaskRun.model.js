@@ -43,6 +43,15 @@ const automationTaskRunSchema = new mongoose.Schema({
     default: "pending",
     required: true,
   },
+  idempotencyKey: {
+    type: String,
+    required: false,
+  },
+  attempts: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
   result: {
     type: mongoose.Schema.Types.Mixed,
     default: null,
@@ -57,11 +66,19 @@ const automationTaskRunSchema = new mongoose.Schema({
   },
 }).add(baseSchema);
 
+automationTaskRunSchema.index(
+  { idempotencyKey: 1 },
+  { unique: true, sparse: true },
+);
+
 /**
  * Execute an individual AutomationTaskRun
  * @param {string} runId - AutomationTaskRun document ID
  */
-automationTaskRunSchema.statics.executeTaskRun = async function (runId) {
+automationTaskRunSchema.statics.executeTaskRun = async function (
+  runId,
+  options = {},
+) {
   let run;
   try {
     run = await this.findById(runId);
@@ -69,14 +86,23 @@ automationTaskRunSchema.statics.executeTaskRun = async function (runId) {
       throw new Error(`AutomationTaskRun not found: ${runId}`);
     }
 
-    if (run.status !== "pending") {
+    if (run.status === "completed") {
       console.log(
         `AutomationTaskRun ${runId} is already in status: ${run.status}. Skipping.`,
       );
       return { success: true, skipped: true };
     }
+    if (run.status === "running" && !options.allowRunningRetry) {
+      console.log(`AutomationTaskRun ${runId} is already running. Skipping.`);
+      return { success: true, skipped: true };
+    }
+    if (!["pending", "failed", "running"].includes(run.status)) {
+      throw new Error(`AutomationTaskRun ${runId} cannot run from status ${run.status}`);
+    }
 
     run.status = "running";
+    run.attempts = (run.attempts || 0) + 1;
+    run.error = null;
     await run.save();
 
     const AutomationTask = require("./automationTask.model");
@@ -173,24 +199,56 @@ automationTaskRunSchema.statics.executeTaskRun = async function (runId) {
       const Notification = require("../notifications/notifications.model");
       const classroom = await Classroom.findById(run.classroomId).lean();
 
-      await Notification.create({
-        type: "email",
-        recipient: {
-          id: run.userId || run.createdBy,
-          type: "Member",
-          ref: "Member",
+      if (
+        task.trigger === "AFTER_STUDENT_LEDGER_COMPLETE" &&
+        (!run.userId || !run.decisionId)
+      ) {
+        throw new Error(
+          "Student ledger-complete notifications require a scoped user and decision",
+        );
+      }
+
+      const recipientId = run.userId || run.createdBy;
+      const message = agentResult.outputText || JSON.stringify(agentResult);
+      const notification = await Notification.findOneAndUpdate(
+        { automationTaskRunId: run._id },
+        {
+          $setOnInsert: {
+            automationTaskRunId: run._id,
+            type: "email",
+            recipient: {
+              id: recipientId,
+              type: "Member",
+              ref: "Member",
+            },
+            title: `Automation Alert: ${task.name}`,
+            message,
+            text: message,
+            templateData: {
+              taskName: task.name,
+              classroomName: classroom?.name || "Classroom",
+              message,
+            },
+            organization: run.organization,
+            createdBy: "system",
+            updatedBy: "system",
+          },
         },
-        title: `Automation Alert: ${task.name}`,
-        message: agentResult.outputText || JSON.stringify(agentResult),
-        templateSlug: "custom-automation-alert",
-        templateData: {
-          taskName: task.name,
-          classroomName: classroom?.name || "Classroom",
-          message: agentResult.outputText || JSON.stringify(agentResult),
-        },
-        organization: run.organization,
-        createdBy: "system",
-        updatedBy: "system",
+        { upsert: true, new: true, setDefaultsOnInsert: true },
+      );
+
+      const receiver = await Notification.getReceiver(
+        notification.recipient,
+        notification.templateData,
+        notification.modelData,
+        notification.organization,
+        { resolveEmail: false },
+      );
+      if (!receiver) {
+        throw new Error("Unable to determine automation notification receiver");
+      }
+      await Notification.sendEmailNotification(notification, receiver, {
+        throwOnError: true,
       });
       console.log(`Dispatched custom notification alert for "${task.name}".`);
     }
@@ -208,7 +266,7 @@ automationTaskRunSchema.statics.executeTaskRun = async function (runId) {
       run.error = error.message;
       await run.save();
     }
-    return { success: false, error: error.message };
+    throw error;
   }
 };
 

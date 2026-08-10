@@ -74,6 +74,61 @@ class AfterStudentSubmissionBuilder extends BasePromptContextBuilder {
   }
 }
 
+class AfterStudentLedgerCompleteBuilder extends BasePromptContextBuilder {
+  async build() {
+    const context = await this.buildBaseContext();
+    const LedgerEntry = require("../../ledger/ledger.model");
+
+    const decisionDoc = await Decision.findOne({
+      _id: this.run.decisionId,
+      challengeId: this.run.challengeId,
+      userId: this.run.userId,
+    });
+    if (!decisionDoc) {
+      throw new Error(`Decision not found for ledger-complete run: ${this.run.decisionId}`);
+    }
+    await Decision.populateVariablesForMany([decisionDoc]);
+
+    const [profile, student, ledgerEntry] = await Promise.all([
+      ProfileModel.findOne({
+        classroomId: this.run.classroomId,
+        userId: this.run.userId,
+      }).lean(),
+      Member.findById(this.run.userId)
+        .select("firstName lastName maskedEmail")
+        .lean(),
+      LedgerEntry.findOne({
+        classroomId: this.run.classroomId,
+        challengeId: this.run.challengeId,
+        userId: this.run.userId,
+      }).lean(),
+    ]);
+
+    if (!ledgerEntry) {
+      throw new Error(
+        `Ledger entry not found for student ${this.run.userId} and challenge ${this.run.challengeId}`,
+      );
+    }
+
+    const metrics = ledgerEntry.metrics;
+    context.student = {
+      name: student
+        ? `${student.firstName} ${student.lastName}`
+        : "Student",
+      shopName: profile?.shopName || "Student Shop",
+      profileType:
+        profile?.profileTypeLabel || profile?.profileType?.label || "",
+    };
+    context.submissionVariables = decisionDoc.toObject().variables || {};
+    context.studentResults = {
+      metrics: metrics instanceof Map ? Object.fromEntries(metrics) : metrics || {},
+      summary: ledgerEntry.summary || "",
+      randomEvent: ledgerEntry.randomEvent || "",
+    };
+    return context;
+  }
+}
+
 class AfterChallengeClosedBuilder extends BasePromptContextBuilder {
   async build() {
     const context = await this.buildBaseContext();
@@ -182,6 +237,7 @@ class PromptContextBuilderFactory {
     const builders = {
       AFTER_CHALLENGE_CREATED: AfterChallengeCreatedBuilder,
       AFTER_STUDENT_SUBMISSION: AfterStudentSubmissionBuilder,
+      AFTER_STUDENT_LEDGER_COMPLETE: AfterStudentLedgerCompleteBuilder,
       AFTER_CHALLENGE_CLOSED: AfterChallengeClosedBuilder,
       AFTER_CHALLENGE_CLOSED_PER_STUDENT: AfterChallengeClosedPerStudentBuilder,
     };
@@ -199,6 +255,7 @@ module.exports = {
   BasePromptContextBuilder,
   AfterChallengeCreatedBuilder,
   AfterStudentSubmissionBuilder,
+  AfterStudentLedgerCompleteBuilder,
   AfterChallengeClosedBuilder,
   AfterChallengeClosedPerStudentBuilder,
   PromptContextBuilderFactory,

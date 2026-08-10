@@ -244,6 +244,13 @@ exports.getStudentDashboard = async function (req, res) {
     });
   } catch (error) {
     console.error("Error getting student dashboard:", error);
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
   }
 };
 

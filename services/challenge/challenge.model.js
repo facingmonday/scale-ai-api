@@ -152,7 +152,7 @@ const scenarioSchema = new mongoose.Schema({
   automationMode: {
     type: String,
     enum: ["MANUAL", "FULL"],
-    default: "MANUAL",
+    default: "FULL",
   },
   automationStatus: {
     type: String,
@@ -168,6 +168,7 @@ const scenarioSchema = new mongoose.Schema({
       "acceptingSubmissions",
       "submissionsClosed",
       "queuedForProcessing",
+      "processing",
       "processed",
       "feedbackReleased",
     ],
@@ -300,6 +301,11 @@ scenarioSchema.statics.createScenario = async function (
     ...scenarioFields
   } = scenarioData;
 
+  const resolvedAutomationMode = automationMode || "FULL";
+  const shouldScheduleAutomation =
+    resolvedAutomationMode === "FULL" &&
+    Boolean(publishAt || submissionDeadlineAt);
+
   const scheduleFields = {
     publishAt: publishAt || null,
     submissionDeadlineAt: submissionDeadlineAt || null,
@@ -309,10 +315,10 @@ scenarioSchema.statics.createScenario = async function (
     feedbackReleaseMode: feedbackReleaseMode || "IMMEDIATE",
     allowLateSubmissions: allowLateSubmissions || false,
     lateSubmissionPolicy: lateSubmissionPolicy || { penaltyPercentPerDay: 0 },
-    automationMode: automationMode || "MANUAL",
+    automationMode: resolvedAutomationMode,
     automationStatus:
       automationStatus ||
-      (publishAt || submissionDeadlineAt ? "SCHEDULED" : "UNSCHEDULED"),
+      (shouldScheduleAutomation ? "SCHEDULED" : "UNSCHEDULED"),
     missingSubmissionPolicy: missingSubmissionPolicy || "SKIP",
     punishAbsentStudents: punishAbsentStudents || "none",
   };
@@ -944,7 +950,14 @@ scenarioSchema.statics.getStoreTypeStats = async function (
         primaryMetricValue: sub.ledger.metrics?.[leaderboardDef.key] ?? 0,
       }));
 
+      const winnerDecisionIds = new Set(
+        stats.winners.map((winner) => winner.decisionId.toString())
+      );
+
       stats.losers = sorted
+        .filter(
+          (sub) => !winnerDecisionIds.has(sub.decisionId.toString())
+        )
         .slice(-3)
         .reverse()
         .map((sub) => ({

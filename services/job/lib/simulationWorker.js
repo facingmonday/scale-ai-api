@@ -13,10 +13,19 @@ const MetricDefinition = require("../../metricDefinition/metricDefinition.model"
  */
 class SimulationWorker {
   static async processJob(jobId, options = {}) {
-    const { isFinalAttempt = true } = options;
+    const {
+      isFinalAttempt = true,
+      allowTerminalReconciliation = false,
+    } = options;
     const job = await SimulationJob.findById(jobId);
     if (!job) throw new Error(`Job not found: ${jobId}`);
     if (job.status !== "pending") {
+      if (
+        allowTerminalReconciliation &&
+        ["completed", "failed"].includes(job.status)
+      ) {
+        return this.recordLedgerCompletionEvents(job);
+      }
       throw new Error(`Job is not pending: ${job.status}`);
     }
 
@@ -41,7 +50,7 @@ class SimulationWorker {
 
       await job.markCompleted();
       await this.updateSubmissionStatus(job, "completed");
-      await this.checkAndTriggerChallengeClosed(job);
+      await this.recordLedgerCompletionEvents(job);
 
       return {
         success: true,
@@ -50,12 +59,18 @@ class SimulationWorker {
       };
     } catch (error) {
       console.error(`Error processing job ${jobId}:`, error);
+      if (job.status === "completed") {
+        // The ledger and terminal analysis state are already durable. Let Bull
+        // retry only the lifecycle reconciliation path without corrupting the
+        // completed simulation status.
+        throw error;
+      }
       if (isFinalAttempt) {
         await job.markFailed(error.message);
         await this.updateSubmissionStatus(job, "failed").catch((err) => {
           console.error(`Error updating decision status:`, err);
         });
-        await this.checkAndTriggerChallengeClosed(job);
+        await this.recordLedgerCompletionEvents(job);
       } else {
         job.status = "pending";
         job.error = error.message;
@@ -333,29 +348,9 @@ class SimulationWorker {
     return results;
   }
 
-  static async checkAndTriggerChallengeClosed(job) {
-    try {
-      const pendingOrRunningCount = await SimulationJob.countDocuments({
-        challengeId: job.challengeId,
-        status: { $in: ["pending", "running"] },
-      });
-
-      if (pendingOrRunningCount === 0) {
-        console.log(`All simulation jobs completed/failed for challenge ${job.challengeId}. Triggering AFTER_CHALLENGE_CLOSED.`);
-        const AutomationTask = require("../../ai/automationTask.model");
-        const challenge = await Challenge.findById(job.challengeId).lean();
-        if (challenge) {
-          await AutomationTask.trigger("AFTER_CHALLENGE_CLOSED", {
-            classroomId: challenge.classroomId,
-            challengeId: challenge._id,
-            organizationId: challenge.organization,
-            clerkUserId: challenge.updatedBy || challenge.createdBy || "system",
-          });
-        }
-      }
-    } catch (err) {
-      console.error("Error triggering AFTER_CHALLENGE_CLOSED tasks in direct mode:", err);
-    }
+  static async recordLedgerCompletionEvents(job) {
+    const LedgerCompletionEvent = require("../ledgerCompletionEvent.model");
+    return LedgerCompletionEvent.recordReadyEventsForJob(job._id);
   }
 }
 

@@ -14,3 +14,4 @@ export { default as StudentOverview } from "./StudentOverview";
 export { default as ClassroomHeader } from "./ClassroomHeader";
 export { ActionBanner } from "./ActionBanner";
 export { default as MetricCard } from "./MetricCard";
+export { default as StudentDashboardInsights } from "./StudentDashboardInsights";

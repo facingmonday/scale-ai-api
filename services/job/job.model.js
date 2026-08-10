@@ -84,6 +84,15 @@ const simulationJobSchema = new mongoose.Schema({
     ref: "LedgerEntry",
     default: null,
   },
+  ledgerCompletionTracking: {
+    type: Boolean,
+    default: false,
+    index: true,
+  },
+  ledgerCompletionReconciledAt: {
+    type: Date,
+    default: null,
+  },
 }).add(baseSchema);
 
 // Compound indexes for performance
@@ -137,6 +146,8 @@ simulationJobSchema.statics.createJob = async function (
       completedAt: null,
     };
     existing.ledgerEntryId = null;
+    existing.ledgerCompletionTracking = true;
+    existing.ledgerCompletionReconciledAt = null;
     // Persist/refresh decision link if provided
     if (input.decisionId) {
       existing.decisionId = input.decisionId;
@@ -157,6 +168,8 @@ simulationJobSchema.statics.createJob = async function (
     startedAt: null,
     completedAt: null,
     dryRun: input.dryRun || false,
+    ledgerCompletionTracking: true,
+    ledgerCompletionReconciledAt: null,
     organization: organizationId,
     createdBy: clerkUserId,
     updatedBy: clerkUserId,
@@ -250,6 +263,8 @@ simulationJobSchema.methods.reset = async function () {
   this.openaiRequestRawMessages = null;
   this.openaiRequestPreparedAt = null;
   this.calculationContextSnapshot = null;
+  this.ledgerCompletionTracking = true;
+  this.ledgerCompletionReconciledAt = null;
   this.batch = {
     openaiBatchId: null,
     inputFileId: null,

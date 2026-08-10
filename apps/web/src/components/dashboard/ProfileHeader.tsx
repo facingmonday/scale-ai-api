@@ -7,6 +7,7 @@ import type { Profile } from "../../types/profile";
 import type { LedgerEntry } from "../../types/ledger";
 import LoadingOverlay from "../LoadingOverlay";
 import MetricsKpiRow from "../Metrics/MetricsKpiRow";
+import { formatProfileType } from "./utils";
 
 const ProfileHeader: React.FC = () => {
   const { activeClassroom } = useAuth();
@@ -102,7 +103,9 @@ const ProfileHeader: React.FC = () => {
           <div className="min-w-0 flex-1">
             <div className="text-sm text-text-muted">
               {activeClassroom?.name}
-              {profile.profileType ? ` • ${profile.profileType}` : ""}
+              {profile.profileType
+                ? ` • ${formatProfileType(profile.profileType)}`
+                : ""}
             </div>
             <h1 className="text-xl md:text-3xl font-semibold truncate mt-2">
               {profile.shopName?.trim() || "Your profile"}

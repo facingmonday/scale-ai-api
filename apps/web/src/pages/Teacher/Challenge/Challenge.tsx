@@ -8,18 +8,18 @@ import Outcome from "@/components/Outcome";
 import { useAuth } from "@/context/AuthContext";
 import VariablesForm from "@/components/VariablesForm";
 import ScenarioSubmissionsList from "@/components/ChallengeDecisionsList";
-import { Controller, FormProvider, useForm } from "react-hook-form";
+import { FormProvider, useForm } from "react-hook-form";
 import type { ScenarioWithVariables } from "@/types/challenge";
 import type { VariableDefinitionWithValue } from "@/types/decision";
-import { InputText } from "primereact/inputtext";
-import { InputTextarea } from "primereact/inputtextarea";
 import { useGlobalContext } from "@/context/GlobalContext";
 import { getErrorMessage } from "@/utils";
 import MetricCard from "@/components/dashboard/MetricCard";
 import profileTypeService from "../../../services/profileType";
 import type { ProfileType as StoreTypeModel } from "../../../types/profileType";
-import Image from "../../../components/AIComponents/Image/Image";
 import LoadingOverlay from "../../../components/LoadingOverlay";
+import ChallengeForm, {
+  type ScenarioFormValues,
+} from "../../../components/ChallengeForm";
 import ScenarioDeleteAction from "@/components/ChallengeDeleteAction";
 import ScenarioResetSubmissionsAction from "@/components/ChallengeResetDecisionsAction";
 import ScenarioCancelBatchAndReRun from "@/components/ChallengeCancelBatchAndReRun";
@@ -50,23 +50,7 @@ const Challenge: React.FC = () => {
     Record<string, string>
   >({});
 
-  const form = useForm<{
-    title: string;
-    description: string;
-    imageUrl?: string;
-    publishAt?: string;
-    submissionDeadlineAt?: string;
-    closeSubmissionsAt?: string;
-    processAt?: string;
-    feedbackReleaseAt?: string;
-    feedbackReleaseMode: "IMMEDIATE" | "DELAYED" | "MANUAL";
-    allowLateSubmissions: boolean;
-    lateSubmissionPolicy: {
-      penaltyPercentPerDay: number;
-    };
-    automationMode: "MANUAL" | "FULL";
-    missingSubmissionPolicy: "FORWARD_PREVIOUS" | "USE_DEFAULTS" | "SKIP";
-    punishAbsentStudents: "high" | "medium" | "low" | "none";
+  const form = useForm<ScenarioFormValues & {
     variables: Record<string, unknown>;
   }>({
     defaultValues: {
@@ -245,11 +229,18 @@ const Challenge: React.FC = () => {
   }, [id, fetchScenario]);
 
   // Watch variables to ensure they're tracked by the form
-  const watchedVariables = form.watch("variables");
-  const watchedImageUrl = form.watch("imageUrl");
-  const watchedDescription = form.watch("description");
-  const watchedAllowLateSubmissions = form.watch("allowLateSubmissions");
-  const watchedFeedbackReleaseMode = form.watch("feedbackReleaseMode");
+  const watchedFormValues = form.watch();
+  const watchedVariables = watchedFormValues.variables;
+
+  const handleFormFieldChange = <K extends keyof ScenarioFormValues>(
+    field: K,
+    value: ScenarioFormValues[K],
+  ) => {
+    form.setValue(field, value as never, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  };
 
   const onSave = form.handleSubmit(async (values) => {
     if (!id) return;
@@ -540,338 +531,12 @@ const Challenge: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-4 w-full">
-                <div className="card mb-4 sm:w-1/4">
-                  <Image
-                    src={watchedImageUrl || challenge.imageUrl || ""}
-                    context={watchedDescription || challenge.description || ""}
-                    onAccept={(imageUrl) => {
-                      form.setValue("imageUrl", imageUrl, {
-                        shouldDirty: true,
-                      });
-                    }}
-                    disabled={!isEditing || isPublishing}
-                  />
-                </div>
-
-                {/* Title + Description are part of the same RHF form */}
-                <div className="card mb-4 w-full">
-                  <div className="flex flex-col gap-4">
-                    <div>
-                      <label className="label" htmlFor="challenge-title">
-                        Title
-                      </label>
-                      <Controller
-                        name="title"
-                        control={form.control}
-                        rules={{ required: true }}
-                        render={({ field, fieldState }) => (
-                          <InputText
-                            id="challenge-title"
-                            value={field.value}
-                            onChange={(e) => field.onChange(e.target.value)}
-                            disabled={!isEditing}
-                            className={`input ${
-                              fieldState.error ? "p-invalid" : ""
-                            }`}
-                          />
-                        )}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="label" htmlFor="challenge-description">
-                        Description
-                      </label>
-                      <Controller
-                        name="description"
-                        control={form.control}
-                        render={({ field }) => (
-                          <InputTextarea
-                            id="challenge-description"
-                            value={field.value}
-                            onChange={(e) => field.onChange(e.target.value)}
-                            disabled={!isEditing}
-                            autoResize
-                            className="input"
-                            rows={4}
-                          />
-                        )}
-                      />
-                    </div>
-
-                    <div
-                      id="challenge-automation-schedule"
-                      className="rounded-lg border border-ui-border bg-ui-surface-muted p-4"
-                    >
-                      <div className="mb-3">
-                        <h2 className="heading-sm">Automation</h2>
-                        <p className="text-sm text-text-muted">
-                          Configure start, deadline, and automated result
-                          generation.
-                        </p>
-                      </div>
-
-                      {challenge.automationError && (
-                        <div className="mb-3 rounded-md border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">
-                          {challenge.automationError}
-                        </div>
-                      )}
-
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <Controller
-                          name="publishAt"
-                          control={form.control}
-                          render={({ field }) => (
-                            <label className="flex flex-col gap-2">
-                              <span className="label">Start date</span>
-                              <input
-                                type="datetime-local"
-                                className="input"
-                                value={field.value || ""}
-                                onChange={(event) =>
-                                  field.onChange(event.target.value)
-                                }
-                                disabled={!isEditing}
-                              />
-                            </label>
-                          )}
-                        />
-
-                        <Controller
-                          name="submissionDeadlineAt"
-                          control={form.control}
-                          render={({ field }) => (
-                            <label className="flex flex-col gap-2">
-                              <span className="label">Submission deadline</span>
-                              <input
-                                type="datetime-local"
-                                className="input"
-                                value={field.value || ""}
-                                onChange={(event) =>
-                                  field.onChange(event.target.value)
-                                }
-                                disabled={!isEditing}
-                              />
-                            </label>
-                          )}
-                        />
-
-                        <Controller
-                          name="closeSubmissionsAt"
-                          control={form.control}
-                          render={({ field }) => (
-                            <label className="flex flex-col gap-2">
-                              <span className="label">
-                                Submissions lock date
-                              </span>
-                              <input
-                                type="datetime-local"
-                                className="input"
-                                value={field.value || ""}
-                                onChange={(event) =>
-                                  field.onChange(event.target.value)
-                                }
-                                disabled={!isEditing}
-                              />
-                            </label>
-                          )}
-                        />
-
-                        <Controller
-                          name="processAt"
-                          control={form.control}
-                          render={({ field }) => (
-                            <label className="flex flex-col gap-2">
-                              <span className="label">
-                                Outcome calculation date
-                              </span>
-                              <input
-                                type="datetime-local"
-                                className="input"
-                                value={field.value || ""}
-                                onChange={(event) =>
-                                  field.onChange(event.target.value)
-                                }
-                                disabled={!isEditing}
-                              />
-                            </label>
-                          )}
-                        />
-
-                        <Controller
-                          name="feedbackReleaseMode"
-                          control={form.control}
-                          render={({ field }) => (
-                            <label className="flex flex-col gap-2">
-                              <span className="label">
-                                Feedback release mode
-                              </span>
-                              <select
-                                className="input"
-                                value={field.value || "IMMEDIATE"}
-                                onChange={(event) =>
-                                  field.onChange(event.target.value)
-                                }
-                                disabled={!isEditing}
-                              >
-                                <option value="IMMEDIATE">
-                                  Immediate (on process)
-                                </option>
-                                <option value="DELAYED">
-                                  Delayed (scheduled)
-                                </option>
-                                <option value="MANUAL">Manual release</option>
-                              </select>
-                            </label>
-                          )}
-                        />
-
-                        {watchedFeedbackReleaseMode === "DELAYED" && (
-                          <Controller
-                            name="feedbackReleaseAt"
-                            control={form.control}
-                            render={({ field }) => (
-                              <label className="flex flex-col gap-2">
-                                <span className="label">
-                                  Feedback release date
-                                </span>
-                                <input
-                                  type="datetime-local"
-                                  className="input"
-                                  value={field.value || ""}
-                                  onChange={(event) =>
-                                    field.onChange(event.target.value)
-                                  }
-                                  disabled={!isEditing}
-                                />
-                              </label>
-                            )}
-                          />
-                        )}
-
-                        <Controller
-                          name="allowLateSubmissions"
-                          control={form.control}
-                          render={({ field }) => (
-                            <label className="flex flex-col gap-2">
-                              <span className="label">
-                                Allow late submissions
-                              </span>
-                              <select
-                                className="input"
-                                value={field.value ? "true" : "false"}
-                                onChange={(event) =>
-                                  field.onChange(event.target.value === "true")
-                                }
-                                disabled={!isEditing}
-                              >
-                                <option value="false">No</option>
-                                <option value="true">Yes</option>
-                              </select>
-                            </label>
-                          )}
-                        />
-
-                        {watchedAllowLateSubmissions && (
-                          <Controller
-                            name="lateSubmissionPolicy.penaltyPercentPerDay"
-                            control={form.control}
-                            render={({ field }) => (
-                              <label className="flex flex-col gap-2">
-                                <span className="label">Penalty % per day</span>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="100"
-                                  className="input"
-                                  value={field.value ?? 0}
-                                  onChange={(event) =>
-                                    field.onChange(Number(event.target.value))
-                                  }
-                                  disabled={!isEditing}
-                                />
-                              </label>
-                            )}
-                          />
-                        )}
-
-                        <Controller
-                          name="automationMode"
-                          control={form.control}
-                          render={({ field }) => (
-                            <label className="flex flex-col gap-2">
-                              <span className="label">Automation mode</span>
-                              <select
-                                className="input"
-                                value={field.value || "MANUAL"}
-                                onChange={(event) =>
-                                  field.onChange(event.target.value)
-                                }
-                                disabled={!isEditing}
-                              >
-                                <option value="MANUAL">Manual</option>
-                                <option value="FULL">Full automation</option>
-                              </select>
-                            </label>
-                          )}
-                        />
-
-                        <Controller
-                          name="missingSubmissionPolicy"
-                          control={form.control}
-                          render={({ field }) => (
-                            <label className="flex flex-col gap-2">
-                              <span className="label">Missing decisions</span>
-                              <select
-                                className="input"
-                                value={field.value || "SKIP"}
-                                onChange={(event) =>
-                                  field.onChange(event.target.value)
-                                }
-                                disabled={!isEditing}
-                              >
-                                <option value="SKIP">Skip week</option>
-                                <option value="FORWARD_PREVIOUS">
-                                  Forward previous
-                                </option>
-                                <option value="USE_DEFAULTS">
-                                  Use defaults
-                                </option>
-                              </select>
-                            </label>
-                          )}
-                        />
-
-                        <Controller
-                          name="punishAbsentStudents"
-                          control={form.control}
-                          render={({ field }) => (
-                            <label className="flex flex-col gap-2 md:col-span-2">
-                              <span className="label">
-                                Punishment for forwarded decisions
-                              </span>
-                              <select
-                                className="input"
-                                value={field.value || "none"}
-                                onChange={(event) =>
-                                  field.onChange(event.target.value)
-                                }
-                                disabled={!isEditing}
-                              >
-                                <option value="none">None</option>
-                                <option value="low">Low</option>
-                                <option value="medium">Medium</option>
-                                <option value="high">High</option>
-                              </select>
-                            </label>
-                          )}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <ChallengeForm
+                values={watchedFormValues}
+                onChange={handleFormFieldChange}
+                disabled={!isEditing || isPublishing}
+                automationError={challenge.automationError}
+              />
 
               {(scenarioVariableDefinitions.length > 0 || isEditing) && (
                 <div className="section mb-4">

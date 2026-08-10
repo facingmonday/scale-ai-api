@@ -231,6 +231,8 @@ class JobService {
           error: null,
           startedAt: null,
           completedAt: null,
+          ledgerCompletionTracking: true,
+          ledgerCompletionReconciledAt: null,
         },
       }
     );

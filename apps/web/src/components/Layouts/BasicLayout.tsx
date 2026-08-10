@@ -3,6 +3,9 @@ import Header from "./Header";
 import Footer from "./Footer";
 import FloatingChat from "../AIComponents/FloatingChat";
 
+// Temporarily disabled while the floating AI helper is being revised.
+const FLOATING_AI_HELPER_ENABLED = false;
+
 interface Props {
   children?: ReactNode;
   loading?: boolean;
@@ -36,7 +39,7 @@ const BasicLayout: React.FC<Props> = ({ children }: Props) => {
         </main>
       </div>
       <Footer />
-      <FloatingChat />
+      {FLOATING_AI_HELPER_ENABLED && <FloatingChat />}
     </>
   );
 };

@@ -14,9 +14,16 @@ const ChallengeCreate: React.FC = () => {
   const [values, setValues] = useState<ScenarioFormValues>({
     title: "",
     description: "",
+    imageUrl: "",
     publishAt: "",
     submissionDeadlineAt: "",
-    automationMode: "MANUAL",
+    closeSubmissionsAt: "",
+    processAt: "",
+    feedbackReleaseAt: "",
+    feedbackReleaseMode: "IMMEDIATE",
+    allowLateSubmissions: false,
+    lateSubmissionPolicy: { penaltyPercentPerDay: 0 },
+    automationMode: "FULL",
     missingSubmissionPolicy: "SKIP",
     punishAbsentStudents: "none",
   });
@@ -38,9 +45,20 @@ const ChallengeCreate: React.FC = () => {
         classroomId: activeClassroom._id,
         title: values.title.trim(),
         description: values.description.trim() || undefined,
+        imageUrl: values.imageUrl?.trim() || undefined,
         publishAt: values.publishAt || null,
         submissionDeadlineAt: values.submissionDeadlineAt || null,
-        automationMode: values.automationMode || "MANUAL",
+        closeSubmissionsAt: values.closeSubmissionsAt || null,
+        processAt: values.processAt || null,
+        feedbackReleaseAt: values.feedbackReleaseAt || null,
+        feedbackReleaseMode: values.feedbackReleaseMode || "IMMEDIATE",
+        allowLateSubmissions: values.allowLateSubmissions || false,
+        lateSubmissionPolicy: {
+          penaltyPercentPerDay: Number(
+            values.lateSubmissionPolicy?.penaltyPercentPerDay ?? 0,
+          ),
+        },
+        automationMode: values.automationMode || "FULL",
         missingSubmissionPolicy: values.missingSubmissionPolicy || "SKIP",
         punishAbsentStudents: values.punishAbsentStudents || "none",
       });
@@ -66,7 +84,6 @@ const ChallengeCreate: React.FC = () => {
     <BasicLayout>
       <div className="page">
         <div className="container">
-          {/* Header section */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
             <div>
               <h1 className="heading-xl">Create Challenge</h1>
@@ -74,33 +91,10 @@ const ChallengeCreate: React.FC = () => {
                 Configure parameters, schedule timelines, and set up automation rules for this challenge.
               </p>
             </div>
-            <button
-              onClick={() => navigate("/challenges")}
-              className="btn-outline flex items-center gap-2 max-w-fit self-start md:self-auto"
-            >
-              <i className="pi pi-arrow-left text-xs" />
-              <span>Back to Challenges</span>
-            </button>
-          </div>
-
-          <div className="card shadow-lg bg-ui-surface border border-ui-border p-6 rounded-xl flex flex-col gap-6">
-            {error && (
-              <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-lg text-sm flex items-center gap-2">
-                <i className="pi pi-exclamation-circle" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <ChallengeForm
-              values={values}
-              onChange={setValues}
-              disabled={isSubmitting}
-            />
-
-            <div className="flex justify-end gap-3 pt-4 border-t border-ui-border mt-4">
+            <div className="flex gap-2">
               <button
                 type="button"
-                className="btn-outline px-6 py-2.5"
+                className="btn-outline"
                 onClick={() => navigate("/challenges")}
                 disabled={isSubmitting}
               >
@@ -108,7 +102,7 @@ const ChallengeCreate: React.FC = () => {
               </button>
               <button
                 type="button"
-                className="btn-teal px-6 py-2.5 font-semibold"
+                className="btn-teal"
                 onClick={() => void handleSubmit()}
                 disabled={!isValid || isSubmitting}
               >
@@ -116,6 +110,21 @@ const ChallengeCreate: React.FC = () => {
               </button>
             </div>
           </div>
+
+          {error && (
+            <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-400">
+              <i className="pi pi-exclamation-circle" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <ChallengeForm
+            values={values}
+            onChange={(field, value) =>
+              setValues((current) => ({ ...current, [field]: value }))
+            }
+            disabled={isSubmitting}
+          />
         </div>
       </div>
     </BasicLayout>

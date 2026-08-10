@@ -4,6 +4,8 @@ import { useUser } from "@clerk/clerk-react";
 import ledgerService from "../../services/ledger";
 import { unwrap, normalizeScenarioTitle } from "./utils";
 import type { LedgerEntry } from "../../types/ledger";
+import type { MetricDefinition } from "../../types/metric";
+import type { StudentDashboardResult } from "../../types/dashboard";
 import MetricsChart from "../Metrics/MetricsChart";
 
 type LedgerEntryWithDates = LedgerEntry & {
@@ -15,19 +17,30 @@ type LedgerEntryWithDates = LedgerEntry & {
  * Dashboard performance chart — fully dynamic now.
  * Users can pick which metric to chart from any metric defined for `displayIn.chart === true`.
  */
-const PerformanceChart: React.FC = () => {
+interface PerformanceChartProps {
+  results?: StudentDashboardResult[];
+  definitions?: MetricDefinition[];
+}
+
+const PerformanceChart: React.FC<PerformanceChartProps> = ({
+  results,
+  definitions,
+}) => {
   const { activeClassroom } = useAuth();
   const { user } = useUser();
   const [ledgerHistory, setLedgerHistory] = useState<LedgerEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const classroomId = activeClassroom?._id ?? null;
-  const metricDefinitions = activeClassroom?.metricDefinitions ?? [];
+  const metricDefinitions =
+    definitions ?? activeClassroom?.metricDefinitions ?? [];
 
   useEffect(() => {
+    if (results !== undefined) {
+      return;
+    }
+
     if (!classroomId || !user?.id) {
-      setLedgerHistory([]);
-      setIsLoading(false);
       return;
     }
 
@@ -49,18 +62,41 @@ const PerformanceChart: React.FC = () => {
     };
 
     void fetchHistory();
-  }, [classroomId, user?.id]);
+  }, [classroomId, results, user?.id]);
+
+  const resultEntries = useMemo(
+    () =>
+      (results ?? []).map(
+        (result) =>
+          ({
+            metrics: result.metrics,
+            createdDate: result.completedAt,
+            challengeId: { title: result.title },
+          }) as unknown as LedgerEntry
+      ),
+    [results]
+  );
+  const canLoadHistory = Boolean(classroomId && user?.id);
+  const entries = useMemo(
+    () =>
+      results !== undefined
+        ? resultEntries
+        : canLoadHistory
+          ? ledgerHistory
+          : [],
+    [canLoadHistory, ledgerHistory, resultEntries, results]
+  );
 
   // Sort newest-first (MetricsChart reverses internally to chronological)
   const sortedHistory = useMemo(() => {
-    return [...ledgerHistory]
+    return [...entries]
       .filter((e) => (e as LedgerEntryWithDates).createdDate != null)
       .sort((a, b) => {
         const dateA = new Date((a as LedgerEntryWithDates).createdDate || 0).getTime();
         const dateB = new Date((b as LedgerEntryWithDates).createdDate || 0).getTime();
         return dateB - dateA;
       });
-  }, [ledgerHistory]);
+  }, [entries]);
 
   const labelFor = (entry: LedgerEntry, index: number): string => {
     const challengeId = (entry as LedgerEntryWithDates).challengeId;
@@ -77,7 +113,7 @@ const PerformanceChart: React.FC = () => {
     return `#${index + 1}`;
   };
 
-  if (isLoading) {
+  if (results === undefined && canLoadHistory && isLoading) {
     return (
       <div className="card">
         <p className="text-text-muted">Loading performance data...</p>

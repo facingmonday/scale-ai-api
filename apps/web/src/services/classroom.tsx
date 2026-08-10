@@ -45,13 +45,16 @@ async function getAdminDashboard(
 async function getStudentDashboard(
   classroomId: string,
 ): Promise<StudentDashboardResponse> {
-  const response = await axios.get<StudentDashboardResponse>(
+  const response = await axios.get<{
+    success: boolean;
+    data: StudentDashboardResponse;
+  }>(
     `${API_HOST}/${API_VERSION}/student/class/${classroomId}/dashboard`,
     {
       headers: await TokenHandler.getHeaders(),
     },
   );
-  return response.data;
+  return response.data.data;
 }
 
 async function inviteStudent(classroomId: string, email: string) {
