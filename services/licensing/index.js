@@ -1,6 +1,10 @@
 const express = require("express");
 const controller = require("./licensing.controller");
-const { requireAuth, checkRole } = require("../../middleware/auth");
+const {
+  requireAuth,
+  requireMemberAuth,
+  checkRole,
+} = require("../../middleware/auth");
 
 const router = express.Router();
 
@@ -53,7 +57,7 @@ router.get("/summary", requireAuth(), controller.getSummary);
 router.get("/student/access", requireAuth(), controller.getStudentAccess);
 router.get(
   "/student/checkout-status",
-  requireAuth(),
+  requireMemberAuth(),
   controller.getStudentCheckoutStatus,
 );
 
@@ -73,7 +77,7 @@ router.get(
  */
 router.post(
   "/student/checkout",
-  requireAuth(),
+  requireMemberAuth(),
   controller.createStudentCheckout,
 );
 

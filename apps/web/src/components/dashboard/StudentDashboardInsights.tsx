@@ -1,4 +1,5 @@
 import React, { useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import type {
   StudentClassStatistics,
   StudentDashboardResponse,
@@ -55,6 +56,7 @@ const ComparisonCard: React.FC<{
 const StudentDashboardInsights: React.FC<StudentDashboardInsightsProps> = ({
   dashboard,
 }) => {
+  const navigate = useNavigate();
   const profile = dashboard.profile;
   const latestResult = dashboard.latestResult;
   const statistics = dashboard.classStatistics;
@@ -94,8 +96,11 @@ const StudentDashboardInsights: React.FC<StudentDashboardInsightsProps> = ({
                 className="h-20 w-20 flex-shrink-0 rounded-2xl border border-ui-border object-cover shadow-sm"
               />
             ) : (
-              <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-2xl bg-brand-teal/15 text-2xl text-brand-teal">
-                <i className="pi pi-shopping-bag" aria-hidden />
+              <div
+                className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-2xl border-2 border-dashed border-brand-teal/40 bg-brand-teal/10 text-2xl text-brand-teal"
+                aria-label="Profile image placeholder"
+              >
+                <i className="pi pi-user" aria-hidden />
               </div>
             )}
             <div className="min-w-0">
@@ -103,23 +108,39 @@ const StudentDashboardInsights: React.FC<StudentDashboardInsightsProps> = ({
                 {dashboard.className}
               </div>
               <h1 className="mt-1 truncate text-2xl font-bold text-text-primary md:text-3xl">
-                {profile?.shopName || "Your student dashboard"}
+                {profile?.shopName || "Create your student profile"}
               </h1>
-              <div className="mt-2 flex flex-wrap gap-2 text-xs text-text-muted">
-                {profileType && (
+              {!profile ? (
+                <div className="mt-2 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+                  <p className="max-w-xl text-sm text-text-muted">
+                    Set up your shop profile to personalize your dashboard and
+                    participate in class challenges.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn-teal flex-shrink-0"
+                    onClick={() => navigate("/profile")}
+                  >
+                    Create Profile
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-2 flex flex-wrap gap-2 text-xs text-text-muted">
+                  {profileType && (
+                    <span className="rounded-full bg-ui-surface px-3 py-1 ring-1 ring-ui-border">
+                      {profileType}
+                    </span>
+                  )}
+                  {profile.studentId && (
+                    <span className="rounded-full bg-ui-surface px-3 py-1 ring-1 ring-ui-border">
+                      Student ID {profile.studentId}
+                    </span>
+                  )}
                   <span className="rounded-full bg-ui-surface px-3 py-1 ring-1 ring-ui-border">
-                    {profileType}
+                    {dashboard.recentResults.length} completed {dashboard.recentResults.length === 1 ? "week" : "weeks"}
                   </span>
-                )}
-                {profile?.studentId && (
-                  <span className="rounded-full bg-ui-surface px-3 py-1 ring-1 ring-ui-border">
-                    Student ID {profile.studentId}
-                  </span>
-                )}
-                <span className="rounded-full bg-ui-surface px-3 py-1 ring-1 ring-ui-border">
-                  {dashboard.recentResults.length} completed {dashboard.recentResults.length === 1 ? "week" : "weeks"}
-                </span>
-              </div>
+                </div>
+              )}
             </div>
           </div>
 

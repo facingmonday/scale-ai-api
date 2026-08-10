@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const controller = require("./licensing.controller");
 const Classroom = require("../classroom/classroom.model");
+const Organization = require("../organizations/organization.model");
 const stripeService = require("../stripe/stripe.service");
 const { PLAN_CATALOG } = require("./planCatalog");
 
@@ -147,6 +148,7 @@ test("licensing controller", async (t) => {
       }),
     );
     const req = createRequest();
+    delete req.organization;
     req.query = { sessionId: "cs_test_pending" };
     const res = createResponse();
     let nextError;
@@ -165,6 +167,61 @@ test("licensing controller", async (t) => {
       },
     });
     assert.equal(retrieveSession.mock.callCount(), 1);
+  });
+
+  await t.test("student checkout resolves the join-link organization before membership", async (t) => {
+    configureStripe(t);
+    const organization = {
+      _id: "507f1f77bcf86cd799439011",
+      clerkOrganizationId: "org_test",
+    };
+    const classroom = {
+      _id: "507f1f77bcf86cd799439012",
+      organization: organization._id,
+    };
+    const findOrganization = t.mock.method(
+      Organization,
+      "findOne",
+      async () => organization,
+    );
+    const findClassroom = t.mock.method(
+      Classroom,
+      "findOne",
+      async () => classroom,
+    );
+
+    const stripe = stripeService.getStripeClient();
+    const createSession = t.mock.method(
+      stripe.checkout.sessions,
+      "create",
+      async () => ({
+        id: "cs_test_pre_membership",
+        url: "https://checkout.stripe.test/pre-membership",
+      }),
+    );
+    const req = createRequest({
+      classroomId: classroom._id,
+      orgId: organization.clerkOrganizationId,
+    });
+    delete req.organization;
+    const res = createResponse();
+    let nextError;
+
+    await controller.createStudentCheckout(req, res, (error) => {
+      nextError = error;
+    });
+
+    assert.equal(nextError, undefined);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.data.sessionId, "cs_test_pre_membership");
+    assert.deepEqual(findOrganization.mock.calls[0].arguments[0], {
+      clerkOrganizationId: "org_test",
+    });
+    assert.deepEqual(findClassroom.mock.calls[0].arguments[0], {
+      _id: classroom._id,
+      organization: organization._id,
+    });
+    assert.equal(createSession.mock.callCount(), 1);
   });
 
   await t.test("configured student checkout creates a Stripe session", async (t) => {
