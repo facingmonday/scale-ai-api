@@ -50,12 +50,15 @@ export default function AITextField(props: AITextFieldProps) {
     onChange(clamp(nextValue));
   };
 
-  const disabled = useMemo(() => {
+  const generationDisabled = useMemo(() => {
+    if (props.disabled) {
+      return true;
+    }
     if (promptMode === "modal") {
-      return false;
+      return loading;
     }
     return loading || !value || value?.length < 5;
-  }, [loading, promptMode, value]);
+  }, [loading, promptMode, props.disabled, value]);
 
   const handleInlinePrompt = async () => {
     try {
@@ -131,7 +134,7 @@ export default function AITextField(props: AITextFieldProps) {
           <button
             aria-label="AI Generate"
             onClick={handleClick}
-            disabled={disabled}
+            disabled={generationDisabled}
             type="button"
           >
             <i className="pi pi-microchip-ai text-lg text-brand-blue" />

@@ -5,6 +5,7 @@ const Challenge = require("../challenge/challenge.model");
 const Decision = require("../decision/decision.model");
 const LedgerEntry = require("../ledger/ledger.model");
 const Outcome = require("../outcome/outcome.model");
+const Profile = require("../profile/profile.model");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
 const ClassroomTemplate = require("../classroomTemplate/classroomTemplate.model");
 /**
@@ -402,10 +403,14 @@ classroomSchema.statics.getStudentDashboard = async function (
         variables: activeScenario.variables,
         isPublished: activeScenario.isPublished,
         isClosed: activeScenario.isClosed,
+        week: activeScenario.week,
+        publishAt: activeScenario.publishAt,
+        submissionDeadlineAt: activeScenario.submissionDeadlineAt,
+        automationStatus: activeScenario.automationStatus,
       }
     : null;
 
-  // Get the subission for the student for the active challenge
+  // Get the submission for the student for the active challenge
   const decision = activeScenario
     ? await Decision.getSubmission(
         classroomId,
@@ -422,12 +427,166 @@ classroomSchema.statics.getStudentDashboard = async function (
       }
     : null;
 
+  const MetricDefinition = require("../metricDefinition/metricDefinition.model");
+  const [profile, metricDefinitions, releasedChallenges] = await Promise.all([
+    Profile.findOne({
+      classroomId,
+      userId: memberId,
+      organization: organizationId,
+    })
+      .populate("profileType", "key label")
+      .lean(),
+    MetricDefinition.find({
+      classroomId,
+      organization: organizationId,
+      isActive: true,
+    })
+      .sort({ sortOrder: 1, label: 1 })
+      .lean(),
+    Challenge.find({
+      classroomId,
+      organization: organizationId,
+      isPublished: true,
+      isClosed: true,
+      $or: [
+        { isFeedbackReleased: true },
+        { feedbackReleaseMode: "IMMEDIATE" },
+      ],
+    })
+      .sort({ week: -1, createdDate: -1 })
+      .lean(),
+  ]);
+
+  const challengeIds = releasedChallenges.map((challenge) => challenge._id);
+  const [studentEntries, outcomes] = challengeIds.length
+    ? await Promise.all([
+        LedgerEntry.find({
+          classroomId,
+          organization: organizationId,
+          userId: memberId,
+          challengeId: { $in: challengeIds },
+        }).lean(),
+        Outcome.find({
+          organization: organizationId,
+          challengeId: { $in: challengeIds },
+        })
+          .select("challengeId notes")
+          .lean(),
+      ])
+    : [[], []];
+
+  const metricsToObject = (metrics) => {
+    if (!metrics) return {};
+    if (metrics instanceof Map) return Object.fromEntries(metrics);
+    return { ...metrics };
+  };
+
+  const entriesByChallenge = new Map(
+    studentEntries.map((entry) => [entry.challengeId.toString(), entry])
+  );
+  const outcomesByChallenge = new Map(
+    outcomes.map((outcome) => [outcome.challengeId.toString(), outcome])
+  );
+
+  const recentResults = releasedChallenges
+    .map((challenge) => {
+      const challengeId = challenge._id.toString();
+      const entry = entriesByChallenge.get(challengeId);
+      if (!entry) return null;
+
+      return {
+        challengeId,
+        title: challenge.title,
+        week: challenge.week,
+        completedAt: entry.createdDate,
+        metrics: metricsToObject(entry.metrics),
+        summary: entry.summary,
+        randomEvent: entry.randomEvent,
+        outcomeNotes: outcomesByChallenge.get(challengeId)?.notes || "",
+      };
+    })
+    .filter(Boolean);
+
+  let classStatistics = null;
+  const latestResult = recentResults[0] || null;
+  if (latestResult) {
+    const classEntries = await LedgerEntry.find({
+      classroomId,
+      organization: organizationId,
+      challengeId: latestResult.challengeId,
+    })
+      .select("userId metrics")
+      .lean();
+
+    const numericDefinitions = metricDefinitions.filter(
+      (definition) => definition.dataType === "number"
+    );
+    const averages = {};
+    numericDefinitions.forEach((definition) => {
+      const total = classEntries.reduce((sum, entry) => {
+        const value = Number(metricsToObject(entry.metrics)[definition.key]);
+        return sum + (Number.isFinite(value) ? value : 0);
+      }, 0);
+      averages[definition.key] =
+        classEntries.length > 0 ? total / classEntries.length : 0;
+    });
+
+    const leaderboardDefinition =
+      numericDefinitions.find(
+        (definition) => definition.displayIn?.leaderboard
+      ) || numericDefinitions[0] || null;
+    let rank = null;
+
+    if (leaderboardDefinition) {
+      const rankedEntries = [...classEntries].sort((a, b) => {
+        const aValue = Number(
+          metricsToObject(a.metrics)[leaderboardDefinition.key]
+        );
+        const bValue = Number(
+          metricsToObject(b.metrics)[leaderboardDefinition.key]
+        );
+        return (Number.isFinite(bValue) ? bValue : 0) -
+          (Number.isFinite(aValue) ? aValue : 0);
+      });
+      const rankIndex = rankedEntries.findIndex(
+        (entry) => entry.userId.toString() === memberId.toString()
+      );
+      rank = rankIndex >= 0 ? rankIndex + 1 : null;
+    }
+
+    classStatistics = {
+      challengeId: latestResult.challengeId,
+      title: latestResult.title,
+      participantCount: classEntries.length,
+      rank,
+      averages,
+      studentMetrics: latestResult.metrics,
+      leaderboardMetric: leaderboardDefinition
+        ? {
+            key: leaderboardDefinition.key,
+            label: leaderboardDefinition.label,
+            format: leaderboardDefinition.format,
+          }
+        : null,
+    };
+  }
+
   return {
     className: classDoc.name,
     classDescription: classDoc.description,
     isActive: classDoc.isActive,
     activeScenario: activeScenarioData,
     decision: submissionData,
+    submissionStatus: decision
+      ? { submitted: true, submittedAt: decision.submittedAt }
+      : activeScenario
+        ? { submitted: false, submittedAt: null }
+        : null,
+    profile,
+    metricDefinitions,
+    latestResult,
+    recentResults,
+    classStatistics,
   };
 };
 

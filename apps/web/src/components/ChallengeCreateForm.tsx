@@ -28,7 +28,7 @@ const ScenarioCreateForm: React.FC<ScenarioCreateFormProps> = ({
     feedbackReleaseMode: "IMMEDIATE",
     allowLateSubmissions: false,
     lateSubmissionPolicy: { penaltyPercentPerDay: 0 },
-    automationMode: "MANUAL",
+    automationMode: "FULL",
     missingSubmissionPolicy: "SKIP",
     punishAbsentStudents: "none",
   });
@@ -50,7 +50,7 @@ const ScenarioCreateForm: React.FC<ScenarioCreateFormProps> = ({
       feedbackReleaseMode: "IMMEDIATE",
       allowLateSubmissions: false,
       lateSubmissionPolicy: { penaltyPercentPerDay: 0 },
-      automationMode: "MANUAL",
+      automationMode: "FULL",
       missingSubmissionPolicy: "SKIP",
       punishAbsentStudents: "none",
     });
@@ -87,7 +87,7 @@ const ScenarioCreateForm: React.FC<ScenarioCreateFormProps> = ({
             values.lateSubmissionPolicy?.penaltyPercentPerDay ?? 0,
           ),
         },
-        automationMode: values.automationMode || "MANUAL",
+        automationMode: values.automationMode || "FULL",
         missingSubmissionPolicy: values.missingSubmissionPolicy || "SKIP",
         punishAbsentStudents: values.punishAbsentStudents || "none",
       });

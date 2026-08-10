@@ -1,7 +1,6 @@
 import React from "react";
-import { InputText } from "primereact/inputtext";
-import { InputTextarea } from "primereact/inputtextarea";
 import Image from "./AIComponents/Image/Image";
+import AITextField from "./AIComponents/AITextField";
 
 export type ScenarioFormValues = {
   title: string;
@@ -38,6 +37,18 @@ const ChallengeForm: React.FC<ScenarioFormProps> = ({
   disabled = false,
   automationError,
 }) => {
+  const handleSubmissionDeadlineChange = (deadline: string) => {
+    onChange("submissionDeadlineAt", deadline);
+
+    if (!deadline) return;
+    if (!values.closeSubmissionsAt) {
+      onChange("closeSubmissionsAt", deadline);
+    }
+    if (!values.processAt) {
+      onChange("processAt", deadline);
+    }
+  };
+
   return (
     <div className="flex w-full flex-col gap-4 sm:flex-row">
       <div className="card mb-4 sm:w-1/4">
@@ -52,32 +63,29 @@ const ChallengeForm: React.FC<ScenarioFormProps> = ({
       <div className="card mb-4 w-full">
         <div className="flex flex-col gap-4">
           <div>
-            <label className="label" htmlFor="challenge-title">
-              Title
-            </label>
-            <InputText
+            <AITextField
               id="challenge-title"
+              label="Title"
               value={values.title}
-              onChange={(event) => onChange("title", event.target.value)}
+              onChange={(value) => onChange("title", value)}
               disabled={disabled}
-              className="input"
               placeholder="Week 1 — Hiring & Demand"
-              required
+              prompt="Create a concise, engaging title for a weekly supply-chain business simulation challenge. Include the week number when one is provided. Return only the title without quotation marks"
+              promptMode="modal"
             />
           </div>
 
           <div>
-            <label className="label" htmlFor="challenge-description">
-              Description
-            </label>
-            <InputTextarea
+            <AITextField
               id="challenge-description"
+              label="Description"
               value={values.description}
-              onChange={(event) => onChange("description", event.target.value)}
+              onChange={(value) => onChange("description", value)}
               disabled={disabled}
-              autoResize
-              className="input"
               placeholder="Explain what students should consider this week..."
+              prompt={`Write a clear, student-facing description for the weekly supply-chain simulation challenge titled "${values.title || "Untitled challenge"}". Explain the operating conditions, demand signals, relevant events, and the decisions students should consider. Keep it practical and concise, around 4–6 sentences`}
+              promptMode="modal"
+              multiline
               rows={4}
             />
           </div>
@@ -120,7 +128,7 @@ const ChallengeForm: React.FC<ScenarioFormProps> = ({
                   className="input"
                   value={values.submissionDeadlineAt || ""}
                   onChange={(event) =>
-                    onChange("submissionDeadlineAt", event.target.value)
+                    handleSubmissionDeadlineChange(event.target.value)
                   }
                   disabled={disabled}
                 />
@@ -232,7 +240,7 @@ const ChallengeForm: React.FC<ScenarioFormProps> = ({
                 <span className="label">Automation mode</span>
                 <select
                   className="input"
-                  value={values.automationMode || "MANUAL"}
+                  value={values.automationMode || "FULL"}
                   onChange={(event) =>
                     onChange(
                       "automationMode",

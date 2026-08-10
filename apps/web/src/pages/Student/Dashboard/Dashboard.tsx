@@ -7,10 +7,10 @@ import React, {
 } from "react";
 import BasicLayout from "../../../components/Layouts/BasicLayout";
 import {
-  ProfileHeader,
-  StudentActionBanner,
+  CurrentChallengeCard,
   PerformanceChart,
   PastChallenges,
+  StudentDashboardInsights,
 } from "../../../components/dashboard";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../../context/AuthContext";
@@ -33,6 +33,7 @@ import {
 } from "../../../components/dashboard/utils";
 import type { ScenarioWithVariables } from "../../../types/challenge";
 import type { Profile } from "../../../types/profile";
+import type { StudentDashboardResponse } from "../../../types/dashboard";
 import Alert from "../../../components/Alert";
 import LoadingOverlay from "../../../components/LoadingOverlay";
 
@@ -52,6 +53,8 @@ const Dashboard: React.FC = () => {
     null
   );
   const [isLoading, setIsLoading] = useState(true);
+  const [studentDashboard, setStudentDashboard] =
+    useState<StudentDashboardResponse | null>(null);
 
   const classroomId = activeClassroom?._id ?? null;
 
@@ -88,15 +91,37 @@ const Dashboard: React.FC = () => {
       }
 
       try {
-        const scenarioRes = await challengeService.getCurrent(classroomId);
+        const [scenarioResult, dashboardResult] = await Promise.allSettled([
+          challengeService.getCurrent(classroomId),
+          classroomService.getStudentDashboard(classroomId),
+        ]);
         if (cancelledRef.current) return;
-        const data = unwrap(scenarioRes) as {
-          challenge?: ScenarioWithVariables;
-          submissionStatus?: {
-            submitted: boolean;
-            submittedAt: string | null;
-          };
-        } | null;
+        const data =
+          scenarioResult.status === "fulfilled"
+            ? (unwrap(scenarioResult.value) as {
+                challenge?: ScenarioWithVariables;
+                submissionStatus?: {
+                  submitted: boolean;
+                  submittedAt: string | null;
+                };
+              } | null)
+            : null;
+
+        if (scenarioResult.status === "rejected") {
+          console.error(
+            "Failed to fetch current challenge:",
+            scenarioResult.reason
+          );
+        }
+        if (dashboardResult.status === "fulfilled") {
+          setStudentDashboard(dashboardResult.value);
+        } else {
+          console.error(
+            "Failed to fetch student dashboard:",
+            dashboardResult.reason
+          );
+          setStudentDashboard(null);
+        }
 
         const challenge = (data?.challenge ??
           null) as ScenarioWithVariables | null;
@@ -114,6 +139,7 @@ const Dashboard: React.FC = () => {
         if (cancelledRef.current) return;
         console.error("Failed to fetch current challenge:", err);
         setCurrentScenarioData(null);
+        setStudentDashboard(null);
       } finally {
         if (!silent) {
           setIsLoading(false);
@@ -127,6 +153,7 @@ const Dashboard: React.FC = () => {
     if (!classroomId) {
       const timeoutId = setTimeout(() => {
         setCurrentScenarioData(null);
+        setStudentDashboard(null);
         setIsLoading(false);
       }, 0);
       return () => clearTimeout(timeoutId);
@@ -733,55 +760,34 @@ const Dashboard: React.FC = () => {
             </div>
           )}
 
-          {/* 1) Profile Header (Always Visible) */}
-          <ProfileHeader />
-
-          {/* 3) Action Required Banner */}
-          <StudentActionBanner />
-
-          {/* 2) Current Week / Challenge Card (Primary Focus) */}
-          {/* <CurrentScenarioCard
-            challenge={currentScenarioData?.challenge ?? null}
-            submissionStatus={currentScenarioData?.submissionStatus ?? null}
-          /> */}
-
-          {/* 4) Quick Decision Summary (After Decision) */}
-          {/* <DecisionSummary
-              challengeId={currentScenarioData?.challengeId ?? null}
-            /> */}
-
-          {/* 5) Latest Results Snapshot (After Approval) */}
-          {/* <ResultsSnapshot
-              challengeId={currentScenarioData?.challengeId ?? null}
-            /> */}
-
-          {/* 6) Performance Over Time (Mini Chart) */}
-          <PerformanceChart />
-
-          {/* 7) Leaderboard Snapshot */}
-          {/* <LeaderboardSnapshot
-              challengeId={currentScenarioData?.challengeId ?? null}
-              variant="student"
-            /> */}
-
-          {/* 8) Achievements & Upgrades */}
-          {/* <div className="card">
-              <h2 className="heading-md mb-2">Achievements & upgrades</h2>
-              <p className="text-text-muted text-sm">
-                Your unlocks and upgrades will appear here as the game
-                progresses.
+          {studentDashboard ? (
+            <StudentDashboardInsights dashboard={studentDashboard} />
+          ) : (
+            <div className="card">
+              <p className="text-sm text-text-muted">
+                Dashboard details are temporarily unavailable.
               </p>
-            </div> */}
+            </div>
+          )}
 
-          {/* 9) Class Averages & Insights */}
+          {currentScenarioData?.challenge && (
+            <CurrentChallengeCard
+              challenge={currentScenarioData.challenge}
+              submissionStatus={currentScenarioData.submissionStatus}
+            />
+          )}
 
-          {/* 10) Past Weeks (Collapsed by Default) */}
+          <PerformanceChart
+            results={studentDashboard?.recentResults}
+            definitions={studentDashboard?.metricDefinitions}
+          />
           <PastChallenges
             currentScenarioId={currentScenarioData?.challengeId ?? null}
             variant="student"
+            results={studentDashboard?.recentResults}
+            metricDefinitions={studentDashboard?.metricDefinitions}
           />
 
-          {/* 12) Help & Rules Reminder (Subtle) */}
           <div className="student-dashboard-footnote">
             Deadlines and rules are set by your instructor. If you miss a week,
             you'll still continue — the goal is learning through iteration.

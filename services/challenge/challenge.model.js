@@ -152,7 +152,7 @@ const scenarioSchema = new mongoose.Schema({
   automationMode: {
     type: String,
     enum: ["MANUAL", "FULL"],
-    default: "MANUAL",
+    default: "FULL",
   },
   automationStatus: {
     type: String,
@@ -301,6 +301,11 @@ scenarioSchema.statics.createScenario = async function (
     ...scenarioFields
   } = scenarioData;
 
+  const resolvedAutomationMode = automationMode || "FULL";
+  const shouldScheduleAutomation =
+    resolvedAutomationMode === "FULL" &&
+    Boolean(publishAt || submissionDeadlineAt);
+
   const scheduleFields = {
     publishAt: publishAt || null,
     submissionDeadlineAt: submissionDeadlineAt || null,
@@ -310,10 +315,10 @@ scenarioSchema.statics.createScenario = async function (
     feedbackReleaseMode: feedbackReleaseMode || "IMMEDIATE",
     allowLateSubmissions: allowLateSubmissions || false,
     lateSubmissionPolicy: lateSubmissionPolicy || { penaltyPercentPerDay: 0 },
-    automationMode: automationMode || "MANUAL",
+    automationMode: resolvedAutomationMode,
     automationStatus:
       automationStatus ||
-      (publishAt || submissionDeadlineAt ? "SCHEDULED" : "UNSCHEDULED"),
+      (shouldScheduleAutomation ? "SCHEDULED" : "UNSCHEDULED"),
     missingSubmissionPolicy: missingSubmissionPolicy || "SKIP",
     punishAbsentStudents: punishAbsentStudents || "none",
   };

@@ -1,5 +1,6 @@
 import type { ScenarioWithVariables } from "./challenge";
 import type { Profile } from "./profile";
+import type { MetricDefinition } from "./metric";
 
 /**
  * Class Dashboard Response
@@ -43,8 +44,34 @@ export interface AdminDashboardResponse extends DashboardBase {
  */
 export interface StudentDashboardResponse extends DashboardBase {
   profile: Profile | null;
-  currentScenario: ScenarioWithVariables | null;
+  activeScenario: ScenarioWithVariables | null;
+  decision: unknown | null;
   submissionStatus: { submitted: boolean; submittedAt: string | null } | null;
+  metricDefinitions: MetricDefinition[];
+  latestResult: StudentDashboardResult | null;
+  recentResults: StudentDashboardResult[];
+  classStatistics: StudentClassStatistics | null;
+}
+
+export interface StudentDashboardResult {
+  challengeId: string;
+  title: string;
+  week: number;
+  completedAt?: string | Date;
+  metrics: Record<string, unknown>;
+  summary: string;
+  randomEvent?: string | null;
+  outcomeNotes?: string;
+}
+
+export interface StudentClassStatistics {
+  challengeId: string;
+  title: string;
+  participantCount: number;
+  rank: number | null;
+  averages: Record<string, number>;
+  studentMetrics: Record<string, unknown>;
+  leaderboardMetric: LeaderboardMetric | null;
 }
 
 /**

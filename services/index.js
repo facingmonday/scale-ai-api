@@ -25,6 +25,7 @@ router.use("/join", require("./join"));
 
 // Classroom routes
 router.use("/admin/class", require("./classroom"));
+router.use("/student/class", require("./classroom/student"));
 
 // Enrollment routes
 router.use("/enrollment", require("./enrollment"));

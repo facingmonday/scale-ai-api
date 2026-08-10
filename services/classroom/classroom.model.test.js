@@ -498,6 +498,149 @@ test("Classroom Model Integration Tests", async (t) => {
     assert.equal(dashboard.decision.userId.toString(), studentId.toString());
   });
 
+  await t.test("getStudentDashboard returns released results and class comparisons", async () => {
+    const orgId = new mongoose.Types.ObjectId();
+    const ownerId = new mongoose.Types.ObjectId();
+    const studentId = new mongoose.Types.ObjectId();
+    const peerId = new mongoose.Types.ObjectId();
+
+    const classDoc = await Classroom.create({
+      name: "Student Insights Class",
+      description: "Weekly simulation results",
+      organization: orgId,
+      ownership: ownerId,
+      createdBy: "test",
+      updatedBy: "test",
+    });
+    const profileType = await ProfileType.create({
+      classroomId: classDoc._id,
+      key: "bar-grill",
+      label: "Bar & Grill",
+      organization: orgId,
+      createdBy: "test",
+      updatedBy: "test",
+    });
+    await Profile.create({
+      classroomId: classDoc._id,
+      userId: studentId,
+      studentId: "S-100",
+      shopName: "Student Cafe",
+      storeDescription: "A campus cafe",
+      storeLocation: "Campus",
+      profileType: profileType._id,
+      organization: orgId,
+      createdBy: "test",
+      updatedBy: "test",
+    });
+    await MetricDefinition.create({
+      classroomId: classDoc._id,
+      key: "revenue",
+      label: "Revenue",
+      dataType: "number",
+      format: "currency",
+      displayIn: {
+        table: true,
+        kpi: true,
+        chart: true,
+        leaderboard: true,
+        detail: true,
+      },
+      organization: orgId,
+      createdBy: "test",
+      updatedBy: "test",
+    });
+
+    const releasedChallenge = await Challenge.create({
+      classroomId: classDoc._id,
+      title: "Released Week",
+      week: 1,
+      isPublished: true,
+      isClosed: true,
+      isFeedbackReleased: true,
+      feedbackReleaseMode: "DELAYED",
+      organization: orgId,
+      createdBy: "test",
+      updatedBy: "test",
+    });
+    const hiddenChallenge = await Challenge.create({
+      classroomId: classDoc._id,
+      title: "Hidden Week",
+      week: 2,
+      isPublished: true,
+      isClosed: true,
+      isFeedbackReleased: false,
+      feedbackReleaseMode: "MANUAL",
+      organization: orgId,
+      createdBy: "test",
+      updatedBy: "test",
+    });
+
+    await LedgerEntry.create([
+      {
+        classroomId: classDoc._id,
+        challengeId: releasedChallenge._id,
+        userId: studentId,
+        metrics: { revenue: 2200 },
+        summary: "A profitable week.",
+        aiMetadata: { model: "test", runId: "student-result" },
+        organization: orgId,
+        createdBy: "test",
+        updatedBy: "test",
+      },
+      {
+        classroomId: classDoc._id,
+        challengeId: releasedChallenge._id,
+        userId: peerId,
+        metrics: { revenue: 3000 },
+        summary: "Peer result.",
+        aiMetadata: { model: "test", runId: "peer-result" },
+        organization: orgId,
+        createdBy: "test",
+        updatedBy: "test",
+      },
+      {
+        classroomId: classDoc._id,
+        challengeId: hiddenChallenge._id,
+        userId: studentId,
+        metrics: { revenue: 9999 },
+        summary: "This result is not released.",
+        aiMetadata: { model: "test", runId: "hidden-result" },
+        organization: orgId,
+        createdBy: "test",
+        updatedBy: "test",
+      },
+    ]);
+    await Outcome.create({
+      classroomId: classDoc._id,
+      challengeId: releasedChallenge._id,
+      notes: "Rain reduced foot traffic.",
+      approved: true,
+      organization: orgId,
+      createdBy: "test",
+      updatedBy: "test",
+    });
+
+    const dashboard = await Classroom.getStudentDashboard(
+      classDoc._id,
+      orgId,
+      studentId
+    );
+
+    assert.equal(dashboard.profile.shopName, "Student Cafe");
+    assert.equal(dashboard.profile.profileType.label, "Bar & Grill");
+    assert.equal(dashboard.metricDefinitions.length, 1);
+    assert.equal(dashboard.recentResults.length, 1);
+    assert.equal(dashboard.latestResult.title, "Released Week");
+    assert.equal(dashboard.latestResult.metrics.revenue, 2200);
+    assert.equal(
+      dashboard.latestResult.outcomeNotes,
+      "Rain reduced foot traffic."
+    );
+    assert.equal(dashboard.classStatistics.participantCount, 2);
+    assert.equal(dashboard.classStatistics.rank, 2);
+    assert.equal(dashboard.classStatistics.averages.revenue, 2600);
+  });
+
   await t.test("Variable and Metric definition queries", async () => {
     const classId = new mongoose.Types.ObjectId();
     const orgId = new mongoose.Types.ObjectId();

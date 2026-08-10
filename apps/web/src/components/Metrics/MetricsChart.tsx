@@ -37,7 +37,10 @@ const MetricsChart: React.FC<Props> = ({
     initialKey || chartDefs[0]?.key || ""
   );
 
-  const selectedDef = chartDefs.find((d) => d.key === selectedKey);
+  const selectedDef =
+    chartDefs.find((definition) => definition.key === selectedKey) ||
+    chartDefs.find((definition) => definition.key === initialKey) ||
+    chartDefs[0];
 
   if (chartDefs.length === 0) {
     return (
@@ -105,7 +108,7 @@ const MetricsChart: React.FC<Props> = ({
         <h3 className="text-lg font-semibold">{selectedDef.label}</h3>
         <select
           className="input max-w-xs"
-          value={selectedKey}
+          value={selectedDef.key}
           onChange={(e) => setSelectedKey(e.target.value)}
         >
           {chartDefs.map((d) => (

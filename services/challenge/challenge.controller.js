@@ -76,7 +76,7 @@ function normalizeScheduleInput(body) {
     schedule.lateSubmissionPolicy = body.lateSubmissionPolicy;
   }
   if (body.automationMode !== undefined) {
-    schedule.automationMode = body.automationMode || "MANUAL";
+    schedule.automationMode = body.automationMode || "FULL";
   }
   if (body.missingSubmissionPolicy !== undefined) {
     schedule.missingSubmissionPolicy = body.missingSubmissionPolicy || "SKIP";
@@ -200,6 +200,8 @@ exports.createScenario = async function (req, res) {
       organizationId
     );
 
+    const createAutomationMode = scheduleInput.automationMode || "FULL";
+
     // Create challenge using static method
     const challenge = await Challenge.createScenario(
       classroomId,
@@ -209,9 +211,9 @@ exports.createScenario = async function (req, res) {
         variables,
         imageUrl,
         ...scheduleInput,
+        automationMode: createAutomationMode,
         automationStatus:
-          scheduleInput.automationMode === "FULL" ||
-          req.body.automationMode === "FULL"
+          createAutomationMode === "FULL"
             ? scheduleInput.publishAt || scheduleInput.submissionDeadlineAt
               ? "SCHEDULED"
               : "UNSCHEDULED"
@@ -1224,4 +1226,3 @@ exports.releaseFeedbackScenario = async function (req, res) {
     res.status(500).json({ error: error.message });
   }
 };
-

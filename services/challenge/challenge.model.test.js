@@ -51,6 +51,7 @@ test("new challenge automation fields are validated successfully", async () => {
   await challenge.validate();
 
   assert.equal(challenge.feedbackReleaseMode, "DELAYED");
+  assert.equal(challenge.automationMode, "FULL");
   assert.equal(challenge.isLockedForStudents, true);
   assert.equal(challenge.allowLateSubmissions, true);
   assert.equal(challenge.lateSubmissionPolicy.penaltyPercentPerDay, 5);

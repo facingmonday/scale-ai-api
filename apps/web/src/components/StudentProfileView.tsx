@@ -6,6 +6,7 @@ import type { LedgerEntry } from "../types/ledger";
 import { unwrap } from "./dashboard/utils";
 import LoadingOverlay from "./LoadingOverlay";
 import MetricsKpiRow from "./Metrics/MetricsKpiRow";
+import { formatProfileType } from "./dashboard/utils";
 
 interface StudentProfileViewProps {
   studentId: string;
@@ -106,7 +107,9 @@ const StudentProfileView: React.FC<StudentProfileViewProps> = ({
         <div className="min-w-0">
           <div className="text-sm text-text-muted">
             {activeClassroom?.name}
-            {profile.profileType ? ` • ${profile.profileType}` : ""}
+            {profile.profileType
+              ? ` • ${formatProfileType(profile.profileType)}`
+              : ""}
           </div>
           <h2 className="text-xl md:text-3xl font-semibold truncate mt-2">
             {profile.shopName?.trim() || "Student's profile"}
