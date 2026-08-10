@@ -1,4 +1,5 @@
 const Classroom = require("../classroom/classroom.model");
+const Organization = require("../organizations/organization.model");
 const RosterSeat = require("./rosterSeat.model");
 const SeatClaim = require("./seatClaim.model");
 const SeatPool = require("./seatPool.model");
@@ -217,7 +218,7 @@ exports.createStudentCheckout = async function createStudentCheckout(
   next,
 ) {
   try {
-    const { classroomId } = req.body || {};
+    const { classroomId, orgId } = req.body || {};
     if (!classroomId) {
       return res.status(400).json({
         success: false,
@@ -232,9 +233,20 @@ exports.createStudentCheckout = async function createStudentCheckout(
       });
     }
 
+    const organization = orgId
+      ? await Organization.findOne({ clerkOrganizationId: orgId })
+      : req.organization;
+
+    if (!organization) {
+      return res.status(404).json({
+        success: false,
+        error: "Organization not found",
+      });
+    }
+
     const classroom = await Classroom.findOne({
       _id: classroomId,
-      organization: req.organization._id,
+      organization: organization._id,
     });
 
     if (!classroom) {
@@ -245,7 +257,7 @@ exports.createStudentCheckout = async function createStudentCheckout(
     }
 
     const session = await createStudentSeatCheckoutSession({
-      organization: req.organization,
+      organization,
       member: req.user,
       classroom,
       customerEmail: getClerkPrimaryEmail(req.clerkUser),
@@ -322,7 +334,7 @@ exports.getStudentCheckoutStatus = async function getStudentCheckoutStatus(
     const metadata = session.metadata || {};
     const isOwnedStudentCheckout =
       metadata.type === "student_seat" &&
-      String(metadata.organizationId || "") === String(req.organization._id) &&
+      Boolean(metadata.organizationId) &&
       String(metadata.purchaserUserId || "") === String(req.user._id);
 
     if (!isOwnedStudentCheckout) {
@@ -344,7 +356,7 @@ exports.getStudentCheckoutStatus = async function getStudentCheckoutStatus(
 
     let record = await StripeCheckoutRecord.findOne({
       stripeSessionId: session.id,
-      organization: req.organization._id,
+      organization: metadata.organizationId,
       purchaserUserId: req.user._id,
       type: "student_seat",
     });

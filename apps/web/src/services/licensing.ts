@@ -69,14 +69,17 @@ async function getRosterSeats(classroomId: string): Promise<RosterSeat[]> {
   return response.data.data;
 }
 
-async function createStudentCheckout(classroomId: string): Promise<{
+async function createStudentCheckout(
+  classroomId: string,
+  orgId?: string,
+): Promise<{
   checkoutUrl: string;
   sessionId: string;
   planKey: string;
 }> {
   const response = await axios.post(
     `${API_HOST}/${API_VERSION}/licensing/student/checkout`,
-    { classroomId },
+    { classroomId, orgId },
     {
       headers: await TokenHandler.getHeaders(),
     },

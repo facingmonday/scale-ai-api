@@ -169,16 +169,24 @@ export default function Auth() {
       setIsStartingCheckout(true);
       setJoinError(null);
       try {
-        const checkout = await licensingService.createStudentCheckout(classroomId);
+        const checkout = await licensingService.createStudentCheckout(
+          classroomId,
+          orgId || undefined,
+        );
         window.location.href = checkout.checkoutUrl;
       } catch (e) {
         console.error("Unable to start checkout:", e);
-        const message =
+        const response =
           e && typeof e === "object" && "response" in e
-            ? (e as { response?: { data?: { error?: string } } }).response?.data
-                ?.error
+            ? (e as {
+                response?: { data?: { error?: string; message?: string } };
+              }).response
             : undefined;
-        setJoinError(message || "Checkout is not available yet.");
+        setJoinError(
+          response?.data?.error ||
+            response?.data?.message ||
+            "Checkout is not available yet.",
+        );
       } finally {
         setIsStartingCheckout(false);
       }
