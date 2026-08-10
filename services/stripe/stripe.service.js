@@ -67,7 +67,7 @@ function buildCancelUrl({
 }) {
   const base =
     process.env.STRIPE_CHECKOUT_CANCEL_URL ||
-    `${process.env.SCALE_APP_ADMIN || "http://localhost:5173"}/?checkout=cancelled`;
+    `${process.env.SCALE_APP_HOST || "http://localhost:5173"}/?checkout=cancelled`;
 
   const url = new URL(base);
   url.searchParams.set("checkout", "cancelled");
@@ -171,6 +171,7 @@ async function createStudentSeatCheckoutSession({
 module.exports = {
   getStripeClient,
   buildSuccessUrl,
+  buildCancelUrl,
   createOrgSeatCheckoutSession,
   createStudentSeatCheckoutSession,
 };
