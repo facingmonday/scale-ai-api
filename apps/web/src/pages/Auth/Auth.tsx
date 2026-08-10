@@ -190,7 +190,10 @@ export default function Auth() {
           <div className="card text-center py-8 md:py-12 px-4 md:px-6">
             {joinErrorCode === "PAYMENT_REQUIRED" ? (
               <div className="mx-auto max-w-4xl overflow-hidden rounded-2xl border border-brand-teal/30 bg-ui-surface text-left shadow-md">
-                <div className="grid md:grid-cols-[1.15fr_0.85fr]">
+                <div
+                  className="md:grid-cols-[1.15fr_0.85fr]"
+                  style={{ display: "grid" }}
+                >
                   <div className="relative overflow-hidden bg-gradient-to-br from-brand-blue via-brand-blue to-brand-blue/90 p-6 text-white sm:p-9">
                     <div
                       className="absolute -right-10 -top-10 h-36 w-36 rounded-full bg-brand-teal/20"
@@ -224,7 +227,7 @@ export default function Auth() {
                           "Track your shop’s results and performance",
                         ].map((benefit) => (
                           <div key={benefit} className="flex items-center gap-3">
-                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-teal text-xs text-brand-blue">
+                            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-teal text-xs text-brand-blue">
                               <i className="pi pi-check" aria-hidden="true" />
                             </span>
                             <span className="text-sm font-medium text-white/90">
