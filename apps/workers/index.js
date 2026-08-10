@@ -23,6 +23,7 @@ const {
   checkPendingJobs,
   verifyRedisConnectivity,
 } = require("../../lib/queues");
+const { ensureMongoConnected } = require("../../lib/mongo-connection");
 
 // Load all models
 require("../../models");
@@ -40,16 +41,10 @@ const {
 
 // Environment variables
 const {
-  MONGO_SCHEME,
-  MONGO_USERNAME,
-  MONGO_PASSWORD,
   MONGO_HOSTNAME,
-  MONGO_DB,
   PORT_WORKERS = 1341,
   WORKERS_ENABLED = "true",
 } = process.env;
-
-const mongoUrl = `${MONGO_SCHEME}://${MONGO_USERNAME}:${MONGO_PASSWORD}@${MONGO_HOSTNAME}/${MONGO_DB}?authSource=admin`;
 
 const app = express();
 
@@ -163,14 +158,21 @@ async function main() {
 
     // Connect to MongoDB with retry logic
     const connectWithRetry = async () => {
-      try {
-        console.log(`📡 Connecting to MongoDB at ${MONGO_HOSTNAME}...`);
-        await mongoose.connect(mongoUrl);
-        console.log("✅ Connected to MongoDB");
-      } catch (err) {
-        console.error("❌ Failed to connect to MongoDB:", err.message);
-        console.log("🔄 Retrying connection in 5 seconds...");
-        setTimeout(connectWithRetry, 5000);
+      while (true) {
+        try {
+          const configuredHost =
+            process.env.MONGO_URL || process.env.MONGO_URI
+              ? "configured host"
+              : MONGO_HOSTNAME;
+          console.log(`📡 Connecting to MongoDB at ${configuredHost}...`);
+          await ensureMongoConnected();
+          console.log("✅ Connected to MongoDB");
+          return;
+        } catch (err) {
+          console.error("❌ Failed to connect to MongoDB:", err.message);
+          console.log("🔄 Retrying connection in 5 seconds...");
+          await new Promise((resolve) => setTimeout(resolve, 5000));
+        }
       }
     };
 

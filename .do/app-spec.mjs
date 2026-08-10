@@ -48,6 +48,9 @@ const secretKeys = [
 ];
 
 const optionalGeneralKeys = [
+  "AI_DEBUG_DECISION_ID",
+  "AI_DEBUG_REQUEST_BODY",
+  "AI_DEBUG_REQUESTS",
   "AI_MAX_MESSAGE_CHARS",
   "AI_MODEL",
   "AUTO_GENERATE_SUBMISSIONS_ON_PUBLISH",

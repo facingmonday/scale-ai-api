@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const crypto = require("crypto");
 const baseSchema = require("../../lib/baseSchema");
 const openai = require("../../lib/openai");
 const { v4: uuidv4 } = require("uuid");
@@ -6,6 +7,98 @@ const { round2, roundInt } = require("../../lib/number-utils");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
 const MetricDefinition = require("../metricDefinition/metricDefinition.model");
 const AI_MODEL = process.env.AI_MODEL || "gpt-5-mini-2025-08-07";
+
+function shouldInspectOpenAIRequest(context = {}) {
+  if (process.env.AI_DEBUG_REQUESTS !== "true") return false;
+
+  const decisionIdFilter = String(
+    process.env.AI_DEBUG_DECISION_ID || ""
+  ).trim();
+  if (!decisionIdFilter) return true;
+
+  return String(context.decisionId || "") === decisionIdFilter;
+}
+
+function summarizeOpenAIRequest(request) {
+  const messages = Array.isArray(request?.messages) ? request.messages : [];
+  const rows = messages.map((message, index) => {
+    const content =
+      typeof message?.content === "string"
+        ? message.content
+        : JSON.stringify(message?.content ?? "");
+    let type = "plain_text";
+
+    try {
+      const parsed = JSON.parse(content);
+      if (parsed && typeof parsed === "object" && parsed.type) {
+        type = String(parsed.type);
+      }
+    } catch (error) {
+      // Plain-text instructions intentionally do not have an envelope type.
+    }
+
+    return {
+      index,
+      role: message?.role || "unknown",
+      type,
+      characters: content.length,
+      bytes: Buffer.byteLength(content, "utf8"),
+      hash: crypto.createHash("sha256").update(content).digest("hex").slice(0, 12),
+    };
+  });
+
+  const responseSchema = request?.response_format?.json_schema?.schema || null;
+  return {
+    rows,
+    summary: {
+      model: request?.model || null,
+      messageCount: rows.length,
+      totalMessageCharacters: rows.reduce(
+        (total, row) => total + row.characters,
+        0
+      ),
+      totalMessageBytes: rows.reduce((total, row) => total + row.bytes, 0),
+      responseSchemaBytes: responseSchema
+        ? Buffer.byteLength(JSON.stringify(responseSchema), "utf8")
+        : 0,
+      totalRequestBytes: Buffer.byteLength(JSON.stringify(request || {}), "utf8"),
+    },
+  };
+}
+
+function inspectOpenAIRequest(request, context = {}) {
+  const report = summarizeOpenAIRequest(request);
+  console.log("OpenAI simulation request message breakdown", context);
+  console.table(report.rows);
+  console.log("OpenAI simulation request summary", {
+    ...context,
+    ...report.summary,
+  });
+
+  if (process.env.AI_DEBUG_REQUEST_BODY === "true") {
+    if (process.env.NODE_ENV === "production") {
+      console.warn(
+        "AI_DEBUG_REQUEST_BODY was ignored in production to avoid logging student data."
+      );
+    } else {
+      console.log(
+        "OpenAI simulation request body",
+        JSON.stringify(request, null, 2)
+      );
+    }
+  }
+
+  return report;
+}
+
+function inspectOpenAIResponse(response, context = {}) {
+  console.log("OpenAI simulation response usage", {
+    ...context,
+    id: response?.id || null,
+    model: response?.model || null,
+    usage: response?.usage || null,
+  });
+}
 
 // Profile metadata keys (not variable keys) - used when filtering profile for AI prompt
 const PROFILE_METADATA_KEYS = [
@@ -338,6 +431,12 @@ ledgerEntrySchema.statics.buildResponseJsonSchema = async function (classroomId)
     properties,
   };
 };
+
+ledgerEntrySchema.statics.summarizeOpenAIRequest = summarizeOpenAIRequest;
+ledgerEntrySchema.statics.shouldInspectOpenAIRequest =
+  shouldInspectOpenAIRequest;
+ledgerEntrySchema.statics.inspectOpenAIRequest = inspectOpenAIRequest;
+ledgerEntrySchema.statics.inspectOpenAIResponse = inspectOpenAIResponse;
 
 /**
  * Get classroom-level base prompts (system/user) that do NOT depend on
@@ -768,7 +867,7 @@ ledgerEntrySchema.statics.buildAISimulationOpenAIRequest = async function (
   const hardenedMessages = this.hardenAISimulationMessages(rawMessages);
   const aiResponseSchema = await this.buildResponseJsonSchema(classroomId);
 
-  return {
+  const result = {
     rawMessages,
     request: {
       model: AI_MODEL,
@@ -782,6 +881,17 @@ ledgerEntrySchema.statics.buildAISimulationOpenAIRequest = async function (
       },
     },
   };
+
+  const debugContext = {
+    classroomId: classroomId ? String(classroomId) : null,
+    challengeId: challenge?._id ? String(challenge._id) : null,
+    decisionId: decision?._id ? String(decision._id) : null,
+  };
+  if (this.shouldInspectOpenAIRequest(debugContext)) {
+    this.inspectOpenAIRequest(result.request, debugContext);
+  }
+
+  return result;
 };
 
 /**
@@ -861,6 +971,16 @@ ledgerEntrySchema.statics.runAISimulation = async function (context) {
     context
   );
   const response = await openai.chat.completions.create(request);
+  const debugContext = {
+    classroomId: classroomId ? String(classroomId) : null,
+    challengeId: context.challenge?._id
+      ? String(context.challenge._id)
+      : null,
+    decisionId: context.decision?._id ? String(context.decision._id) : null,
+  };
+  if (this.shouldInspectOpenAIRequest(debugContext)) {
+    this.inspectOpenAIResponse(response, debugContext);
+  }
   const content = response.choices[0].message.content;
   let aiResult;
   try {

@@ -88,7 +88,7 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
       const next =
         response && typeof response === "object" && "data" in response
           ? (((response as { data?: ScenarioOutcomeModel | null }).data ??
-              null) as ScenarioOutcomeModel | null)
+            null) as ScenarioOutcomeModel | null)
           : ((response ?? null) as ScenarioOutcomeModel | null);
       setOutcome(next);
       onChange?.(next);
@@ -250,9 +250,8 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
     const outcomeAction = !outcome ? (
       <button
         type="button"
-        className={`btn-teal ${
-          addOutcomeDisabled ? "disabled:opacity-50" : ""
-        }`}
+        className={`btn-teal ${addOutcomeDisabled ? "disabled:opacity-50" : ""
+          }`}
         onClick={() => setIsEditing(true)}
         disabled={addOutcomeDisabled}
       >
@@ -497,11 +496,11 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
                     </span>
                     {autoGenerateSubmissionsOnOutcome ===
                       "FORWARD_PREVIOUS" && (
-                      <p className="text-xs text-text-muted mt-1">
-                        Students who have never made a decision will have one
-                        created using AI.
-                      </p>
-                    )}
+                        <p className="text-xs text-text-muted mt-1">
+                          Students who have never made a decision will have one
+                          created using AI.
+                        </p>
+                      )}
                   </div>
                 </label>
               </div>
@@ -563,11 +562,11 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
                     </div>
                     {autoGenerateSubmissionsOnOutcome ===
                       "FORWARD_PREVIOUS" && (
-                      <p className="text-xs text-text-muted mt-2">
-                        Note: Will only apply to students who have never made a
-                        decision.
-                      </p>
-                    )}
+                        <p className="text-xs text-text-muted mt-2">
+                          Note: Will only apply to students who have never made a
+                          decision.
+                        </p>
+                      )}
                   </div>
                 )}
             </div>
@@ -599,7 +598,7 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
               onClick={() => void handleSaveDraft()}
               disabled={!isAdmin || isSaving}
             >
-              {isSaving ? "Saving..." : "Save draft"}
+              {isSaving ? "Saving..." : "Save"}
             </button>
             <button
               type="button"
