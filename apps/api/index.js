@@ -11,6 +11,7 @@ const { clerkMiddleware } = require("@clerk/express");
 const swaggerJsdoc = require("swagger-jsdoc");
 const swaggerUi = require("swagger-ui-express");
 const { verifyRedisConnectivity } = require("../../lib/queues");
+const jsonBodyParser = require("../../middleware/jsonBodyParser");
 // Import all models before any other imports that might use them
 require("../../models");
 
@@ -94,7 +95,7 @@ Allow: /`);
 
 // Webhooks moved to dedicated service in apps/webhooks
 
-app.use(express.json());
+app.use(jsonBodyParser);
 app.use(express.urlencoded({ extended: true }));
 const PROD_CORS_ORIGINS = ["https://app.scalelxp.com"];
 const DEV_CORS_ORIGINS = [

@@ -2511,6 +2511,33 @@
             "description": "Distribution list."
           }
         }
+      },
+      "delete": {
+        "summary": "Clear classroom roster",
+        "description": "Remove all roster entries without unenrolling students who already joined. Requires org:admin role.",
+        "tags": [
+          "Licensing"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "classroomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Number of roster entries removed and active claims detached."
+          }
+        }
       }
     },
     "/v1/licensing/classrooms/{classroomId}/roster-import": {

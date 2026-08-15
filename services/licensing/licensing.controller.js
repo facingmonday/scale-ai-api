@@ -17,66 +17,13 @@ const {
 } = require("../stripe/stripe.webhook.service");
 const StripeCheckoutRecord = require("./stripeCheckoutRecord.model");
 const { PLAN_CATALOG, PLAN_KEYS } = require("./planCatalog");
+const { parseRosterCsv } = require("./rosterCsv");
 
 function getClerkPrimaryEmail(clerkUser) {
   const primaryEmailObj = clerkUser?.emailAddresses?.find(
     (email) => email.id === clerkUser?.primaryEmailAddressId,
   );
   return primaryEmailObj?.emailAddress;
-}
-
-function parseCsvLine(line) {
-  const values = [];
-  let current = "";
-  let inQuotes = false;
-
-  for (let i = 0; i < line.length; i += 1) {
-    const char = line[i];
-    const next = line[i + 1];
-    if (char === '"' && inQuotes && next === '"') {
-      current += '"';
-      i += 1;
-    } else if (char === '"') {
-      inQuotes = !inQuotes;
-    } else if (char === "," && !inQuotes) {
-      values.push(current.trim());
-      current = "";
-    } else {
-      current += char;
-    }
-  }
-  values.push(current.trim());
-  return values;
-}
-
-function parseRosterCsv(csv) {
-  const lines = String(csv || "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (lines.length === 0) return [];
-
-  const headers = parseCsvLine(lines[0]).map((header) =>
-    header.trim().toLowerCase(),
-  );
-  const rows = [];
-
-  for (const line of lines.slice(1)) {
-    const values = parseCsvLine(line);
-    const row = {};
-    headers.forEach((header, index) => {
-      row[header] = values[index] || "";
-    });
-    rows.push({
-      email: row.email || row["email address"] || "",
-      studentId: row.studentid || row.student_id || row["student id"] || "",
-      firstName: row.firstname || row.first_name || row["first name"] || "",
-      lastName: row.lastname || row.last_name || row["last name"] || "",
-      section: row.section || row.group || "",
-    });
-  }
-
-  return rows;
 }
 
 exports.getPlans = async function getPlans(req, res) {
@@ -156,28 +103,11 @@ exports.importRoster = async function importRoster(req, res, next) {
       (row) => !row.email.includes("@"),
     );
 
-    const upserted = [];
-    for (const row of validRows) {
-      const doc = await RosterSeat.findOneAndUpdate(
-        {
-          classroomId: classroom._id,
-          email: row.email,
-        },
-        {
-          $set: {
-            ...row,
-            status: "reserved",
-            organization: classroom.organization,
-            updatedBy: req.clerkUser.id,
-          },
-          $setOnInsert: {
-            createdBy: req.clerkUser.id,
-          },
-        },
-        { new: true, upsert: true },
-      );
-      upserted.push(doc);
-    }
+    const upserted = await RosterSeat.importRows({
+      classroom,
+      rows: validRows,
+      updatedBy: req.clerkUser.id,
+    });
 
     return res.status(200).json({
       success: true,
@@ -188,6 +118,27 @@ exports.importRoster = async function importRoster(req, res, next) {
         invalidRows,
       },
     });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+exports.clearRoster = async function clearRoster(req, res, next) {
+  try {
+    const { classroomId } = req.params;
+    await Classroom.validateAdminAccess(
+      classroomId,
+      req.clerkUser.id,
+      req.organization._id,
+    );
+
+    const result = await RosterSeat.clearForClassroom({
+      classroomId,
+      organizationId: req.organization._id,
+      updatedBy: req.clerkUser.id,
+    });
+
+    return res.json({ success: true, data: result });
   } catch (error) {
     return next(error);
   }
@@ -204,6 +155,7 @@ exports.getRosterSeats = async function getRosterSeats(req, res, next) {
 
     const seats = await RosterSeat.find({
       classroomId,
+      organization: req.organization._id,
     }).sort({ status: 1, email: 1 });
 
     return res.json({ success: true, data: seats });

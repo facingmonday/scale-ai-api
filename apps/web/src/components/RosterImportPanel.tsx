@@ -14,6 +14,7 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
   const [csv, setCsv] = useState("");
   const [rosterSeats, setRosterSeats] = useState<RosterSeat[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -27,7 +28,32 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
     }
   };
 
+  const clearRoster = async () => {
+    const confirmed = window.confirm(
+      `Clear all ${rosterSeats.length} roster entries? Students who already joined will remain enrolled. This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setIsClearing(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await licensingService.clearRoster(classroomId);
+      setCsv("");
+      setMessage(`Cleared ${result.deleted} roster entries.`);
+      await loadRosterSeats();
+      onImported?.();
+    } catch (e) {
+      console.error("Failed to clear roster:", e);
+      setError("Failed to clear roster.");
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
   useEffect(() => {
+    // This fetch only updates state after the request resolves.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadRosterSeats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classroomId]);
@@ -126,6 +152,11 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
           Upload student emails and optional student IDs. Each imported row is
           reserved on the roster and can limit who joins this class.
         </p>
+        <p className="text-text-muted text-sm mt-2">
+          Imports add new students and update existing students by email.
+          Students omitted from a later import remain on the roster until it is
+          cleared.
+        </p>
       </div>
 
       {error && <p className="text-red-400 text-sm">{error}</p>}
@@ -176,10 +207,17 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
         />
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex justify-between gap-3">
+        <button
+          className="px-4 py-2 rounded border border-red-400/40 text-red-400 hover:bg-red-400/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          disabled={rosterSeats.length === 0 || isClearing || isSubmitting}
+          onClick={() => void clearRoster()}
+        >
+          {isClearing ? "Clearing..." : "Clear Roster"}
+        </button>
         <button
           className="btn-teal"
-          disabled={!csv.trim() || isSubmitting}
+          disabled={!csv.trim() || isSubmitting || isClearing}
           onClick={() => void importRoster()}
         >
           {isSubmitting ? "Importing..." : "Import Roster"}
