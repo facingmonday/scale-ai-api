@@ -179,6 +179,33 @@ router.get(
 
 /**
  * @openapi
+ * /v1/licensing/classrooms/{classroomId}/roster-seats:
+ *   delete:
+ *     summary: Clear classroom roster
+ *     description: Remove all roster entries without unenrolling students who already joined. Requires org:admin role.
+ *     tags:
+ *       - Licensing
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - name: classroomId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Number of roster entries removed and active claims detached.
+ */
+router.delete(
+  "/classrooms/:classroomId/roster-seats",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.clearRoster,
+);
+
+/**
+ * @openapi
  * /v1/licensing/classrooms/{classroomId}/roster-import:
  *   post:
  *     summary: Import roster

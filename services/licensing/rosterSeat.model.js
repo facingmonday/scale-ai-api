@@ -67,6 +67,81 @@ rosterSeatSchema.index(
 );
 rosterSeatSchema.index({ organization: 1, classroomId: 1, status: 1 });
 
+rosterSeatSchema.statics.importRows = async function ({
+  classroom,
+  rows,
+  updatedBy,
+}) {
+  const upserted = [];
+
+  for (const row of rows) {
+    const doc = await this.findOneAndUpdate(
+      {
+        classroomId: classroom._id,
+        organization: classroom.organization,
+        email: row.email,
+        status: { $ne: "revoked" },
+      },
+      {
+        $set: {
+          ...row,
+          organization: classroom.organization,
+          updatedBy,
+        },
+        $setOnInsert: {
+          status: "reserved",
+          createdBy: updatedBy,
+        },
+      },
+      { new: true, upsert: true },
+    );
+    upserted.push(doc);
+  }
+
+  return upserted;
+};
+
+rosterSeatSchema.statics.clearForClassroom = async function ({
+  classroomId,
+  organizationId,
+  updatedBy,
+}) {
+  const SeatClaim = require("./seatClaim.model");
+  const rosterSeats = await this.find({
+    classroomId,
+    organization: organizationId,
+  })
+    .select("_id")
+    .lean();
+  const rosterSeatIds = rosterSeats.map((seat) => seat._id);
+
+  if (rosterSeatIds.length === 0) {
+    return { deleted: 0, detachedClaims: 0 };
+  }
+
+  const detached = await SeatClaim.updateMany(
+    {
+      classroomId,
+      organization: organizationId,
+      rosterSeatId: { $in: rosterSeatIds },
+    },
+    {
+      $unset: { rosterSeatId: "" },
+      $set: { updatedBy },
+    },
+  );
+  const deleted = await this.deleteMany({
+    _id: { $in: rosterSeatIds },
+    classroomId,
+    organization: organizationId,
+  });
+
+  return {
+    deleted: deleted.deletedCount || 0,
+    detachedClaims: detached.modifiedCount || 0,
+  };
+};
+
 rosterSeatSchema.statics.findReservableForEmail = function (
   classroomId,
   email,

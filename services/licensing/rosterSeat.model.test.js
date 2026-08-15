@@ -115,4 +115,131 @@ test("rosterSeat model", async (t) => {
     assert.equal(updated.claimedBy, undefined);
     assert.equal(updated.claimedAt, undefined);
   });
+
+  await t.test("re-import updates fields without resetting claimed status", async () => {
+    await clearCollections();
+    const org = await createOrganization();
+    const classroom = await createClassroom(org._id);
+    const member = await createMember({ email: "claimed@example.com" });
+    const clerkUserId = "roster_reimport_user";
+
+    const claimedSeat = await RosterSeat.create({
+      classroomId: classroom._id,
+      email: "claimed@example.com",
+      studentId: "OLD-ID",
+      firstName: "Old",
+      lastName: "Name",
+      status: "claimed",
+      claimedBy: member._id,
+      claimedAt: new Date(),
+      organization: org._id,
+      createdBy: clerkUserId,
+      updatedBy: clerkUserId,
+    });
+    const omittedSeat = await RosterSeat.create({
+      classroomId: classroom._id,
+      email: "omitted@example.com",
+      status: "reserved",
+      organization: org._id,
+      createdBy: clerkUserId,
+      updatedBy: clerkUserId,
+    });
+
+    await RosterSeat.importRows({
+      classroom,
+      rows: [
+        {
+          email: "claimed@example.com",
+          studentId: "NEW-ID",
+          firstName: "Updated",
+          lastName: "Student",
+          section: "B",
+        },
+        {
+          email: "new@example.com",
+          studentId: "NEW-STUDENT",
+          firstName: "New",
+          lastName: "Student",
+          section: "B",
+        },
+      ],
+      updatedBy: clerkUserId,
+    });
+
+    const updatedClaimedSeat = await RosterSeat.findById(claimedSeat._id);
+    assert.equal(updatedClaimedSeat.studentId, "NEW-ID");
+    assert.equal(updatedClaimedSeat.firstName, "Updated");
+    assert.equal(updatedClaimedSeat.status, "claimed");
+    assert.equal(String(updatedClaimedSeat.claimedBy), String(member._id));
+    assert.ok(updatedClaimedSeat.claimedAt);
+
+    const unchangedOmittedSeat = await RosterSeat.findById(omittedSeat._id);
+    assert.ok(unchangedOmittedSeat);
+    assert.equal(unchangedOmittedSeat.status, "reserved");
+
+    const newSeat = await RosterSeat.findOne({ email: "new@example.com" });
+    assert.ok(newSeat);
+    assert.equal(newSeat.status, "reserved");
+  });
+
+  await t.test("clear removes roster entries and preserves active claims", async () => {
+    await clearCollections();
+    const org = await createOrganization();
+    const classroom = await createClassroom(org._id);
+    const otherOrg = await createOrganization();
+    const otherClassroom = await createClassroom(otherOrg._id);
+    const member = await createMember({ email: "active@example.com" });
+    const clerkUserId = "roster_clear_user";
+
+    const claimedSeat = await RosterSeat.create({
+      classroomId: classroom._id,
+      email: "active@example.com",
+      status: "claimed",
+      claimedBy: member._id,
+      claimedAt: new Date(),
+      organization: org._id,
+      createdBy: clerkUserId,
+      updatedBy: clerkUserId,
+    });
+    await RosterSeat.create({
+      classroomId: classroom._id,
+      email: "reserved@example.com",
+      status: "reserved",
+      organization: org._id,
+      createdBy: clerkUserId,
+      updatedBy: clerkUserId,
+    });
+    const otherRosterSeat = await RosterSeat.create({
+      classroomId: otherClassroom._id,
+      email: "other-org@example.com",
+      status: "reserved",
+      organization: otherOrg._id,
+      createdBy: clerkUserId,
+      updatedBy: clerkUserId,
+    });
+    const claim = await SeatClaim.create({
+      classroomId: classroom._id,
+      userId: member._id,
+      rosterSeatId: claimedSeat._id,
+      source: "manual_comp",
+      status: "active",
+      organization: org._id,
+      createdBy: clerkUserId,
+      updatedBy: clerkUserId,
+    });
+
+    const result = await RosterSeat.clearForClassroom({
+      classroomId: classroom._id,
+      organizationId: org._id,
+      updatedBy: clerkUserId,
+    });
+
+    assert.deepEqual(result, { deleted: 2, detachedClaims: 1 });
+    assert.equal(await RosterSeat.countDocuments({ classroomId: classroom._id }), 0);
+    assert.ok(await RosterSeat.findById(otherRosterSeat._id));
+
+    const preservedClaim = await SeatClaim.findById(claim._id);
+    assert.equal(preservedClaim.status, "active");
+    assert.equal(preservedClaim.rosterSeatId, undefined);
+  });
 });
