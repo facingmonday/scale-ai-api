@@ -61,19 +61,13 @@ const Settings: React.FC = () => {
   }
 
   if (tab === "billing") {
-    return (
-      <Navigate to="/settings" replace />
-    );
+    return <Navigate to="/settings" replace />;
   }
 
   return (
     <BasicLayout>
       <div className="page">
         <div className="container">
-          <h1 className="heading-xl">Billing & Seats</h1>
-          <p className="text-text-muted mb-6">
-            Manage organization seat pools and purchase additional seats.
-          </p>
           <BillingSeatsPanel />
         </div>
       </div>

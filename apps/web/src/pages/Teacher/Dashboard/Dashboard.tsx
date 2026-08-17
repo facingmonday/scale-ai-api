@@ -31,6 +31,10 @@ import { Column } from "primereact/column";
 import { Dialog } from "primereact/dialog";
 import { Button } from "primereact/button";
 import { getErrorMessage } from "@/utils/error";
+import {
+  getChallengeLifecycleBadgeClass,
+  getChallengeLifecycleStatus,
+} from "@/utils/challengeStatus";
 import LoadingOverlay from "../../../components/LoadingOverlay";
 
 const PLAN_LABELS: Record<string, string> = {
@@ -338,15 +342,12 @@ const Dashboard: React.FC = () => {
   };
 
   const statusBodyTemplate = (rowData: Challenge) => {
-    if (!rowData.isPublished) {
-      return <span className="badge badge-warning">Draft</span>;
-    }
-    if (rowData.isClosed) {
-      return (
-        <span className="badge bg-ui-muted text-text-secondary">Closed</span>
-      );
-    }
-    return <span className="badge badge-success">Open</span>;
+    const status = getChallengeLifecycleStatus(rowData);
+    return (
+      <span className={`badge ${getChallengeLifecycleBadgeClass(status)}`}>
+        {status}
+      </span>
+    );
   };
 
   if (!activeClassroom) {

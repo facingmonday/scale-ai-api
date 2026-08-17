@@ -158,9 +158,9 @@ const BillingSeatsPanel: React.FC = () => {
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="text-2xl font-bold text-text-primary tracking-tight">
+        <h1 className="heading-xl font-bold text-text-primary tracking-tight">
           Billing & Seats
-        </h2>
+        </h1>
         <p className="text-text-muted mt-1 text-sm md:text-base">
           Purchase organization seats via Stripe. Reserve seats for specific
           emails so those students join org-paid on their first enrollment.
@@ -325,9 +325,7 @@ const BillingSeatsPanel: React.FC = () => {
           </p>
         </div>
 
-        {reserveError && (
-          <p className="text-red-400 text-sm">{reserveError}</p>
-        )}
+        {reserveError && <p className="text-red-400 text-sm">{reserveError}</p>}
 
         <div className="flex flex-col sm:flex-row gap-2">
           <input

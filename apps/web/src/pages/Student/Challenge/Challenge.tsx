@@ -25,6 +25,11 @@ import type { Challenge } from "@/types/challenge";
 import type { Decision } from "@/types/decision";
 import type { Profile } from "@/types/profile";
 import { getErrorMessage } from "@/utils";
+import {
+  getChallengeLifecycleBadgeClass,
+  getChallengeLifecycleStatus,
+  isChallengeLockedForStudents,
+} from "@/utils/challengeStatus";
 import type { VariableDefinitionWithValue } from "@/types/decision";
 import {
   getDecisionGenerationMethodLabel,
@@ -166,7 +171,9 @@ const ScenarioPage: React.FC = () => {
         // - New/editable decision: only isActive variables (don't include inactive in new decisions)
         // - Old/read-only decision: only variables that were part of that decision (show historical vars even if now inactive)
         const isReadOnlyView =
-          !scenarioData?.isPublished || !!scenarioData?.isClosed;
+          !scenarioData?.isPublished ||
+          !!scenarioData?.isClosed ||
+          !!scenarioData?.isLockedForStudents;
         const hasExistingSubmission = !!scenarioData?.decision;
         const submissionDefsForForm = submissionDefs.filter((def) =>
           isReadOnlyView && hasExistingSubmission
@@ -304,13 +311,18 @@ const ScenarioPage: React.FC = () => {
   const decision = challenge?.decision as Decision | undefined;
 
   const hasSubmission = !!decision;
-  // Read-only if challenge is not published or challenge is closed
-  // Decisions are editable if challenge is not closed
-  const isReadOnly = !challenge?.isPublished || challenge?.isClosed;
-  // Show submit button if challenge is published, not closed, and profile exists (allows re-decision)
+  const challengeLocked = isChallengeLockedForStudents(challenge);
+  const isReadOnly =
+    !challenge?.isPublished ||
+    !!challenge?.isClosed ||
+    !!challenge?.isLockedForStudents;
   const hasStore = !!profile;
-  const canSubmit = challenge?.isPublished && !challenge?.isClosed && hasStore;
-  const showSubmissionVariables = !(challenge?.isClosed && !hasSubmission);
+  const canSubmit =
+    !!challenge?.isPublished &&
+    !challenge?.isClosed &&
+    !challenge?.isLockedForStudents &&
+    hasStore;
+  const showSubmissionVariables = !(challengeLocked && !hasSubmission);
   const showUnsavedBanner =
     form.formState.isDirty && !isReadOnly && showSubmissionVariables;
 
@@ -323,11 +335,11 @@ const ScenarioPage: React.FC = () => {
 
   const scenarioStatus = React.useMemo(() => {
     if (!challenge) return null;
-    const isPublished = !!challenge.isPublished;
-    const isClosed = !!challenge.isClosed;
-    if (isClosed) return { label: "Closed", badgeClass: "badge-danger" };
-    if (!isPublished) return { label: "Draft", badgeClass: "badge-warning" };
-    return { label: "Open", badgeClass: "badge-success" };
+    const status = getChallengeLifecycleStatus(challenge);
+    return {
+      label: status,
+      badgeClass: getChallengeLifecycleBadgeClass(status),
+    };
   }, [challenge]);
 
   const submissionDeadline = useMemo(() => {
@@ -427,7 +439,7 @@ const ScenarioPage: React.FC = () => {
                 </div>
               </div>
 
-              {submissionDeadline && !challenge.isClosed && (
+              {submissionDeadline && !challengeLocked && (
                 <div className="card mb-6">
                   <h2 className="heading-sm">Submission Deadline</h2>
                   <p className="text-sm text-text-muted mt-1">
@@ -489,7 +501,7 @@ const ScenarioPage: React.FC = () => {
                 </div>
               )}
 
-              {challenge?.isClosed && !hasSubmission && (
+              {challengeLocked && !hasSubmission && (
                 <div className="mb-6">
                   <Alert
                     variant="info"
