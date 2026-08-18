@@ -9,6 +9,8 @@ import type { Profile } from "./profile";
  */
 export type StoreTypeKey = string;
 
+export type ChallengeLifecycleStatus = "Draft" | "Open" | "Locked" | "Closed";
+
 /**
  * Challenge model
  */
@@ -20,6 +22,8 @@ export interface Challenge extends BaseSchema {
   imageUrl?: string;
   isPublished: boolean;
   isClosed: boolean;
+  isLockedForStudents?: boolean;
+  lifecycleStatus?: ChallengeLifecycleStatus;
   publishAt?: string | Date | null;
   submissionDeadlineAt?: string | Date | null;
   closeSubmissionsAt?: string | Date | null;

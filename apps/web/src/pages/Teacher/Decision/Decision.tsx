@@ -23,6 +23,7 @@ import {
   getDecisionGenerationMethodLabel,
   getDecisionGenerationMethodBadgeClass,
 } from "@/constants";
+import { getChallengeLifecycleStatus } from "@/utils/challengeStatus";
 
 const SubmissionPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -472,13 +473,9 @@ const SubmissionPage: React.FC = () => {
                   <div>
                     <span className="text-text-muted">Status: </span>
                     <span className="text-text-primary font-medium">
-                      {challenge.isPublished
-                        ? challenge.isClosed
-                          ? isScenarioCompleted
-                            ? "Completed"
-                            : "Closed"
-                          : "Published"
-                        : "Draft"}
+                      {challenge.isClosed && isScenarioCompleted
+                        ? "Completed"
+                        : getChallengeLifecycleStatus(challenge)}
                     </span>
                   </div>
                   {challenge.isPublished && (

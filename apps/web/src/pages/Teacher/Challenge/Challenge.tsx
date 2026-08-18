@@ -13,6 +13,10 @@ import type { ScenarioWithVariables } from "@/types/challenge";
 import type { VariableDefinitionWithValue } from "@/types/decision";
 import { useGlobalContext } from "@/context/GlobalContext";
 import { getErrorMessage } from "@/utils";
+import {
+  getChallengeLifecycleBadgeClass,
+  getChallengeLifecycleStatus,
+} from "@/utils/challengeStatus";
 import MetricCard from "@/components/dashboard/MetricCard";
 import profileTypeService from "../../../services/profileType";
 import type { ProfileType as StoreTypeModel } from "../../../types/profileType";
@@ -412,20 +416,16 @@ const Challenge: React.FC = () => {
               <div className="flex items-center justify-between mb-4">
                 <h1 className="heading-xl">
                   {challenge.title || (challenge as { name?: string }).name}
-                  {/* Status badge */}
-                  {challenge.isClosed ? (
-                    <span className="badge badge-danger ml-4 align-middle">
-                      Closed
-                    </span>
-                  ) : challenge.isPublished ? (
-                    <span className="badge badge-success ml-4 align-middle">
-                      Published
-                    </span>
-                  ) : (
-                    <span className="badge badge-muted ml-4 align-middle">
-                      Unpublished
-                    </span>
-                  )}
+                  {(() => {
+                    const status = getChallengeLifecycleStatus(challenge);
+                    return (
+                      <span
+                        className={`badge ml-4 align-middle ${getChallengeLifecycleBadgeClass(status)}`}
+                      >
+                        {status}
+                      </span>
+                    );
+                  })()}
                 </h1>
                 <div className="flex gap-2">
                   {!isEditing && !challenge.isClosed ? (

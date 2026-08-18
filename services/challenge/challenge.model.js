@@ -49,6 +49,10 @@ const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
  *           type: boolean
  *         isLockedForStudents:
  *           type: boolean
+ *         lifecycleStatus:
+ *           type: string
+ *           enum: [Draft, Open, Locked, Closed]
+ *           description: Derived from isPublished, isLockedForStudents, and isClosed
  *         allowLateSubmissions:
  *           type: boolean
  *         lateSubmissionPolicy:
@@ -221,6 +225,25 @@ scenarioSchema.index({ organization: 1, classroomId: 1 });
 scenarioSchema.index({ isPublished: 1, isClosed: 1, publishAt: 1 });
 scenarioSchema.index({ isPublished: 1, isClosed: 1, submissionDeadlineAt: 1 });
 scenarioSchema.index({ automationMode: 1, automationStatus: 1 });
+
+scenarioSchema.set("toJSON", { virtuals: true });
+scenarioSchema.set("toObject", { virtuals: true });
+
+/**
+ * Derive lifecycle status from publish/lock/close flags.
+ * @param {{ isPublished?: boolean, isLockedForStudents?: boolean, isClosed?: boolean }} challenge
+ * @returns {"Draft"|"Open"|"Locked"|"Closed"}
+ */
+scenarioSchema.statics.getLifecycleStatus = function (challenge) {
+  if (!challenge?.isPublished) return "Draft";
+  if (challenge.isClosed) return "Closed";
+  if (challenge.isLockedForStudents) return "Locked";
+  return "Open";
+};
+
+scenarioSchema.virtual("lifecycleStatus").get(function () {
+  return this.constructor.getLifecycleStatus(this);
+});
 
 // Static methods - Shared utilities for challenge operations
 

@@ -20,6 +20,10 @@ import {
   formatMetricValue,
   sortMetricDefinitions,
 } from "@/utils/formatMetric";
+import {
+  getChallengeLifecycleBadgeClass,
+  getChallengeLifecycleStatus,
+} from "@/utils/challengeStatus";
 
 interface PastScenariosProps {
   currentScenarioId?: string | null;
@@ -319,11 +323,7 @@ const PastScenarios: React.FC<PastScenariosProps> = ({
       ) : (
         <div className="mt-3 space-y-2">
           {challenges.map((s: Challenge) => {
-            const statusLabel = !s.isPublished
-              ? "Draft"
-              : s.isClosed
-              ? "Closed"
-              : "Published";
+            const statusLabel = getChallengeLifecycleStatus(s);
             return (
               <div
                 key={s._id}
@@ -344,7 +344,9 @@ const PastScenarios: React.FC<PastScenariosProps> = ({
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className="badge bg-ui-muted text-text-secondary whitespace-nowrap">
+                  <span
+                    className={`badge whitespace-nowrap ${getChallengeLifecycleBadgeClass(statusLabel)}`}
+                  >
                     {statusLabel}
                   </span>
                   {s.isClosed && (
