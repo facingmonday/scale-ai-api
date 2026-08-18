@@ -749,21 +749,11 @@ const Dashboard: React.FC = () => {
               />
             )}
 
-          {currentScenarioData?.challenge && scenarioDeadline && (
-            <div className="card">
-              <h2 className="heading-sm">Current Challenge Deadline</h2>
-              <p className="text-sm text-text-muted mt-1">
-                Submit decisions by{" "}
-                <strong className="text-text-primary">
-                  {scenarioDeadline.toLocaleString()}
-                </strong>
-                .
-              </p>
-            </div>
-          )}
-
           {studentDashboard ? (
-            <StudentDashboardInsights dashboard={studentDashboard} />
+            <StudentDashboardInsights
+              dashboard={studentDashboard}
+              currentChallengeDeadline={scenarioDeadline}
+            />
           ) : (
             <div className="card">
               <p className="text-sm text-text-muted">

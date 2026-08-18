@@ -32,6 +32,7 @@ export interface AdminDashboardResponse extends DashboardBase {
   submissionsCompleted: number;
   leaderboardTop10: LeaderboardEntry[];
   leaderboardMetric: LeaderboardMetric | null;
+  metricDefinitionCount: number;
   pendingApprovals: number;
 }
 
@@ -50,6 +51,7 @@ export interface StudentDashboardResponse extends DashboardBase {
   metricDefinitions: MetricDefinition[];
   latestResult: StudentDashboardResult | null;
   recentResults: StudentDashboardResult[];
+  completedChallengeCount: number;
   classStatistics: StudentClassStatistics | null;
 }
 

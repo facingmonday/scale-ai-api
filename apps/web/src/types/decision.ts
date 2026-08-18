@@ -30,6 +30,7 @@ export interface Decision extends BaseSchema {
   userId: string | SubmissionPopulatedUser; // Member ObjectId reference or populated object
   submittedAt: Date;
   variables?: Record<string, unknown>; // Object where keys match variable definition keys and values are the decision values
+  challengeVariableAnswers?: Record<string, unknown>; // Student answers to challenge-specific variable definitions
   ledgerEntry?: LedgerEntry;
   profile?: Profile; // Populated profile data
   processingStatus: "pending" | "processing" | "completed" | "failed";

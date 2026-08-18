@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Dialog } from "primereact/dialog";
 import { Button } from "primereact/button";
 import { FormProvider, useForm } from "react-hook-form";
-import slugify from "slugify";
 import variableDefinitionsService from "../services/variableDefinition";
 import type { VariableDefinition } from "../types/variableDefinition";
 import VariableDefinitionsForm, {
@@ -147,10 +146,10 @@ const VariableDefinitionsAddButton: React.FC<Props> = ({
   const optionsTextValue = form.watch("optionsText");
   const defaultValueTextValue = form.watch("defaultValueText");
 
-  const isValidCreateKey = useMemo(() => {
-    const slug = slugify(labelValue || "", { lower: true, strict: true });
-    return slug.length > 0;
-  }, [labelValue]);
+  const hasCreateLabel = useMemo(
+    () => labelValue.trim().length > 0,
+    [labelValue]
+  );
 
   const resetState = () => {
     setError(null);
@@ -219,8 +218,7 @@ const VariableDefinitionsAddButton: React.FC<Props> = ({
           payloadCommon
         );
       } else {
-        const key = slugify(values.label || "", { lower: true, strict: true });
-        if (!key) {
+        if (!values.label.trim()) {
           setError("Label is required");
           setIsSubmitting(false);
           return;
@@ -228,7 +226,6 @@ const VariableDefinitionsAddButton: React.FC<Props> = ({
 
         await variableDefinitionsService.create({
           classroomId,
-          key,
           ...payloadCommon,
         });
       }
@@ -250,7 +247,7 @@ const VariableDefinitionsAddButton: React.FC<Props> = ({
   const canSubmit =
     !isSubmitting &&
     form.formState.isValid &&
-    (isEdit || isValidCreateKey) &&
+    (isEdit || hasCreateLabel) &&
     (!inputTypeNeedsOptions(inputTypeValue) ||
       (optionsTextValue ?? "")
         .split("\n")

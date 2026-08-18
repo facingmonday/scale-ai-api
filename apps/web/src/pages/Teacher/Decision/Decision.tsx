@@ -8,6 +8,7 @@ import BasicLayout from "../../../components/Layouts/BasicLayout";
 import challengeService from "../../../services/challenge";
 import decisionService from "../../../services/decision";
 import outcomeService from "../../../services/outcome";
+import variableDefinitionsService from "../../../services/variableDefinition";
 import Outcome from "@/components/Outcome";
 import { FormProvider, useForm } from "react-hook-form";
 import type { Challenge } from "@/types/challenge";
@@ -31,6 +32,8 @@ const SubmissionPage: React.FC = () => {
   const { activeClassroom } = useAuth();
   const [decision, setSubmission] = useState<Decision | null>(null);
   const [challenge, setScenario] = useState<Challenge | null>(null);
+  const [challengeVariableDefinitions, setChallengeVariableDefinitions] =
+    useState<VariableDefinitionWithValue[]>([]);
   const [outcome, setScenarioOutcome] =
     useState<ScenarioOutcomeModel | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -63,6 +66,17 @@ const SubmissionPage: React.FC = () => {
           const scenarioData = (scenarioResponse.data ||
             scenarioResponse) as Challenge;
           setScenario(scenarioData);
+
+          const varDefsResponse = await variableDefinitionsService.getAll(
+            scenarioData.classroomId,
+            "challenge",
+            submissionData.challengeId
+          );
+          const challengeDefs = (varDefsResponse?.data ??
+            varDefsResponse ?? []) as VariableDefinitionWithValue[];
+          setChallengeVariableDefinitions(
+            challengeDefs.filter((def) => def.appliesTo === "challenge")
+          );
 
           // Fetch challenge outcome to determine completion status
           try {
@@ -117,24 +131,24 @@ const SubmissionPage: React.FC = () => {
 
   // Transform challenge variables into VariableDefinitionWithValue[] format
   const scenarioVariablesDisplay = useMemo(() => {
-    if (!challenge?.variables || !activeClassroom) return [];
+    if (!challenge || !decision) return [];
 
-    const scenarioDefs = activeClassroom?.variableDefinitions?.challenge ?? [];
-    const scenarioVariables =
-      (challenge.variables as Record<string, unknown>) ?? {};
+    const submittedAnswers = decision.challengeVariableAnswers ?? {};
+    const configuredValues = challenge.variables ?? {};
 
-    return scenarioDefs
+    return challengeVariableDefinitions
       .filter((def) =>
-        Object.prototype.hasOwnProperty.call(scenarioVariables, def.key)
+        Object.prototype.hasOwnProperty.call(submittedAnswers, def.key)
       )
       .map((def) => ({
         ...def,
         value:
-          scenarioVariables[def.key] ??
+          submittedAnswers[def.key] ??
+          configuredValues[def.key] ??
           def.defaultValue ??
           (def.dataType === "number" ? 0 : ""),
       })) as VariableDefinitionWithValue[];
-  }, [challenge?.variables, activeClassroom]);
+  }, [challenge, challengeVariableDefinitions, decision]);
 
   // Determine challenge completion status
   // Note: Since 'approved' property doesn't exist, we check if outcome exists
@@ -514,8 +528,8 @@ const SubmissionPage: React.FC = () => {
               <div className="card mb-6">
                 <VariablesDisplay
                   variables={scenarioVariablesDisplay}
-                  title={"Challenge Variables"}
-                  description="Context and conditions for this challenge."
+                  title={"Challenge Answers"}
+                  description="Student's submitted answers for this challenge."
                 />
               </div>
             )}

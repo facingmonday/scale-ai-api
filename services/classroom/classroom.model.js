@@ -275,12 +275,19 @@ classroomSchema.statics.getDashboard = async function (
   }
 
   const MetricDefinition = require("../metricDefinition/metricDefinition.model");
-  const leaderboardDef = await MetricDefinition.findOne({
-    classroomId: classroomId,
-    isActive: true,
-    dataType: "number",
-    "displayIn.leaderboard": true,
-  }).sort({ sortOrder: 1, label: 1 });
+  const [leaderboardDef, metricDefinitionCount] = await Promise.all([
+    MetricDefinition.findOne({
+      classroomId,
+      organization: organizationId,
+      isActive: true,
+      dataType: "number",
+      "displayIn.leaderboard": true,
+    }).sort({ sortOrder: 1, label: 1 }),
+    MetricDefinition.countDocuments({
+      classroomId,
+      organization: organizationId,
+    }),
+  ]);
 
   let leaderboardTop10 = [];
   let leaderboardMetric = null;
@@ -377,6 +384,7 @@ classroomSchema.statics.getDashboard = async function (
     submissionsCompleted: submissionsCompleted,
     leaderboardTop10: leaderboardTop10,
     leaderboardMetric: leaderboardMetric,
+    metricDefinitionCount,
     pendingApprovals: pendingApprovals,
   };
 };
@@ -428,7 +436,12 @@ classroomSchema.statics.getStudentDashboard = async function (
     : null;
 
   const MetricDefinition = require("../metricDefinition/metricDefinition.model");
-  const [profile, metricDefinitions, releasedChallenges] = await Promise.all([
+  const [
+    profile,
+    metricDefinitions,
+    releasedChallenges,
+    completedChallengeCount,
+  ] = await Promise.all([
     Profile.findOne({
       classroomId,
       userId: memberId,
@@ -455,6 +468,12 @@ classroomSchema.statics.getStudentDashboard = async function (
     })
       .sort({ week: -1, createdDate: -1 })
       .lean(),
+    Challenge.countDocuments({
+      classroomId,
+      organization: organizationId,
+      isPublished: true,
+      isClosed: true,
+    }),
   ]);
 
   const challengeIds = releasedChallenges.map((challenge) => challenge._id);
@@ -586,6 +605,7 @@ classroomSchema.statics.getStudentDashboard = async function (
     metricDefinitions,
     latestResult,
     recentResults,
+    completedChallengeCount,
     classStatistics,
   };
 };

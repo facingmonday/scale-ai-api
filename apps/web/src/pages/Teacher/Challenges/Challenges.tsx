@@ -133,7 +133,7 @@ const Challenges: React.FC = () => {
 
     return (
       <div
-        className="mt-5 w-full rounded-lg border border-ui-border/70 bg-ui-muted/35 px-3 py-3 sm:px-5"
+        className="mt-5 w-full rounded-xl border border-ui-border bg-ui-surface-hover/60 px-3 py-4 sm:px-5"
         aria-label="Challenge progress"
       >
         <div className="flex w-full items-start">
@@ -143,24 +143,26 @@ const Challenges: React.FC = () => {
 
             return (
               <React.Fragment key={stage.key}>
-                <div className="flex min-w-10 flex-col items-center text-center">
+                <div className="flex min-w-14 flex-col items-center text-center">
                   <div
-                    className={`flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold ${
+                    className={`flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold transition-colors ${
                       isCompleted
-                        ? "bg-green-500 text-white"
+                        ? "bg-brand-teal text-text-primary shadow-sm"
                         : isActive
-                          ? "bg-brand-blue text-white ring-2 ring-brand-blue/25"
-                          : "border border-ui-border bg-ui-surface text-text-muted"
+                          ? "bg-brand-blue text-white shadow-sm ring-4 ring-brand-blue/20"
+                          : "border-2 border-ui-border bg-ui-surface text-text-muted"
                     }`}
                     aria-current={isActive ? "step" : undefined}
                   >
                     {isCompleted ? "✓" : idx + 1}
                   </div>
                   <span
-                    className={`mt-1.5 text-[9px] font-medium sm:text-[11px] ${
+                    className={`mt-2 text-[10px] font-medium sm:text-xs ${
                       isActive
-                        ? "font-semibold text-brand-blue"
-                        : "text-text-muted"
+                        ? "font-semibold text-brand-teal"
+                        : isCompleted
+                          ? "text-text-secondary"
+                          : "text-text-muted"
                     }`}
                   >
                     {stage.label}
@@ -168,9 +170,12 @@ const Challenges: React.FC = () => {
                 </div>
                 {idx < stages.length - 1 && (
                   <div
-                    className={`mx-1.5 mt-2.5 h-0.5 min-w-3 flex-1 sm:mx-3 ${
-                      idx < activeIndex ? "bg-green-500" : "bg-ui-border"
+                    className={`mx-1 mt-3 h-[2px] min-w-3 flex-1 rounded-full sm:mx-3 ${
+                      idx < activeIndex
+                        ? "bg-brand-teal"
+                        : "bg-ui-border"
                     }`}
+                    aria-hidden="true"
                   />
                 )}
               </React.Fragment>
@@ -272,17 +277,7 @@ const Challenges: React.FC = () => {
               </button>
             </div>
           ) : (
-            <div className="flex w-full flex-col gap-6">
-              <section className="w-full overflow-hidden rounded-xl border border-ui-border bg-ui-surface shadow-sm">
-                <div className="border-b border-ui-border px-5 py-5 sm:px-6">
-                  <div className="max-w-2xl">
-                    <h2 className="heading-md">Challenge Calendar</h2>
-                    <p className="mt-1 text-sm text-text-muted">
-                      Scheduled starts, deadlines, and automation status.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex w-full flex-col gap-4 p-4 sm:p-6">
+            <div className="flex w-full flex-col gap-4">
                   {[...challenges]
                     .sort((a, b) => {
                       const aDate = new Date(
@@ -432,8 +427,6 @@ const Challenges: React.FC = () => {
                         </article>
                       );
                     })}
-                </div>
-              </section>
             </div>
           )}
         </div>

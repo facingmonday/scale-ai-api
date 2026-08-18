@@ -4,8 +4,8 @@ import axios from "axios";
 
 async function create(data: {
   classroomId: string;
-  key: string;
   label: string;
+  challengeId?: string | null;
   description?: string;
   appliesTo: string;
   dataType: string;
@@ -31,6 +31,7 @@ async function update(
   key: string,
   classroomId: string,
   data: Partial<{
+    challengeId: string | null;
     label: string;
     description: string;
     appliesTo: string;
@@ -46,6 +47,9 @@ async function update(
 ) {
   const url = new URL(`${API_HOST}/${API_VERSION}/admin/variables/${key}`);
   url.searchParams.append("classroomId", classroomId);
+  if (data.challengeId) {
+    url.searchParams.append("challengeId", data.challengeId);
+  }
   const response = await axios.put(url.toString(), data, {
     headers: await TokenHandler.getHeaders(),
   });

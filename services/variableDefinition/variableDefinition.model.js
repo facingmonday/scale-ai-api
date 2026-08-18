@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const slugify = require("slugify");
 const baseSchema = require("../../lib/baseSchema");
 
 /**
@@ -157,6 +158,32 @@ variableDefinitionSchema.index({ organization: 1, appliesTo: 1 });
 // Static methods - Shared utilities for variable definition operations
 
 /**
+ * Build the immutable storage key for a variable definition.
+ * Challenge-scoped variables include their owner ID so identical labels can be
+ * used by different challenges in the same classroom.
+ */
+variableDefinitionSchema.statics.createVariableKey = function ({
+  label,
+  appliesTo,
+  challengeId,
+}) {
+  const baseKey = slugify(label || "", {
+    lower: true,
+    strict: true,
+  });
+
+  if (appliesTo !== "challenge") {
+    return baseKey;
+  }
+
+  if (!challengeId) {
+    throw new Error("challengeId is required for challenge-specific variables");
+  }
+
+  return `${baseKey}--${challengeId.toString()}`;
+};
+
+/**
  * Create a variable definition
  * @param {string} classroomId - Class ID
  * @param {Object} payload - Variable definition data
@@ -174,18 +201,26 @@ variableDefinitionSchema.statics.createDefinition = async function (
     throw new Error("classroomId is required");
   }
 
+  const challengeId =
+    payload.appliesTo === "challenge" ? payload.challengeId : null;
+  const key = this.createVariableKey({
+    label: payload.label,
+    appliesTo: payload.appliesTo,
+    challengeId,
+  });
+
   // Check uniqueness within org + classroom + appliesTo + challengeId
   const existing = await this.findOne({
     organization: organizationId,
     classroomId,
     appliesTo: payload.appliesTo,
-    key: payload.key,
-    challengeId: payload.challengeId || null,
+    key,
+    challengeId,
   });
 
   if (existing) {
     throw new Error(
-      `Variable definition with key "${payload.key}" already exists for this class`,
+      `Variable definition with key "${key}" already exists for this class`,
     );
   }
 
@@ -234,8 +269,8 @@ variableDefinitionSchema.statics.createDefinition = async function (
 
   const definition = new this({
     classroomId,
-    challengeId: payload.challengeId || null,
-    key: payload.key,
+    challengeId,
+    key,
     label: payload.label,
     description: payload.description || "",
     appliesTo: payload.appliesTo,

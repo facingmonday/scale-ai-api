@@ -199,11 +199,16 @@ class SimulationWorker {
 
     const profileId = context.profile?.profileId || context.profile?.profileId || null;
 
-    const challengeVariables =
-      context.challenge?.variables &&
+    const challengeVariables = {
+      ...(context.challenge?.variables &&
       typeof context.challenge.variables === "object"
         ? context.challenge.variables
-        : {};
+        : {}),
+      ...(context.decision?.challengeVariableAnswers &&
+      typeof context.decision.challengeVariableAnswers === "object"
+        ? context.decision.challengeVariableAnswers
+        : {}),
+    };
 
     const decisionVariables =
       context.decision?.variables &&

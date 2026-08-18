@@ -795,10 +795,15 @@ ledgerEntrySchema.statics.buildAISimulationOpenAIRequest = async function (
         )
       )
       : {};
-  const challengeVariables =
-    challenge?.variables && typeof challenge.variables === "object"
+  const challengeVariables = {
+    ...(challenge?.variables && typeof challenge.variables === "object"
       ? challenge.variables
-      : {};
+      : {}),
+    ...(decision?.challengeVariableAnswers &&
+    typeof decision.challengeVariableAnswers === "object"
+      ? decision.challengeVariableAnswers
+      : {}),
+  };
   const decisionVariables =
     decision?.variables && typeof decision.variables === "object"
       ? decision.variables
