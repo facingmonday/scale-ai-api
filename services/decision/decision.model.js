@@ -56,6 +56,9 @@ const normalizeSelectAllowedValues = require("./lib/normalizeSelectAllowedValues
  *         variables:
  *           type: object
  *           description: Map of student decision variable values.
+ *         challengeVariableAnswers:
+ *           type: object
+ *           description: Map of this student's answers to challenge-specific variables.
  */
 const submissionSchema = new mongoose.Schema({
   classroomId: {
@@ -122,6 +125,10 @@ const submissionSchema = new mongoose.Schema({
     enum: ["pending", "processing", "completed", "failed"],
     default: "pending",
   },
+  challengeVariableAnswers: {
+    type: mongoose.Schema.Types.Mixed,
+    default: () => ({}),
+  },
 }).add(baseSchema);
 
 // Apply variable population plugin
@@ -161,6 +168,49 @@ submissionSchema.statics.validateSubmissionVariables = async function (
     "decision",
     variables,
     { challengeId }
+  );
+};
+
+/**
+ * Validate and normalize a student's answers to challenge-scoped variables.
+ */
+submissionSchema.statics.prepareChallengeVariableAnswers = async function (
+  classroomId,
+  challengeId,
+  answers
+) {
+  const input =
+    answers && typeof answers === "object" && !Array.isArray(answers)
+      ? answers
+      : {};
+  const options = { challengeId };
+  const validation = await VariableDefinition.validateValues(
+    classroomId,
+    "challenge",
+    input,
+    options
+  );
+
+  if (!validation.isValid) {
+    throw new Error(
+      `Invalid challenge variable answers: ${validation.errors
+        .map((e) => e.message)
+        .join(", ")}`
+    );
+  }
+
+  const withDefaults = await VariableDefinition.applyDefaults(
+    classroomId,
+    "challenge",
+    input,
+    options
+  );
+
+  return await VariableDefinition.filterVariablesByActiveDefinitions(
+    classroomId,
+    "challenge",
+    withDefaults,
+    options
   );
 };
 
@@ -249,6 +299,15 @@ submissionSchema.statics.createSubmission = async function (
     throw new Error("Submissions are closed for this challenge");
   }
 
+  // Older clients and automated submissions do not send this field. Use the
+  // challenge's configured values as their backwards-compatible defaults.
+  const configuredChallengeVariables = await challenge.getVariables();
+  const challengeVariableAnswers = await this.prepareChallengeVariableAnswers(
+    classroomId,
+    challengeId,
+    createOptions.challengeVariableAnswers ?? configuredChallengeVariables
+  );
+
   // Create decision document
   const decision = new this({
     classroomId,
@@ -258,6 +317,7 @@ submissionSchema.statics.createSubmission = async function (
     organization: organizationId,
     createdBy: clerkUserId,
     updatedBy: clerkUserId,
+    challengeVariableAnswers,
   });
 
   // Optional generation metadata (defaults to MANUAL if not provided)
@@ -300,6 +360,9 @@ submissionSchema.statics.createSubmission = async function (
     challengeId,
     userId,
   });
+  if (createdSubmission) {
+    await this.populateVariablesForMany([createdSubmission]);
+  }
   return createdSubmission ? createdSubmission.toObject() : null;
 };
 
@@ -319,7 +382,8 @@ submissionSchema.statics.updateSubmission = async function (
   userId,
   variables,
   organizationId,
-  clerkUserId
+  clerkUserId,
+  updateOptions = {}
 ) {
   // Find existing decision
   const decision = await this.findOne({ classroomId, challengeId, userId });
@@ -345,7 +409,8 @@ submissionSchema.statics.updateSubmission = async function (
   // Validate variables
   const validation = await this.validateSubmissionVariables(
     classroomId,
-    variables
+    variables,
+    challengeId
   );
   if (!validation.isValid) {
     throw new Error(
@@ -357,7 +422,8 @@ submissionSchema.statics.updateSubmission = async function (
   const variablesWithDefaults = await VariableDefinition.applyDefaults(
     classroomId,
     "decision",
-    variables
+    variables,
+    { challengeId }
   );
 
   // Only persist variables with active definitions (exclude soft-deleted variables)
@@ -365,10 +431,26 @@ submissionSchema.statics.updateSubmission = async function (
     await VariableDefinition.filterVariablesByActiveDefinitions(
       classroomId,
       "decision",
-      variablesWithDefaults
+      variablesWithDefaults,
+      { challengeId }
     );
 
+  const configuredChallengeVariables = await challenge.getVariables();
+  const existingChallengeVariableAnswers =
+    decision.challengeVariableAnswers &&
+    typeof decision.challengeVariableAnswers === "object" &&
+    Object.keys(decision.challengeVariableAnswers).length > 0
+      ? decision.challengeVariableAnswers
+      : configuredChallengeVariables;
+  const challengeVariableAnswers = await this.prepareChallengeVariableAnswers(
+    classroomId,
+    challengeId,
+    updateOptions.challengeVariableAnswers ?? existingChallengeVariableAnswers
+  );
+
   // Update decision document
+  decision.challengeVariableAnswers = challengeVariableAnswers;
+  decision.markModified("challengeVariableAnswers");
   decision.updatedBy = clerkUserId;
   decision.updatedDate = new Date();
   await decision.save();
@@ -405,6 +487,9 @@ submissionSchema.statics.updateSubmission = async function (
     challengeId,
     userId,
   });
+  if (updatedSubmission) {
+    await this.populateVariablesForMany([updatedSubmission]);
+  }
   return updatedSubmission ? updatedSubmission.toObject() : null;
 };
 

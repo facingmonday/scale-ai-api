@@ -509,6 +509,10 @@
           "variables": {
             "type": "object",
             "description": "Map of student decision variable values."
+          },
+          "challengeVariableAnswers": {
+            "type": "object",
+            "description": "Map of this student's answers to challenge-specific variables."
           }
         }
       },
@@ -754,6 +758,16 @@
           },
           "isLockedForStudents": {
             "type": "boolean"
+          },
+          "lifecycleStatus": {
+            "type": "string",
+            "enum": [
+              "Draft",
+              "Open",
+              "Locked",
+              "Closed"
+            ],
+            "description": "Derived from isPublished, isLockedForStudents, and isClosed"
           },
           "allowLateSubmissions": {
             "type": "boolean"
@@ -3229,16 +3243,20 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "scenarioId",
+                  "challengeId",
                   "variables"
                 ],
                 "properties": {
-                  "scenarioId": {
+                  "challengeId": {
                     "type": "string"
                   },
                   "variables": {
                     "type": "object",
                     "description": "Map of variable keys to values."
+                  },
+                  "challengeVariableAnswers": {
+                    "type": "object",
+                    "description": "Map of challenge-specific question keys to this student's answers."
                   }
                 }
               }
@@ -3290,6 +3308,10 @@
                 "properties": {
                   "variables": {
                     "type": "object"
+                  },
+                  "challengeVariableAnswers": {
+                    "type": "object",
+                    "description": "Map of challenge-specific question keys to this student's answers."
                   }
                 }
               }

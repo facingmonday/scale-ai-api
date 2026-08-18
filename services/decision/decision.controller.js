@@ -97,7 +97,7 @@ function isPostLookupField(field) {
  */
 exports.submitWeeklyDecisions = async function (req, res) {
   try {
-    const { challengeId, variables } = req.body;
+    const { challengeId, variables, challengeVariableAnswers } = req.body;
     const member = req.user;
     const clerkUserId = req.clerkUser.id;
 
@@ -107,6 +107,16 @@ exports.submitWeeklyDecisions = async function (req, res) {
     }
     if (!variables || typeof variables !== "object") {
       return res.status(400).json({ error: "variables object is required" });
+    }
+    if (
+      challengeVariableAnswers !== undefined &&
+      (!challengeVariableAnswers ||
+        typeof challengeVariableAnswers !== "object" ||
+        Array.isArray(challengeVariableAnswers))
+    ) {
+      return res
+        .status(400)
+        .json({ error: "challengeVariableAnswers must be an object" });
     }
 
     // Get challenge to get classroomId
@@ -142,7 +152,8 @@ exports.submitWeeklyDecisions = async function (req, res) {
       member._id,
       variables,
       organizationId,
-      clerkUserId
+      clerkUserId,
+      { challengeVariableAnswers }
     );
 
     // Trigger student submission tasks asynchronously (do not block the response)
@@ -169,8 +180,10 @@ exports.submitWeeklyDecisions = async function (req, res) {
       error.message === "Decision already exists for this challenge" ||
       error.message.includes("Cannot submit out of order") ||
       error.message.includes("Invalid decision variables") ||
+      error.message.includes("Invalid challenge variable answers") ||
       error.message === "Challenge is not published" ||
-      error.message === "Challenge is closed"
+      error.message === "Challenge is closed" ||
+      error.message === "Submissions are closed for this challenge"
     ) {
       return res.status(400).json({ error: error.message });
     }
@@ -193,7 +206,7 @@ exports.submitWeeklyDecisions = async function (req, res) {
  */
 exports.updateWeeklyDecisions = async function (req, res) {
   try {
-    const { challengeId, variables } = req.body;
+    const { challengeId, variables, challengeVariableAnswers } = req.body;
     const member = req.user;
     const clerkUserId = req.clerkUser.id;
 
@@ -203,6 +216,16 @@ exports.updateWeeklyDecisions = async function (req, res) {
     }
     if (!variables || typeof variables !== "object") {
       return res.status(400).json({ error: "variables object is required" });
+    }
+    if (
+      challengeVariableAnswers !== undefined &&
+      (!challengeVariableAnswers ||
+        typeof challengeVariableAnswers !== "object" ||
+        Array.isArray(challengeVariableAnswers))
+    ) {
+      return res
+        .status(400)
+        .json({ error: "challengeVariableAnswers must be an object" });
     }
 
     // Get challenge to get classroomId
@@ -237,7 +260,8 @@ exports.updateWeeklyDecisions = async function (req, res) {
       member._id,
       variables,
       organizationId,
-      clerkUserId
+      clerkUserId,
+      { challengeVariableAnswers }
     );
 
     res.json({
@@ -249,6 +273,15 @@ exports.updateWeeklyDecisions = async function (req, res) {
     console.error("Error updating challenge decisions:", error);
     if (error.message === "Challenge not found") {
       return res.status(404).json({ error: error.message });
+    }
+    if (
+      error.message.includes("Invalid decision variables") ||
+      error.message.includes("Invalid challenge variable answers") ||
+      error.message === "Challenge is not published" ||
+      error.message === "Challenge is closed" ||
+      error.message === "Submissions are closed for this challenge"
+    ) {
+      return res.status(400).json({ error: error.message });
     }
     if (error.name === "ValidationError") {
       return res.status(400).json({ error: error.message });

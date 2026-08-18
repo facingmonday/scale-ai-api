@@ -629,6 +629,7 @@ test("Classroom Model Integration Tests", async (t) => {
     assert.equal(dashboard.profile.shopName, "Student Cafe");
     assert.equal(dashboard.profile.profileType.label, "Bar & Grill");
     assert.equal(dashboard.metricDefinitions.length, 1);
+    assert.equal(dashboard.completedChallengeCount, 2);
     assert.equal(dashboard.recentResults.length, 1);
     assert.equal(dashboard.latestResult.title, "Released Week");
     assert.equal(dashboard.latestResult.metrics.revenue, 2200);

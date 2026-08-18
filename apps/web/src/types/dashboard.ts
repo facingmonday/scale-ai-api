@@ -50,6 +50,7 @@ export interface StudentDashboardResponse extends DashboardBase {
   metricDefinitions: MetricDefinition[];
   latestResult: StudentDashboardResult | null;
   recentResults: StudentDashboardResult[];
+  completedChallengeCount: number;
   classStatistics: StudentClassStatistics | null;
 }
 

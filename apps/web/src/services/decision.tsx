@@ -5,6 +5,7 @@ import axios from "axios";
 async function submit(data: {
   challengeId: string;
   variables: Record<string, unknown>;
+  challengeVariableAnswers: Record<string, unknown>;
 }) {
   const response = await axios.post(
     `${API_HOST}/${API_VERSION}/student/decision`,
@@ -21,6 +22,7 @@ async function update(
   data: {
     challengeId: string;
     variables: Record<string, unknown>;
+    challengeVariableAnswers: Record<string, unknown>;
   }
 ) {
   const response = await axios.put(

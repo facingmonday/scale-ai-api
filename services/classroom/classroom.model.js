@@ -428,7 +428,12 @@ classroomSchema.statics.getStudentDashboard = async function (
     : null;
 
   const MetricDefinition = require("../metricDefinition/metricDefinition.model");
-  const [profile, metricDefinitions, releasedChallenges] = await Promise.all([
+  const [
+    profile,
+    metricDefinitions,
+    releasedChallenges,
+    completedChallengeCount,
+  ] = await Promise.all([
     Profile.findOne({
       classroomId,
       userId: memberId,
@@ -455,6 +460,12 @@ classroomSchema.statics.getStudentDashboard = async function (
     })
       .sort({ week: -1, createdDate: -1 })
       .lean(),
+    Challenge.countDocuments({
+      classroomId,
+      organization: organizationId,
+      isPublished: true,
+      isClosed: true,
+    }),
   ]);
 
   const challengeIds = releasedChallenges.map((challenge) => challenge._id);
@@ -586,6 +597,7 @@ classroomSchema.statics.getStudentDashboard = async function (
     metricDefinitions,
     latestResult,
     recentResults,
+    completedChallengeCount,
     classStatistics,
   };
 };

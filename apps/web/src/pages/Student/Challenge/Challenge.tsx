@@ -17,7 +17,6 @@ import variableDefinitionsService from "../../../services/variableDefinition";
 import type { VariableDefinition } from "../../../types/variableDefinition";
 import Outcome from "@/components/Outcome";
 import VariablesForm from "@/components/VariablesForm";
-import VariablesDisplay from "@/components/VariablesDisplay";
 import { useAuth } from "@/context/AuthContext";
 import { useGlobalContext } from "@/context/GlobalContext";
 import { FormProvider, useForm } from "react-hook-form";
@@ -40,6 +39,7 @@ import LoadingOverlay from "../../../components/LoadingOverlay";
 import PreviousScenarioResults from "@/components/PreviousChallengeResults";
 import Alert from "@/components/Alert";
 import StoreSummary from "@/components/ProfileSummary";
+import SubmissionDeadlineCard from "@/components/SubmissionDeadlineCard";
 
 const ScenarioPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -50,9 +50,9 @@ const ScenarioPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [profile, setStore] = useState<Profile | null>(null);
   const [isLoadingStore, setIsLoadingStore] = useState(true);
-  const [scenarioVariableDefinitions, setScenarioVariableDefinitions] =
+  const [decisionVariableDefinitions, setDecisionVariableDefinitions] =
     useState<VariableDefinitionWithValue[]>([]);
-  const [displayScenarioVariables, setDisplayScenarioVariables] = useState<
+  const [challengeVariableDefinitions, setChallengeVariableDefinitions] = useState<
     VariableDefinitionWithValue[]
   >([]);
   const [error, setError] = useState<string | null>(null);
@@ -60,8 +60,9 @@ const ScenarioPage: React.FC = () => {
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const form = useForm<{
     variables: Record<string, unknown>;
+    challengeVariableAnswers: Record<string, unknown>;
   }>({
-    defaultValues: { variables: {} },
+    defaultValues: { variables: {}, challengeVariableAnswers: {} },
     mode: "onChange",
   });
 
@@ -119,11 +120,11 @@ const ScenarioPage: React.FC = () => {
                 ? submissionsList[0]
                 : null;
 
-            // Merge the decision with variables into the challenge
-            if (latestSubmission && latestSubmission.variables) {
+            // Merge the fully populated decision into the challenge response.
+            if (latestSubmission) {
               scenarioData.decision = {
                 ...scenarioData.decision,
-                variables: latestSubmission.variables,
+                ...latestSubmission,
               };
             }
           } catch (submissionErr) {
@@ -142,24 +143,34 @@ const ScenarioPage: React.FC = () => {
         // Get challenge variables from the challenge data
         const scenarioVariables =
           (scenarioData.variables as Record<string, unknown> | undefined) ?? {};
+        const submittedChallengeVariableAnswers =
+          (scenarioData.decision?.challengeVariableAnswers as
+            | Record<string, unknown>
+            | undefined) ?? {};
 
-        // Create VariableDefinitionWithValue array for challenge variables
-        // Show active defs or defs with values in challenge (for historical display)
+        // Challenge-scoped definitions are student questions for this challenge.
+        // Prefer this student's saved answers, then use the teacher-configured
+        // challenge value/default for a new submission.
         const scenarioDefsForDisplay = scenarioDefs.filter(
           (def) =>
             def.isActive ||
+            Object.prototype.hasOwnProperty.call(
+              submittedChallengeVariableAnswers,
+              def.key
+            ) ||
             Object.prototype.hasOwnProperty.call(scenarioVariables, def.key)
         );
         const scenarioVariablesWithValues: VariableDefinitionWithValue[] =
           scenarioDefsForDisplay.map((def) => ({
             ...def,
             value:
+              submittedChallengeVariableAnswers[def.key] ??
               scenarioVariables[def.key] ??
               def.defaultValue ??
               (def.dataType === "number" ? 0 : ""),
           }));
 
-        setDisplayScenarioVariables(scenarioVariablesWithValues);
+        setChallengeVariableDefinitions(scenarioVariablesWithValues);
 
         // Merge variable definitions with existing decision values
         const submissionVariables =
@@ -189,17 +200,25 @@ const ScenarioPage: React.FC = () => {
               (def.dataType === "number" ? 0 : ""),
           }));
 
-        setScenarioVariableDefinitions(variablesWithValues);
+        setDecisionVariableDefinitions(variablesWithValues);
 
         // Hydrate form with all variable values
         const variablesRecord = variablesWithValues.reduce((acc, variable) => {
           acc[variable.key] = variable.value;
           return acc;
         }, {} as Record<string, unknown>);
+        const challengeVariableAnswersRecord =
+          scenarioVariablesWithValues.reduce((acc, variable) => {
+            acc[variable.key] = variable.value;
+            return acc;
+          }, {} as Record<string, unknown>);
         // Use reset (not setValue) so defaultValues are updated and isDirty clears
-        form.reset({ variables: variablesRecord });
+        form.reset({
+          variables: variablesRecord,
+          challengeVariableAnswers: challengeVariableAnswersRecord,
+        });
         // Explicitly trigger validation to update isValid state
-        await form.trigger("variables");
+        await form.trigger();
       } catch (err) {
         console.error("Failed to fetch challenge:", err);
         setError("Failed to load challenge");
@@ -234,7 +253,6 @@ const ScenarioPage: React.FC = () => {
 
   useEffect(() => {
     if (id) {
-      console.log('-----useEffect fetchScenario');
       void fetchScenario();
     }
   }, [id, fetchScenario]);
@@ -268,6 +286,7 @@ const ScenarioPage: React.FC = () => {
         await decisionService.update(decision._id, {
           challengeId: id,
           variables: values.variables ?? {},
+          challengeVariableAnswers: values.challengeVariableAnswers ?? {},
         });
         globalContext?.showToast?.(
           "Decision updated successfully",
@@ -277,6 +296,7 @@ const ScenarioPage: React.FC = () => {
         await decisionService.submit({
           challengeId: id,
           variables: values.variables ?? {},
+          challengeVariableAnswers: values.challengeVariableAnswers ?? {},
         });
         globalContext?.showToast?.(
           "Challenge submitted successfully",
@@ -440,16 +460,7 @@ const ScenarioPage: React.FC = () => {
               </div>
 
               {submissionDeadline && !challengeLocked && (
-                <div className="card mb-6">
-                  <h2 className="heading-sm">Submission Deadline</h2>
-                  <p className="text-sm text-text-muted mt-1">
-                    Submit or update your decisions by{" "}
-                    <strong className="text-text-primary">
-                      {submissionDeadline.toLocaleString()}
-                    </strong>
-                    .
-                  </p>
-                </div>
+                <SubmissionDeadlineCard deadline={submissionDeadline} />
               )}
 
               {!isLoadingStore && !hasStore && (
@@ -491,12 +502,18 @@ const ScenarioPage: React.FC = () => {
                 </div>
               )}
 
-              {displayScenarioVariables.length > 0 && (
+              {challengeVariableDefinitions.length > 0 && (
                 <div className="card mb-6">
-                  <VariablesDisplay
-                    variables={displayScenarioVariables}
+                  <VariablesForm
+                    variables={challengeVariableDefinitions}
+                    namePrefix="challengeVariableAnswers"
+                    readOnly={isReadOnly}
                     title="Challenge Variables"
-                    description="Context and conditions for this challenge."
+                    description={
+                      isReadOnly
+                        ? "View your submitted answers for this challenge."
+                        : "Answer the questions for this challenge."
+                    }
                   />
                 </div>
               )}
@@ -512,10 +529,10 @@ const ScenarioPage: React.FC = () => {
               )}
 
               {showSubmissionVariables &&
-                scenarioVariableDefinitions.length > 0 && (
+                decisionVariableDefinitions.length > 0 && (
                   <div className="card mb-6">
                     <VariablesForm
-                      variables={scenarioVariableDefinitions}
+                      variables={decisionVariableDefinitions}
                       readOnly={isReadOnly}
                       title={submissionVariablesDisplayTitle}
                       description={
