@@ -430,16 +430,18 @@ const SubmissionPage: React.FC = () => {
                     </button>
                   </div>
                   <div className="space-y-2">
-                    <div className="flex gap-4">
+                    <div className="flex gap-4 min-w-0">
                       {profile.imageUrl ? (
-                        <img
-                          src={profile.imageUrl}
-                          alt={`${profile.shopName} thumbnail`}
-                          className="profile-thumbnail"
-                          loading="lazy"
-                        />
+                        <div className="flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border border-ui-border bg-ui-muted">
+                          <img
+                            src={profile.imageUrl}
+                            alt={`${profile.shopName} thumbnail`}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
+                        </div>
                       ) : null}
-                      <div className="space-y-2">
+                      <div className="space-y-2 min-w-0 flex-1">
                         <div>
                           <p className="text-text-muted text-sm">Shop Name</p>
                           <p className="text-text-primary">{profile.shopName}</p>
