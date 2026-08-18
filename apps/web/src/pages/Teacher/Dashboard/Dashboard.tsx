@@ -32,8 +32,8 @@ import { Dialog } from "primereact/dialog";
 import { Button } from "primereact/button";
 import { getErrorMessage } from "@/utils/error";
 import {
-  getChallengeLifecycleBadgeClass,
-  getChallengeLifecycleStatus,
+  getChallengePresentationBadgeClass,
+  getChallengePresentationStatus,
 } from "@/utils/challengeStatus";
 import LoadingOverlay from "../../../components/LoadingOverlay";
 import Alert from "../../../components/Alert";
@@ -343,9 +343,11 @@ const Dashboard: React.FC = () => {
   };
 
   const statusBodyTemplate = (rowData: Challenge) => {
-    const status = getChallengeLifecycleStatus(rowData);
+    const status = getChallengePresentationStatus(rowData, {
+      audience: "teacher",
+    });
     return (
-      <span className={`badge ${getChallengeLifecycleBadgeClass(status)}`}>
+      <span className={`badge ${getChallengePresentationBadgeClass(status)}`}>
         {status}
       </span>
     );

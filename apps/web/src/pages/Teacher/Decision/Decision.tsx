@@ -24,7 +24,10 @@ import {
   getDecisionGenerationMethodLabel,
   getDecisionGenerationMethodBadgeClass,
 } from "@/constants";
-import { getChallengeLifecycleStatus } from "@/utils/challengeStatus";
+import {
+  getChallengePresentationBadgeClass,
+  getChallengePresentationStatus,
+} from "@/utils/challengeStatus";
 
 const SubmissionPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -46,11 +49,11 @@ const SubmissionPage: React.FC = () => {
     mode: "onChange",
   });
 
-  const fetchSubmission = useCallback(async () => {
+  const fetchSubmission = useCallback(async (silent = false) => {
     if (!id) return;
 
-    setIsLoading(true);
-    setError(null);
+    if (!silent) setIsLoading(true);
+    if (!silent) setError(null);
     try {
       const response = await decisionService.getById(id, "admin");
       const submissionData = (response.data || response) as Decision;
@@ -95,9 +98,9 @@ const SubmissionPage: React.FC = () => {
       }
     } catch (err) {
       console.error("Failed to fetch decision:", err);
-      setError("Failed to load decision");
+      if (!silent) setError("Failed to load decision");
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   }, [id]);
 
@@ -150,15 +153,6 @@ const SubmissionPage: React.FC = () => {
       })) as VariableDefinitionWithValue[];
   }, [challenge, challengeVariableDefinitions, decision]);
 
-  // Determine challenge completion status
-  // Note: Since 'approved' property doesn't exist, we check if outcome exists
-  // and challenge is closed/published as indicators of completion
-  const isScenarioCompleted = useMemo(() => {
-    return (
-      challenge?.isPublished && challenge?.isClosed && outcome !== null
-    );
-  }, [challenge?.isPublished, challenge?.isClosed, outcome]);
-
   // Extract jobs array from decision (jobs may not be in the type definition)
   const jobs = useMemo(() => {
     if (!decision) return [];
@@ -167,6 +161,36 @@ const SubmissionPage: React.FC = () => {
     };
     return submissionWithJobs.jobs ?? [];
   }, [decision]);
+
+  const challengePresentationStatus = useMemo(
+    () =>
+      getChallengePresentationStatus(challenge, {
+        audience: "teacher",
+        decisionProcessingStatus: decision?.processingStatus,
+        hasLedger: !!decision?.ledgerEntry,
+        jobStatuses: jobs.map((job) => job.status),
+      }),
+    [challenge, decision?.ledgerEntry, decision?.processingStatus, jobs],
+  );
+
+  const isCalculatingResults =
+    challengePresentationStatus === "Calculating Results";
+
+  useEffect(() => {
+    if (!isCalculatingResults) return;
+
+    const refresh = () => {
+      if (document.visibilityState === "visible") {
+        void fetchSubmission(true);
+      }
+    };
+    const intervalId = window.setInterval(refresh, 15_000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [fetchSubmission, isCalculatingResults]);
 
   // Use challenge title if available, otherwise fallback
   const displayTitle = useMemo(
@@ -269,7 +293,10 @@ const SubmissionPage: React.FC = () => {
           <div className="container">
             <div className="card text-center">
               <p className="text-red-400 mb-4">{error}</p>
-              <button onClick={fetchSubmission} className="btn-teal">
+              <button
+                onClick={() => void fetchSubmission()}
+                className="btn-teal"
+              >
                 Try Again
               </button>
             </div>
@@ -299,8 +326,14 @@ const SubmissionPage: React.FC = () => {
             <div className="flex items-center justify-start gap-2 mb-6">
               <div className="flex items-center gap-3">
                 <h1 className="heading-xl">{displayTitle}</h1>
-                {isScenarioCompleted && (
-                  <span className="badge badge-success">Completed</span>
+                {challenge && (
+                  <span
+                    className={`badge ${getChallengePresentationBadgeClass(
+                      challengePresentationStatus,
+                    )}`}
+                  >
+                    {challengePresentationStatus}
+                  </span>
                 )}
               </div>
               <div className="flex items-center gap-2">
@@ -476,9 +509,13 @@ const SubmissionPage: React.FC = () => {
               <div className="card mb-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="heading-lg">Challenge</h2>
-                  {isScenarioCompleted && (
-                    <span className="badge badge-success">Completed</span>
-                  )}
+                  <span
+                    className={`badge ${getChallengePresentationBadgeClass(
+                      challengePresentationStatus,
+                    )}`}
+                  >
+                    {challengePresentationStatus}
+                  </span>
                 </div>
                 {challenge.description && (
                   <p className="text-text-muted mb-4">{challenge.description}</p>
@@ -487,9 +524,7 @@ const SubmissionPage: React.FC = () => {
                   <div>
                     <span className="text-text-muted">Status: </span>
                     <span className="text-text-primary font-medium">
-                      {challenge.isClosed && isScenarioCompleted
-                        ? "Completed"
-                        : getChallengeLifecycleStatus(challenge)}
+                      {challengePresentationStatus}
                     </span>
                   </div>
                   {challenge.isPublished && (

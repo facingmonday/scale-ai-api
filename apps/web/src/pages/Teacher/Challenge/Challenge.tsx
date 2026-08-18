@@ -14,8 +14,8 @@ import type { VariableDefinitionWithValue } from "@/types/decision";
 import { useGlobalContext } from "@/context/GlobalContext";
 import { getErrorMessage } from "@/utils";
 import {
-  getChallengeLifecycleBadgeClass,
-  getChallengeLifecycleStatus,
+  getChallengePresentationBadgeClass,
+  getChallengePresentationStatus,
 } from "@/utils/challengeStatus";
 import MetricCard from "@/components/dashboard/MetricCard";
 import profileTypeService from "../../../services/profileType";
@@ -238,6 +238,22 @@ const Challenge: React.FC = () => {
     };
   }, [id, fetchScenario]);
 
+  useEffect(() => {
+    const automationStatus = String(
+      challenge?.automationStatus || "",
+    ).toLowerCase();
+    if (!["queuedforprocessing", "processing"].includes(automationStatus)) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void fetchScenario(true);
+      }
+    }, 15_000);
+    return () => window.clearInterval(intervalId);
+  }, [challenge?.automationStatus, fetchScenario]);
+
   // Watch variables to ensure they're tracked by the form
   const watchedFormValues = form.watch();
   const watchedVariables = watchedFormValues.variables;
@@ -423,10 +439,12 @@ const Challenge: React.FC = () => {
                 <h1 className="heading-xl">
                   {challenge.title || (challenge as { name?: string }).name}
                   {(() => {
-                    const status = getChallengeLifecycleStatus(challenge);
+                    const status = getChallengePresentationStatus(challenge, {
+                      audience: "teacher",
+                    });
                     return (
                       <span
-                        className={`badge ml-4 align-middle ${getChallengeLifecycleBadgeClass(status)}`}
+                        className={`badge ml-4 align-middle ${getChallengePresentationBadgeClass(status)}`}
                       >
                         {status}
                       </span>

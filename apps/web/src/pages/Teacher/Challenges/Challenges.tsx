@@ -41,14 +41,15 @@ const formatAutomationStatus = (status?: string) => {
     UNSCHEDULED: "Unscheduled",
     SCHEDULED: "Scheduled",
     PUBLISHED: "Published",
-    PROCESSING: "Processing",
+    PROCESSING: "Calculating Results",
     COMPLETED: "Completed",
     BLOCKED: "Blocked",
     FAILED: "Failed",
     DRAFT: "Draft",
     acceptingSubmissions: "Open",
     submissionsClosed: "Closed",
-    queuedForProcessing: "Queued",
+    queuedForProcessing: "Calculating Results",
+    processing: "Calculating Results",
     processed: "Processed",
     feedbackReleased: "Released",
   };
@@ -118,7 +119,7 @@ const Challenges: React.FC = () => {
       { key: "SCHEDULED", label: "Scheduled" },
       { key: "acceptingSubmissions", label: "Open" },
       { key: "submissionsClosed", label: "Closed" },
-      { key: "processing", label: "Processing" },
+      { key: "processing", label: "Calculating" },
       { key: "feedbackReleased", label: "Released" },
     ];
 
@@ -319,7 +320,7 @@ const Challenges: React.FC = () => {
                       const showReleaseFeedback =
                         challenge.isClosed &&
                         !challenge.isFeedbackReleased &&
-                        challenge.automationStatus !== "feedbackReleased";
+                        challenge.automationStatus === "processed";
 
                       return (
                         <article

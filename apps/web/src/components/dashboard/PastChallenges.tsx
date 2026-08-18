@@ -21,8 +21,8 @@ import {
   sortMetricDefinitions,
 } from "@/utils/formatMetric";
 import {
-  getChallengeLifecycleBadgeClass,
-  getChallengeLifecycleStatus,
+  getChallengePresentationBadgeClass,
+  getChallengePresentationStatus,
 } from "@/utils/challengeStatus";
 
 interface PastScenariosProps {
@@ -323,7 +323,9 @@ const PastScenarios: React.FC<PastScenariosProps> = ({
       ) : (
         <div className="mt-3 space-y-2">
           {challenges.map((s: Challenge) => {
-            const statusLabel = getChallengeLifecycleStatus(s);
+            const statusLabel = getChallengePresentationStatus(s, {
+              audience: "teacher",
+            });
             return (
               <div
                 key={s._id}
@@ -345,7 +347,7 @@ const PastScenarios: React.FC<PastScenariosProps> = ({
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <span
-                    className={`badge whitespace-nowrap ${getChallengeLifecycleBadgeClass(statusLabel)}`}
+                    className={`badge whitespace-nowrap ${getChallengePresentationBadgeClass(statusLabel)}`}
                   >
                     {statusLabel}
                   </span>

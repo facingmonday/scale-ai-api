@@ -39,7 +39,9 @@ exports.getLedgerHistory = async function (req, res) {
       historyData = historyData.filter((entry) => {
         const chal = entry.challengeId;
         if (!chal) return true; // Initial entry (week 0) has no challengeId, always visible
-        const isReleased = chal.isFeedbackReleased || (chal.isClosed && !chal.feedbackReleaseMode);
+        const isReleased = chal.feedbackReleaseMode === "IMMEDIATE" ||
+          chal.isFeedbackReleased ||
+          (chal.isClosed && !chal.feedbackReleaseMode);
         return isReleased === true;
       });
     }

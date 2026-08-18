@@ -618,25 +618,55 @@ scenarioSchema.methods.unpublish = async function (clerkUserId) {
 };
 
 /**
- * Close this challenge
+ * Close submissions and begin calculating results.
+ * Result completion is recorded separately after every simulation job is
+ * terminal so a closed challenge is not presented as completed too early.
  * @param {string} clerkUserId - Clerk user ID for updatedBy
  * @returns {Promise<Object>} Updated challenge
  */
-scenarioSchema.methods.close = async function (clerkUserId) {
+scenarioSchema.methods.beginResultCalculation = async function (clerkUserId) {
   this.isClosed = true;
-  if (this.automationMode === "FULL") {
-    this.automatedProcessedAt = this.automatedProcessedAt || new Date();
-    this.automationError = null;
-    if (this.feedbackReleaseMode === "IMMEDIATE") {
-      this.isFeedbackReleased = true;
-      this.automationStatus = "feedbackReleased";
-    } else {
-      this.automationStatus = "processed";
-    }
+  this.isLockedForStudents = true;
+  this.isFeedbackReleased = false;
+  this.automatedProcessedAt = null;
+  this.automationStatus = "processing";
+  this.automationError = null;
+  this.automationLastCheckedAt = new Date();
+  this.updatedBy = clerkUserId;
+  await this.save();
+  return this;
+};
+
+/**
+ * Mark result calculation complete after all simulation jobs are terminal.
+ * @param {string} clerkUserId - Clerk user ID for updatedBy
+ * @returns {Promise<Object>} Updated challenge
+ */
+scenarioSchema.methods.completeResultCalculation = async function (clerkUserId) {
+  const completedAt = this.automatedProcessedAt || new Date();
+  this.isClosed = true;
+  this.isLockedForStudents = true;
+  this.automatedProcessedAt = completedAt;
+  this.automationError = null;
+  this.automationLastCheckedAt = completedAt;
+  if (this.feedbackReleaseMode === "IMMEDIATE") {
+    this.isFeedbackReleased = true;
+    this.automationStatus = "feedbackReleased";
+  } else {
+    this.isFeedbackReleased = false;
+    this.automationStatus = "processed";
   }
   this.updatedBy = clerkUserId;
   await this.save();
   return this;
+};
+
+/**
+ * Backwards-compatible close transition. Closing now starts calculation;
+ * callers must rely on ledger completion reconciliation for completion.
+ */
+scenarioSchema.methods.close = async function (clerkUserId) {
+  return this.beginResultCalculation(clerkUserId);
 };
 
 /**
@@ -1614,13 +1644,21 @@ scenarioSchema.statics.releaseDelayedFeedback = async function (now) {
     isClosed: true,
     isFeedbackReleased: false,
     feedbackReleaseMode: "DELAYED",
+    automationStatus: "processed",
     feedbackReleaseAt: { $ne: null, $lte: now },
   }).sort({ feedbackReleaseAt: 1, week: 1 });
 
   const results = [];
+  const SimulationJob = require("../job/job.model");
 
   for (const challenge of dueReleases) {
     try {
+      const hasNonTerminalJobs = await SimulationJob.exists({
+        challengeId: challenge._id,
+        status: { $in: ["pending", "running"] },
+      });
+      if (hasNonTerminalJobs) continue;
+
       challenge.isFeedbackReleased = true;
       challenge.automationStatus = "feedbackReleased";
       challenge.automationLastCheckedAt = now;

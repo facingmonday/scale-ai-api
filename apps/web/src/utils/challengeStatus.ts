@@ -1,11 +1,35 @@
 export type ChallengeLifecycleStatus = "Draft" | "Open" | "Locked" | "Closed";
+export type ChallengePresentationStatus =
+  | ChallengeLifecycleStatus
+  | "Calculating Results"
+  | "Completed"
+  | "Results Ready";
 
 export interface ChallengeLifecycleInput {
   isPublished?: boolean;
   isLockedForStudents?: boolean;
   isClosed?: boolean;
   lifecycleStatus?: ChallengeLifecycleStatus;
+  automationStatus?: string;
 }
+
+export interface ChallengePresentationOptions {
+  audience?: "teacher" | "student";
+  decisionProcessingStatus?: string;
+  hasLedger?: boolean;
+  jobStatuses?: string[];
+}
+
+const CALCULATING_AUTOMATION_STATUSES = new Set([
+  "queuedforprocessing",
+  "processing",
+]);
+
+const COMPLETED_AUTOMATION_STATUSES = new Set([
+  "completed",
+  "processed",
+  "feedbackreleased",
+]);
 
 export function getChallengeLifecycleStatus(
   challenge: ChallengeLifecycleInput | null | undefined,
@@ -33,6 +57,64 @@ export function getChallengeLifecycleBadgeClass(
     default:
       return "badge-muted";
   }
+}
+
+export function getChallengePresentationStatus(
+  challenge: ChallengeLifecycleInput | null | undefined,
+  options: ChallengePresentationOptions = {},
+): ChallengePresentationStatus {
+  if (!challenge) return "Draft";
+
+  const automationStatus = String(challenge.automationStatus || "").toLowerCase();
+  const decisionStatus = String(
+    options.decisionProcessingStatus || "",
+  ).toLowerCase();
+  const jobStatuses = options.jobStatuses?.map((status) =>
+    String(status).toLowerCase(),
+  ) ?? [];
+  const hasNonTerminalJob = jobStatuses.some((status) =>
+    status === "pending" || status === "running",
+  );
+  const decisionIsCalculating =
+    decisionStatus === "pending" || decisionStatus === "processing";
+
+  if (
+    options.audience === "student" &&
+    decisionStatus === "completed" &&
+    options.hasLedger
+  ) {
+    return "Results Ready";
+  }
+
+  if (
+    hasNonTerminalJob ||
+    (options.audience === "student" &&
+      decisionIsCalculating &&
+      (!!challenge.isClosed || !!challenge.isLockedForStudents)) ||
+    (CALCULATING_AUTOMATION_STATUSES.has(automationStatus) &&
+      (options.audience !== "student" || !!decisionStatus))
+  ) {
+    return "Calculating Results";
+  }
+
+  if (COMPLETED_AUTOMATION_STATUSES.has(automationStatus)) {
+    if (options.audience === "student" && !decisionStatus) {
+      return getChallengeLifecycleStatus(challenge);
+    }
+    return "Completed";
+  }
+
+  return getChallengeLifecycleStatus(challenge);
+}
+
+export function getChallengePresentationBadgeClass(
+  status: ChallengePresentationStatus,
+): string {
+  if (status === "Calculating Results") return "badge-info";
+  if (status === "Completed" || status === "Results Ready") {
+    return "badge-success";
+  }
+  return getChallengeLifecycleBadgeClass(status);
 }
 
 export function isChallengeLockedForStudents(
