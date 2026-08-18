@@ -15,6 +15,7 @@ import { useVariableDefinitionFormContext } from "./VariableDefinitionFormContex
 type Props = {
   definition: VariableDefinitionModel;
   readOnly?: boolean;
+  actions?: React.ReactNode;
 };
 
 function coerceInitial(
@@ -60,7 +61,11 @@ function getDecimalPlaces(step: number): number {
   return 4; // Default to 4 for very small steps
 }
 
-const VariableDefinition: React.FC<Props> = ({ definition, readOnly }) => {
+const VariableDefinition: React.FC<Props> = ({
+  definition,
+  readOnly,
+  actions,
+}) => {
   const { control } = useFormContext();
   const ctx = useVariableDefinitionFormContext();
   const isReadOnly = readOnly ?? ctx.readOnly;
@@ -70,10 +75,11 @@ const VariableDefinition: React.FC<Props> = ({ definition, readOnly }) => {
   const helper = definition.description?.trim() || "";
 
   // Be defensive: older definitions may still have dataType === "select".
-  const rawDataType = (definition as any).dataType as
-    | VariableDefinitionModel["dataType"]
-    | "select"
-    | undefined;
+  const rawDataType = (
+    definition as unknown as {
+      dataType?: VariableDefinitionModel["dataType"] | "select";
+    }
+  ).dataType;
   const dataType: VariableDefinitionModel["dataType"] =
     rawDataType === "select" ? "string" : rawDataType ?? "string";
 
@@ -91,8 +97,13 @@ const VariableDefinition: React.FC<Props> = ({ definition, readOnly }) => {
   }, [definition.options]);
 
   return (
-    <div className="card w-full h-full flex flex-column justify-between">
-      <div className="flex items-start justify-center gap-4 ">
+    <div className="card relative w-full h-full flex flex-column justify-between">
+      {actions && (
+        <div className="absolute right-3 top-3 z-10">
+          {actions}
+        </div>
+      )}
+      <div className="flex items-start justify-center gap-4">
         <div className="flex-1 text-center">
           <div className="flex items-center justify-center gap-2">
             <h3 className="heading-md" style={{ wordBreak: "break-word", overflowWrap: "break-word" }}>{label}</h3>

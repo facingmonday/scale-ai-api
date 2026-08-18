@@ -111,11 +111,17 @@ const Challenge: React.FC = () => {
         const scenarioVariables =
           (next.variables as Record<string, unknown> | undefined) ?? {};
 
-        // Filter: active defs for creation; active OR key in challenge for historical display
+        // Challenge-scoped definitions disappear immediately when removed.
+        // Keep inactive classroom-wide definitions only when an older challenge
+        // still has a stored value, so historical records remain understandable.
         const scenarioDefsForForm = scenarioDefs.filter(
           (def) =>
             def.isActive ||
-            Object.prototype.hasOwnProperty.call(scenarioVariables, def.key),
+            (!def.challengeId &&
+              Object.prototype.hasOwnProperty.call(
+                scenarioVariables,
+                def.key,
+              )),
         );
         const variablesWithValues: VariableDefinitionWithValue[] =
           scenarioDefsForForm.map((def) => ({
