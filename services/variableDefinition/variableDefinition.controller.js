@@ -1,6 +1,7 @@
 const VariableDefinition = require("./variableDefinition.model");
 const Classroom = require("../classroom/classroom.model");
 const Enrollment = require("../enrollment/enrollment.model");
+const Challenge = require("../challenge/challenge.model");
 
 /**
  * Create variable definition
@@ -11,7 +12,6 @@ exports.createVariableDefinition = async function (req, res) {
     const {
       classroomId,
       challengeId,
-      key,
       label,
       description,
       appliesTo,
@@ -26,9 +26,6 @@ exports.createVariableDefinition = async function (req, res) {
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
-    if (!key) {
-      return res.status(400).json({ error: "key is required" });
-    }
     if (!label) {
       return res.status(400).json({ error: "label is required" });
     }
@@ -40,6 +37,12 @@ exports.createVariableDefinition = async function (req, res) {
     }
     if (!classroomId) {
       return res.status(400).json({ error: "classroomId is required" });
+    }
+
+    if (appliesTo === "challenge" && !challengeId) {
+      return res.status(400).json({
+        error: "challengeId is required for challenge-specific variables",
+      });
     }
 
     // Validate appliesTo enum
@@ -63,12 +66,25 @@ exports.createVariableDefinition = async function (req, res) {
       organizationId,
     );
 
+    // A challenge-specific definition may only be owned by a challenge in the
+    // requested classroom and organization. The key is generated from this
+    // verified ID below; clients never supply the key.
+    if (appliesTo === "challenge") {
+      const challenge = await Challenge.findOne({
+        _id: challengeId,
+        classroomId,
+        organization: organizationId,
+      }).select("_id");
+      if (!challenge) {
+        return res.status(404).json({ error: "Challenge not found" });
+      }
+    }
+
     // Create definition using static method
     const definition = await VariableDefinition.createDefinition(
       classroomId,
       {
         challengeId,
-        key,
         label,
         description,
         appliesTo,
@@ -93,7 +109,8 @@ exports.createVariableDefinition = async function (req, res) {
     console.error("Error creating variable definition:", error);
     if (
       error.message.includes("already exists") ||
-      error.message.includes("Invalid inputType")
+      error.message.includes("Invalid inputType") ||
+      error.message.includes("challengeId is required")
     ) {
       return res.status(400).json({ error: error.message });
     }

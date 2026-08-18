@@ -275,12 +275,19 @@ classroomSchema.statics.getDashboard = async function (
   }
 
   const MetricDefinition = require("../metricDefinition/metricDefinition.model");
-  const leaderboardDef = await MetricDefinition.findOne({
-    classroomId: classroomId,
-    isActive: true,
-    dataType: "number",
-    "displayIn.leaderboard": true,
-  }).sort({ sortOrder: 1, label: 1 });
+  const [leaderboardDef, metricDefinitionCount] = await Promise.all([
+    MetricDefinition.findOne({
+      classroomId,
+      organization: organizationId,
+      isActive: true,
+      dataType: "number",
+      "displayIn.leaderboard": true,
+    }).sort({ sortOrder: 1, label: 1 }),
+    MetricDefinition.countDocuments({
+      classroomId,
+      organization: organizationId,
+    }),
+  ]);
 
   let leaderboardTop10 = [];
   let leaderboardMetric = null;
@@ -377,6 +384,7 @@ classroomSchema.statics.getDashboard = async function (
     submissionsCompleted: submissionsCompleted,
     leaderboardTop10: leaderboardTop10,
     leaderboardMetric: leaderboardMetric,
+    metricDefinitionCount,
     pendingApprovals: pendingApprovals,
   };
 };

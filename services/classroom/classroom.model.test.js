@@ -449,12 +449,29 @@ test("Classroom Model Integration Tests", async (t) => {
     assert.equal(dashboard.activeScenario.title, "Week 1 Scenario");
     assert.equal(dashboard.submissionsCompleted, 1);
     assert.equal(dashboard.leaderboardMetric.key, "profit");
+    assert.equal(dashboard.metricDefinitionCount, 1);
     assert.equal(dashboard.leaderboardTop10.length, 2);
     // Jane (student 2) should be #1 with 500 profit
     assert.equal(dashboard.leaderboardTop10[0].userId.toString(), student2Id.toString());
     assert.equal(dashboard.leaderboardTop10[0].metricTotal, 500);
     assert.equal(dashboard.leaderboardTop10[0].profileName, "Pizza Queen");
     assert.equal(dashboard.pendingApprovals, 1);
+  });
+
+  await t.test("getDashboard reports when no metrics are configured", async () => {
+    const orgId = new mongoose.Types.ObjectId();
+    const ownerId = new mongoose.Types.ObjectId();
+    const classDoc = await Classroom.create({
+      name: "Dashboard Class Without Metrics",
+      organization: orgId,
+      ownership: ownerId,
+      createdBy: "test",
+      updatedBy: "test",
+    });
+
+    const dashboard = await Classroom.getDashboard(classDoc._id, orgId);
+
+    assert.equal(dashboard.metricDefinitionCount, 0);
   });
 
   await t.test("getStudentDashboard static (with fix verification)", async () => {

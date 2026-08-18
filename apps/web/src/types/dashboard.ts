@@ -32,6 +32,7 @@ export interface AdminDashboardResponse extends DashboardBase {
   submissionsCompleted: number;
   leaderboardTop10: LeaderboardEntry[];
   leaderboardMetric: LeaderboardMetric | null;
+  metricDefinitionCount: number;
   pendingApprovals: number;
 }
 
