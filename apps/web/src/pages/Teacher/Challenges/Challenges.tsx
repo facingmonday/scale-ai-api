@@ -6,6 +6,7 @@ import outcomeService from "../../../services/outcome";
 import { useGlobalContext } from "../../../context/GlobalContext";
 import { useNavigate } from "react-router-dom";
 import LoadingOverlay from "../../../components/LoadingOverlay";
+import ChallengeCreateWithAI from "../../../components/ChallengeCreateWithAI";
 
 type ScenarioListItem = {
   _id?: string;
@@ -74,6 +75,7 @@ const Challenges: React.FC = () => {
   const globalContext = useGlobalContext();
   const [challenges, setScenarios] = useState<ScenarioListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isAICreateOpen, setIsAICreateOpen] = useState(false);
 
   const handleProcessNow = async (challengeId: string) => {
     try {
@@ -240,13 +242,23 @@ const Challenges: React.FC = () => {
         <div className="container w-full">
           <div className="mb-6 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
             <h1 className="heading-xl">Teacher Challenges</h1>
-            <button
-              className="btn-teal"
-              onClick={() => navigate("/challenges/new")}
-              disabled={!activeClassroom?._id}
-            >
-              + Create Challenge
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                className="btn-outline inline-flex items-center gap-2"
+                onClick={() => setIsAICreateOpen(true)}
+                disabled={!activeClassroom?._id}
+              >
+                <i className="pi pi-sparkles" aria-hidden="true" />
+                Create Challenge with AI
+              </button>
+              <button
+                className="btn-teal"
+                onClick={() => navigate("/challenges/new")}
+                disabled={!activeClassroom?._id}
+              >
+                + Create Challenge
+              </button>
+            </div>
           </div>
 
           {challenges.length === 0 ? (
@@ -431,6 +443,14 @@ const Challenges: React.FC = () => {
           )}
         </div>
       </div>
+      {activeClassroom?._id && (
+        <ChallengeCreateWithAI
+          visible={isAICreateOpen}
+          classroomId={activeClassroom._id}
+          onHide={() => setIsAICreateOpen(false)}
+          onSuccess={(challengeId) => navigate(`/challenges/${challengeId}`)}
+        />
+      )}
     </BasicLayout>
   );
 };

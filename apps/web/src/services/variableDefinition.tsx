@@ -1,21 +1,25 @@
 import TokenHandler from "./base";
 import { API_HOST, API_VERSION } from "../config";
 import axios from "axios";
+import type { VariableDefinition } from "../types/variableDefinition";
 
-async function create(data: {
-  classroomId: string;
-  label: string;
+type VariableDefinitionRequest = {
   challengeId?: string | null;
+  label: string;
   description?: string;
-  appliesTo: string;
-  dataType: string;
-  inputType?: string;
-  options?: any[];
-  defaultValue?: any;
+  appliesTo: VariableDefinition["appliesTo"];
+  dataType: VariableDefinition["dataType"];
+  inputType?: VariableDefinition["inputType"];
+  options?: unknown[];
+  defaultValue?: unknown;
   min?: number;
   max?: number;
   required?: boolean;
   isActive?: boolean;
+};
+
+async function create(data: VariableDefinitionRequest & {
+  classroomId: string;
 }) {
   const response = await axios.post(
     `${API_HOST}/${API_VERSION}/admin/variables`,
@@ -30,20 +34,7 @@ async function create(data: {
 async function update(
   key: string,
   classroomId: string,
-  data: Partial<{
-    challengeId: string | null;
-    label: string;
-    description: string;
-    appliesTo: string;
-    dataType: string;
-    inputType: string;
-    options: any[];
-    defaultValue: any;
-    min: number;
-    max: number;
-    required: boolean;
-    isActive: boolean;
-  }>
+  data: Partial<VariableDefinitionRequest>,
 ) {
   const url = new URL(`${API_HOST}/${API_VERSION}/admin/variables/${key}`);
   url.searchParams.append("classroomId", classroomId);
@@ -71,9 +62,16 @@ async function getAll(classroomId: string, appliesTo?: string, challengeId?: str
   return response.data;
 }
 
-async function remove(key: string, classroomId: string) {
+async function remove(
+  key: string,
+  classroomId: string,
+  challengeId?: string,
+) {
   const url = new URL(`${API_HOST}/${API_VERSION}/admin/variables/${key}`);
   url.searchParams.append("classroomId", classroomId);
+  if (challengeId) {
+    url.searchParams.append("challengeId", challengeId);
+  }
   const response = await axios.delete(url.toString(), {
     headers: await TokenHandler.getHeaders(),
   });

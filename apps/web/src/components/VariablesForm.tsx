@@ -111,6 +111,18 @@ const VariablesForm: React.FC<Props> = ({
                   key={variable.key}
                   definition={variable}
                   readOnly={readOnly}
+                  actions={
+                    showAddButton && !readOnly && challengeId ? (
+                      <VariableDefinitionsAddButton
+                        classroomId={activeClassroom?._id ?? ""}
+                        variant="edit"
+                        variableDefinition={variable}
+                        challengeId={challengeId}
+                        allowDelete
+                        onSaved={onSave}
+                      />
+                    ) : undefined
+                  }
                 />
               </div>
             ))}

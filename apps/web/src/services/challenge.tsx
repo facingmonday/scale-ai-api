@@ -1,7 +1,10 @@
 import TokenHandler from "./base";
 import { API_HOST, API_VERSION } from "../config";
 import axios from "axios";
-import type { CreateScenarioRequest } from "../types/requests";
+import type {
+  CreateScenarioRequest,
+  CreateScenarioWithAIRequest,
+} from "../types/requests";
 
 type UpdateScenarioRequest = Partial<CreateScenarioRequest> & {
   isClosed?: boolean;
@@ -15,6 +18,17 @@ async function create(data: CreateScenarioRequest) {
     {
       headers: await TokenHandler.getHeaders(),
     }
+  );
+  return response.data;
+}
+
+async function createWithAI(data: CreateScenarioWithAIRequest) {
+  const response = await axios.post(
+    `${API_HOST}/${API_VERSION}/admin/challenges/ai`,
+    data,
+    {
+      headers: await TokenHandler.getHeaders(),
+    },
   );
   return response.data;
 }
@@ -206,6 +220,7 @@ async function releaseFeedback(challengeId: string) {
 
 const challengeService = {
   create,
+  createWithAI,
   update,
   publish,
   unpublish,

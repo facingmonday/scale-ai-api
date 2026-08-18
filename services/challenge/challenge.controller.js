@@ -7,6 +7,7 @@ const JobService = require("../job/lib/jobService");
 const LedgerEntry = require("../ledger/ledger.model");
 const SimulationWorker = require("../job/lib/simulationWorker");
 const SimulationBatch = require("../job/simulationBatch.model");
+const challengeAiService = require("./lib/challengeAiService");
 const {
   enqueueSimulationBatchSubmit,
 } = require("../../lib/queues/simulation-batch-worker");
@@ -257,6 +258,69 @@ exports.createScenario = async function (req, res) {
       return res.status(400).json({ error: error.message });
     }
     res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Create a complete challenge from instructor source text.
+ * POST /v1/admin/challenges/ai
+ */
+exports.createScenarioWithAI = async function (req, res) {
+  try {
+    const { classroomId, prompt, timeZone } = req.body;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    if (!classroomId) {
+      return res.status(400).json({ error: "classroomId is required" });
+    }
+
+    await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId,
+    );
+
+    const challenge = await challengeAiService.createChallengeFromPrompt({
+      classroomId,
+      prompt,
+      timeZone,
+      organizationId,
+      clerkUserId,
+    });
+
+    const AutomationTask = require("../ai/automationTask.model");
+    AutomationTask.trigger("AFTER_CHALLENGE_CREATED", {
+      classroomId: challenge.classroomId,
+      challengeId: challenge._id,
+      organizationId,
+      clerkUserId,
+    }).catch((err) => {
+      console.error("Error triggering AFTER_CHALLENGE_CREATED tasks:", err);
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Challenge created with AI successfully",
+      data: challenge,
+    });
+  } catch (error) {
+    console.error("Error creating challenge with AI:", error);
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    if (error.name === "ValidationError") {
+      return res.status(400).json({ error: error.message });
+    }
+    res.status(500).json({
+      error: "Unable to create the generated challenge. Please try again.",
+    });
   }
 };
 

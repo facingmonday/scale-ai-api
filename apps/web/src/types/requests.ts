@@ -64,6 +64,15 @@ export interface CreateScenarioRequest {
 }
 
 /**
+ * Create a complete challenge from instructor-provided source text.
+ */
+export interface CreateScenarioWithAIRequest {
+  classroomId: string;
+  prompt: string;
+  timeZone?: string;
+}
+
+/**
  * Set Challenge Outcome Request
  */
 export interface SetScenarioOutcomeRequest {

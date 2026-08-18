@@ -44,6 +44,42 @@ router.post(
 
 /**
  * @openapi
+ * /v1/admin/challenges/ai:
+ *   post:
+ *     summary: Create a challenge with AI
+ *     description: Generate and create a challenge, its student variables, schedule, and optional outcome from instructor source text. Requires org:admin role.
+ *     tags:
+ *       - Challenges
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [classroomId, prompt]
+ *             properties:
+ *               classroomId:
+ *                 type: string
+ *               prompt:
+ *                 type: string
+ *               timeZone:
+ *                 type: string
+ *                 example: America/Chicago
+ *     responses:
+ *       201:
+ *         description: Challenge generated and created successfully.
+ */
+router.post(
+  "/admin/challenges/ai",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.createScenarioWithAI,
+);
+
+/**
+ * @openapi
  * /v1/admin/challenges/{challengeId}:
  *   put:
  *     summary: Update challenge
