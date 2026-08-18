@@ -25,8 +25,8 @@ import type { Decision } from "@/types/decision";
 import type { Profile } from "@/types/profile";
 import { getErrorMessage } from "@/utils";
 import {
-  getChallengeLifecycleBadgeClass,
-  getChallengeLifecycleStatus,
+  getChallengePresentationBadgeClass,
+  getChallengePresentationStatus,
   isChallengeLockedForStudents,
 } from "@/utils/challengeStatus";
 import type { VariableDefinitionWithValue } from "@/types/decision";
@@ -74,7 +74,10 @@ const ScenarioPage: React.FC = () => {
   activeClassroomRef.current = activeClassroom;
 
   const fetchScenario = useCallback(
-    async (classroomOverride?: typeof activeClassroom) => {
+    async (
+      classroomOverride?: typeof activeClassroom,
+      silent = false,
+    ) => {
       if (!id) return;
 
       const classroom = classroomOverride ?? activeClassroomRef.current;
@@ -83,8 +86,8 @@ const ScenarioPage: React.FC = () => {
         return;
       }
 
-      setIsLoading(true);
-      setError(null);
+      if (!silent) setIsLoading(true);
+      if (!silent) setError(null);
       try {
         // Fetch challenge
         const scenarioResp = await challengeService.getById(id, "student");
@@ -221,9 +224,9 @@ const ScenarioPage: React.FC = () => {
         await form.trigger();
       } catch (err) {
         console.error("Failed to fetch challenge:", err);
-        setError("Failed to load challenge");
+        if (!silent) setError("Failed to load challenge");
       } finally {
-        setIsLoading(false);
+        if (!silent) setIsLoading(false);
       }
     },
     [id, form]
@@ -320,6 +323,7 @@ const ScenarioPage: React.FC = () => {
       if (!id) return;
       // Capture before any async work - refetchMe can trigger re-renders that affect formState reads
       await refetchMe();
+      await fetchScenario(undefined, true);
     };
 
     window.addEventListener("focus", handleFocus);
@@ -355,12 +359,32 @@ const ScenarioPage: React.FC = () => {
 
   const scenarioStatus = React.useMemo(() => {
     if (!challenge) return null;
-    const status = getChallengeLifecycleStatus(challenge);
+    const status = getChallengePresentationStatus(challenge, {
+      audience: "student",
+      decisionProcessingStatus: decision?.processingStatus,
+      hasLedger: !!challenge.ledgerEntry,
+    });
     return {
       label: status,
-      badgeClass: getChallengeLifecycleBadgeClass(status),
+      badgeClass: getChallengePresentationBadgeClass(status),
     };
-  }, [challenge]);
+  }, [challenge, decision?.processingStatus]);
+
+  const isCalculatingResults =
+    scenarioStatus?.label === "Calculating Results";
+  const studentResultsReady = scenarioStatus?.label === "Results Ready";
+
+  useEffect(() => {
+    if (!isCalculatingResults) return;
+
+    const refresh = () => {
+      if (document.visibilityState === "visible") {
+        void fetchScenario(undefined, true);
+      }
+    };
+    const intervalId = window.setInterval(refresh, 15_000);
+    return () => window.clearInterval(intervalId);
+  }, [fetchScenario, isCalculatingResults]);
 
   const submissionDeadline = useMemo(() => {
     if (!challenge?.submissionDeadlineAt) return null;
@@ -544,14 +568,12 @@ const ScenarioPage: React.FC = () => {
                   </div>
                 )}
 
-              {challenge?.isClosed &&
-                hasSubmission &&
-                challenge?.decision?.processingStatus === "processing" && (
+              {hasSubmission && isCalculatingResults && (
                   <div className="mb-6">
                     <Alert
                       variant="info"
-                      title="Processing Decision"
-                      message="Your decision is being processed. Please wait for it to complete."
+                      title="Calculating Results"
+                      message="Your decision was submitted successfully. We’re calculating your results now; this page will update automatically when they’re ready."
                     />
                   </div>
                 )}
@@ -559,19 +581,23 @@ const ScenarioPage: React.FC = () => {
                 <PreviousScenarioResults challengeId={id} />
               )}
 
-              <div className="mb-4">
-                {isLoading ? (
-                  <p>Loading...</p>
-                ) : (
-                  <Outcome challengeId={id} challenge={challenge} />
-                )}
-              </div>
+              {studentResultsReady && (
+                <>
+                  <div className="mb-4">
+                    {isLoading ? (
+                      <p>Loading...</p>
+                    ) : (
+                      <Outcome challengeId={id} challenge={challenge} />
+                    )}
+                  </div>
 
-              <div className="mb-6">
-                {challenge?.ledgerEntry && (
-                  <LedgerVisualization ledger={challenge?.ledgerEntry} />
-                )}
-              </div>
+                  <div className="mb-6">
+                    {challenge?.ledgerEntry && (
+                      <LedgerVisualization ledger={challenge.ledgerEntry} />
+                    )}
+                  </div>
+                </>
+              )}
 
               <div className="card">
                 <p className="text-text-muted text-sm">Challenge ID: {id}</p>

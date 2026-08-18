@@ -27,14 +27,17 @@ beforeEach(async () => {
   await clearCollections();
 });
 
-async function createChallengeFixture({ withDecision = true } = {}) {
+async function createChallengeFixture({
+  withDecision = true,
+  feedbackReleaseMode = "MANUAL",
+} = {}) {
   const organization = new mongoose.Types.ObjectId();
   const classroomId = new mongoose.Types.ObjectId();
   const userId = new mongoose.Types.ObjectId();
   const challenge = await Challenge.create({
     classroomId,
     title: "Ledger completion test",
-    feedbackReleaseMode: "MANUAL",
+    feedbackReleaseMode,
     organization,
     createdBy: "test-admin",
     updatedBy: "test-admin",
@@ -87,6 +90,12 @@ async function writeLedger(fixture) {
 
 test("does not record aggregate completion before terminal analysis and ledger persistence", async () => {
   const fixture = await createChallengeFixture();
+  await fixture.challenge.beginResultCalculation("test-admin");
+
+  let persistedChallenge = await Challenge.findById(fixture.challenge._id);
+  assert.equal(persistedChallenge.isClosed, true);
+  assert.equal(persistedChallenge.automationStatus, "processing");
+  assert.equal(persistedChallenge.automatedProcessedAt, null);
 
   let result = await LedgerCompletionEvent.recordChallengeLedgersComplete(
     fixture.challenge._id,
@@ -121,6 +130,10 @@ test("does not record aggregate completion before terminal analysis and ledger p
     }),
     1,
   );
+  persistedChallenge = await Challenge.findById(fixture.challenge._id);
+  assert.equal(persistedChallenge.automationStatus, "processed");
+  assert.equal(persistedChallenge.isFeedbackReleased, false);
+  assert.ok(persistedChallenge.automatedProcessedAt instanceof Date);
 });
 
 test("records one student event only after that student's ledger exists", async () => {
@@ -152,7 +165,11 @@ test("records one student event only after that student's ledger exists", async 
 });
 
 test("deliberately records a zero-submission aggregate completion event", async () => {
-  const fixture = await createChallengeFixture({ withDecision: false });
+  const fixture = await createChallengeFixture({
+    withDecision: false,
+    feedbackReleaseMode: "IMMEDIATE",
+  });
+  await fixture.challenge.beginResultCalculation("test-admin");
   const result = await LedgerCompletionEvent.recordChallengeLedgersComplete(
     fixture.challenge._id,
     { enqueue: false },
@@ -162,6 +179,9 @@ test("deliberately records a zero-submission aggregate completion event", async 
   assert.equal(result.reason, "no-submissions");
   assert.equal(result.event.expectedDecisionCount, 0);
   assert.equal(await LedgerCompletionEvent.countDocuments(), 1);
+  const persistedChallenge = await Challenge.findById(fixture.challenge._id);
+  assert.equal(persistedChallenge.automationStatus, "feedbackReleased");
+  assert.equal(persistedChallenge.isFeedbackReleased, true);
 });
 
 test("failed event dispatch remains observable and succeeds on retry", async () => {

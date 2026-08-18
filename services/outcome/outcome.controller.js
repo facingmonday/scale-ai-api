@@ -1,6 +1,8 @@
 const Outcome = require("./outcome.model");
 const Challenge = require("../challenge/challenge.model");
 const Classroom = require("../classroom/classroom.model");
+const Decision = require("../decision/decision.model");
+const LedgerEntry = require("../ledger/ledger.model");
 const {
   enqueueOutcomeProcessing,
 } = require("../../lib/queues/outcome-processing-worker");
@@ -266,8 +268,23 @@ exports.getScenarioOutcome = async function (req, res) {
     }
 
     if (req.originalUrl?.includes("/student/")) {
-      const isReleased = challenge.isFeedbackReleased || (challenge.isClosed && !challenge.feedbackReleaseMode);
-      if (!isReleased) {
+      const decision = await Decision.getSubmission(
+        challenge.classroomId,
+        challengeId,
+        req.user._id,
+      );
+      const ledgerEntry = await LedgerEntry.getLedgerEntry(
+        challengeId,
+        req.user._id,
+      );
+      const resultComplete =
+        decision?.processingStatus === "completed" && !!ledgerEntry;
+      const releaseAllowsViewing = challenge.feedbackReleaseMode === "IMMEDIATE"
+        ? true
+        : challenge.isFeedbackReleased ||
+          (challenge.isClosed && !challenge.feedbackReleaseMode);
+
+      if (!resultComplete || !releaseAllowsViewing) {
         return res.status(200).json({ success: true, data: null });
       }
     }

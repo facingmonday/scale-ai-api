@@ -121,10 +121,10 @@ test("cancelBatchAndRerunScenario closes and reconciles a recovered challenge", 
     isClosed: false,
     automationStatus: "FAILED",
     automationError: "old failure",
-    async close(clerkUserId) {
-      calls.push(["close", clerkUserId]);
+    async beginResultCalculation(clerkUserId) {
+      calls.push(["begin-result-calculation", clerkUserId]);
       this.isClosed = true;
-      this.automationStatus = "processed";
+      this.automationStatus = "processing";
       this.automationError = null;
     },
   };
@@ -171,9 +171,12 @@ test("cancelBatchAndRerunScenario closes and reconciles a recovered challenge", 
   assert.equal(responseBody.data.jobsCreated, 1);
   assert.equal(responseBody.data.challenge, challenge);
   assert.equal(challenge.isClosed, true);
-  assert.equal(challenge.automationStatus, "processed");
+  assert.equal(challenge.automationStatus, "processing");
   assert.equal(challenge.automationError, null);
-  assert.deepEqual(calls.at(-1), ["close", "clerk-user-id"]);
+  assert.deepEqual(calls.at(-1), [
+    "begin-result-calculation",
+    "clerk-user-id",
+  ]);
   assert.deepEqual(calls.find(([name]) => name === "create-jobs"), [
     "create-jobs",
     { enqueue: true },

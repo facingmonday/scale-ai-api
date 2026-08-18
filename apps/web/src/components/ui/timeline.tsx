@@ -10,7 +10,7 @@ export const Timeline: React.FC<TimelineProps> = ({ status, className = "" }) =>
     { key: "SCHEDULED", label: "Scheduled" },
     { key: "acceptingSubmissions", label: "Open" },
     { key: "submissionsClosed", label: "Closed" },
-    { key: "processing", label: "Processing" },
+    { key: "processing", label: "Calculating" },
     { key: "feedbackReleased", label: "Released" },
   ];
 

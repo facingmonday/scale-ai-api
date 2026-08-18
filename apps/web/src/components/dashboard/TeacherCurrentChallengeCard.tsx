@@ -186,7 +186,7 @@ const TeacherCurrentScenarioCard: React.FC<TeacherCurrentScenarioCardProps> = ({
     if (!outcome)
       return { label: "Awaiting outcome", kind: "warning" as const };
     if (jobCounts.inProgress > 0)
-      return { label: "Processing AI", kind: "warning" as const };
+      return { label: "Calculating Results", kind: "warning" as const };
     if (jobCounts.failed > 0)
       return { label: "Some failed", kind: "warning" as const };
     // If outcome exists and all jobs completed successfully, consider it completed
