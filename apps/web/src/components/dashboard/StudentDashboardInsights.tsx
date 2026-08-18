@@ -83,6 +83,11 @@ const StudentDashboardInsights: React.FC<StudentDashboardInsightsProps> = ({
     profile?.profileType && typeof profile.profileType === "object"
       ? profile.profileType.label || profile.profileType.key
       : formatProfileType(profile?.profileType);
+  const statusLabel = dashboard.activeScenario
+    ? "Challenge in progress"
+    : dashboard.recentResults.length === 0
+      ? "Ready for your first challenge"
+      : "All caught up";
 
   return (
     <div className="space-y-4">
@@ -150,7 +155,7 @@ const StudentDashboardInsights: React.FC<StudentDashboardInsightsProps> = ({
             </div>
             <div className="mt-1 flex items-center gap-2 font-semibold text-text-primary">
               <span className={`h-2.5 w-2.5 rounded-full ${dashboard.activeScenario ? "bg-amber-500" : "bg-emerald-500"}`} />
-              {dashboard.activeScenario ? "Challenge in progress" : "All caught up"}
+              {statusLabel}
             </div>
           </div>
         </div>
