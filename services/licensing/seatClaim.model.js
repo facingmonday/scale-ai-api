@@ -447,12 +447,14 @@ seatClaimSchema.statics.claimSeatOrRequireCheckout = async function ({
     rosterSeat = await RosterSeat.findReservableForEmail(
       classroom._id,
       lookupEmail,
+      organization._id,
     );
   }
 
   if (!rosterSeat && studentId) {
     rosterSeat = await RosterSeat.findOne({
       classroomId: classroom._id,
+      organization: organization._id,
       studentId: studentId.trim(),
       status: "reserved",
     });

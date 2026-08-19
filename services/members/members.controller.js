@@ -79,6 +79,25 @@ exports.getMemberById = async (req, res) => {
       false
     );
 
+    const classroomId =
+      req.query?.classroomId ||
+      req.activeClassroom?._id ||
+      member.activeClassroom?.classroomId;
+    if (classroomId) {
+      const Enrollment = require("../enrollment/enrollment.model");
+      const enrollment = await Enrollment.findOne({
+        classroomId,
+        userId: member._id,
+        organization: organization._id,
+        isRemoved: false,
+      })
+        .select("studentId")
+        .lean();
+      formattedMember.studentId = enrollment?.studentId || "";
+    } else {
+      formattedMember.studentId = "";
+    }
+
     res.status(200).json(formattedMember);
   } catch (error) {
     console.error("Error getting member:", error);

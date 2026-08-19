@@ -122,7 +122,7 @@ exports.getClassRoster = async function (req, res) {
         const lastName = (student.lastName || "").toLowerCase();
         const displayName = (student.displayName || "").toLowerCase();
         const email = (student.email || "").toLowerCase();
-        const studentId = (student.profile?.studentId || "").toLowerCase();
+        const studentId = (student.studentId || "").toLowerCase();
         const storeName = (student.profile?.shopName || "").toLowerCase();
 
         // Match if search term is found in any of these fields
@@ -153,8 +153,8 @@ exports.getClassRoster = async function (req, res) {
       });
     } else if (sortBy === "studentId") {
       roster.sort((a, b) => {
-        const studentIdA = (a.profile?.studentId || "").toLowerCase();
-        const studentIdB = (b.profile?.studentId || "").toLowerCase();
+        const studentIdA = (a.studentId || "").toLowerCase();
+        const studentIdB = (b.studentId || "").toLowerCase();
         return studentIdA.localeCompare(studentIdB) * sortOrder;
       });
     } else if (sortBy === "storeName") {

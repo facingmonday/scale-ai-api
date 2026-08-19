@@ -330,13 +330,13 @@ const StudentList: React.FC<StudentListProps> = ({
         <Column field="email" header="Email" sortable sortField="email" />
         <Column field="classroomId" header="Classroom" />
         <Column
-          field="profile.studentId"
+          field="studentId"
           header="Student ID"
           body={(rowData: StudentDisplay) =>
-            rowData.profile?.studentId ? rowData.profile.studentId : "-"
+            rowData.studentId || rowData.profile?.studentId || "-"
           }
           sortable
-          sortField="profile.studentId"
+          sortField="studentId"
         />
         <Column
           field="profile.shopName"

@@ -195,6 +195,7 @@ export default function App() {
       <GlobalContextProvider>
         <ThemeProvider>
           <ScrollToTop />
+          <HelpScoutBeacon />
           <div className="h-screen w-full">
             <ClerkLoading>
               <LoadingOverlay loading={true} />
@@ -210,7 +211,6 @@ export default function App() {
 
               <SignedIn>
                 <AuthProvider>
-                  <HelpScoutBeacon />
                   <Routes>
                     <Route path="/join" element={<JoinPathRedirect />} />
                     <Route

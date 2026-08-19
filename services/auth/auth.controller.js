@@ -51,6 +51,7 @@ exports.me = async function (req, res, next) {
         variableDefinitions,
         metricDefinitions,
         role: req.classroomRole,
+        studentId: req.enrollment?.studentId || "",
       };
     }
 
@@ -171,6 +172,7 @@ exports.setActiveClassroom = async function (req, res, next) {
         _id: classroom._id,
         name: classroom.name,
         role: enrollment.role,
+        studentId: enrollment.studentId || "",
         variableDefinitions,
         metricDefinitions,
       },

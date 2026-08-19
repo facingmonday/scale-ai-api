@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const crypto = require("crypto");
+const { isDeepStrictEqual } = require("node:util");
 const baseSchema = require("../../lib/baseSchema");
 const openai = require("../../lib/openai");
 const { v4: uuidv4 } = require("uuid");
@@ -104,6 +105,7 @@ function inspectOpenAIResponse(response, context = {}) {
 const PROFILE_METADATA_KEYS = [
   "studentId",
   "shopName",
+  "profileId",
   "profileType",
   "profileTypeId",
   "profileTypeLabel",
@@ -112,10 +114,7 @@ const PROFILE_METADATA_KEYS = [
   "profileLocation",
   "currentDetails",
   "variablesDetailed",
-  "profileId",
   // Legacy keys retained until rename pass updates Profile.getStoreForSimulation
-  "profileId",
-  "profileType",
   "storeTypeId",
   "storeTypeLabel",
   "storeTypeDescription",
@@ -426,7 +425,6 @@ ledgerEntrySchema.statics.buildResponseJsonSchema = async function (classroomId)
   for (const def of metricDefs) {
     properties[def.key] = {
       type: jsonTypeFor(def.dataType),
-      description: def.aiPromptRule || def.description || def.label,
     };
     required.push(def.key);
   }
@@ -470,9 +468,18 @@ ledgerEntrySchema.statics.getClassroomBasePrompts = async function (classroomId)
     finalPrompts = ClassroomTemplate.getDefaultClassroomPrompts();
   }
 
-  const classroomData = await Classroom.findById(classroomId)
+  const classroomDoc = await Classroom.findById(classroomId)
     .select("name description")
     .lean();
+
+  const classroomData = {};
+  if (classroomDoc?.name) classroomData.name = classroomDoc.name;
+  if (classroomDoc?.description) {
+    classroomData.description = classroomDoc.description;
+  }
+
+  if (Object.keys(classroomData).length === 0) return finalPrompts;
+
   return [
     ...finalPrompts,
     {
@@ -504,12 +511,6 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
     .map((m) => ({ role: m.role, content: m.content }))
     .filter((m) => m.role && typeof m.content === "string");
 
-  const profileForPrompt = (() => {
-    if (!profile || typeof profile !== "object") return profile;
-    const { variablesDetailed, ...rest } = profile;
-    return rest;
-  })();
-
   const chancePercent =
     outcome?.randomEventChancePercent !== undefined
       ? Number(outcome.randomEventChancePercent)
@@ -530,17 +531,50 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
   );
 
   const profileTypeMeta = {
-    id: profile?.profileTypeId || profile?.storeTypeId || null,
-    key: profile?.profileType || profile?.profileType || null,
+    key: profile?.profileType || null,
     label:
       profile?.profileTypeLabel ||
       profile?.storeTypeLabel ||
-      profile?.profileType ||
       profile?.profileType ||
       null,
     description:
       profile?.profileTypeDescription || profile?.storeTypeDescription || "",
   };
+
+  const profileForPrompt = (() => {
+    if (!profile || typeof profile !== "object") return profile;
+
+    const data = {
+      shopName: profile.shopName || "Student Profile",
+      profileType: profileTypeMeta,
+    };
+    const description =
+      profile.profileDescription || profile.storeDescription || "";
+    const location = profile.profileLocation || profile.storeLocation || "";
+    if (description) data.description = description;
+    if (location) data.location = location;
+    if (profile.startingBalance !== undefined) {
+      data.startingBalance = profile.startingBalance;
+    }
+
+    for (const [key, value] of Object.entries(profile)) {
+      if (!PROFILE_METADATA_KEYS.includes(key)) data[key] = value;
+    }
+
+    return data;
+  })();
+
+  const outcomeVariables =
+    outcome?.variables && typeof outcome.variables === "object"
+      ? outcome.variables
+      : {};
+  const outcomeData = {};
+  if (outcome?.notes) outcomeData.notes = outcome.notes;
+  if (outcome?.hiddenNotes) outcomeData.hiddenNotes = outcome.hiddenNotes;
+  if (Object.keys(outcomeVariables).length > 0) {
+    outcomeData.variables = outcomeVariables;
+  }
+  const hasOutcomeContext = Object.keys(outcomeData).length > 0;
 
   const messages = [
     ...sanitizedBasePrompts,
@@ -557,17 +591,6 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
     {
       role: "user",
       content: asJsonEnvelope({
-        type: "profile_configuration",
-        data: {
-          shopName: profile?.shopName || "Student Profile",
-          ...profileForPrompt,
-          profileType: profileTypeMeta,
-        },
-      }),
-    },
-    {
-      role: "user",
-      content: asJsonEnvelope({
         type: "challenge",
         data: {
           title: challenge?.title || "",
@@ -576,28 +599,31 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
         },
       }),
     },
+    ...(hasOutcomeContext || shouldGenerateEvent
+      ? [
+        {
+          role: "user",
+          content: asJsonEnvelope({
+            type: "global_outcome",
+            instruction:
+              "Treat this outcome as the authoritative realized conditions. Apply it directly in your calculations. " +
+              "If it contradicts the challenge's expected conditions, the outcome wins.",
+            data: outcomeData,
+            ...(shouldGenerateEvent
+              ? {
+                randomEventInstruction:
+                    "Generate ONE plausible educational random operational event grounded in the inputs and set randomEvent to that event text (1-3 sentences). Apply its impact in your metric calculations.",
+              }
+              : {}),
+          }),
+        },
+      ]
+      : []),
     {
       role: "user",
       content: asJsonEnvelope({
-        type: "global_outcome",
-        instruction:
-          "Treat this outcome as the authoritative realized conditions. Apply it directly in your calculations. " +
-          "If it contradicts the challenge's expected conditions, the outcome wins.",
-        data: {
-          notes: outcome?.notes || "",
-          hiddenNotes: outcome?.hiddenNotes || "",
-          randomEventChancePercent: chancePercent,
-          variables:
-            outcome?.variables && typeof outcome.variables === "object"
-              ? outcome.variables
-              : {},
-        },
-        ...(shouldGenerateEvent
-          ? {
-            randomEventInstruction:
-              "Generate ONE plausible educational random operational event grounded in the inputs and set randomEvent to that event text (1-3 sentences). Apply its impact in your metric calculations.",
-          }
-          : {}),
+        type: "profile_configuration",
+        data: profileForPrompt,
       }),
     },
     {
@@ -620,7 +646,11 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
     });
   }
 
-  if (priorMetrics && typeof priorMetrics === "object") {
+  if (
+    priorMetrics &&
+    typeof priorMetrics === "object" &&
+    Object.keys(priorMetrics).length > 0
+  ) {
     messages.push({
       role: "user",
       content: asJsonEnvelope({
@@ -634,17 +664,28 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
 
   if (ledgerHistory && ledgerHistory.length > 0) {
     const historyData = ledgerHistory.map((entry) => ({
-      challengeId: entry.challengeId?._id || entry.challengeId || null,
       challengeTitle: entry.challengeId?.title || "Initial Setup",
       metrics:
         entry.metrics instanceof Map
           ? Object.fromEntries(entry.metrics)
           : entry.metrics || {},
     }));
-    messages.push({
-      role: "user",
-      content: asJsonEnvelope({ type: "ledger_history", entries: historyData }),
-    });
+
+    const latestHistoryEntry = historyData.at(-1);
+    if (
+      latestHistoryEntry &&
+      priorMetrics &&
+      isDeepStrictEqual(latestHistoryEntry.metrics, priorMetrics)
+    ) {
+      historyData.pop();
+    }
+
+    if (historyData.length > 0) {
+      messages.push({
+        role: "user",
+        content: asJsonEnvelope({ type: "ledger_history", entries: historyData }),
+      });
+    }
   }
 
   return messages;

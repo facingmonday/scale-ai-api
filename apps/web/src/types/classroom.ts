@@ -42,6 +42,7 @@ export interface Classroom extends BaseSchema {
   };
   metricDefinitions?: MetricDefinition[];
   role: "admin" | "member";
+  studentId?: string;
   imageUrl?: string;
   billingMode?: BillingMode;
   joinPolicy?: JoinPolicy;

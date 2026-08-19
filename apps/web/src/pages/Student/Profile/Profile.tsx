@@ -24,6 +24,7 @@ import AITextField from "../../../components/AIComponents/AITextField";
 import Image from "../../../components/AIComponents/Image/Image";
 import LoadingOverlay from "@/components/LoadingOverlay";
 import Alert from "../../../components/Alert";
+import { getInitialStoreStudentId } from "../../../utils/storeProfileDefaults";
 
 const STORE_FIELD_MAX = {
   studentId: 20,
@@ -95,6 +96,7 @@ const Profile: React.FC = () => {
       // Fetch profile
       const response = await profileService.getStudentStore(classroomId);
       const next = unwrap(response) as StoreWithVariables | null;
+      const memberStudentId = response?.memberStudentId as string | undefined;
       setStore(next);
 
       // Handle profileType - it may be a string (ID) or a populated object
@@ -176,7 +178,10 @@ const Profile: React.FC = () => {
 
       form.reset(
         {
-          studentId: next?.studentId || "",
+          studentId: getInitialStoreStudentId(
+            next,
+            memberStudentId || activeClassroom?.studentId,
+          ),
           shopName: next?.shopName || "",
           profileType: storeTypeId,
           storeDescription: next?.storeDescription || "",

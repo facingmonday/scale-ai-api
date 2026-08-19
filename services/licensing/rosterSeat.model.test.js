@@ -39,7 +39,8 @@ test("rosterSeat model", async (t) => {
 
     const found = await RosterSeat.findReservableForEmail(
       classroom._id,
-      "  Student@Example.COM  "
+      "  Student@Example.COM  ",
+      org._id,
     );
     assert.ok(found);
     assert.equal(found.email, "student@example.com");

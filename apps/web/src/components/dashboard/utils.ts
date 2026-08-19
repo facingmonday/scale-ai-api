@@ -6,7 +6,15 @@ type ApiEnvelope<T> = { data?: T } | T;
 type ScenarioLike = unknown;
 
 export function unwrap<T>(payload: ApiEnvelope<T>): T {
-  return (payload as { data?: T })?.data ?? (payload as T);
+  if (
+    payload !== null &&
+    typeof payload === "object" &&
+    "data" in payload
+  ) {
+    return (payload as { data: T }).data;
+  }
+
+  return payload as T;
 }
 
 export function formatCurrency(value: number): string {
