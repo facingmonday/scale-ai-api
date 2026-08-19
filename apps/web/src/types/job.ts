@@ -43,6 +43,11 @@ export interface SimulationJob extends BaseSchema {
   startedAt?: Date | null;
   completedAt?: Date | null;
   dryRun: boolean; // Default: false
+  /** Exact hardened request persisted for OpenAI Batch processing. */
+  openaiRequest?: Record<string, unknown> | null;
+  /** Prompt messages before platform-policy hardening. */
+  openaiRequestRawMessages?: Array<Record<string, unknown>> | null;
+  openaiRequestPreparedAt?: Date | string | null;
 }
 
 /**
@@ -75,7 +80,7 @@ export interface CronJob {
   lastErrorMessage?: string;
 
   // Metadata
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
 
   // Lease fields (for distributed locking)
   leaseOwner?: string | null;

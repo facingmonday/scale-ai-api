@@ -136,3 +136,108 @@ test("hardenAISimulationMessages prepends policy and normalizes roles to user", 
   assert.equal(hardened[0].role, "system");
   assert.equal(hardened.filter((m) => m.role === "user").length, 4);
 });
+
+test("buildAISimulationPrompt omits redundant and empty simulation context", () => {
+  const messages = LedgerEntry.buildAISimulationPrompt(
+    [{ role: "system", content: "class rules" }],
+    {
+      profileId: "profile-id",
+      studentId: "student-id",
+      shopName: "Test Shop",
+      profileType: "campus-kiosk",
+      storeTypeId: "profile-type-id",
+      storeTypeLabel: "Campus Kiosk",
+      storeTypeDescription: "A compact campus operation.",
+      variablesDetailed: { capacity: { value: 40 } },
+      capacity: 40,
+    },
+    { title: "Test challenge", description: "", variables: {} },
+    { notes: "", hiddenNotes: "", variables: {}, randomEventChancePercent: 0 },
+    { variables: { price: 12 }, generation: { method: "MANUAL" } },
+    [
+      {
+        challengeId: { _id: "older-id", title: "Older challenge" },
+        metrics: { cashAfter: 50 },
+      },
+      {
+        challengeId: { _id: "previous-id", title: "Previous challenge" },
+        metrics: { cashAfter: 100 },
+      },
+    ],
+    { cashAfter: 100 },
+    [
+      {
+        key: "cashAfter",
+        label: "Cash Balance",
+        format: "currency",
+        dataType: "number",
+        aiPromptRule: "Carry forward cash.",
+      },
+    ]
+  );
+
+  const envelopes = messages.map((message) => {
+    try {
+      return JSON.parse(message.content);
+    } catch {
+      return null;
+    }
+  });
+  const types = envelopes.filter(Boolean).map((envelope) => envelope.type);
+
+  assert.deepEqual(types, [
+    "metrics_to_calculate",
+    "challenge",
+    "profile_configuration",
+    "student_decisions",
+    "prior_ledger_entry",
+    "ledger_history",
+  ]);
+  assert.equal(types.includes("global_outcome"), false);
+
+  const profileEnvelope = envelopes.find(
+    (envelope) => envelope?.type === "profile_configuration"
+  );
+  assert.deepEqual(profileEnvelope.data.profileType, {
+    key: "campus-kiosk",
+    label: "Campus Kiosk",
+    description: "A compact campus operation.",
+  });
+  assert.equal(profileEnvelope.data.capacity, 40);
+  assert.equal(profileEnvelope.data.profileId, undefined);
+  assert.equal(profileEnvelope.data.studentId, undefined);
+  assert.equal(profileEnvelope.data.storeTypeId, undefined);
+  assert.equal(profileEnvelope.data.variablesDetailed, undefined);
+
+  const historyEnvelope = envelopes.find(
+    (envelope) => envelope?.type === "ledger_history"
+  );
+  assert.deepEqual(historyEnvelope.entries, [
+    {
+      challengeTitle: "Older challenge",
+      metrics: { cashAfter: 50 },
+    },
+  ]);
+});
+
+test("buildResponseJsonSchema keeps metric rules out of the response schema", async (t) => {
+  const MetricDefinition = require("../metricDefinition/metricDefinition.model");
+  const originalGetActive = MetricDefinition.getActive;
+  t.after(() => {
+    MetricDefinition.getActive = originalGetActive;
+  });
+  MetricDefinition.getActive = async () => [
+    {
+      key: "profit",
+      label: "Profit",
+      description: "Profit description",
+      dataType: "number",
+      aiPromptRule: "revenue - costs",
+    },
+  ];
+
+  const schema = await LedgerEntry.buildResponseJsonSchema("classroom-id");
+
+  assert.deepEqual(schema.properties.profit, { type: "number" });
+  assert.equal(typeof schema.properties.summary.description, "string");
+});

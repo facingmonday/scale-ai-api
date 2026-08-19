@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import BasicLayout from "../../../components/Layouts/BasicLayout";
 import jobService from "../../../services/job";
@@ -10,6 +10,7 @@ import type {
   PopulatedSubmission,
 } from "../../../types/job";
 import LoadingOverlay from "../../../components/LoadingOverlay";
+import JsonRenderer from "../../../components/JsonRenderer";
 
 const statusBadgeClass: Record<string, string> = {
   pending: "badge-warning",
@@ -34,19 +35,7 @@ const JobDetail: React.FC = () => {
     [job?.status]
   );
 
-  useEffect(() => {
-    if (jobId) {
-      void fetchJob(jobId);
-    }
-  }, [jobId]);
-
-  useEffect(() => {
-    if (!jobId || !shouldPoll) return;
-    const id = window.setTimeout(() => void fetchJob(jobId), 4000);
-    return () => window.clearTimeout(id);
-  }, [jobId, shouldPoll]);
-
-  const fetchJob = async (id: string) => {
+  const fetchJob = useCallback(async (id: string) => {
     setIsLoading(true);
     setError(null);
     try {
@@ -62,7 +51,19 @@ const JobDetail: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!jobId) return;
+    const id = window.setTimeout(() => void fetchJob(jobId), 0);
+    return () => window.clearTimeout(id);
+  }, [fetchJob, jobId]);
+
+  useEffect(() => {
+    if (!jobId || !shouldPoll) return;
+    const id = window.setTimeout(() => void fetchJob(jobId), 4000);
+    return () => window.clearTimeout(id);
+  }, [fetchJob, jobId, shouldPoll]);
 
   const handleRetry = async () => {
     if (!jobId) return;
@@ -217,7 +218,8 @@ const JobDetail: React.FC = () => {
       typeof classroom === "object" ? classroom.description : undefined;
 
     return (
-      <div className="card">
+      <>
+        <div className="card">
         <LoadingOverlay loading={isLoading} />
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
@@ -467,7 +469,53 @@ const JobDetail: React.FC = () => {
             )}
           </div>
         </div>
-      </div>
+        </div>
+
+        <div className="card mt-6">
+          <div className="mb-4">
+            <h2 className="heading-lg mb-1">OpenAI request</h2>
+            <p className="text-sm text-text-muted">
+              Exact hardened request body persisted for this job and used in
+              its OpenAI Batch item.
+            </p>
+            {job.openaiRequestPreparedAt && (
+              <p className="mt-1 text-xs text-text-muted">
+                Prepared: {new Date(job.openaiRequestPreparedAt).toLocaleString()}
+              </p>
+            )}
+          </div>
+
+          {job.openaiRequest ? (
+            <JsonRenderer
+              value={job.openaiRequest}
+              copyLabel="Copy request JSON"
+            />
+          ) : (
+            <div className="rounded-md border border-dashed border-ui-border bg-ui-muted p-4 text-sm text-text-muted">
+              No persisted OpenAI request is available for this job. Requests
+              are currently persisted when a batch payload is prepared.
+            </div>
+          )}
+
+          {job.openaiRequestRawMessages && (
+            <details className="mt-4 rounded-md border border-ui-border bg-ui-muted">
+              <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-text-primary">
+                Raw prompt messages before hardening
+              </summary>
+              <div className="border-t border-ui-border p-4">
+                <p className="mb-3 text-xs text-text-muted">
+                  These messages are retained for debugging, but they are not
+                  the final payload sent to OpenAI.
+                </p>
+                <JsonRenderer
+                  value={job.openaiRequestRawMessages}
+                  copyLabel="Copy raw messages"
+                />
+              </div>
+            </details>
+          )}
+        </div>
+      </>
     );
   };
 
