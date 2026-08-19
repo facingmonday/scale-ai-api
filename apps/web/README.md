@@ -31,6 +31,7 @@ Output is written to `apps/web/dist/`.
 |----------|----------|-------------|
 | `VITE_API_HOST` | Yes | Backend API base URL (e.g. `http://localhost:1337` locally, `https://api.scalelxp.com` in production) |
 | `VITE_CLERK_PUBLISHABLE_KEY` | Yes | Clerk publishable key for the environment |
+| `VITE_HELP_SCOUT_BEACON_ID` | No | Help Scout Beacon ID; defaults to SCALE's configured Beacon |
 | `VITE_CLERK_JWT_TEMPLATE` | No | Clerk JWT template name if the API expects one |
 
 ## Deployment (DigitalOcean App Platform)
