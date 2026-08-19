@@ -31,7 +31,12 @@ import { Column } from "primereact/column";
 import { Dialog } from "primereact/dialog";
 import { Button } from "primereact/button";
 import { getErrorMessage } from "@/utils/error";
+import {
+  getChallengePresentationBadgeClass,
+  getChallengePresentationStatus,
+} from "@/utils/challengeStatus";
 import LoadingOverlay from "../../../components/LoadingOverlay";
+import Alert from "../../../components/Alert";
 
 const PLAN_LABELS: Record<string, string> = {
   org_seats: "Organization Seats",
@@ -338,15 +343,14 @@ const Dashboard: React.FC = () => {
   };
 
   const statusBodyTemplate = (rowData: Challenge) => {
-    if (!rowData.isPublished) {
-      return <span className="badge badge-warning">Draft</span>;
-    }
-    if (rowData.isClosed) {
-      return (
-        <span className="badge bg-ui-muted text-text-secondary">Closed</span>
-      );
-    }
-    return <span className="badge badge-success">Open</span>;
+    const status = getChallengePresentationStatus(rowData, {
+      audience: "teacher",
+    });
+    return (
+      <span className={`badge ${getChallengePresentationBadgeClass(status)}`}>
+        {status}
+      </span>
+    );
   };
 
   if (!activeClassroom) {
@@ -609,6 +613,25 @@ const Dashboard: React.FC = () => {
       <LoadingOverlay loading={isLoadingScenarios || isLoadingDashboard} />
       <div className="page">
         <div className="container">
+          {dashboard && dashboard.metricDefinitionCount === 0 && (
+            <div className="mb-4">
+              <Alert
+                icon="pi pi-exclamation-triangle"
+                title="Metrics need to be configured"
+                message="This classroom has no metrics yet. Add at least one metric so challenge results, comparisons, and the leaderboard can be generated."
+                variant="warning"
+                actions={[
+                  {
+                    label: "Configure Metrics",
+                    onClick: () =>
+                      navigate(
+                        `/classroom/${activeClassroom._id}?tab=definitions`
+                      ),
+                  },
+                ]}
+              />
+            </div>
+          )}
           {(nextScheduledScenario || blockedAutomations.length > 0) && (
             <div className="card mb-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">

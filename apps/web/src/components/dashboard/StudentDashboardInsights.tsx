@@ -16,6 +16,7 @@ import { formatProfileType } from "./utils";
 
 interface StudentDashboardInsightsProps {
   dashboard: StudentDashboardResponse;
+  currentChallengeDeadline?: Date | null;
 }
 
 const ComparisonCard: React.FC<{
@@ -55,6 +56,7 @@ const ComparisonCard: React.FC<{
 
 const StudentDashboardInsights: React.FC<StudentDashboardInsightsProps> = ({
   dashboard,
+  currentChallengeDeadline,
 }) => {
   const navigate = useNavigate();
   const profile = dashboard.profile;
@@ -83,6 +85,21 @@ const StudentDashboardInsights: React.FC<StudentDashboardInsightsProps> = ({
     profile?.profileType && typeof profile.profileType === "object"
       ? profile.profileType.label || profile.profileType.key
       : formatProfileType(profile?.profileType);
+  const statusLabel = dashboard.activeScenario
+    ? "Challenge in progress"
+    : dashboard.completedChallengeCount === 0
+      ? "Ready for your first challenge"
+      : "All caught up";
+  const formattedDeadline =
+    currentChallengeDeadline && !Number.isNaN(currentChallengeDeadline.getTime())
+      ? new Intl.DateTimeFormat(undefined, {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        }).format(currentChallengeDeadline)
+      : null;
 
   return (
     <div className="space-y-4">
@@ -137,21 +154,32 @@ const StudentDashboardInsights: React.FC<StudentDashboardInsightsProps> = ({
                     </span>
                   )}
                   <span className="rounded-full bg-ui-surface px-3 py-1 ring-1 ring-ui-border">
-                    {dashboard.recentResults.length} completed {dashboard.recentResults.length === 1 ? "week" : "weeks"}
+                    {dashboard.completedChallengeCount} completed {dashboard.completedChallengeCount === 1 ? "week" : "weeks"}
                   </span>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="rounded-xl border border-ui-border/70 bg-ui-surface/80 px-4 py-3 text-sm backdrop-blur">
+          <div className="min-w-56 rounded-xl border border-ui-border/70 bg-ui-surface/80 px-4 py-3 text-sm backdrop-blur">
             <div className="text-xs uppercase tracking-wide text-text-muted">
               Current status
             </div>
             <div className="mt-1 flex items-center gap-2 font-semibold text-text-primary">
               <span className={`h-2.5 w-2.5 rounded-full ${dashboard.activeScenario ? "bg-amber-500" : "bg-emerald-500"}`} />
-              {dashboard.activeScenario ? "Challenge in progress" : "All caught up"}
+              {statusLabel}
             </div>
+            {formattedDeadline && dashboard.activeScenario && (
+              <div className="mt-3 border-t border-ui-border/70 pt-3">
+                <div className="flex items-center gap-2 text-xs text-text-muted">
+                  <i className="pi pi-calendar" aria-hidden />
+                  <span>Current challenge due</span>
+                </div>
+                <div className="mt-1 font-semibold text-text-primary">
+                  {formattedDeadline}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </section>

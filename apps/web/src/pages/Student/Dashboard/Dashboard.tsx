@@ -11,8 +11,10 @@ import {
   PerformanceChart,
   PastChallenges,
   StudentDashboardInsights,
+  StudentLearningResources,
 } from "../../../components/dashboard";
 import { useNavigate } from "react-router-dom";
+import { GraduationCap } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext";
 import { useGlobalContext } from "../../../context/GlobalContext";
 import { useUser } from "@clerk/clerk-react";
@@ -747,21 +749,11 @@ const Dashboard: React.FC = () => {
               />
             )}
 
-          {currentScenarioData?.challenge && scenarioDeadline && (
-            <div className="card">
-              <h2 className="heading-sm">Current Challenge Deadline</h2>
-              <p className="text-sm text-text-muted mt-1">
-                Submit decisions by{" "}
-                <strong className="text-text-primary">
-                  {scenarioDeadline.toLocaleString()}
-                </strong>
-                .
-              </p>
-            </div>
-          )}
-
           {studentDashboard ? (
-            <StudentDashboardInsights dashboard={studentDashboard} />
+            <StudentDashboardInsights
+              dashboard={studentDashboard}
+              currentChallengeDeadline={scenarioDeadline}
+            />
           ) : (
             <div className="card">
               <p className="text-sm text-text-muted">
@@ -786,11 +778,20 @@ const Dashboard: React.FC = () => {
             variant="student"
             results={studentDashboard?.recentResults}
             metricDefinitions={studentDashboard?.metricDefinitions}
+            hasProfile={Boolean(studentDashboard?.profile)}
           />
+          <StudentLearningResources />
 
-          <div className="student-dashboard-footnote">
-            Deadlines and rules are set by your instructor. If you miss a week,
-            you'll still continue — the goal is learning through iteration.
+          <div className="flex items-start gap-3 rounded-xl border border-brand-teal/20 bg-brand-teal/10 px-4 py-3 text-xs leading-5 text-text-secondary">
+            <GraduationCap
+              className="mt-0.5 size-4 shrink-0 text-brand-blue"
+              aria-hidden
+            />
+            <p>
+              Deadlines and rules are set by your instructor. If you miss a
+              week, you’ll still continue — the goal is learning through
+              iteration.
+            </p>
           </div>
         </div>
       </div>

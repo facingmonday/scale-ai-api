@@ -7,6 +7,8 @@ const JobService = require("../job/lib/jobService");
 const LedgerEntry = require("../ledger/ledger.model");
 const SimulationWorker = require("../job/lib/simulationWorker");
 const SimulationBatch = require("../job/simulationBatch.model");
+const SimulationJob = require("../job/job.model");
+const challengeAiService = require("./lib/challengeAiService");
 const {
   enqueueSimulationBatchSubmit,
 } = require("../../lib/queues/simulation-batch-worker");
@@ -129,6 +131,24 @@ function nextAutomationStatus(challenge, scheduleUpdates = {}) {
   return publishAt || deadlineAt ? "SCHEDULED" : "UNSCHEDULED";
 }
 
+function isChallengeCalculationComplete(challenge) {
+  return (
+    ["processed", "feedbackReleased", "COMPLETED"].includes(
+      challenge?.automationStatus,
+    ) || !!challenge?.automatedProcessedAt
+  );
+}
+
+function canStudentViewResults(challenge, decision, ledgerEntry) {
+  if (decision?.processingStatus !== "completed" || !ledgerEntry) return false;
+
+  if (challenge?.feedbackReleaseMode === "IMMEDIATE") return true;
+  if (!challenge?.feedbackReleaseMode) {
+    return challenge?.isFeedbackReleased || challenge?.isClosed;
+  }
+  return challenge?.isFeedbackReleased === true;
+}
+
 /**
  * Get all challenges
  * GET /api/admin/challenges
@@ -161,7 +181,17 @@ exports.getScenarioById = async function (req, res) {
     }
 
     // If a challenge is closed, we need to return stats for the challenge
-    if (challenge.isClosed) {
+    const hasNonTerminalJobs = challenge.isClosed
+      ? await SimulationJob.exists({
+          challengeId: challenge._id,
+          status: { $in: ["pending", "running"] },
+        })
+      : false;
+    if (
+      challenge.isClosed &&
+      !hasNonTerminalJobs &&
+      isChallengeCalculationComplete(challenge)
+    ) {
       // This includes stats for the challenge
       const stats = await Challenge.getStatsForScenario(challenge._id);
       challenge.stats = stats;
@@ -257,6 +287,69 @@ exports.createScenario = async function (req, res) {
       return res.status(400).json({ error: error.message });
     }
     res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Create a complete challenge from instructor source text.
+ * POST /v1/admin/challenges/ai
+ */
+exports.createScenarioWithAI = async function (req, res) {
+  try {
+    const { classroomId, prompt, timeZone } = req.body;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    if (!classroomId) {
+      return res.status(400).json({ error: "classroomId is required" });
+    }
+
+    await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId,
+    );
+
+    const challenge = await challengeAiService.createChallengeFromPrompt({
+      classroomId,
+      prompt,
+      timeZone,
+      organizationId,
+      clerkUserId,
+    });
+
+    const AutomationTask = require("../ai/automationTask.model");
+    AutomationTask.trigger("AFTER_CHALLENGE_CREATED", {
+      classroomId: challenge.classroomId,
+      challengeId: challenge._id,
+      organizationId,
+      clerkUserId,
+    }).catch((err) => {
+      console.error("Error triggering AFTER_CHALLENGE_CREATED tasks:", err);
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Challenge created with AI successfully",
+      data: challenge,
+    });
+  } catch (error) {
+    console.error("Error creating challenge with AI:", error);
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    if (error.name === "ValidationError") {
+      return res.status(400).json({ error: error.message });
+    }
+    res.status(500).json({
+      error: "Unable to create the generated challenge. Please try again.",
+    });
   }
 };
 
@@ -626,8 +719,12 @@ exports.rerunScenario = async function (req, res) {
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
-    // Find challenge
-    const challenge = await Challenge.getScenarioById(challengeId, organizationId);
+    // Fetch a document so the lifecycle can return to processing before jobs
+    // are recreated.
+    const challenge = await Challenge.findOne({
+      _id: challengeId,
+      organization: organizationId,
+    });
 
     if (!challenge) {
       return res.status(404).json({ error: "Challenge not found" });
@@ -648,6 +745,8 @@ exports.rerunScenario = async function (req, res) {
         error: "Challenge outcome must be set before rerunning",
       });
     }
+
+    await challenge.beginResultCalculation(clerkUserId);
 
     // 1. Delete existing ledger entries for this challenge
     await LedgerEntry.deleteLedgerEntriesForScenario(challengeId);
@@ -683,7 +782,7 @@ exports.rerunScenario = async function (req, res) {
       message:
         "Challenge rerun initiated. Jobs created and queued for processing.",
       data: {
-        challenge: challenge, // getScenarioById already returns a plain object
+        challenge,
         jobsCreated: jobs.length,
       },
     });
@@ -773,11 +872,9 @@ exports.cancelBatchAndRerunScenario = async function (req, res) {
       });
     }
 
-    // Outcome processing normally closes the challenge after successfully
-    // enqueueing simulations. Apply the same lifecycle transition here so a
-    // recovery rerun clears any stale FAILED status instead of leaving a
-    // completed simulation attached to an open/failed challenge.
-    await challenge.close(clerkUserId);
+    // A rerun returns the challenge to the calculating state until all new
+    // simulation jobs are terminal.
+    await challenge.beginResultCalculation(clerkUserId);
 
     res.json({
       success: true,
@@ -991,7 +1088,12 @@ exports.getStudentScenariosByClassroom = async function (req, res) {
           member._id
         );
 
-        const safeOutcome = outcome
+        const canViewResults = canStudentViewResults(
+          challenge,
+          decision,
+          ledgerEntry,
+        );
+        const safeOutcome = outcome && canViewResults
           ? {
               ...outcome.toObject(),
               hiddenNotes: undefined,
@@ -1002,7 +1104,7 @@ exports.getStudentScenariosByClassroom = async function (req, res) {
           ...challenge,
           decision: decision || null,
           outcome: safeOutcome,
-          ledgerEntry: ledgerEntry || null,
+          ledgerEntry: canViewResults ? ledgerEntry : null,
         };
       })
     );
@@ -1059,12 +1161,6 @@ exports.getScenarioByIdForStudent = async function (req, res) {
 
     // Get challenge outcome
     const outcome = await Outcome.getOutcomeByScenario(challenge._id);
-    const safeOutcome = outcome
-      ? {
-          ...outcome.toObject(),
-          hiddenNotes: undefined,
-        }
-      : null;
 
     // Get ledger entry for this challenge and member
     const ledgerEntry = await LedgerEntry.getLedgerEntry(
@@ -1072,13 +1168,25 @@ exports.getScenarioByIdForStudent = async function (req, res) {
       member._id
     );
 
+    const canViewResults = canStudentViewResults(
+      challenge,
+      decision,
+      ledgerEntry,
+    );
+    const safeOutcome = outcome && canViewResults
+      ? {
+          ...outcome.toObject(),
+          hiddenNotes: undefined,
+        }
+      : null;
+
     res.json({
       success: true,
       data: {
         ...challenge,
         decision: decision || null,
         outcome: safeOutcome,
-        ledgerEntry: ledgerEntry || null,
+        ledgerEntry: canViewResults ? ledgerEntry : null,
       },
     });
   } catch (error) {
@@ -1210,6 +1318,16 @@ exports.releaseFeedbackScenario = async function (req, res) {
     if (challenge.isFeedbackReleased) {
       return res.status(400).json({
         error: "Feedback is already released",
+      });
+    }
+
+    const hasNonTerminalJobs = await SimulationJob.exists({
+      challengeId: challenge._id,
+      status: { $in: ["pending", "running"] },
+    });
+    if (hasNonTerminalJobs || !isChallengeCalculationComplete(challenge)) {
+      return res.status(409).json({
+        error: "Results are still being calculated",
       });
     }
 

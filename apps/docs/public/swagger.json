@@ -509,6 +509,10 @@
           "variables": {
             "type": "object",
             "description": "Map of student decision variable values."
+          },
+          "challengeVariableAnswers": {
+            "type": "object",
+            "description": "Map of this student's answers to challenge-specific variables."
           }
         }
       },
@@ -754,6 +758,16 @@
           },
           "isLockedForStudents": {
             "type": "boolean"
+          },
+          "lifecycleStatus": {
+            "type": "string",
+            "enum": [
+              "Draft",
+              "Open",
+              "Locked",
+              "Closed"
+            ],
+            "description": "Derived from isPublished, isLockedForStudents, and isClosed"
           },
           "allowLateSubmissions": {
             "type": "boolean"
@@ -3229,16 +3243,20 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "scenarioId",
+                  "challengeId",
                   "variables"
                 ],
                 "properties": {
-                  "scenarioId": {
+                  "challengeId": {
                     "type": "string"
                   },
                   "variables": {
                     "type": "object",
                     "description": "Map of variable keys to values."
+                  },
+                  "challengeVariableAnswers": {
+                    "type": "object",
+                    "description": "Map of challenge-specific question keys to this student's answers."
                   }
                 }
               }
@@ -3290,6 +3308,10 @@
                 "properties": {
                   "variables": {
                     "type": "object"
+                  },
+                  "challengeVariableAnswers": {
+                    "type": "object",
+                    "description": "Map of challenge-specific question keys to this student's answers."
                   }
                 }
               }
@@ -4023,6 +4045,51 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/v1/admin/challenges/ai": {
+      "post": {
+        "summary": "Create a challenge with AI",
+        "description": "Generate and create a challenge, its student variables, schedule, and optional outcome from instructor source text. Requires org:admin role.",
+        "tags": [
+          "Challenges"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "classroomId",
+                  "prompt"
+                ],
+                "properties": {
+                  "classroomId": {
+                    "type": "string"
+                  },
+                  "prompt": {
+                    "type": "string"
+                  },
+                  "timeZone": {
+                    "type": "string",
+                    "example": "America/Chicago"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Challenge generated and created successfully."
           }
         }
       }

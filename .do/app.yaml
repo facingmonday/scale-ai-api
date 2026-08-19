@@ -18,3 +18,6 @@ static_sites:
       - key: VITE_CLERK_PUBLISHABLE_KEY
         scope: BUILD_TIME
         type: SECRET
+      - key: VITE_HELP_SCOUT_BEACON_ID
+        scope: BUILD_TIME
+        value: e48e78fe-0bca-41b2-b7fe-276866039818

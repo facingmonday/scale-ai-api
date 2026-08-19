@@ -1,13 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Dialog } from "primereact/dialog";
-import { Button } from "primereact/button";
 import { FormProvider, useForm } from "react-hook-form";
-import slugify from "slugify";
 import variableDefinitionsService from "../services/variableDefinition";
 import type { VariableDefinition } from "../types/variableDefinition";
 import VariableDefinitionsForm, {
   type VariableDefinitionsFormValues,
 } from "./VariableDefinitionsForm";
+import VariableDefinitionDeleteButton from "./VariableDefinitionDeleteButton";
 
 type Props = {
   classroomId: string;
@@ -15,6 +14,7 @@ type Props = {
   variableDefinition?: VariableDefinition;
   defaultAppliesTo?: VariableDefinition["appliesTo"];
   challengeId?: string | null;
+  allowDelete?: boolean;
   onSaved?: () => void;
 };
 
@@ -123,6 +123,7 @@ const VariableDefinitionsAddButton: React.FC<Props> = ({
   variableDefinition,
   defaultAppliesTo,
   challengeId,
+  allowDelete = false,
   onSaved,
 }) => {
   const [visible, setVisible] = useState(false);
@@ -147,10 +148,10 @@ const VariableDefinitionsAddButton: React.FC<Props> = ({
   const optionsTextValue = form.watch("optionsText");
   const defaultValueTextValue = form.watch("defaultValueText");
 
-  const isValidCreateKey = useMemo(() => {
-    const slug = slugify(labelValue || "", { lower: true, strict: true });
-    return slug.length > 0;
-  }, [labelValue]);
+  const hasCreateLabel = useMemo(
+    () => labelValue.trim().length > 0,
+    [labelValue]
+  );
 
   const resetState = () => {
     setError(null);
@@ -219,8 +220,7 @@ const VariableDefinitionsAddButton: React.FC<Props> = ({
           payloadCommon
         );
       } else {
-        const key = slugify(values.label || "", { lower: true, strict: true });
-        if (!key) {
+        if (!values.label.trim()) {
           setError("Label is required");
           setIsSubmitting(false);
           return;
@@ -228,7 +228,6 @@ const VariableDefinitionsAddButton: React.FC<Props> = ({
 
         await variableDefinitionsService.create({
           classroomId,
-          key,
           ...payloadCommon,
         });
       }
@@ -243,14 +242,31 @@ const VariableDefinitionsAddButton: React.FC<Props> = ({
     }
   });
 
+  const isChallengeScoped = Boolean(
+    challengeId || variableDefinition?.challengeId,
+  );
+  const canDelete = Boolean(
+    isEdit &&
+      allowDelete &&
+      !isSubmitting &&
+      variableDefinition?.isActive &&
+      classroomId &&
+      (challengeId || variableDefinition?.challengeId),
+  );
+  const resolvedChallengeId =
+    challengeId || variableDefinition?.challengeId || null;
   const title = isEdit
-    ? "Edit Variable Definition"
-    : "Create Variable Definition";
+    ? isChallengeScoped
+      ? "Edit Challenge Variable"
+      : "Edit Variable Definition"
+    : isChallengeScoped
+      ? "Create Challenge Variable"
+      : "Create Variable Definition";
 
   const canSubmit =
     !isSubmitting &&
     form.formState.isValid &&
-    (isEdit || isValidCreateKey) &&
+    (isEdit || hasCreateLabel) &&
     (!inputTypeNeedsOptions(inputTypeValue) ||
       (optionsTextValue ?? "")
         .split("\n")
@@ -271,11 +287,19 @@ const VariableDefinitionsAddButton: React.FC<Props> = ({
           + Create
         </button>
       ) : (
-        <Button
-          icon="pi pi-pencil"
-          className="p-button-rounded p-button-text"
+        <button
+          type="button"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-ui-surface/90 text-text-secondary transition-colors hover:bg-ui-surface-hover hover:text-text-primary"
           onClick={() => setVisible(true)}
-        />
+          aria-label={`Edit ${variableDefinition?.label || "variable"}`}
+          title={
+            isChallengeScoped
+              ? "Edit challenge variable"
+              : "Edit variable definition"
+          }
+        >
+          <i className="pi pi-pencil text-sm" aria-hidden="true" />
+        </button>
       )}
 
       <Dialog
@@ -294,21 +318,39 @@ const VariableDefinitionsAddButton: React.FC<Props> = ({
           footer: { className: "modal-footer" },
         }}
         footer={
-          <div className="flex gap-2 justify-end">
-            <button
-              className="btn-outline"
-              onClick={handleHide}
-              disabled={isSubmitting}
-            >
-              Cancel
-            </button>
-            <button
-              className="btn-teal"
-              onClick={() => void submit()}
-              disabled={!canSubmit}
-            >
-              {isSubmitting ? "Saving..." : "Save"}
-            </button>
+          <div
+            className={`flex w-full items-center gap-2 ${
+              canDelete ? "justify-between" : "justify-end"
+            }`}
+          >
+            {canDelete && variableDefinition && resolvedChallengeId && (
+              <VariableDefinitionDeleteButton
+                classroomId={classroomId}
+                challengeId={resolvedChallengeId}
+                variableDefinition={variableDefinition}
+                onDeleted={() => {
+                  setVisible(false);
+                  resetState();
+                  onSaved?.();
+                }}
+              />
+            )}
+            <div className="flex gap-2">
+              <button
+                className="btn-outline"
+                onClick={handleHide}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn-teal"
+                onClick={() => void submit()}
+                disabled={!canSubmit}
+              >
+                {isSubmitting ? "Saving..." : "Save"}
+              </button>
+            </div>
           </div>
         }
       >

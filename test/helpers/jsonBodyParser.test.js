@@ -30,6 +30,15 @@ test("JSON body parser", async (t) => {
     assert.equal(response.body.length, body.csv.length);
   });
 
+  await t.test("accepts large AI challenge prompts", async () => {
+    const response = await request(buildApp())
+      .post("/v1/admin/challenges/ai")
+      .send(body)
+      .expect(200);
+
+    assert.equal(response.body.length, body.csv.length);
+  });
+
   await t.test("keeps the default limit for other endpoints", async () => {
     const response = await request(buildApp())
       .post("/v1/licensing/summary")

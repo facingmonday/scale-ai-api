@@ -6,6 +6,7 @@ import challengeService from "../../services/challenge";
 import decisionService from "../../services/decision";
 import ledgerService from "../../services/ledger";
 import { normalizeScenarioId, unwrap } from "./utils";
+import { isChallengeLockedForStudents } from "@/utils/challengeStatus";
 import { ActionBanner } from "./ActionBanner";
 import type { ScenarioWithVariables } from "../../types/challenge";
 import type { SubmissionWithVariables } from "../../types/decision";
@@ -93,7 +94,7 @@ const StudentActionBanner: React.FC = () => {
     if (isLoading || !currentScenario || !challengeId) return null;
 
     const submitted = !!currentSubmission;
-    const scenarioClosed = Boolean((currentScenario as any)?.isClosed);
+    const scenarioLockedOrClosed = isChallengeLockedForStudents(currentScenario);
     const resultsAvailable =
       !!latestLedgerEntry ||
       String((currentScenario as any)?.status ?? "")
@@ -113,7 +114,7 @@ const StudentActionBanner: React.FC = () => {
       };
     }
 
-    if (!submitted && !scenarioClosed) {
+    if (!submitted && !scenarioLockedOrClosed) {
       return {
         title: "You need to submit this week's decisions",
         subtitle: "One decision per week. Once submitted, it locks.",
@@ -123,7 +124,7 @@ const StudentActionBanner: React.FC = () => {
       };
     }
 
-    if (!submitted && scenarioClosed) {
+    if (!submitted && scenarioLockedOrClosed) {
       return {
         title: "You missed this week's decision",
         subtitle:
@@ -134,7 +135,7 @@ const StudentActionBanner: React.FC = () => {
       };
     }
 
-    if (submitted && !scenarioClosed) {
+    if (submitted && !scenarioLockedOrClosed) {
       return {
         title: "Submitted — you're done for now",
         subtitle: "Waiting for instructor approval and results.",

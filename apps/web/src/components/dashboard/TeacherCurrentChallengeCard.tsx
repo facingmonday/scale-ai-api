@@ -13,6 +13,9 @@ import type { SimulationJob } from "@/types/job";
 import type { SubmissionWithVariables } from "@/types/decision";
 import type { ClassDashboard } from "@/types/dashboard";
 import { getErrorMessage } from "@/utils";
+import {
+  getChallengeLifecycleStatus,
+} from "@/utils/challengeStatus";
 
 interface TeacherCurrentScenarioCardProps {
   classroomId: string | null;
@@ -170,15 +173,20 @@ const TeacherCurrentScenarioCard: React.FC<TeacherCurrentScenarioCardProps> = ({
   const scenarioStatus = useMemo(() => {
     if (!activeScenario)
       return { label: "No challenge", kind: "muted" as const };
-    const isPublished = !!activeScenario.isPublished;
-    const isClosed = !!activeScenario.isClosed;
-    if (!isPublished) return { label: "Draft", kind: "muted" as const };
-    if (isPublished && !isClosed)
-      return { label: "Published", kind: "success" as const };
+    const lifecycleStatus = getChallengeLifecycleStatus(activeScenario);
+    if (lifecycleStatus === "Draft") {
+      return { label: "Draft", kind: "muted" as const };
+    }
+    if (lifecycleStatus === "Open") {
+      return { label: "Open", kind: "success" as const };
+    }
+    if (lifecycleStatus === "Locked") {
+      return { label: "Locked", kind: "muted" as const };
+    }
     if (!outcome)
       return { label: "Awaiting outcome", kind: "warning" as const };
     if (jobCounts.inProgress > 0)
-      return { label: "Processing AI", kind: "warning" as const };
+      return { label: "Calculating Results", kind: "warning" as const };
     if (jobCounts.failed > 0)
       return { label: "Some failed", kind: "warning" as const };
     // If outcome exists and all jobs completed successfully, consider it completed

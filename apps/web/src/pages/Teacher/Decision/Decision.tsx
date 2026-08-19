@@ -8,6 +8,7 @@ import BasicLayout from "../../../components/Layouts/BasicLayout";
 import challengeService from "../../../services/challenge";
 import decisionService from "../../../services/decision";
 import outcomeService from "../../../services/outcome";
+import variableDefinitionsService from "../../../services/variableDefinition";
 import Outcome from "@/components/Outcome";
 import { FormProvider, useForm } from "react-hook-form";
 import type { Challenge } from "@/types/challenge";
@@ -23,6 +24,10 @@ import {
   getDecisionGenerationMethodLabel,
   getDecisionGenerationMethodBadgeClass,
 } from "@/constants";
+import {
+  getChallengePresentationBadgeClass,
+  getChallengePresentationStatus,
+} from "@/utils/challengeStatus";
 
 const SubmissionPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -30,6 +35,8 @@ const SubmissionPage: React.FC = () => {
   const { activeClassroom } = useAuth();
   const [decision, setSubmission] = useState<Decision | null>(null);
   const [challenge, setScenario] = useState<Challenge | null>(null);
+  const [challengeVariableDefinitions, setChallengeVariableDefinitions] =
+    useState<VariableDefinitionWithValue[]>([]);
   const [outcome, setScenarioOutcome] =
     useState<ScenarioOutcomeModel | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -42,11 +49,11 @@ const SubmissionPage: React.FC = () => {
     mode: "onChange",
   });
 
-  const fetchSubmission = useCallback(async () => {
+  const fetchSubmission = useCallback(async (silent = false) => {
     if (!id) return;
 
-    setIsLoading(true);
-    setError(null);
+    if (!silent) setIsLoading(true);
+    if (!silent) setError(null);
     try {
       const response = await decisionService.getById(id, "admin");
       const submissionData = (response.data || response) as Decision;
@@ -62,6 +69,17 @@ const SubmissionPage: React.FC = () => {
           const scenarioData = (scenarioResponse.data ||
             scenarioResponse) as Challenge;
           setScenario(scenarioData);
+
+          const varDefsResponse = await variableDefinitionsService.getAll(
+            scenarioData.classroomId,
+            "challenge",
+            submissionData.challengeId
+          );
+          const challengeDefs = (varDefsResponse?.data ??
+            varDefsResponse ?? []) as VariableDefinitionWithValue[];
+          setChallengeVariableDefinitions(
+            challengeDefs.filter((def) => def.appliesTo === "challenge")
+          );
 
           // Fetch challenge outcome to determine completion status
           try {
@@ -80,9 +98,9 @@ const SubmissionPage: React.FC = () => {
       }
     } catch (err) {
       console.error("Failed to fetch decision:", err);
-      setError("Failed to load decision");
+      if (!silent) setError("Failed to load decision");
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   }, [id]);
 
@@ -116,33 +134,24 @@ const SubmissionPage: React.FC = () => {
 
   // Transform challenge variables into VariableDefinitionWithValue[] format
   const scenarioVariablesDisplay = useMemo(() => {
-    if (!challenge?.variables || !activeClassroom) return [];
+    if (!challenge || !decision) return [];
 
-    const scenarioDefs = activeClassroom?.variableDefinitions?.challenge ?? [];
-    const scenarioVariables =
-      (challenge.variables as Record<string, unknown>) ?? {};
+    const submittedAnswers = decision.challengeVariableAnswers ?? {};
+    const configuredValues = challenge.variables ?? {};
 
-    return scenarioDefs
+    return challengeVariableDefinitions
       .filter((def) =>
-        Object.prototype.hasOwnProperty.call(scenarioVariables, def.key)
+        Object.prototype.hasOwnProperty.call(submittedAnswers, def.key)
       )
       .map((def) => ({
         ...def,
         value:
-          scenarioVariables[def.key] ??
+          submittedAnswers[def.key] ??
+          configuredValues[def.key] ??
           def.defaultValue ??
           (def.dataType === "number" ? 0 : ""),
       })) as VariableDefinitionWithValue[];
-  }, [challenge?.variables, activeClassroom]);
-
-  // Determine challenge completion status
-  // Note: Since 'approved' property doesn't exist, we check if outcome exists
-  // and challenge is closed/published as indicators of completion
-  const isScenarioCompleted = useMemo(() => {
-    return (
-      challenge?.isPublished && challenge?.isClosed && outcome !== null
-    );
-  }, [challenge?.isPublished, challenge?.isClosed, outcome]);
+  }, [challenge, challengeVariableDefinitions, decision]);
 
   // Extract jobs array from decision (jobs may not be in the type definition)
   const jobs = useMemo(() => {
@@ -152,6 +161,36 @@ const SubmissionPage: React.FC = () => {
     };
     return submissionWithJobs.jobs ?? [];
   }, [decision]);
+
+  const challengePresentationStatus = useMemo(
+    () =>
+      getChallengePresentationStatus(challenge, {
+        audience: "teacher",
+        decisionProcessingStatus: decision?.processingStatus,
+        hasLedger: !!decision?.ledgerEntry,
+        jobStatuses: jobs.map((job) => job.status),
+      }),
+    [challenge, decision?.ledgerEntry, decision?.processingStatus, jobs],
+  );
+
+  const isCalculatingResults =
+    challengePresentationStatus === "Calculating Results";
+
+  useEffect(() => {
+    if (!isCalculatingResults) return;
+
+    const refresh = () => {
+      if (document.visibilityState === "visible") {
+        void fetchSubmission(true);
+      }
+    };
+    const intervalId = window.setInterval(refresh, 15_000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [fetchSubmission, isCalculatingResults]);
 
   // Use challenge title if available, otherwise fallback
   const displayTitle = useMemo(
@@ -254,7 +293,10 @@ const SubmissionPage: React.FC = () => {
           <div className="container">
             <div className="card text-center">
               <p className="text-red-400 mb-4">{error}</p>
-              <button onClick={fetchSubmission} className="btn-teal">
+              <button
+                onClick={() => void fetchSubmission()}
+                className="btn-teal"
+              >
                 Try Again
               </button>
             </div>
@@ -284,8 +326,14 @@ const SubmissionPage: React.FC = () => {
             <div className="flex items-center justify-start gap-2 mb-6">
               <div className="flex items-center gap-3">
                 <h1 className="heading-xl">{displayTitle}</h1>
-                {isScenarioCompleted && (
-                  <span className="badge badge-success">Completed</span>
+                {challenge && (
+                  <span
+                    className={`badge ${getChallengePresentationBadgeClass(
+                      challengePresentationStatus,
+                    )}`}
+                  >
+                    {challengePresentationStatus}
+                  </span>
                 )}
               </div>
               <div className="flex items-center gap-2">
@@ -382,16 +430,18 @@ const SubmissionPage: React.FC = () => {
                     </button>
                   </div>
                   <div className="space-y-2">
-                    <div className="flex gap-4">
+                    <div className="flex gap-4 min-w-0">
                       {profile.imageUrl ? (
-                        <img
-                          src={profile.imageUrl}
-                          alt={`${profile.shopName} thumbnail`}
-                          className="profile-thumbnail"
-                          loading="lazy"
-                        />
+                        <div className="flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border border-ui-border bg-ui-muted">
+                          <img
+                            src={profile.imageUrl}
+                            alt={`${profile.shopName} thumbnail`}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
+                        </div>
                       ) : null}
-                      <div className="space-y-2">
+                      <div className="space-y-2 min-w-0 flex-1">
                         <div>
                           <p className="text-text-muted text-sm">Shop Name</p>
                           <p className="text-text-primary">{profile.shopName}</p>
@@ -461,9 +511,13 @@ const SubmissionPage: React.FC = () => {
               <div className="card mb-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="heading-lg">Challenge</h2>
-                  {isScenarioCompleted && (
-                    <span className="badge badge-success">Completed</span>
-                  )}
+                  <span
+                    className={`badge ${getChallengePresentationBadgeClass(
+                      challengePresentationStatus,
+                    )}`}
+                  >
+                    {challengePresentationStatus}
+                  </span>
                 </div>
                 {challenge.description && (
                   <p className="text-text-muted mb-4">{challenge.description}</p>
@@ -472,13 +526,7 @@ const SubmissionPage: React.FC = () => {
                   <div>
                     <span className="text-text-muted">Status: </span>
                     <span className="text-text-primary font-medium">
-                      {challenge.isPublished
-                        ? challenge.isClosed
-                          ? isScenarioCompleted
-                            ? "Completed"
-                            : "Closed"
-                          : "Published"
-                        : "Draft"}
+                      {challengePresentationStatus}
                     </span>
                   </div>
                   {challenge.isPublished && (
@@ -517,8 +565,8 @@ const SubmissionPage: React.FC = () => {
               <div className="card mb-6">
                 <VariablesDisplay
                   variables={scenarioVariablesDisplay}
-                  title={"Challenge Variables"}
-                  description="Context and conditions for this challenge."
+                  title={"Challenge Answers"}
+                  description="Student's submitted answers for this challenge."
                 />
               </div>
             )}

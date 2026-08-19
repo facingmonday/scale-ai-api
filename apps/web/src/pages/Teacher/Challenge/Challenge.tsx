@@ -13,6 +13,10 @@ import type { ScenarioWithVariables } from "@/types/challenge";
 import type { VariableDefinitionWithValue } from "@/types/decision";
 import { useGlobalContext } from "@/context/GlobalContext";
 import { getErrorMessage } from "@/utils";
+import {
+  getChallengePresentationBadgeClass,
+  getChallengePresentationStatus,
+} from "@/utils/challengeStatus";
 import MetricCard from "@/components/dashboard/MetricCard";
 import profileTypeService from "../../../services/profileType";
 import type { ProfileType as StoreTypeModel } from "../../../types/profileType";
@@ -107,11 +111,17 @@ const Challenge: React.FC = () => {
         const scenarioVariables =
           (next.variables as Record<string, unknown> | undefined) ?? {};
 
-        // Filter: active defs for creation; active OR key in challenge for historical display
+        // Challenge-scoped definitions disappear immediately when removed.
+        // Keep inactive classroom-wide definitions only when an older challenge
+        // still has a stored value, so historical records remain understandable.
         const scenarioDefsForForm = scenarioDefs.filter(
           (def) =>
             def.isActive ||
-            Object.prototype.hasOwnProperty.call(scenarioVariables, def.key),
+            (!def.challengeId &&
+              Object.prototype.hasOwnProperty.call(
+                scenarioVariables,
+                def.key,
+              )),
         );
         const variablesWithValues: VariableDefinitionWithValue[] =
           scenarioDefsForForm.map((def) => ({
@@ -227,6 +237,22 @@ const Challenge: React.FC = () => {
       window.removeEventListener("focus", handleFocus);
     };
   }, [id, fetchScenario]);
+
+  useEffect(() => {
+    const automationStatus = String(
+      challenge?.automationStatus || "",
+    ).toLowerCase();
+    if (!["queuedforprocessing", "processing"].includes(automationStatus)) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void fetchScenario(true);
+      }
+    }, 15_000);
+    return () => window.clearInterval(intervalId);
+  }, [challenge?.automationStatus, fetchScenario]);
 
   // Watch variables to ensure they're tracked by the form
   const watchedFormValues = form.watch();
@@ -412,20 +438,18 @@ const Challenge: React.FC = () => {
               <div className="flex items-center justify-between mb-4">
                 <h1 className="heading-xl">
                   {challenge.title || (challenge as { name?: string }).name}
-                  {/* Status badge */}
-                  {challenge.isClosed ? (
-                    <span className="badge badge-danger ml-4 align-middle">
-                      Closed
-                    </span>
-                  ) : challenge.isPublished ? (
-                    <span className="badge badge-success ml-4 align-middle">
-                      Published
-                    </span>
-                  ) : (
-                    <span className="badge badge-muted ml-4 align-middle">
-                      Unpublished
-                    </span>
-                  )}
+                  {(() => {
+                    const status = getChallengePresentationStatus(challenge, {
+                      audience: "teacher",
+                    });
+                    return (
+                      <span
+                        className={`badge ml-4 align-middle ${getChallengePresentationBadgeClass(status)}`}
+                      >
+                        {status}
+                      </span>
+                    );
+                  })()}
                 </h1>
                 <div className="flex gap-2">
                   {!isEditing && !challenge.isClosed ? (

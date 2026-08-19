@@ -20,6 +20,7 @@ import { GlobalContextProvider } from "./context/GlobalContext";
 import TeacherClassroom from "./pages/Teacher/Classroom";
 import LoadingOverlay from "./components/LoadingOverlay";
 import ScrollToTop from "./components/ScrollToTop";
+import HelpScoutBeacon from "./components/HelpScoutBeacon";
 
 const LoadingScreen = () => <LoadingOverlay loading={true} />;
 
@@ -209,6 +210,7 @@ export default function App() {
 
               <SignedIn>
                 <AuthProvider>
+                  <HelpScoutBeacon />
                   <Routes>
                     <Route path="/join" element={<JoinPathRedirect />} />
                     <Route

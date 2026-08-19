@@ -17,7 +17,6 @@ import variableDefinitionsService from "../../../services/variableDefinition";
 import type { VariableDefinition } from "../../../types/variableDefinition";
 import Outcome from "@/components/Outcome";
 import VariablesForm from "@/components/VariablesForm";
-import VariablesDisplay from "@/components/VariablesDisplay";
 import { useAuth } from "@/context/AuthContext";
 import { useGlobalContext } from "@/context/GlobalContext";
 import { FormProvider, useForm } from "react-hook-form";
@@ -25,6 +24,11 @@ import type { Challenge } from "@/types/challenge";
 import type { Decision } from "@/types/decision";
 import type { Profile } from "@/types/profile";
 import { getErrorMessage } from "@/utils";
+import {
+  getChallengePresentationBadgeClass,
+  getChallengePresentationStatus,
+  isChallengeLockedForStudents,
+} from "@/utils/challengeStatus";
 import type { VariableDefinitionWithValue } from "@/types/decision";
 import {
   getDecisionGenerationMethodLabel,
@@ -35,6 +39,7 @@ import LoadingOverlay from "../../../components/LoadingOverlay";
 import PreviousScenarioResults from "@/components/PreviousChallengeResults";
 import Alert from "@/components/Alert";
 import StoreSummary from "@/components/ProfileSummary";
+import SubmissionDeadlineCard from "@/components/SubmissionDeadlineCard";
 
 const ScenarioPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -45,9 +50,9 @@ const ScenarioPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [profile, setStore] = useState<Profile | null>(null);
   const [isLoadingStore, setIsLoadingStore] = useState(true);
-  const [scenarioVariableDefinitions, setScenarioVariableDefinitions] =
+  const [decisionVariableDefinitions, setDecisionVariableDefinitions] =
     useState<VariableDefinitionWithValue[]>([]);
-  const [displayScenarioVariables, setDisplayScenarioVariables] = useState<
+  const [challengeVariableDefinitions, setChallengeVariableDefinitions] = useState<
     VariableDefinitionWithValue[]
   >([]);
   const [error, setError] = useState<string | null>(null);
@@ -55,8 +60,9 @@ const ScenarioPage: React.FC = () => {
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const form = useForm<{
     variables: Record<string, unknown>;
+    challengeVariableAnswers: Record<string, unknown>;
   }>({
-    defaultValues: { variables: {} },
+    defaultValues: { variables: {}, challengeVariableAnswers: {} },
     mode: "onChange",
   });
 
@@ -68,7 +74,10 @@ const ScenarioPage: React.FC = () => {
   activeClassroomRef.current = activeClassroom;
 
   const fetchScenario = useCallback(
-    async (classroomOverride?: typeof activeClassroom) => {
+    async (
+      classroomOverride?: typeof activeClassroom,
+      silent = false,
+    ) => {
       if (!id) return;
 
       const classroom = classroomOverride ?? activeClassroomRef.current;
@@ -77,8 +86,8 @@ const ScenarioPage: React.FC = () => {
         return;
       }
 
-      setIsLoading(true);
-      setError(null);
+      if (!silent) setIsLoading(true);
+      if (!silent) setError(null);
       try {
         // Fetch challenge
         const scenarioResp = await challengeService.getById(id, "student");
@@ -114,11 +123,11 @@ const ScenarioPage: React.FC = () => {
                 ? submissionsList[0]
                 : null;
 
-            // Merge the decision with variables into the challenge
-            if (latestSubmission && latestSubmission.variables) {
+            // Merge the fully populated decision into the challenge response.
+            if (latestSubmission) {
               scenarioData.decision = {
                 ...scenarioData.decision,
-                variables: latestSubmission.variables,
+                ...latestSubmission,
               };
             }
           } catch (submissionErr) {
@@ -137,24 +146,34 @@ const ScenarioPage: React.FC = () => {
         // Get challenge variables from the challenge data
         const scenarioVariables =
           (scenarioData.variables as Record<string, unknown> | undefined) ?? {};
+        const submittedChallengeVariableAnswers =
+          (scenarioData.decision?.challengeVariableAnswers as
+            | Record<string, unknown>
+            | undefined) ?? {};
 
-        // Create VariableDefinitionWithValue array for challenge variables
-        // Show active defs or defs with values in challenge (for historical display)
+        // Challenge-scoped definitions are student questions for this challenge.
+        // Prefer this student's saved answers, then use the teacher-configured
+        // challenge value/default for a new submission.
         const scenarioDefsForDisplay = scenarioDefs.filter(
           (def) =>
             def.isActive ||
+            Object.prototype.hasOwnProperty.call(
+              submittedChallengeVariableAnswers,
+              def.key
+            ) ||
             Object.prototype.hasOwnProperty.call(scenarioVariables, def.key)
         );
         const scenarioVariablesWithValues: VariableDefinitionWithValue[] =
           scenarioDefsForDisplay.map((def) => ({
             ...def,
             value:
+              submittedChallengeVariableAnswers[def.key] ??
               scenarioVariables[def.key] ??
               def.defaultValue ??
               (def.dataType === "number" ? 0 : ""),
           }));
 
-        setDisplayScenarioVariables(scenarioVariablesWithValues);
+        setChallengeVariableDefinitions(scenarioVariablesWithValues);
 
         // Merge variable definitions with existing decision values
         const submissionVariables =
@@ -166,7 +185,9 @@ const ScenarioPage: React.FC = () => {
         // - New/editable decision: only isActive variables (don't include inactive in new decisions)
         // - Old/read-only decision: only variables that were part of that decision (show historical vars even if now inactive)
         const isReadOnlyView =
-          !scenarioData?.isPublished || !!scenarioData?.isClosed;
+          !scenarioData?.isPublished ||
+          !!scenarioData?.isClosed ||
+          !!scenarioData?.isLockedForStudents;
         const hasExistingSubmission = !!scenarioData?.decision;
         const submissionDefsForForm = submissionDefs.filter((def) =>
           isReadOnlyView && hasExistingSubmission
@@ -182,22 +203,30 @@ const ScenarioPage: React.FC = () => {
               (def.dataType === "number" ? 0 : ""),
           }));
 
-        setScenarioVariableDefinitions(variablesWithValues);
+        setDecisionVariableDefinitions(variablesWithValues);
 
         // Hydrate form with all variable values
         const variablesRecord = variablesWithValues.reduce((acc, variable) => {
           acc[variable.key] = variable.value;
           return acc;
         }, {} as Record<string, unknown>);
+        const challengeVariableAnswersRecord =
+          scenarioVariablesWithValues.reduce((acc, variable) => {
+            acc[variable.key] = variable.value;
+            return acc;
+          }, {} as Record<string, unknown>);
         // Use reset (not setValue) so defaultValues are updated and isDirty clears
-        form.reset({ variables: variablesRecord });
+        form.reset({
+          variables: variablesRecord,
+          challengeVariableAnswers: challengeVariableAnswersRecord,
+        });
         // Explicitly trigger validation to update isValid state
-        await form.trigger("variables");
+        await form.trigger();
       } catch (err) {
         console.error("Failed to fetch challenge:", err);
-        setError("Failed to load challenge");
+        if (!silent) setError("Failed to load challenge");
       } finally {
-        setIsLoading(false);
+        if (!silent) setIsLoading(false);
       }
     },
     [id, form]
@@ -227,7 +256,6 @@ const ScenarioPage: React.FC = () => {
 
   useEffect(() => {
     if (id) {
-      console.log('-----useEffect fetchScenario');
       void fetchScenario();
     }
   }, [id, fetchScenario]);
@@ -261,6 +289,7 @@ const ScenarioPage: React.FC = () => {
         await decisionService.update(decision._id, {
           challengeId: id,
           variables: values.variables ?? {},
+          challengeVariableAnswers: values.challengeVariableAnswers ?? {},
         });
         globalContext?.showToast?.(
           "Decision updated successfully",
@@ -270,6 +299,7 @@ const ScenarioPage: React.FC = () => {
         await decisionService.submit({
           challengeId: id,
           variables: values.variables ?? {},
+          challengeVariableAnswers: values.challengeVariableAnswers ?? {},
         });
         globalContext?.showToast?.(
           "Challenge submitted successfully",
@@ -293,6 +323,7 @@ const ScenarioPage: React.FC = () => {
       if (!id) return;
       // Capture before any async work - refetchMe can trigger re-renders that affect formState reads
       await refetchMe();
+      await fetchScenario(undefined, true);
     };
 
     window.addEventListener("focus", handleFocus);
@@ -304,13 +335,18 @@ const ScenarioPage: React.FC = () => {
   const decision = challenge?.decision as Decision | undefined;
 
   const hasSubmission = !!decision;
-  // Read-only if challenge is not published or challenge is closed
-  // Decisions are editable if challenge is not closed
-  const isReadOnly = !challenge?.isPublished || challenge?.isClosed;
-  // Show submit button if challenge is published, not closed, and profile exists (allows re-decision)
+  const challengeLocked = isChallengeLockedForStudents(challenge);
+  const isReadOnly =
+    !challenge?.isPublished ||
+    !!challenge?.isClosed ||
+    !!challenge?.isLockedForStudents;
   const hasStore = !!profile;
-  const canSubmit = challenge?.isPublished && !challenge?.isClosed && hasStore;
-  const showSubmissionVariables = !(challenge?.isClosed && !hasSubmission);
+  const canSubmit =
+    !!challenge?.isPublished &&
+    !challenge?.isClosed &&
+    !challenge?.isLockedForStudents &&
+    hasStore;
+  const showSubmissionVariables = !(challengeLocked && !hasSubmission);
   const showUnsavedBanner =
     form.formState.isDirty && !isReadOnly && showSubmissionVariables;
 
@@ -323,12 +359,32 @@ const ScenarioPage: React.FC = () => {
 
   const scenarioStatus = React.useMemo(() => {
     if (!challenge) return null;
-    const isPublished = !!challenge.isPublished;
-    const isClosed = !!challenge.isClosed;
-    if (isClosed) return { label: "Closed", badgeClass: "badge-danger" };
-    if (!isPublished) return { label: "Draft", badgeClass: "badge-warning" };
-    return { label: "Open", badgeClass: "badge-success" };
-  }, [challenge]);
+    const status = getChallengePresentationStatus(challenge, {
+      audience: "student",
+      decisionProcessingStatus: decision?.processingStatus,
+      hasLedger: !!challenge.ledgerEntry,
+    });
+    return {
+      label: status,
+      badgeClass: getChallengePresentationBadgeClass(status),
+    };
+  }, [challenge, decision?.processingStatus]);
+
+  const isCalculatingResults =
+    scenarioStatus?.label === "Calculating Results";
+  const studentResultsReady = scenarioStatus?.label === "Results Ready";
+
+  useEffect(() => {
+    if (!isCalculatingResults) return;
+
+    const refresh = () => {
+      if (document.visibilityState === "visible") {
+        void fetchScenario(undefined, true);
+      }
+    };
+    const intervalId = window.setInterval(refresh, 15_000);
+    return () => window.clearInterval(intervalId);
+  }, [fetchScenario, isCalculatingResults]);
 
   const submissionDeadline = useMemo(() => {
     if (!challenge?.submissionDeadlineAt) return null;
@@ -427,17 +483,8 @@ const ScenarioPage: React.FC = () => {
                 </div>
               </div>
 
-              {submissionDeadline && !challenge.isClosed && (
-                <div className="card mb-6">
-                  <h2 className="heading-sm">Submission Deadline</h2>
-                  <p className="text-sm text-text-muted mt-1">
-                    Submit or update your decisions by{" "}
-                    <strong className="text-text-primary">
-                      {submissionDeadline.toLocaleString()}
-                    </strong>
-                    .
-                  </p>
-                </div>
+              {submissionDeadline && !challengeLocked && (
+                <SubmissionDeadlineCard deadline={submissionDeadline} />
               )}
 
               {!isLoadingStore && !hasStore && (
@@ -479,17 +526,23 @@ const ScenarioPage: React.FC = () => {
                 </div>
               )}
 
-              {displayScenarioVariables.length > 0 && (
+              {challengeVariableDefinitions.length > 0 && (
                 <div className="card mb-6">
-                  <VariablesDisplay
-                    variables={displayScenarioVariables}
+                  <VariablesForm
+                    variables={challengeVariableDefinitions}
+                    namePrefix="challengeVariableAnswers"
+                    readOnly={isReadOnly}
                     title="Challenge Variables"
-                    description="Context and conditions for this challenge."
+                    description={
+                      isReadOnly
+                        ? "View your submitted answers for this challenge."
+                        : "Answer the questions for this challenge."
+                    }
                   />
                 </div>
               )}
 
-              {challenge?.isClosed && !hasSubmission && (
+              {challengeLocked && !hasSubmission && (
                 <div className="mb-6">
                   <Alert
                     variant="info"
@@ -500,10 +553,10 @@ const ScenarioPage: React.FC = () => {
               )}
 
               {showSubmissionVariables &&
-                scenarioVariableDefinitions.length > 0 && (
+                decisionVariableDefinitions.length > 0 && (
                   <div className="card mb-6">
                     <VariablesForm
-                      variables={scenarioVariableDefinitions}
+                      variables={decisionVariableDefinitions}
                       readOnly={isReadOnly}
                       title={submissionVariablesDisplayTitle}
                       description={
@@ -515,14 +568,12 @@ const ScenarioPage: React.FC = () => {
                   </div>
                 )}
 
-              {challenge?.isClosed &&
-                hasSubmission &&
-                challenge?.decision?.processingStatus === "processing" && (
+              {hasSubmission && isCalculatingResults && (
                   <div className="mb-6">
                     <Alert
                       variant="info"
-                      title="Processing Decision"
-                      message="Your decision is being processed. Please wait for it to complete."
+                      title="Calculating Results"
+                      message="Your decision was submitted successfully. We’re calculating your results now; this page will update automatically when they’re ready."
                     />
                   </div>
                 )}
@@ -530,19 +581,23 @@ const ScenarioPage: React.FC = () => {
                 <PreviousScenarioResults challengeId={id} />
               )}
 
-              <div className="mb-4">
-                {isLoading ? (
-                  <p>Loading...</p>
-                ) : (
-                  <Outcome challengeId={id} challenge={challenge} />
-                )}
-              </div>
+              {studentResultsReady && (
+                <>
+                  <div className="mb-4">
+                    {isLoading ? (
+                      <p>Loading...</p>
+                    ) : (
+                      <Outcome challengeId={id} challenge={challenge} />
+                    )}
+                  </div>
 
-              <div className="mb-6">
-                {challenge?.ledgerEntry && (
-                  <LedgerVisualization ledger={challenge?.ledgerEntry} />
-                )}
-              </div>
+                  <div className="mb-6">
+                    {challenge?.ledgerEntry && (
+                      <LedgerVisualization ledger={challenge.ledgerEntry} />
+                    )}
+                  </div>
+                </>
+              )}
 
               <div className="card">
                 <p className="text-text-muted text-sm">Challenge ID: {id}</p>

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
 import ledgerService from "../../services/ledger";
 import { normalizeScenarioId, unwrap } from "./utils";
+import { isChallengeLockedForStudents } from "@/utils/challengeStatus";
 import type { ScenarioWithVariables } from "../../types/challenge";
 import type { LedgerEntry } from "../../types/ledger";
 
@@ -26,7 +27,7 @@ const CurrentScenarioCard: React.FC<CurrentScenarioCardProps> = ({
     ? normalizeScenarioId(challenge as unknown as Record<string, unknown>)
     : null;
   const submitted = submissionStatus?.submitted ?? false;
-  const scenarioClosed = Boolean(challenge?.isClosed);
+  const scenarioLockedOrClosed = isChallengeLockedForStudents(challenge);
 
   // Fetch ledger entry (best-effort) to check if results are available
   useEffect(() => {
@@ -86,7 +87,7 @@ const CurrentScenarioCard: React.FC<CurrentScenarioCardProps> = ({
       };
     }
 
-    if (scenarioClosed || submitted) {
+    if (scenarioLockedOrClosed || submitted) {
       return {
         label: "Waiting for instructor",
         disabled: true,
@@ -107,13 +108,13 @@ const CurrentScenarioCard: React.FC<CurrentScenarioCardProps> = ({
     challenge,
     navigate,
     resultsAvailable,
-    scenarioClosed,
+    scenarioLockedOrClosed,
     challengeId,
     submitted,
   ]);
 
   const secondaryCta = useMemo(() => {
-    if (!scenarioClosed && submitted) {
+    if (!scenarioLockedOrClosed && submitted) {
       return {
         label: "View challenge",
         disabled: false,
@@ -122,7 +123,7 @@ const CurrentScenarioCard: React.FC<CurrentScenarioCardProps> = ({
       };
     }
     return null;
-  }, [scenarioClosed, submitted, navigate, challengeId]);
+  }, [scenarioLockedOrClosed, submitted, navigate, challengeId]);
 
   return (
     <div className="card">
@@ -139,7 +140,7 @@ const CurrentScenarioCard: React.FC<CurrentScenarioCardProps> = ({
             <span className="badge badge-success min-w-0 max-w-full whitespace-normal break-words text-center">
               {resultsAvailable
                 ? "Results available"
-                : scenarioClosed
+                : scenarioLockedOrClosed
                 ? "Closed (results pending)"
                 : submitted
                 ? "Submitted"

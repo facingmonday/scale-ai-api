@@ -125,14 +125,17 @@ router.get(
  *           schema:
  *             type: object
  *             required:
- *               - scenarioId
+ *               - challengeId
  *               - variables
  *             properties:
- *               scenarioId:
+ *               challengeId:
  *                 type: string
  *               variables:
  *                 type: object
  *                 description: Map of variable keys to values.
+ *               challengeVariableAnswers:
+ *                 type: object
+ *                 description: Map of challenge-specific question keys to this student's answers.
  *     responses:
  *       201:
  *         description: Decisions submitted.
@@ -172,6 +175,9 @@ router.post(
  *             properties:
  *               variables:
  *                 type: object
+ *               challengeVariableAnswers:
+ *                 type: object
+ *                 description: Map of challenge-specific question keys to this student's answers.
  *     responses:
  *       200:
  *         description: Submission updated.

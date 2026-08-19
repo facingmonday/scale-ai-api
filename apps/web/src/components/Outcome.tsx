@@ -221,7 +221,7 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
     return (
       !!challenge.isClosed &&
       !challenge.isFeedbackReleased &&
-      challenge.automationStatus !== "feedbackReleased"
+      challenge.automationStatus === "processed"
     );
   }, [isAdmin, challenge]);
 

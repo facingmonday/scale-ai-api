@@ -285,6 +285,12 @@ const ledgerEntrySchema = new mongoose.Schema({
   },
 }).add(baseSchema);
 
+// Ledger metrics and calculation inputs are stored as Mongoose Maps. Flatten
+// them at the model boundary so controllers using toObject() return ordinary
+// JSON objects instead of values that JSON.stringify() would reduce to {}.
+ledgerEntrySchema.set("toObject", { flattenMaps: true });
+ledgerEntrySchema.set("toJSON", { flattenMaps: true });
+
 // Compound indexes for performance
 // Sparse unique index for challenge-based entries (only applies when challengeId exists)
 ledgerEntrySchema.index(
@@ -795,10 +801,15 @@ ledgerEntrySchema.statics.buildAISimulationOpenAIRequest = async function (
         )
       )
       : {};
-  const challengeVariables =
-    challenge?.variables && typeof challenge.variables === "object"
+  const challengeVariables = {
+    ...(challenge?.variables && typeof challenge.variables === "object"
       ? challenge.variables
-      : {};
+      : {}),
+    ...(decision?.challengeVariableAnswers &&
+    typeof decision.challengeVariableAnswers === "object"
+      ? decision.challengeVariableAnswers
+      : {}),
+  };
   const decisionVariables =
     decision?.variables && typeof decision.variables === "object"
       ? decision.variables

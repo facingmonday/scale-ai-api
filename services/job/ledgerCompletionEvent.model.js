@@ -270,10 +270,12 @@ ledgerCompletionEventSchema.statics.recordChallengeLedgersComplete = async funct
   const evaluation = await this.evaluateChallenge(challengeId);
   if (!evaluation.ready) return evaluation;
 
-  const challenge = await Challenge.findById(challengeId)
-    .select("classroomId organization updatedBy createdBy")
-    .lean();
+  const challenge = await Challenge.findById(challengeId);
   if (!challenge) throw new Error(`Challenge not found: ${challengeId}`);
+
+  await challenge.completeResultCalculation(
+    challenge.updatedBy || challenge.createdBy || "system",
+  );
 
   const idempotencyKey = `challenge-ledgers-complete:${challengeId}`;
   const event = await this.findOneAndUpdate(

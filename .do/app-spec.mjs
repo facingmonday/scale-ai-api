@@ -257,6 +257,11 @@ export function buildAppSpec(environment, values) {
           env("VITE_CLERK_PUBLISHABLE_KEY", values.CLERK_PUBLISHABLE_KEY, {
             scope: "BUILD_TIME",
           }),
+          env(
+            "VITE_HELP_SCOUT_BEACON_ID",
+            requireValue(values, "VITE_HELP_SCOUT_BEACON_ID"),
+            { scope: "BUILD_TIME" },
+          ),
         ],
       },
     ],

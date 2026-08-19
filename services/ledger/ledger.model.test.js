@@ -14,6 +14,54 @@ test("ledger model exports AI simulation helpers", () => {
   assert.equal(typeof LedgerEntry.runAISimulation, "function");
 });
 
+test("ledger entries flatten metric maps when serialized", () => {
+  const entry = new LedgerEntry({
+    metrics: {
+      sales: 137,
+      netProfit: 1659.95,
+    },
+    calculationContext: {
+      decisionVariables: {
+        inventoryTarget: 50,
+      },
+      priorMetrics: {
+        cashAfter: 0,
+      },
+      ledgerHistorySummary: [
+        {
+          challengeTitle: "Previous challenge",
+          metrics: { cashAfter: 1000 },
+        },
+      ],
+    },
+  });
+
+  const serialized = entry.toObject();
+
+  assert.equal(serialized.metrics instanceof Map, false);
+  assert.deepEqual(serialized.metrics, {
+    sales: 137,
+    netProfit: 1659.95,
+  });
+  assert.deepEqual(serialized.calculationContext.decisionVariables, {
+    inventoryTarget: 50,
+  });
+  assert.deepEqual(serialized.calculationContext.priorMetrics, {
+    cashAfter: 0,
+  });
+  assert.deepEqual(
+    serialized.calculationContext.ledgerHistorySummary[0].metrics,
+    {
+      cashAfter: 1000,
+    }
+  );
+
+  assert.deepEqual(JSON.parse(JSON.stringify(entry)).metrics, {
+    sales: 137,
+    netProfit: 1659.95,
+  });
+});
+
 test("shouldInspectOpenAIRequest supports an optional decision filter", (t) => {
   const originalEnabled = process.env.AI_DEBUG_REQUESTS;
   const originalDecisionId = process.env.AI_DEBUG_DECISION_ID;

@@ -91,6 +91,66 @@ test("challenge exports lifecycle statics", () => {
   assert.equal(typeof Challenge.publishDueScenarios, "function");
   assert.equal(typeof Challenge.closeDueSubmissions, "function");
   assert.equal(typeof Challenge.processDueOutcomes, "function");
+  assert.equal(typeof Challenge.getLifecycleStatus, "function");
+});
+
+test("getLifecycleStatus returns Draft, Open, Locked, and Closed", () => {
+  assert.equal(
+    Challenge.getLifecycleStatus({
+      isPublished: false,
+      isLockedForStudents: false,
+      isClosed: false,
+    }),
+    "Draft"
+  );
+  assert.equal(
+    Challenge.getLifecycleStatus({
+      isPublished: true,
+      isLockedForStudents: false,
+      isClosed: false,
+    }),
+    "Open"
+  );
+  assert.equal(
+    Challenge.getLifecycleStatus({
+      isPublished: true,
+      isLockedForStudents: true,
+      isClosed: false,
+    }),
+    "Locked"
+  );
+  assert.equal(
+    Challenge.getLifecycleStatus({
+      isPublished: true,
+      isLockedForStudents: false,
+      isClosed: true,
+    }),
+    "Closed"
+  );
+  assert.equal(
+    Challenge.getLifecycleStatus({
+      isPublished: true,
+      isLockedForStudents: true,
+      isClosed: true,
+    }),
+    "Closed"
+  );
+});
+
+test("lifecycleStatus virtual is included in toJSON", () => {
+  const challenge = new Challenge({
+    classroomId: "507f1f77bcf86cd799439011",
+    title: "Week 5",
+    isPublished: true,
+    isLockedForStudents: true,
+    isClosed: false,
+    organization: "507f1f77bcf86cd799439012",
+    createdBy: "test",
+    updatedBy: "test",
+  });
+
+  assert.equal(challenge.lifecycleStatus, "Locked");
+  assert.equal(challenge.toJSON().lifecycleStatus, "Locked");
 });
 
 const leaderboardMetricDefinitions = [
