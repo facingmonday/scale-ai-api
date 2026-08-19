@@ -10,10 +10,26 @@ import { getErrorMessage } from "@/utils/error";
 import BasicLayout from "@/components/Layouts/BasicLayout";
 
 const STEPS = [
-  { id: 1, name: "Choose Template", desc: "Select a game mode pre-configuration" },
-  { id: 2, name: "Classroom Info", desc: "Set class name, description, and details" },
-  { id: 3, name: "Access & Billing", desc: "Choose enrollment and billing policies" },
-  { id: 4, name: "Review & Create", desc: "Verify details and launch classroom" },
+  {
+    id: 1,
+    name: "Choose Template",
+    desc: "Select a game mode pre-configuration",
+  },
+  {
+    id: 2,
+    name: "Classroom Info",
+    desc: "Set class name, description, and details",
+  },
+  {
+    id: 3,
+    name: "Access & Billing",
+    desc: "Choose enrollment and billing policies",
+  },
+  {
+    id: 4,
+    name: "Review & Create",
+    desc: "Verify details and launch classroom",
+  },
 ];
 
 const ClassroomCreate: React.FC = () => {
@@ -125,7 +141,7 @@ const ClassroomCreate: React.FC = () => {
       setError(errorMessage || "Failed to create classroom");
       globalContext?.showToast?.(
         errorMessage || "Failed to create classroom",
-        "error"
+        "error",
       );
     } finally {
       setIsCreating(false);
@@ -144,7 +160,8 @@ const ClassroomCreate: React.FC = () => {
                 Create a Classroom
               </h1>
               <p className="text-text-muted mt-1 text-sm">
-                Set up a new cohort, configure template defaults, and determine how students join the simulation.
+                Set up a new cohort, configure template defaults, and determine
+                how students join the simulation.
               </p>
             </div>
             <button
@@ -163,7 +180,7 @@ const ClassroomCreate: React.FC = () => {
               <div
                 className="h-full bg-brand-teal transition-all duration-300"
                 style={{
-                  width: `${((currentStep - 1) / (STEPS.length - 1)) * 100}%`
+                  width: `${((currentStep - 1) / (STEPS.length - 1)) * 100}%`,
                 }}
               />
             </div>
@@ -177,7 +194,10 @@ const ClassroomCreate: React.FC = () => {
                   <div
                     key={step.id}
                     onClick={() => {
-                      if (step.id < currentStep || (step.id <= 3 && isStepValid)) {
+                      if (
+                        step.id < currentStep ||
+                        (step.id <= 3 && isStepValid)
+                      ) {
                         setCurrentStep(step.id);
                       }
                     }}
@@ -185,8 +205,8 @@ const ClassroomCreate: React.FC = () => {
                       isActive
                         ? "opacity-100"
                         : isCompleted
-                        ? "opacity-80 hover:opacity-100"
-                        : "opacity-40 pointer-events-none"
+                          ? "opacity-80 hover:opacity-100"
+                          : "opacity-40 pointer-events-none"
                     }`}
                   >
                     {/* Circle badge */}
@@ -195,11 +215,15 @@ const ClassroomCreate: React.FC = () => {
                         isActive
                           ? "bg-brand-teal border-brand-teal text-white shadow-md shadow-brand-teal/20"
                           : isCompleted
-                          ? "bg-brand-teal/10 border-brand-teal text-brand-teal"
-                          : "bg-ui-surface border-ui-border text-text-muted"
+                            ? "bg-brand-teal/10 border-brand-teal text-brand-teal"
+                            : "bg-ui-surface border-ui-border text-text-muted"
                       }`}
                     >
-                      {isCompleted ? <i className="pi pi-check text-xs font-bold" /> : step.id}
+                      {isCompleted ? (
+                        <i className="pi pi-check text-xs font-bold" />
+                      ) : (
+                        step.id
+                      )}
                     </div>
 
                     {/* Step Labels */}
@@ -242,14 +266,19 @@ const ClassroomCreate: React.FC = () => {
                     Select a Template (Optional)
                   </h2>
                   <p className="text-sm text-text-muted leading-relaxed">
-                    Classroom templates pre-configure game rules, starting budgets, weather behavior, and weekly scenarios. Prefilling these ensures balanced settings right out of the gate, though you can fully customize them later.
+                    Classroom templates pre-configure game rules, starting
+                    budgets, weather behavior, and weekly scenarios. Prefilling
+                    these ensures balanced settings right out of the gate,
+                    though you can fully customize them later.
                   </p>
                 </div>
 
                 {isLoadingTemplates ? (
                   <div className="flex flex-col items-center justify-center py-12 gap-3">
                     <i className="pi pi-spin pi-spinner text-brand-teal text-3xl" />
-                    <span className="text-text-muted text-sm font-medium">Loading templates...</span>
+                    <span className="text-text-muted text-sm font-medium">
+                      Loading templates...
+                    </span>
                   </div>
                 ) : (
                   <div className="!grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 gap-4">
@@ -264,16 +293,22 @@ const ClassroomCreate: React.FC = () => {
                     >
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="font-bold text-text-primary text-base">Standard Setup (No Template)</span>
+                          <span className="font-bold text-text-primary text-base">
+                            Standard Setup (No Template)
+                          </span>
                           {selectedTemplateId === "" && (
                             <i className="pi pi-check-circle text-brand-teal text-lg" />
                           )}
                         </div>
                         <p className="text-xs text-text-muted leading-relaxed">
-                          Start with an empty classroom canvas. You will manually define variables, starting cash, and weekly game challenges.
+                          Start with an empty classroom canvas. You will
+                          manually define variables, starting cash, and weekly
+                          game challenges.
                         </p>
                       </div>
-                      <span className="text-[11px] text-brand-teal font-semibold">Custom Rules</span>
+                      <span className="text-[11px] text-brand-teal font-semibold">
+                        Custom Rules
+                      </span>
                     </div>
 
                     {/* Template Cards */}
@@ -299,11 +334,14 @@ const ClassroomCreate: React.FC = () => {
                               )}
                             </div>
                             <p className="text-xs text-text-muted leading-relaxed line-clamp-3">
-                              {t.description || "Pre-configured settings with defined variables and simulation parameters."}
+                              {t.description ||
+                                "Pre-configured settings with defined variables and simulation parameters."}
                             </p>
                           </div>
                           <span className="text-[11px] text-brand-blue font-semibold">
-                            {t.variablesCount ? `${t.variablesCount} Variables` : "Pre-Configured Game"}
+                            {t.variablesCount
+                              ? `${t.variablesCount} Variables`
+                              : "Pre-Configured Game"}
                           </span>
                         </div>
                       );
@@ -322,13 +360,17 @@ const ClassroomCreate: React.FC = () => {
                     Classroom Details
                   </h2>
                   <p className="text-sm text-text-muted leading-relaxed">
-                    Provide a name and overview for your classroom. Students will see this when signing up or viewing their roster.
+                    Provide a name and overview for your classroom. Students
+                    will see this when signing up or viewing their roster.
                   </p>
                 </div>
 
                 <div className="space-y-4">
                   <div className="space-y-1.5">
-                    <label htmlFor="name" className="label text-sm font-semibold block text-text-primary">
+                    <label
+                      htmlFor="name"
+                      className="label text-sm font-semibold block text-text-primary"
+                    >
                       Classroom Name <span className="text-red-400">*</span>
                     </label>
                     <input
@@ -344,13 +386,18 @@ const ClassroomCreate: React.FC = () => {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label htmlFor="description" className="label text-sm font-semibold block text-text-primary">
+                    <label
+                      htmlFor="description"
+                      className="label text-sm font-semibold block text-text-primary"
+                    >
                       Description
                     </label>
                     <textarea
                       id="description"
                       value={newClassroomDescription}
-                      onChange={(e) => setNewClassroomDescription(e.target.value)}
+                      onChange={(e) =>
+                        setNewClassroomDescription(e.target.value)
+                      }
                       className="input w-full border border-ui-border rounded-xl px-4 py-3 bg-ui-surface text-text-primary min-h-[140px] resize-none focus:border-brand-teal focus:ring-1 focus:ring-brand-teal transition-all text-base outline-none"
                       placeholder="Give a brief summary of the class, simulation dates, or syllabus context (optional)"
                     />
@@ -368,7 +415,9 @@ const ClassroomCreate: React.FC = () => {
                     Access Mode & Student Entry
                   </h2>
                   <p className="text-sm text-text-muted leading-relaxed">
-                    Decide how seats are funded and how students join. You can modify billing and invitation methods later in classroom settings.
+                    Decide how seats are funded and how students join. You can
+                    modify billing and invitation methods later in classroom
+                    settings.
                   </p>
                 </div>
 
@@ -395,10 +444,14 @@ const ClassroomCreate: React.FC = () => {
                         )}
                       </div>
                       <p className="text-xs text-text-muted leading-relaxed">
-                        Students purchase access cards or pay individually online to access the simulator. Ideal for course integrations where students buy materials directly.
+                        Students purchase access cards or pay individually
+                        online to access the simulator. Ideal for course
+                        integrations where students buy materials directly.
                       </p>
                     </div>
-                    <span className="text-[11px] text-brand-teal font-semibold">Join via Invite Link</span>
+                    <span className="text-[11px] text-brand-teal font-semibold">
+                      Join via Invite Link
+                    </span>
                   </div>
 
                   {/* Teacher Paid Roster Card */}
@@ -423,23 +476,34 @@ const ClassroomCreate: React.FC = () => {
                         )}
                       </div>
                       <p className="text-xs text-text-muted leading-relaxed">
-                        Seats are pre-funded by your institution or department account. Students do not pay. You will add students to the class roster manually or via CSV.
+                        Seats are pre-funded by your institution or department
+                        account. Students do not pay. You will add students to
+                        the class roster manually or via CSV.
                       </p>
                     </div>
-                    <span className="text-[11px] text-brand-blue font-semibold">Roster-only Verification</span>
+                    <span className="text-[11px] text-brand-blue font-semibold">
+                      Roster-only Verification
+                    </span>
                   </div>
                 </div>
 
                 {newClassroomBillingMode === "student_paid" && (
-                  <div className="flex items-start gap-3 p-4 bg-ui-surface-hover/30 border border-ui-border rounded-xl mt-4">
+                  <div className="flex items-center gap-3 p-4 bg-ui-surface-hover/30 border border-ui-border rounded-xl mt-4 size-full md:size-1/2">
                     <input
                       id="newAllowAnonymousJoin"
                       type="checkbox"
                       checked={newAllowAnonymousJoin}
-                      onChange={(e) => setNewAllowAnonymousJoin(e.target.checked)}
-                      className="w-5 h-5 rounded border-ui-border text-brand-teal focus:ring-brand-teal mt-0.5 cursor-pointer"
+                      onChange={(e) =>
+                        setNewAllowAnonymousJoin(e.target.checked)
+                      }
+                      className="size-5 md:size-6 shrink-0 rounded border-ui-border text-brand-teal focus:ring-brand-teal cursor-pointer"
                     />
-                    <div className="flex flex-col cursor-pointer" onClick={() => setNewAllowAnonymousJoin(!newAllowAnonymousJoin)}>
+                    <div
+                      className="flex flex-col cursor-pointer"
+                      onClick={() =>
+                        setNewAllowAnonymousJoin(!newAllowAnonymousJoin)
+                      }
+                    >
                       <label
                         htmlFor="newAllowAnonymousJoin"
                         className="text-sm font-semibold text-text-primary select-none cursor-pointer"
@@ -447,7 +511,9 @@ const ClassroomCreate: React.FC = () => {
                         Allow instant join with link
                       </label>
                       <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
-                        Students can enroll instantly using the class URL. If disabled, students must register and be approved by the classroom admin.
+                        Students can enroll instantly using the class URL. If
+                        disabled, students must register and be approved by the
+                        classroom admin.
                       </p>
                     </div>
                   </div>
@@ -464,7 +530,8 @@ const ClassroomCreate: React.FC = () => {
                     Review Configurations
                   </h2>
                   <p className="text-sm text-text-muted leading-relaxed">
-                    Double-check your classroom settings below. You can go back to make any edits before finalizing.
+                    Double-check your classroom settings below. You can go back
+                    to make any edits before finalizing.
                   </p>
                 </div>
 
@@ -473,9 +540,13 @@ const ClassroomCreate: React.FC = () => {
                     {/* Template Row */}
                     <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <div>
-                        <span className="text-xs text-text-muted uppercase tracking-wider font-semibold block">Template</span>
+                        <span className="text-xs text-text-muted uppercase tracking-wider font-semibold block">
+                          Template
+                        </span>
                         <span className="font-bold text-text-primary">
-                          {selectedTemplate ? selectedTemplate.label : "Standard Setup (Blank)"}
+                          {selectedTemplate
+                            ? selectedTemplate.label
+                            : "Standard Setup (Blank)"}
                         </span>
                       </div>
                       <button
@@ -490,8 +561,12 @@ const ClassroomCreate: React.FC = () => {
                     {/* Classroom Name Row */}
                     <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <div>
-                        <span className="text-xs text-text-muted uppercase tracking-wider font-semibold block">Classroom Name</span>
-                        <span className="font-semibold text-text-primary">{newClassroomName}</span>
+                        <span className="text-xs text-text-muted uppercase tracking-wider font-semibold block">
+                          Classroom Name
+                        </span>
+                        <span className="font-semibold text-text-primary">
+                          {newClassroomName}
+                        </span>
                       </div>
                       <button
                         type="button"
@@ -505,9 +580,13 @@ const ClassroomCreate: React.FC = () => {
                     {/* Description Row */}
                     <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <div>
-                        <span className="text-xs text-text-muted uppercase tracking-wider font-semibold block">Description</span>
+                        <span className="text-xs text-text-muted uppercase tracking-wider font-semibold block">
+                          Description
+                        </span>
                         <span className="text-text-secondary text-sm">
-                          {newClassroomDescription.trim() ? newClassroomDescription : "—"}
+                          {newClassroomDescription.trim()
+                            ? newClassroomDescription
+                            : "—"}
                         </span>
                       </div>
                       <button
@@ -522,7 +601,9 @@ const ClassroomCreate: React.FC = () => {
                     {/* Billing Mode Row */}
                     <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <div>
-                        <span className="text-xs text-text-muted uppercase tracking-wider font-semibold block">Access & Billing</span>
+                        <span className="text-xs text-text-muted uppercase tracking-wider font-semibold block">
+                          Access & Billing
+                        </span>
                         <span className="font-semibold text-text-primary">
                           {newClassroomBillingMode === "student_paid"
                             ? "Student-Paid Access Link"
@@ -541,9 +622,13 @@ const ClassroomCreate: React.FC = () => {
                     {/* Join Policy Details */}
                     {newClassroomBillingMode === "student_paid" && (
                       <div className="p-4">
-                        <span className="text-xs text-text-muted uppercase tracking-wider font-semibold block">Anonymous Join</span>
+                        <span className="text-xs text-text-muted uppercase tracking-wider font-semibold block">
+                          Anonymous Join
+                        </span>
                         <span className="text-sm text-text-secondary">
-                          {newAllowAnonymousJoin ? "Allowed (anyone with invite link)" : "Restricted (requires admin verification)"}
+                          {newAllowAnonymousJoin
+                            ? "Allowed (anyone with invite link)"
+                            : "Restricted (requires admin verification)"}
                         </span>
                       </div>
                     )}
@@ -551,7 +636,10 @@ const ClassroomCreate: React.FC = () => {
                 </div>
 
                 <div className="bg-brand-blue/5 border border-brand-blue/15 rounded-xl p-4 text-xs text-text-muted leading-relaxed">
-                  <strong>Note:</strong> Starting balances, default capacity limits, and scenarios are auto-loaded if a template was chosen. You can customize them anytime in the Classroom Settings and Challenges dashboard.
+                  <strong>Note:</strong> Starting balances, default capacity
+                  limits, and scenarios are auto-loaded if a template was
+                  chosen. You can customize them anytime in the Classroom
+                  Settings and Challenges dashboard.
                 </div>
               </div>
             )}
@@ -591,7 +679,9 @@ const ClassroomCreate: React.FC = () => {
                   className="btn-teal px-8 py-2.5 font-bold text-white bg-brand-teal rounded-xl hover:opacity-95 shadow-md shadow-brand-teal/20"
                   disabled={isCreating}
                 >
-                  {isCreating ? "Creating Classroom..." : "Create & Launch Classroom"}
+                  {isCreating
+                    ? "Creating Classroom..."
+                    : "Create & Launch Classroom"}
                 </button>
               )}
             </div>
