@@ -142,6 +142,7 @@ export interface Member {
  * Member with virtual/computed fields
  */
 export interface MemberWithVirtuals extends Member {
+  studentId?: string;
   fullName: string; // Virtual: computed from firstName + lastName
   name: string; // Virtual: fullName || username || clerkUserId
   primaryEmailAddress?: EmailAddress; // Virtual

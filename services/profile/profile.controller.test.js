@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const controller = require("./members.controller");
+const controller = require("./profile.controller");
 const {
   setupTestDb,
   teardownTestDb,
@@ -13,12 +13,7 @@ const {
   createEnrollment,
 } = require("../../test/helpers/factories");
 
-test("members controller exports handlers", () => {
-  assert.equal(typeof controller.getAllMembers, "function");
-  assert.equal(typeof controller.getMemberById, "function");
-});
-
-test("member detail includes the active classroom enrollment student ID", async (t) => {
+test("profile load returns the enrollment student ID before profile creation", async (t) => {
   await setupTestDb();
   t.after(async () => {
     await teardownTestDb();
@@ -27,22 +22,12 @@ test("member detail includes the active classroom enrollment student ID", async 
 
   const org = await createOrganization();
   const classroom = await createClassroom(org._id);
-  const member = await createMember({
-    organizationMemberships: [
-      {
-        id: "orgmem_member_detail",
-        organizationId: org._id,
-        role: "org:member",
-        organization: { id: org.clerkOrganizationId, name: org.name },
-        createdAt: new Date(),
-      },
-    ],
-  });
+  const member = await createMember();
   await createEnrollment({
     classroomId: classroom._id,
     userId: member._id,
     organizationId: org._id,
-    overrides: { studentId: "S-DETAIL" },
+    overrides: { studentId: "S-FORM" },
   });
 
   const res = {
@@ -58,16 +43,16 @@ test("member detail includes the active classroom enrollment student ID", async 
     },
   };
 
-  await controller.getMemberById(
+  await controller.getStore(
     {
+      query: { classroomId: classroom._id.toString() },
+      user: member,
       organization: org,
-      activeClassroom: classroom,
-      params: { id: member._id.toString() },
-      query: {},
     },
     res,
   );
 
   assert.equal(res.statusCode, 200);
-  assert.equal(res.body.studentId, "S-DETAIL");
+  assert.equal(res.body.data, null);
+  assert.equal(res.body.memberStudentId, "S-FORM");
 });

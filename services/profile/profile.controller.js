@@ -210,16 +210,29 @@ exports.getStore = async function (req, res) {
         .json({ error: "classroomId query parameter is required" });
     }
 
-    // Get profile with current details using static method
-    const profile = await Profile.getStoreByUser(classroomId, member._id);
+    // Load the profile and enrollment together so a new profile form can use
+    // the roster-derived student ID without making another request.
+    const [profile, enrollment] = await Promise.all([
+      Profile.getStoreByUser(classroomId, member._id),
+      Enrollment.findOne({
+        classroomId,
+        userId: member._id,
+        organization: req.organization._id,
+        isRemoved: false,
+      })
+        .select("studentId")
+        .lean(),
+    ]);
+    const memberStudentId = enrollment?.studentId || "";
 
     if (!profile) {
-      return res.status(200).json({ data: null });
+      return res.status(200).json({ data: null, memberStudentId });
     }
 
     res.json({
       success: true,
       data: profile,
+      memberStudentId,
     });
   } catch (error) {
     console.error("Error getting profile:", error);

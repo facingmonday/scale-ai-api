@@ -145,9 +145,11 @@ rosterSeatSchema.statics.clearForClassroom = async function ({
 rosterSeatSchema.statics.findReservableForEmail = function (
   classroomId,
   email,
+  organizationId,
 ) {
   return this.findOne({
     classroomId,
+    organization: organizationId,
     email: String(email || "")
       .trim()
       .toLowerCase(),
@@ -178,7 +180,11 @@ rosterSeatSchema.statics.attachForClaim = async function ({
   const email = SeatClaim.getPrimaryEmail(member);
   if (!email) return null;
 
-  const rosterSeat = await this.findReservableForEmail(classroomId, email);
+  const rosterSeat = await this.findReservableForEmail(
+    classroomId,
+    email,
+    claim.organization,
+  );
   if (!rosterSeat) return null;
 
   rosterSeat.status = "claimed";
