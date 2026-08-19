@@ -138,7 +138,9 @@ const Student: React.FC = () => {
               {student.email && (
                 <p className="text-text-muted mb-2">Email: {student.email}</p>
               )}
-              <p className="text-text-muted text-sm">Student ID: {id}</p>
+              <p className="text-text-muted text-sm">
+                Student ID: {student.studentId || "-"}
+              </p>
             </div>
 
             {activeClassroom?._id && id && (

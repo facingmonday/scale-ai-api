@@ -17,6 +17,8 @@ const { assertRejectsWithCode } = require("../../test/helpers/assertErrors");
 const Enrollment = require("./enrollment.model");
 const Member = require("../members/member.model");
 const SeatClaim = require("../licensing/seatClaim.model");
+const RosterSeat = require("../licensing/rosterSeat.model");
+const Profile = require("../profile/profile.model");
 
 test("enrollment ensureJoin", async (t) => {
   await setupTestDb();
@@ -74,6 +76,210 @@ test("enrollment ensureJoin", async (t) => {
     const claim = await SeatClaim.findActiveClaim(classroom._id, member._id);
     assert.ok(claim);
     assert.equal(claim.source, "org_prepaid");
+    restoreClerk();
+  });
+
+  await t.test("copies a normalized email roster match student ID to enrollment only", async () => {
+    await clearCollections();
+    const org = await createOrganization({ clerkOrganizationId: "org_join_roster_id" });
+    const classroom = await createClassroom(org._id, { joinPolicy: "roster_only" });
+    const member = await createMember({
+      clerkUserId: "user_roster_id",
+      email: "Student@Example.COM",
+      organizationMemberships: [
+        {
+          id: "orgmem_roster_id",
+          organizationId: org._id,
+          role: "org:member",
+          organization: { id: org.clerkOrganizationId, name: org.name },
+          createdAt: new Date(),
+        },
+      ],
+    });
+    const restoreClerk = stubClerkMembership(Member);
+    await createSeatPool(org._id, { totalSeats: 5 });
+    const rosterSeat = await RosterSeat.create({
+      classroomId: classroom._id,
+      email: "student@example.com",
+      studentId: "S-100",
+      organization: org._id,
+      createdBy: member.clerkUserId,
+      updatedBy: member.clerkUserId,
+    });
+
+    const { enrollment } = await Enrollment.ensureJoin({
+      orgId: org.clerkOrganizationId,
+      classroomId: classroom._id,
+      clerkUserId: member.clerkUserId,
+      member,
+      studentEmail: "  Student@Example.COM  ",
+      joinSource: "invite_link",
+    });
+
+    assert.equal(enrollment.studentId, "S-100");
+    const claim = await SeatClaim.findActiveClaim(classroom._id, member._id);
+    assert.equal(String(claim.rosterSeatId), String(rosterSeat._id));
+    assert.equal(await Profile.countDocuments({ userId: member._id }), 0);
+
+    const roster = await Enrollment.getClassRoster(classroom._id);
+    assert.equal(roster[0].studentId, "S-100");
+    restoreClerk();
+  });
+
+  await t.test("restores the roster student ID after removal and rejoin", async () => {
+    await clearCollections();
+    const org = await createOrganization({ clerkOrganizationId: "org_join_restore_id" });
+    const classroom = await createClassroom(org._id, { joinPolicy: "roster_only" });
+    const member = await createMember({
+      clerkUserId: "user_restore_id",
+      email: "restore@example.com",
+    });
+    const restoreClerk = stubClerkMembership(Member);
+    await createSeatPool(org._id, { totalSeats: 5 });
+    const rosterSeat = await RosterSeat.create({
+      classroomId: classroom._id,
+      email: "restore@example.com",
+      studentId: "RESTORE-100",
+      organization: org._id,
+      createdBy: member.clerkUserId,
+      updatedBy: member.clerkUserId,
+    });
+
+    const firstJoin = await Enrollment.ensureJoin({
+      orgId: org.clerkOrganizationId,
+      classroomId: classroom._id,
+      clerkUserId: member.clerkUserId,
+      member,
+      studentEmail: "restore@example.com",
+      joinSource: "invite_link",
+    });
+
+    await Enrollment.leaveClassroom({
+      classroomId: classroom._id,
+      userId: member._id,
+      organizationId: org._id,
+      updatedBy: member.clerkUserId,
+    });
+
+    const releasedRosterSeat = await RosterSeat.findById(rosterSeat._id);
+    assert.equal(releasedRosterSeat.status, "reserved");
+
+    const secondJoin = await Enrollment.ensureJoin({
+      orgId: org.clerkOrganizationId,
+      classroomId: classroom._id,
+      clerkUserId: member.clerkUserId,
+      member,
+      studentEmail: "restore@example.com",
+      joinSource: "invite_link",
+    });
+
+    assert.equal(
+      String(secondJoin.enrollment._id),
+      String(firstJoin.enrollment._id),
+    );
+    assert.equal(secondJoin.enrollment.isRemoved, false);
+    assert.equal(secondJoin.enrollment.studentId, "RESTORE-100");
+    restoreClerk();
+  });
+
+  await t.test("allows a rostered student whose roster entry has no student ID", async () => {
+    await clearCollections();
+    const org = await createOrganization({ clerkOrganizationId: "org_join_roster_blank" });
+    const classroom = await createClassroom(org._id, { joinPolicy: "roster_only" });
+    const member = await createMember({
+      clerkUserId: "user_roster_blank",
+      email: "blank@example.com",
+    });
+    const restoreClerk = stubClerkMembership(Member);
+    await createSeatPool(org._id, { totalSeats: 5 });
+    const rosterEmail = "blank@example.com";
+    await RosterSeat.create({
+      classroomId: classroom._id,
+      email: rosterEmail,
+      studentId: "",
+      organization: org._id,
+      createdBy: member.clerkUserId,
+      updatedBy: member.clerkUserId,
+    });
+
+    const { enrollment } = await Enrollment.ensureJoin({
+      orgId: org.clerkOrganizationId,
+      classroomId: classroom._id,
+      clerkUserId: member.clerkUserId,
+      member,
+      studentEmail: rosterEmail,
+      joinSource: "invite_link",
+    });
+
+    assert.equal(enrollment.studentId, undefined);
+    restoreClerk();
+  });
+
+  await t.test("allows unmatched students in open classrooms without a student ID", async () => {
+    await clearCollections();
+    const org = await createOrganization({ clerkOrganizationId: "org_join_open_unmatched" });
+    const classroom = await createClassroom(org._id, { joinPolicy: "open" });
+    const member = await createMember({ clerkUserId: "user_open_unmatched" });
+    const restoreClerk = stubClerkMembership(Member);
+    await createSeatPool(org._id, { totalSeats: 5 });
+
+    const { enrollment } = await Enrollment.ensureJoin({
+      orgId: org.clerkOrganizationId,
+      classroomId: classroom._id,
+      clerkUserId: member.clerkUserId,
+      member,
+      studentEmail: member.email,
+      joinSource: "invite_link",
+    });
+
+    assert.equal(enrollment.studentId, undefined);
+    restoreClerk();
+  });
+
+  await t.test("does not match roster entries outside the classroom and organization", async () => {
+    await clearCollections();
+    const org = await createOrganization({ clerkOrganizationId: "org_join_scope" });
+    const otherOrg = await createOrganization({ clerkOrganizationId: "org_join_scope_other" });
+    const classroom = await createClassroom(org._id, { joinPolicy: "open" });
+    const otherClassroom = await createClassroom(org._id, { joinPolicy: "open" });
+    const member = await createMember({
+      clerkUserId: "user_join_scope",
+      email: "scope@example.com",
+    });
+    const restoreClerk = stubClerkMembership(Member);
+    await createSeatPool(org._id, { totalSeats: 5 });
+    const rosterEmail = "scope@example.com";
+    await RosterSeat.create([
+      {
+        classroomId: otherClassroom._id,
+        email: rosterEmail,
+        studentId: "OTHER-CLASS",
+        organization: org._id,
+        createdBy: member.clerkUserId,
+        updatedBy: member.clerkUserId,
+      },
+      {
+        classroomId: classroom._id,
+        email: rosterEmail,
+        studentId: "OTHER-ORG",
+        organization: otherOrg._id,
+        createdBy: member.clerkUserId,
+        updatedBy: member.clerkUserId,
+      },
+    ]);
+
+    const { enrollment } = await Enrollment.ensureJoin({
+      orgId: org.clerkOrganizationId,
+      classroomId: classroom._id,
+      clerkUserId: member.clerkUserId,
+      member,
+      studentEmail: rosterEmail,
+      joinSource: "invite_link",
+    });
+
+    assert.equal(enrollment.studentId, undefined);
+    const claim = await SeatClaim.findActiveClaim(classroom._id, member._id);
+    assert.equal(claim.rosterSeatId, undefined);
     restoreClerk();
   });
 

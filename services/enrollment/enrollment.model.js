@@ -20,6 +20,10 @@ const enrollmentSchema = new mongoose.Schema({
     required: true,
     default: "member",
   },
+  studentId: {
+    type: String,
+    trim: true,
+  },
   joinedAt: {
     type: Date,
     default: Date.now,
@@ -263,6 +267,7 @@ enrollmentSchema.statics.getClassRoster = async function (classroomId) {
       lastName: member?.lastName || "",
       role: enrollment.role,
       joinedAt: enrollment.joinedAt,
+      studentId: profile?.studentId || enrollment.studentId || "",
       profile,
     };
   });
@@ -684,6 +689,7 @@ enrollmentSchema.statics.ensureJoin = async function ({
   const Classroom = require("../classroom/classroom.model");
   const Member = require("../members/member.model");
   const SeatClaim = require("../licensing/seatClaim.model");
+  const RosterSeat = require("../licensing/rosterSeat.model");
 
   const [organization, classroom] = await Promise.all([
     Organization.ensureByClerkId(orgId),
@@ -722,8 +728,9 @@ enrollmentSchema.statics.ensureJoin = async function ({
     classroom.ownership.toString() === member._id.toString();
   const role = isOrgAdmin || isOwner ? "admin" : "member";
 
+  let rosterStudentId;
   if (role === "member") {
-    await SeatClaim.claimSeatOrRequireCheckout({
+    const { claim } = await SeatClaim.claimSeatOrRequireCheckout({
       classroom,
       organization,
       member,
@@ -732,6 +739,17 @@ enrollmentSchema.statics.ensureJoin = async function ({
       studentId,
       joinSource,
     });
+
+    if (claim?.rosterSeatId) {
+      const rosterSeat = await RosterSeat.findOne({
+        _id: claim.rosterSeatId,
+        classroomId: classroom._id,
+        organization: organization._id,
+      })
+        .select("studentId")
+        .lean();
+      rosterStudentId = rosterSeat?.studentId || undefined;
+    }
   }
 
   const clerkMembership = await Member.getOrCreateClerkOrgMembership(
@@ -746,6 +764,11 @@ enrollmentSchema.statics.ensureJoin = async function ({
   });
 
   if (enrollment && !enrollment.isRemoved) {
+    if (!enrollment.studentId && rosterStudentId) {
+      enrollment.studentId = rosterStudentId;
+      enrollment.updatedBy = clerkUserId;
+      await enrollment.save();
+    }
     return { organization, classroom, enrollment };
   }
 
@@ -753,6 +776,7 @@ enrollmentSchema.statics.ensureJoin = async function ({
     enrollment.restore();
     enrollment.role = role;
     enrollment.organization = organization._id;
+    enrollment.studentId = rosterStudentId;
     enrollment.updatedBy = clerkUserId;
     await enrollment.save();
     return { organization, classroom, enrollment };
@@ -762,6 +786,7 @@ enrollmentSchema.statics.ensureJoin = async function ({
     classroomId: classroom._id,
     userId: member._id,
     role,
+    studentId: rosterStudentId,
     joinedAt: new Date(),
     organization: organization._id,
     createdBy: clerkUserId,
