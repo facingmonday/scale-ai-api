@@ -206,6 +206,40 @@ router.delete(
 
 /**
  * @openapi
+ * /v1/licensing/classrooms/{classroomId}/roster-seats/{seatId}:
+ *   delete:
+ *     summary: Remove a single classroom roster seat
+ *     description: Remove one roster entry without unenrolling a student who already joined. Requires org:admin role.
+ *     tags:
+ *       - Licensing
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - name: classroomId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: seatId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Roster entry removed and any active claim detached.
+ *       404:
+ *         description: Roster seat not found in this classroom.
+ */
+router.delete(
+  "/classrooms/:classroomId/roster-seats/:seatId",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.removeRosterSeat,
+);
+
+/**
+ * @openapi
  * /v1/licensing/classrooms/{classroomId}/roster-import:
  *   post:
  *     summary: Import roster

@@ -243,4 +243,104 @@ test("rosterSeat model", async (t) => {
     assert.equal(preservedClaim.status, "active");
     assert.equal(preservedClaim.rosterSeatId, undefined);
   });
+
+  await t.test("removeSeat deletes one reserved seat", async () => {
+    await clearCollections();
+    const org = await createOrganization();
+    const classroom = await createClassroom(org._id);
+    const clerkUserId = "roster_remove_user";
+
+    const targetSeat = await RosterSeat.create({
+      classroomId: classroom._id,
+      email: "remove-me@example.com",
+      status: "reserved",
+      organization: org._id,
+      createdBy: clerkUserId,
+      updatedBy: clerkUserId,
+    });
+    const keepSeat = await RosterSeat.create({
+      classroomId: classroom._id,
+      email: "keep-me@example.com",
+      status: "reserved",
+      organization: org._id,
+      createdBy: clerkUserId,
+      updatedBy: clerkUserId,
+    });
+
+    const result = await RosterSeat.removeSeat({
+      classroomId: classroom._id,
+      organizationId: org._id,
+      seatId: targetSeat._id,
+      updatedBy: clerkUserId,
+    });
+
+    assert.deepEqual(result, { deleted: 1, detachedClaims: 0 });
+    assert.equal(await RosterSeat.findById(targetSeat._id), null);
+    assert.ok(await RosterSeat.findById(keepSeat._id));
+  });
+
+  await t.test(
+    "removeSeat detaches claim without unenrolling and scopes by classroom",
+    async () => {
+      await clearCollections();
+      const org = await createOrganization();
+      const classroom = await createClassroom(org._id);
+      const otherClassroom = await createClassroom(org._id);
+      const member = await createMember({ email: "claimed@example.com" });
+      const clerkUserId = "roster_remove_claimed_user";
+
+      const claimedSeat = await RosterSeat.create({
+        classroomId: classroom._id,
+        email: "claimed@example.com",
+        status: "claimed",
+        claimedBy: member._id,
+        claimedAt: new Date(),
+        organization: org._id,
+        createdBy: clerkUserId,
+        updatedBy: clerkUserId,
+      });
+      const otherClassroomSeat = await RosterSeat.create({
+        classroomId: otherClassroom._id,
+        email: "other-class@example.com",
+        status: "reserved",
+        organization: org._id,
+        createdBy: clerkUserId,
+        updatedBy: clerkUserId,
+      });
+      const claim = await SeatClaim.create({
+        classroomId: classroom._id,
+        userId: member._id,
+        rosterSeatId: claimedSeat._id,
+        source: "manual_comp",
+        status: "active",
+        organization: org._id,
+        createdBy: clerkUserId,
+        updatedBy: clerkUserId,
+      });
+
+      const missing = await RosterSeat.removeSeat({
+        classroomId: classroom._id,
+        organizationId: org._id,
+        seatId: otherClassroomSeat._id,
+        updatedBy: clerkUserId,
+      });
+      assert.equal(missing, null);
+      assert.ok(await RosterSeat.findById(otherClassroomSeat._id));
+
+      const result = await RosterSeat.removeSeat({
+        classroomId: classroom._id,
+        organizationId: org._id,
+        seatId: claimedSeat._id,
+        updatedBy: clerkUserId,
+      });
+
+      assert.deepEqual(result, { deleted: 1, detachedClaims: 1 });
+      assert.equal(await RosterSeat.findById(claimedSeat._id), null);
+      assert.ok(await RosterSeat.findById(otherClassroomSeat._id));
+
+      const preservedClaim = await SeatClaim.findById(claim._id);
+      assert.equal(preservedClaim.status, "active");
+      assert.equal(preservedClaim.rosterSeatId, undefined);
+    },
+  );
 });

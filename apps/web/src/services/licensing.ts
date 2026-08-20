@@ -81,6 +81,19 @@ async function clearRoster(
   return response.data.data;
 }
 
+async function removeRosterSeat(
+  classroomId: string,
+  seatId: string,
+): Promise<{ deleted: number; detachedClaims: number }> {
+  const response = await axios.delete(
+    `${API_HOST}/${API_VERSION}/licensing/classrooms/${classroomId}/roster-seats/${seatId}`,
+    {
+      headers: await TokenHandler.getHeaders(),
+    },
+  );
+  return response.data.data;
+}
+
 async function createStudentCheckout(
   classroomId: string,
   orgId?: string,
@@ -195,6 +208,7 @@ const licensingService = {
   importRoster,
   getRosterSeats,
   clearRoster,
+  removeRosterSeat,
   createStudentCheckout,
   createOrgCheckout,
   getStudentCheckoutStatus,

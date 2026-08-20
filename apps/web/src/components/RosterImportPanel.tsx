@@ -18,6 +18,7 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
   const [pageSize, setPageSize] = useState(25);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [removingSeatId, setRemovingSeatId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -55,6 +56,32 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
       setError("Failed to clear roster.");
     } finally {
       setIsClearing(false);
+    }
+  };
+
+  const removeRosterSeat = async (seat: RosterSeat) => {
+    const confirmed = window.confirm(
+      `Remove ${seat.email} from the roster? If this student already joined, they will remain enrolled. This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    setRemovingSeatId(seat._id);
+    setError(null);
+    setMessage(null);
+    try {
+      await licensingService.removeRosterSeat(classroomId, seat._id);
+      setMessage(`Removed ${seat.email} from the roster.`);
+      const data = await licensingService.getRosterSeats(classroomId);
+      setRosterSeats(data);
+      const nextPageCount = Math.max(1, Math.ceil(data.length / pageSize));
+      setPage((prev) => Math.min(prev, nextPageCount - 1));
+      onImported?.();
+    } catch (e) {
+      console.error("Failed to remove roster seat:", e);
+      setError("Failed to remove roster entry.");
+      await loadRosterSeats();
+    } finally {
+      setRemovingSeatId(null);
     }
   };
 
@@ -190,8 +217,8 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
         </p>
         <p className="text-text-muted text-sm mt-2">
           Imports add new students and update existing students by email.
-          Students omitted from a later import remain on the roster until it is
-          cleared.
+          Students omitted from a later import remain on the roster until they
+          are removed individually or the roster is cleared.
         </p>
       </div>
 
@@ -247,7 +274,12 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
       <div className="flex justify-between gap-3">
         <button
           className="px-4 py-2 rounded border border-red-400/40 text-red-400 hover:bg-red-400/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          disabled={rosterSeats.length === 0 || isClearing || isSubmitting}
+          disabled={
+            rosterSeats.length === 0 ||
+            isClearing ||
+            isSubmitting ||
+            removingSeatId !== null
+          }
           onClick={() => void clearRoster()}
         >
           {isClearing ? "Clearing..." : "Clear Roster"}
@@ -255,7 +287,11 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
         <button
           className="btn-teal"
           disabled={
-            !selectedFileName || !csv.trim() || isSubmitting || isClearing
+            !selectedFileName ||
+            !csv.trim() ||
+            isSubmitting ||
+            isClearing ||
+            removingSeatId !== null
           }
           onClick={() => void importRoster()}
         >
@@ -272,6 +308,7 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
                 <th className="py-2">Student ID</th>
                 <th className="py-2">Name</th>
                 <th className="py-2">Status</th>
+                <th className="py-2 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -284,6 +321,29 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
                       "-"}
                   </td>
                   <td className="py-2">{seat.status}</td>
+                  <td className="py-2 text-right">
+                    <button
+                      type="button"
+                      className="inline-flex items-center justify-center rounded p-1.5 text-red-400 hover:bg-red-400/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      aria-label={`Remove ${seat.email} from roster`}
+                      title="Remove from roster"
+                      disabled={
+                        isClearing ||
+                        isSubmitting ||
+                        removingSeatId !== null
+                      }
+                      onClick={() => void removeRosterSeat(seat)}
+                    >
+                      <i
+                        className={
+                          removingSeatId === seat._id
+                            ? "pi pi-spin pi-spinner text-sm"
+                            : "pi pi-times text-sm"
+                        }
+                        aria-hidden="true"
+                      />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
