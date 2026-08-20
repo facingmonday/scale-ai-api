@@ -251,6 +251,14 @@ export default function Auth() {
                     <span className="mb-3 inline-flex w-fit items-center rounded-full bg-brand-orange/10 px-3 py-1 text-xs font-bold uppercase tracking-wider text-brand-orange">
                       One-time class pass
                     </span>
+                    <div className="mb-1 flex items-center gap-2 text-sm">
+                      <span className="text-text-muted line-through">
+                        $49.99
+                      </span>
+                      <span className="rounded-full bg-brand-teal/15 px-2 py-0.5 font-bold text-brand-blue">
+                        50% off
+                      </span>
+                    </div>
                     <div className="mb-1 flex items-end gap-2">
                       <span className="text-4xl font-extrabold tracking-tight text-text-primary">
                         $24.99
