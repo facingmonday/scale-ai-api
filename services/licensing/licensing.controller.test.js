@@ -2,6 +2,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const controller = require("./licensing.controller");
 const Classroom = require("../classroom/classroom.model");
+const Enrollment = require("../enrollment/enrollment.model");
+const Member = require("../members/member.model");
 const Organization = require("../organizations/organization.model");
 const stripeService = require("../stripe/stripe.service");
 const { PLAN_CATALOG } = require("./planCatalog");
@@ -295,5 +297,75 @@ test("licensing controller", async (t) => {
     assert.equal(options.metadata.purchaserUserId, req.user._id);
     assert.equal(options.metadata.quantity, "4");
     assert.equal(options.line_items[0].quantity, 4);
+  });
+
+  await t.test("grant seat resolves an organization member by email", async (t) => {
+    const classroom = { _id: "507f1f77bcf86cd799439012" };
+    const member = {
+      _id: "507f191e810c19729de860eb",
+      getOrganizationMembership: () => ({ id: "orgmem_test" }),
+    };
+    const grantResult = { decision: "manual_comp" };
+    t.mock.method(Classroom, "validateAdminAccess", async () => classroom);
+    const findMember = t.mock.method(Member, "findByEmail", async () => member);
+    const grantSeat = t.mock.method(
+      Enrollment,
+      "grantOrgSeatAndEnroll",
+      async () => grantResult,
+    );
+    const req = createRequest({
+      email: " Student@Example.com ",
+      classroomId: classroom._id,
+      source: "manual_comp",
+      reason: "Makeup enrollment",
+    });
+    const res = createResponse();
+    let nextError;
+
+    await controller.grantSeat(req, res, (error) => {
+      nextError = error;
+    });
+
+    assert.equal(nextError, undefined);
+    assert.equal(res.statusCode, 201);
+    assert.equal(res.body.success, true);
+    assert.deepEqual(res.body.data, grantResult);
+    assert.equal(findMember.mock.calls[0].arguments[0], "student@example.com");
+    assert.equal(grantSeat.mock.calls[0].arguments[0].member, member);
+    assert.equal(
+      grantSeat.mock.calls[0].arguments[0].organization,
+      req.organization,
+    );
+  });
+
+  await t.test("grant seat rejects a member outside the organization", async (t) => {
+    const classroom = { _id: "507f1f77bcf86cd799439012" };
+    const member = {
+      _id: "507f191e810c19729de860eb",
+      getOrganizationMembership: () => null,
+    };
+    t.mock.method(Classroom, "validateAdminAccess", async () => classroom);
+    t.mock.method(Member, "findByEmail", async () => member);
+    const grantSeat = t.mock.method(
+      Enrollment,
+      "grantOrgSeatAndEnroll",
+      async () => ({ decision: "manual_comp" }),
+    );
+    const req = createRequest({
+      email: "outsider@example.com",
+      classroomId: classroom._id,
+    });
+    const res = createResponse();
+    let nextError;
+
+    await controller.grantSeat(req, res, (error) => {
+      nextError = error;
+    });
+
+    assert.equal(nextError, undefined);
+    assert.equal(res.statusCode, 404);
+    assert.equal(res.body.success, false);
+    assert.match(res.body.error, /No organization member found/);
+    assert.equal(grantSeat.mock.callCount(), 0);
   });
 });

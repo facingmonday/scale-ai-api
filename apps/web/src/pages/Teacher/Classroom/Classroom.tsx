@@ -17,9 +17,7 @@ import ClassroomResetVariablesAction from "@/components/ClassroomResetVariablesA
 import ClassroomRestoreTemplateAction from "@/components/ClassroomRestoreTemplateAction";
 import ClassroomSaveAsTemplateAction from "@/components/ClassroomSaveAsTemplateAction";
 import ClassroomDeleteAction from "@/components/ClassroomDeleteAction";
-import ClassroomInviteStudentButton from "@/components/ClassroomInviteStudentButton";
 import ClassroomBillingSettings from "@/components/ClassroomBillingSettings";
-import ClassroomJoinLinkPanel from "@/components/ClassroomJoinLinkPanel";
 import ClassroomStudentTransferDialog from "@/components/ClassroomStudentTransferDialog";
 import RosterImportPanel from "@/components/RosterImportPanel";
 import VariableDefinitions from "../Settings/VariableDefinitions";
@@ -901,22 +899,8 @@ const TeacherClassroom: React.FC = () => {
               classroom={classroom}
               onClassroomUpdated={(updated) => setClassroom(updated)}
               onSeatGranted={() => setRosterRefreshKey((k) => k + 1)}
+              onStudentInvited={() => setRosterRefreshKey((k) => k + 1)}
             />
-            <ClassroomJoinLinkPanel classroomId={classroomId} />
-            <div className="card">
-              <div className="flex items-center justify-between gap-3 mb-2">
-                <h2 className="heading-md">Invite Students</h2>
-                <ClassroomInviteStudentButton
-                  classroomId={classroomId}
-                  disabled={isLoadingClassroom || !!loadError}
-                  onSuccess={() => setRosterRefreshKey((k) => k + 1)}
-                />
-              </div>
-              <p className="text-text-muted text-sm">
-                Send an invitation email with the join link. Students still need
-                an organization seat or individual payment when they enroll.
-              </p>
-            </div>
             <RosterImportPanel
               classroomId={classroomId}
               onImported={() => setRosterRefreshKey((k) => k + 1)}
