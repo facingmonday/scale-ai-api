@@ -97,10 +97,11 @@ function requireValue(values, key) {
   return value;
 }
 
-function backendEnvs(config, values, portKey, port) {
+function appEnvs(config, values) {
   const result = [
     env("NODE_ENV", "production"),
-    env(portKey, port),
+    env("PORT_WEBHOOKS", 1340),
+    env("PORT_WORKERS", 1341),
     env("SCALE_API_HOST", `https://${config.apiDomain}`),
     env("SCALE_API_VERSION", "v1"),
     env("SCALE_APP_HOST", `https://${config.appDomain}`),
@@ -121,6 +122,16 @@ function backendEnvs(config, values, portKey, port) {
     env("WORKERS_ENABLED", "true"),
     env("SEND_EMAIL", config.sendEmail),
     env("CLERK_PUBLISHABLE_KEY", requireValue(values, "CLERK_PUBLISHABLE_KEY")),
+    env("SENDGRID_API_KEY", requireValue(values, "SENDGRID_API_KEY")),
+    env("VITE_API_HOST", `https://${config.apiDomain}`, { scope: "BUILD_TIME" }),
+    env("VITE_CLERK_PUBLISHABLE_KEY", values.CLERK_PUBLISHABLE_KEY, {
+      scope: "BUILD_TIME",
+    }),
+    env(
+      "VITE_HELP_SCOUT_BEACON_ID",
+      requireValue(values, "VITE_HELP_SCOUT_BEACON_ID"),
+      { scope: "BUILD_TIME" },
+    ),
   ];
 
   for (const key of secretKeys) {
@@ -193,7 +204,6 @@ export function buildAppSpec(environment, values) {
       success_threshold: 1,
       failure_threshold: 5,
     },
-    envs: backendEnvs(config, values, "PORT", 1337),
   };
 
   const webhooks = {
@@ -209,14 +219,12 @@ export function buildAppSpec(environment, values) {
       success_threshold: 1,
       failure_threshold: 5,
     },
-    envs: backendEnvs(config, values, "PORT_WEBHOOKS", 1340),
   };
 
   const worker = {
     ...serviceBase("workers", "facingmonday/scale-ai-api", config.branch),
     environment_slug: "node-js",
     run_command: "npm run start:workers",
-    envs: backendEnvs(config, values, "PORT_WORKERS", 1341),
   };
 
   const databases = [
@@ -240,7 +248,7 @@ export function buildAppSpec(environment, values) {
   return {
     name: config.appName,
     region: "nyc",
-    envs: [env("SENDGRID_API_KEY", requireValue(values, "SENDGRID_API_KEY"))],
+    envs: appEnvs(config, values),
     services: [marketing, api, webhooks],
     workers: [worker],
     static_sites: [
@@ -252,17 +260,6 @@ export function buildAppSpec(environment, values) {
         build_command: "npm ci && npm run build",
         output_dir: "dist",
         catchall_document: "index.html",
-        envs: [
-          env("VITE_API_HOST", `https://${config.apiDomain}`, { scope: "BUILD_TIME" }),
-          env("VITE_CLERK_PUBLISHABLE_KEY", values.CLERK_PUBLISHABLE_KEY, {
-            scope: "BUILD_TIME",
-          }),
-          env(
-            "VITE_HELP_SCOUT_BEACON_ID",
-            requireValue(values, "VITE_HELP_SCOUT_BEACON_ID"),
-            { scope: "BUILD_TIME" },
-          ),
-        ],
       },
     ],
     databases,
