@@ -763,11 +763,12 @@
             "type": "string",
             "enum": [
               "Draft",
+              "Scheduled",
               "Open",
               "Locked",
               "Closed"
             ],
-            "description": "Derived from isPublished, isLockedForStudents, and isClosed"
+            "description": "Derived from the configured start and publish/lock/close flags"
           },
           "allowLateSubmissions": {
             "type": "boolean"

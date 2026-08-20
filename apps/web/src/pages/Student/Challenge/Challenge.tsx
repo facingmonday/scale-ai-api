@@ -338,13 +338,11 @@ const ScenarioPage: React.FC = () => {
   const challengeLocked = isChallengeLockedForStudents(challenge);
   const isReadOnly =
     !challenge?.isPublished ||
-    !!challenge?.isClosed ||
-    !!challenge?.isLockedForStudents;
+    challengeLocked;
   const hasStore = !!profile;
   const canSubmit =
     !!challenge?.isPublished &&
-    !challenge?.isClosed &&
-    !challenge?.isLockedForStudents &&
+    !challengeLocked &&
     hasStore;
   const showSubmissionVariables = !(challengeLocked && !hasSubmission);
   const showUnsavedBanner =

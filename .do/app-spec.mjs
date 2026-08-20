@@ -37,7 +37,6 @@ const secretKeys = [
   "OPENAI_API_KEY",
   "GEMINI_API_KEY",
   "GAMMA_API_KEY",
-  "SENDGRID_API_KEY",
   "SENDGRID_WEBHOOK_KEY",
   "SPACES_API_KEY",
   "SPACES_API_SECRET",
@@ -241,6 +240,7 @@ export function buildAppSpec(environment, values) {
   return {
     name: config.appName,
     region: "nyc",
+    envs: [env("SENDGRID_API_KEY", requireValue(values, "SENDGRID_API_KEY"))],
     services: [marketing, api, webhooks],
     workers: [worker],
     static_sites: [

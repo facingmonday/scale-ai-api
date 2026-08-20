@@ -177,6 +177,9 @@ const TeacherCurrentScenarioCard: React.FC<TeacherCurrentScenarioCardProps> = ({
     if (lifecycleStatus === "Draft") {
       return { label: "Draft", kind: "muted" as const };
     }
+    if (lifecycleStatus === "Scheduled") {
+      return { label: "Scheduled", kind: "warning" as const };
+    }
     if (lifecycleStatus === "Open") {
       return { label: "Open", kind: "success" as const };
     }
@@ -321,6 +324,7 @@ const TeacherCurrentScenarioCard: React.FC<TeacherCurrentScenarioCardProps> = ({
       {/* Decision progress */}
       {activeScenario &&
         activeScenario.isPublished &&
+        scenarioStatus.label !== "Scheduled" &&
         !activeScenario.isClosed && (
           <div className="mt-5">
             <div className="flex items-center justify-between text-sm">
@@ -355,7 +359,8 @@ const TeacherCurrentScenarioCard: React.FC<TeacherCurrentScenarioCardProps> = ({
           </button>
         ) : (
           <>
-            {!activeScenario.isPublished && (
+            {!activeScenario.isPublished &&
+              scenarioStatus.label !== "Scheduled" && (
               <button
                 type="button"
                 className="btn-teal"

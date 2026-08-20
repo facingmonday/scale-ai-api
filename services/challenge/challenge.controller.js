@@ -107,6 +107,24 @@ function normalizeScheduleInput(body) {
   return schedule;
 }
 
+function assertFutureStartUsesFullAutomation(
+  publishAt,
+  automationMode,
+  now = new Date()
+) {
+  if (
+    publishAt &&
+    new Date(publishAt).getTime() > now.getTime() &&
+    automationMode !== "FULL"
+  ) {
+    const error = new Error(
+      "Full automation is required to schedule a future challenge start"
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+}
+
 function nextAutomationStatus(challenge, scheduleUpdates = {}) {
   const automationMode =
     scheduleUpdates.automationMode !== undefined
@@ -231,6 +249,10 @@ exports.createScenario = async function (req, res) {
     );
 
     const createAutomationMode = scheduleInput.automationMode || "FULL";
+    assertFutureStartUsesFullAutomation(
+      scheduleInput.publishAt,
+      createAutomationMode
+    );
 
     // Create challenge using static method
     const challenge = await Challenge.createScenario(
@@ -398,6 +420,18 @@ exports.updateScenario = async function (req, res) {
           ? req.body.submissionDeadlineAt
           : challenge.submissionDeadlineAt,
     });
+    const effectiveAutomationMode =
+      scheduleInput.automationMode !== undefined
+        ? scheduleInput.automationMode
+        : challenge.automationMode;
+    const effectivePublishAt =
+      scheduleInput.publishAt !== undefined
+        ? scheduleInput.publishAt
+        : challenge.publishAt;
+    assertFutureStartUsesFullAutomation(
+      effectivePublishAt,
+      effectiveAutomationMode
+    );
 
     // Update allowed fields (excluding variables)
     const allowedFields = ["title", "description", "imageUrl"];
@@ -412,6 +446,14 @@ exports.updateScenario = async function (req, res) {
         challenge[field] = value;
       }
     });
+
+    if (
+      effectivePublishAt &&
+      new Date(effectivePublishAt).getTime() > Date.now()
+    ) {
+      challenge.isPublished = false;
+      challenge.isLockedForStudents = false;
+    }
 
     if (SCHEDULE_FIELDS.some((field) => req.body[field] !== undefined)) {
       challenge.automationStatus = nextAutomationStatus(challenge, scheduleInput);
@@ -499,19 +541,27 @@ exports.publishScenario = async function (req, res) {
       });
     }
 
-    // Pre-publish validation: Check if another challenge is already active
-    const activeScenario = await Challenge.getActiveScenario(
-      challenge.classroomId
+    const isFutureStart = !Challenge.hasStarted(challenge);
+    assertFutureStartUsesFullAutomation(
+      challenge.publishAt,
+      challenge.automationMode
     );
-    if (
-      activeScenario &&
-      activeScenario._id.toString() !== challenge._id.toString()
-    ) {
-      return res.status(400).json({
-        error: `Another challenge is already active ("${activeScenario.title}"). Please unpublish or close the active challenge before publishing a new one.`,
-        activeScenarioId: activeScenario._id,
-        activeScenarioTitle: activeScenario.title,
-      });
+
+    // Future challenges may be scheduled while another challenge is active.
+    if (!isFutureStart) {
+      const activeScenario = await Challenge.getActiveScenario(
+        challenge.classroomId
+      );
+      if (
+        activeScenario &&
+        activeScenario._id.toString() !== challenge._id.toString()
+      ) {
+        return res.status(400).json({
+          error: `Another challenge is already active ("${activeScenario.title}"). Please unpublish or close the active challenge before publishing a new one.`,
+          activeScenarioId: activeScenario._id,
+          activeScenarioTitle: activeScenario.title,
+        });
+      }
     }
 
     // Publish challenge
@@ -522,7 +572,7 @@ exports.publishScenario = async function (req, res) {
     const autoEnabled = String(
       process.env.AUTO_GENERATE_SUBMISSIONS_ON_PUBLISH ?? "false"
     ).toLowerCase();
-    if (autoEnabled === "true") {
+    if (!isFutureStart && autoEnabled === "true") {
       try {
         autoSubmissionResult = await Decision.autoCreateDecisionsForChallenge({
           challengeId: challenge._id,
@@ -544,12 +594,17 @@ exports.publishScenario = async function (req, res) {
 
     res.json({
       success: true,
-      message: "Challenge published successfully",
+      message: isFutureStart
+        ? "Challenge scheduled successfully"
+        : "Challenge published successfully",
       data: challenge,
       autoSubmissionResult,
     });
   } catch (error) {
     console.error("Error publishing challenge:", error);
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
     if (error.message.includes("already published")) {
       return res.status(400).json({ error: error.message });
     }
@@ -929,8 +984,8 @@ exports.getCurrentScenario = async function (req, res) {
       return res.status(200).json({ success: true, data: null });
     }
 
-    // Ensure challenge is published (additional safety check)
-    if (!challenge.isPublished) {
+    // Scheduled challenges remain invisible until their configured start.
+    if (!Challenge.isVisibleToStudents(challenge)) {
       // Treat "no current challenge" as an empty state, not an error
       return res.status(200).json({ success: true, data: null });
     }
@@ -962,6 +1017,8 @@ exports.getCurrentScenario = async function (req, res) {
           variables: challenge.variables,
           isPublished: challenge.isPublished,
           isClosed: challenge.isClosed,
+          isLockedForStudents: challenge.isLockedForStudents,
+          lifecycleStatus: Challenge.getLifecycleStatus(challenge),
           week: challenge.week,
           publishAt: challenge.publishAt,
           submissionDeadlineAt: challenge.submissionDeadlineAt,
@@ -1018,6 +1075,8 @@ exports.getCurrentScenarioForAdmin = async function (req, res) {
           variables: challenge.variables,
           isPublished: challenge.isPublished,
           isClosed: challenge.isClosed,
+          isLockedForStudents: challenge.isLockedForStudents,
+          lifecycleStatus: Challenge.getLifecycleStatus(challenge),
           publishAt: challenge.publishAt,
           submissionDeadlineAt: challenge.submissionDeadlineAt,
           automationMode: challenge.automationMode,
@@ -1062,9 +1121,9 @@ exports.getStudentScenariosByClassroom = async function (req, res) {
       includeClosed: true,
     });
 
-    // Filter to only include published challenges
+    // Filter to challenges whose published start is available to students.
     const publishedScenarios = challenges.filter(
-      (challenge) => challenge.isPublished === true
+      (challenge) => Challenge.isVisibleToStudents(challenge)
     );
 
     // For each challenge, fetch decision, outcome, and ledger entry
@@ -1138,8 +1197,8 @@ exports.getScenarioByIdForStudent = async function (req, res) {
       return res.status(404).json({ error: "Challenge not found" });
     }
 
-    // Only return published challenges for students
-    if (!challenge.isPublished) {
+    // Scheduled challenges are indistinguishable from missing challenges to students.
+    if (!Challenge.isVisibleToStudents(challenge)) {
       return res.status(404).json({ error: "Challenge not found" });
     }
 

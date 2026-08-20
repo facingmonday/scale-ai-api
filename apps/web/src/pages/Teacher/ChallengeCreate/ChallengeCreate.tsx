@@ -4,6 +4,7 @@ import BasicLayout from "../../../components/Layouts/BasicLayout";
 import { useAuth } from "../../../context/AuthContext";
 import challengeService from "../../../services/challenge";
 import { useGlobalContext } from "../../../context/GlobalContext";
+import { getErrorMessage } from "../../../utils";
 import ChallengeForm, { type ScenarioFormValues } from "../../../components/ChallengeForm";
 
 const ChallengeCreate: React.FC = () => {
@@ -74,8 +75,9 @@ const ChallengeCreate: React.FC = () => {
       navigate(`/challenges/${challengeId}`);
     } catch (e) {
       console.error("Failed to create challenge:", e);
-      setError("Failed to create challenge. Please try again.");
-      globalContext?.showToast?.("Failed to create challenge", "error");
+      const message = getErrorMessage(e);
+      setError(message);
+      globalContext?.showToast?.(message, "error");
       setIsSubmitting(false);
     }
   };

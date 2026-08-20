@@ -1,4 +1,9 @@
-export type ChallengeLifecycleStatus = "Draft" | "Open" | "Locked" | "Closed";
+export type ChallengeLifecycleStatus =
+  | "Draft"
+  | "Scheduled"
+  | "Open"
+  | "Locked"
+  | "Closed";
 export type ChallengePresentationStatus =
   | ChallengeLifecycleStatus
   | "Calculating Results"
@@ -11,6 +16,8 @@ export interface ChallengeLifecycleInput {
   isClosed?: boolean;
   lifecycleStatus?: ChallengeLifecycleStatus;
   automationStatus?: string;
+  automationMode?: string;
+  publishAt?: string | Date | null;
 }
 
 export interface ChallengePresentationOptions {
@@ -36,8 +43,25 @@ export function getChallengeLifecycleStatus(
 ): ChallengeLifecycleStatus {
   if (!challenge) return "Draft";
   if (challenge.lifecycleStatus) return challenge.lifecycleStatus;
-  if (!challenge.isPublished) return "Draft";
   if (challenge.isClosed) return "Closed";
+  const publishAt = challenge.publishAt
+    ? new Date(challenge.publishAt).getTime()
+    : null;
+  const hasScheduledStart =
+    publishAt !== null &&
+    !Number.isNaN(publishAt) &&
+    (challenge.isPublished ||
+      challenge.automationMode === "FULL" ||
+      challenge.automationStatus === "SCHEDULED");
+  const waitingForPublishWorker =
+    !challenge.isPublished &&
+    challenge.automationStatus === "SCHEDULED" &&
+    publishAt !== null;
+  const startsInFuture = publishAt !== null && publishAt > Date.now();
+  if (hasScheduledStart && (startsInFuture || waitingForPublishWorker)) {
+    return "Scheduled";
+  }
+  if (!challenge.isPublished) return "Draft";
   if (challenge.isLockedForStudents) return "Locked";
   return "Open";
 }
@@ -48,6 +72,8 @@ export function getChallengeLifecycleBadgeClass(
   switch (status) {
     case "Draft":
       return "badge-warning";
+    case "Scheduled":
+      return "badge-info";
     case "Open":
       return "badge-success";
     case "Locked":
@@ -122,5 +148,7 @@ export function isChallengeLockedForStudents(
 ): boolean {
   if (!challenge) return false;
   const status = getChallengeLifecycleStatus(challenge);
-  return status === "Locked" || status === "Closed";
+  return (
+    status === "Scheduled" || status === "Locked" || status === "Closed"
+  );
 }

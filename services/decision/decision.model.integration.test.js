@@ -98,4 +98,51 @@ test("create and update persist challenge variable answers on the student decisi
   assert.deepEqual(persistedUpdate.challengeVariableAnswers, {
     "challenge-question": 75,
   });
+
+  await Challenge.updateOne(
+    { _id: challengeId },
+    { $set: { publishAt: new Date(Date.now() + 60_000) } }
+  );
+
+  await assert.rejects(
+    Decision.updateSubmission(
+      classroomId,
+      challengeId,
+      userId,
+      { "recurring-decision": 70 },
+      organizationId,
+      clerkUserId,
+      { challengeVariableAnswers: { "challenge-question": 80 } }
+    ),
+    /Challenge has not started yet/
+  );
+
+  const secondUserId = new mongoose.Types.ObjectId();
+  await assert.rejects(
+    Decision.createSubmission(
+      classroomId,
+      challengeId,
+      secondUserId,
+      { "recurring-decision": 60 },
+      organizationId,
+      "second-student",
+      { challengeVariableAnswers: { "challenge-question": 40 } }
+    ),
+    /Challenge has not started yet/
+  );
+
+  await Challenge.updateOne(
+    { _id: challengeId },
+    { $set: { publishAt: new Date(Date.now() - 60_000) } }
+  );
+  const startedDecision = await Decision.createSubmission(
+    classroomId,
+    challengeId,
+    secondUserId,
+    { "recurring-decision": 60 },
+    organizationId,
+    "second-student",
+    { challengeVariableAnswers: { "challenge-question": 40 } }
+  );
+  assert.equal(startedDecision.userId.toString(), secondUserId.toString());
 });

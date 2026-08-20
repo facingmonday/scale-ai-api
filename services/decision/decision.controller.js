@@ -182,6 +182,7 @@ exports.submitWeeklyDecisions = async function (req, res) {
       error.message.includes("Invalid decision variables") ||
       error.message.includes("Invalid challenge variable answers") ||
       error.message === "Challenge is not published" ||
+      error.message === "Challenge has not started yet" ||
       error.message === "Challenge is closed" ||
       error.message === "Submissions are closed for this challenge"
     ) {
@@ -278,6 +279,7 @@ exports.updateWeeklyDecisions = async function (req, res) {
       error.message.includes("Invalid decision variables") ||
       error.message.includes("Invalid challenge variable answers") ||
       error.message === "Challenge is not published" ||
+      error.message === "Challenge has not started yet" ||
       error.message === "Challenge is closed" ||
       error.message === "Submissions are closed for this challenge"
     ) {

@@ -9,7 +9,12 @@ import type { Profile } from "./profile";
  */
 export type StoreTypeKey = string;
 
-export type ChallengeLifecycleStatus = "Draft" | "Open" | "Locked" | "Closed";
+export type ChallengeLifecycleStatus =
+  | "Draft"
+  | "Scheduled"
+  | "Open"
+  | "Locked"
+  | "Closed";
 
 /**
  * Challenge model

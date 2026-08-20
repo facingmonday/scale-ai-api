@@ -262,6 +262,8 @@ classroomSchema.statics.getDashboard = async function (
         variables: activeScenario.variables,
         isPublished: activeScenario.isPublished,
         isClosed: activeScenario.isClosed,
+        isLockedForStudents: activeScenario.isLockedForStudents,
+        lifecycleStatus: Challenge.getLifecycleStatus(activeScenario),
       }
     : null;
 
@@ -403,26 +405,31 @@ classroomSchema.statics.getStudentDashboard = async function (
   }
 
   const activeScenario = await Challenge.getActiveScenario(classroomId);
-  const activeScenarioData = activeScenario
+  const visibleScenario = Challenge.isVisibleToStudents(activeScenario)
+    ? activeScenario
+    : null;
+  const activeScenarioData = visibleScenario
     ? {
-        id: activeScenario._id,
-        title: activeScenario.title,
-        description: activeScenario.description,
-        variables: activeScenario.variables,
-        isPublished: activeScenario.isPublished,
-        isClosed: activeScenario.isClosed,
-        week: activeScenario.week,
-        publishAt: activeScenario.publishAt,
-        submissionDeadlineAt: activeScenario.submissionDeadlineAt,
-        automationStatus: activeScenario.automationStatus,
+        id: visibleScenario._id,
+        title: visibleScenario.title,
+        description: visibleScenario.description,
+        variables: visibleScenario.variables,
+        isPublished: visibleScenario.isPublished,
+        isClosed: visibleScenario.isClosed,
+        isLockedForStudents: visibleScenario.isLockedForStudents,
+        lifecycleStatus: Challenge.getLifecycleStatus(visibleScenario),
+        week: visibleScenario.week,
+        publishAt: visibleScenario.publishAt,
+        submissionDeadlineAt: visibleScenario.submissionDeadlineAt,
+        automationStatus: visibleScenario.automationStatus,
       }
     : null;
 
   // Get the submission for the student for the active challenge
-  const decision = activeScenario
+  const decision = visibleScenario
     ? await Decision.getSubmission(
         classroomId,
-        activeScenario._id,
+        visibleScenario._id,
         memberId
       )
     : null;
@@ -598,7 +605,7 @@ classroomSchema.statics.getStudentDashboard = async function (
     decision: submissionData,
     submissionStatus: decision
       ? { submitted: true, submittedAt: decision.submittedAt }
-      : activeScenario
+      : visibleScenario
         ? { submitted: false, submittedAt: null }
         : null,
     profile,

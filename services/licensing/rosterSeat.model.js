@@ -142,6 +142,48 @@ rosterSeatSchema.statics.clearForClassroom = async function ({
   };
 };
 
+rosterSeatSchema.statics.removeSeat = async function ({
+  classroomId,
+  organizationId,
+  seatId,
+  updatedBy,
+}) {
+  const SeatClaim = require("./seatClaim.model");
+  const rosterSeat = await this.findOne({
+    _id: seatId,
+    classroomId,
+    organization: organizationId,
+  })
+    .select("_id")
+    .lean();
+
+  if (!rosterSeat) {
+    return null;
+  }
+
+  const detached = await SeatClaim.updateMany(
+    {
+      classroomId,
+      organization: organizationId,
+      rosterSeatId: rosterSeat._id,
+    },
+    {
+      $unset: { rosterSeatId: "" },
+      $set: { updatedBy },
+    },
+  );
+  const deleted = await this.deleteOne({
+    _id: rosterSeat._id,
+    classroomId,
+    organization: organizationId,
+  });
+
+  return {
+    deleted: deleted.deletedCount || 0,
+    detachedClaims: detached.modifiedCount || 0,
+  };
+};
+
 rosterSeatSchema.statics.findReservableForEmail = function (
   classroomId,
   email,

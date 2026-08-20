@@ -17,6 +17,230 @@ test("challenge controller exports handlers", () => {
   assert.equal(typeof controller.publishScenario, "function");
 });
 
+test("publishScenario keeps a future full-automation challenge scheduled", async (t) => {
+  const originals = {
+    findOne: Challenge.findOne,
+    validateAdminAccess: Classroom.validateAdminAccess,
+  };
+  t.after(() => {
+    Challenge.findOne = originals.findOne;
+    Classroom.validateAdminAccess = originals.validateAdminAccess;
+  });
+
+  const challenge = {
+    _id: "challenge-id",
+    classroomId: "classroom-id",
+    title: "Scheduled challenge",
+    isPublished: false,
+    isClosed: false,
+    publishAt: new Date(Date.now() + 60_000),
+    automationMode: "FULL",
+    automationStatus: "SCHEDULED",
+    async publish(clerkUserId) {
+      this.publishedBy = clerkUserId;
+      this.isPublished = false;
+      this.automationStatus = "SCHEDULED";
+    },
+  };
+  Challenge.findOne = async () => challenge;
+  Classroom.validateAdminAccess = async () => {};
+
+  let statusCode = 200;
+  let body;
+  const res = {
+    status(status) {
+      statusCode = status;
+      return this;
+    },
+    json(payload) {
+      body = payload;
+      return this;
+    },
+  };
+
+  await controller.publishScenario(
+    {
+      params: { challengeId: "challenge-id" },
+      organization: { _id: "organization-id" },
+      clerkUser: { id: "teacher-id" },
+    },
+    res
+  );
+
+  assert.equal(statusCode, 200);
+  assert.equal(body.message, "Challenge scheduled successfully");
+  assert.equal(body.data.isPublished, false);
+  assert.equal(body.data.automationStatus, "SCHEDULED");
+  assert.equal(challenge.publishedBy, "teacher-id");
+});
+
+test("publishScenario rejects a future start in manual automation mode", async (t) => {
+  const originals = {
+    findOne: Challenge.findOne,
+    validateAdminAccess: Classroom.validateAdminAccess,
+  };
+  t.after(() => {
+    Challenge.findOne = originals.findOne;
+    Classroom.validateAdminAccess = originals.validateAdminAccess;
+  });
+
+  Challenge.findOne = async () => ({
+    _id: "challenge-id",
+    classroomId: "classroom-id",
+    isPublished: false,
+    isClosed: false,
+    publishAt: new Date(Date.now() + 60_000),
+    automationMode: "MANUAL",
+  });
+  Classroom.validateAdminAccess = async () => {};
+
+  let statusCode = 200;
+  let body;
+  const res = {
+    status(status) {
+      statusCode = status;
+      return this;
+    },
+    json(payload) {
+      body = payload;
+      return this;
+    },
+  };
+
+  await controller.publishScenario(
+    {
+      params: { challengeId: "challenge-id" },
+      organization: { _id: "organization-id" },
+      clerkUser: { id: "teacher-id" },
+    },
+    res
+  );
+
+  assert.equal(statusCode, 400);
+  assert.match(body.error, /Full automation is required/);
+});
+
+test("createScenario rejects a future start in manual automation mode", async (t) => {
+  const originalValidateAdminAccess = Classroom.validateAdminAccess;
+  t.after(() => {
+    Classroom.validateAdminAccess = originalValidateAdminAccess;
+  });
+  Classroom.validateAdminAccess = async () => {};
+
+  let statusCode = 200;
+  let body;
+  const res = {
+    status(status) {
+      statusCode = status;
+      return this;
+    },
+    json(payload) {
+      body = payload;
+      return this;
+    },
+  };
+
+  await controller.createScenario(
+    {
+      body: {
+        classroomId: "classroom-id",
+        title: "Manual future challenge",
+        publishAt: new Date(Date.now() + 60_000).toISOString(),
+        automationMode: "MANUAL",
+      },
+      organization: { _id: "organization-id" },
+      clerkUser: { id: "teacher-id" },
+    },
+    res
+  );
+
+  assert.equal(statusCode, 400);
+  assert.match(body.error, /Full automation is required/);
+});
+
+test("updateScenario rejects a future start in manual automation mode", async (t) => {
+  const originals = {
+    findOne: Challenge.findOne,
+    validateAdminAccess: Classroom.validateAdminAccess,
+  };
+  t.after(() => {
+    Challenge.findOne = originals.findOne;
+    Classroom.validateAdminAccess = originals.validateAdminAccess;
+  });
+  Challenge.findOne = async () => ({
+    _id: "challenge-id",
+    classroomId: "classroom-id",
+    publishAt: null,
+    submissionDeadlineAt: null,
+    automationMode: "FULL",
+    canEdit: () => true,
+  });
+  Classroom.validateAdminAccess = async () => {};
+
+  let statusCode = 200;
+  let body;
+  const res = {
+    status(status) {
+      statusCode = status;
+      return this;
+    },
+    json(payload) {
+      body = payload;
+      return this;
+    },
+  };
+
+  await controller.updateScenario(
+    {
+      params: { challengeId: "challenge-id" },
+      body: {
+        publishAt: new Date(Date.now() + 60_000).toISOString(),
+        automationMode: "MANUAL",
+      },
+      organization: { _id: "organization-id" },
+      clerkUser: { id: "teacher-id" },
+    },
+    res
+  );
+
+  assert.equal(statusCode, 400);
+  assert.match(body.error, /Full automation is required/);
+});
+
+test("student challenge detail returns 404 before the scheduled start", async (t) => {
+  const originalGetScenarioById = Challenge.getScenarioById;
+  t.after(() => {
+    Challenge.getScenarioById = originalGetScenarioById;
+  });
+  Challenge.getScenarioById = async () => ({
+    _id: "challenge-id",
+    classroomId: "classroom-id",
+    isPublished: true,
+    publishAt: new Date(Date.now() + 60_000),
+  });
+
+  let statusCode = 200;
+  let body;
+  const res = {
+    status(status) {
+      statusCode = status;
+      return this;
+    },
+    json(payload) {
+      body = payload;
+      return this;
+    },
+  };
+
+  await controller.getScenarioByIdForStudent(
+    { params: { id: "challenge-id" }, user: { _id: "student-id" } },
+    res
+  );
+
+  assert.equal(statusCode, 404);
+  assert.deepEqual(body, { error: "Challenge not found" });
+});
+
 test("createScenarioWithAI validates access and returns the generated challenge", async (t) => {
   const originals = {
     validateAdminAccess: Classroom.validateAdminAccess,
