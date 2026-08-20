@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import licensingService from "@/services/licensing";
 import type { RosterSeat } from "@/types/licensing";
 
@@ -12,17 +12,22 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
   onImported,
 }) => {
   const [csv, setCsv] = useState("");
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [rosterSeats, setRosterSeats] = useState<RosterSeat[]>([]);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadRosterSeats = async () => {
     if (!classroomId) return;
     try {
       const data = await licensingService.getRosterSeats(classroomId);
       setRosterSeats(data);
+      setPage(0);
     } catch (e) {
       console.error("Failed to load roster seats:", e);
     }
@@ -40,6 +45,8 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
     try {
       const result = await licensingService.clearRoster(classroomId);
       setCsv("");
+      setSelectedFileName(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       setMessage(`Cleared ${result.deleted} roster entries.`);
       await loadRosterSeats();
       onImported?.();
@@ -73,6 +80,8 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
         }.`
       );
       setCsv("");
+      setSelectedFileName(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       await loadRosterSeats();
       onImported?.();
     } catch (e) {
@@ -85,10 +94,16 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      setSelectedFileName(null);
+      setCsv("");
+      return;
+    }
 
     setError(null);
     setMessage(null);
+    setSelectedFileName(file.name);
+    setCsv("");
 
     const fileExtension = file.name.split(".").pop()?.toLowerCase();
 
@@ -102,6 +117,8 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
         }
       };
       reader.onerror = () => {
+        setSelectedFileName(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
         setError("Failed to read CSV file.");
       };
       reader.readAsText(file);
@@ -121,14 +138,21 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
           }
         } catch (err) {
           console.error("Error parsing Excel file:", err);
+          setSelectedFileName(null);
+          if (fileInputRef.current) fileInputRef.current.value = "";
           setError("Failed to parse Excel spreadsheet. Make sure it is not corrupted.");
         }
       };
       reader.onerror = () => {
+        setSelectedFileName(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
         setError("Failed to read Excel file.");
       };
       reader.readAsArrayBuffer(file);
     } else {
+      setSelectedFileName(null);
+      setCsv("");
+      if (fileInputRef.current) fileInputRef.current.value = "";
       setError("Unsupported file format. Please upload a .csv, .xlsx, or .xls file.");
     }
   };
@@ -142,6 +166,18 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
       RosterSeat["status"],
       number
     >
+  );
+
+  const pageCount = Math.max(1, Math.ceil(rosterSeats.length / pageSize));
+  const currentPage = Math.min(page, pageCount - 1);
+  const visibleRosterSeats = useMemo(() => {
+    const start = currentPage * pageSize;
+    return rosterSeats.slice(start, start + pageSize);
+  }, [currentPage, pageSize, rosterSeats]);
+  const firstVisibleRow = rosterSeats.length === 0 ? 0 : currentPage * pageSize + 1;
+  const lastVisibleRow = Math.min(
+    (currentPage + 1) * pageSize,
+    rosterSeats.length,
   );
 
   return (
@@ -186,6 +222,7 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
           Select CSV or Excel Spreadsheet (.csv, .xlsx, .xls)
         </label>
         <input
+          ref={fileInputRef}
           id="roster-file"
           type="file"
           accept=".csv,.xlsx,.xls"
@@ -217,7 +254,9 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
         </button>
         <button
           className="btn-teal"
-          disabled={!csv.trim() || isSubmitting || isClearing}
+          disabled={
+            !selectedFileName || !csv.trim() || isSubmitting || isClearing
+          }
           onClick={() => void importRoster()}
         >
           {isSubmitting ? "Importing..." : "Import Roster"}
@@ -236,7 +275,7 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
               </tr>
             </thead>
             <tbody>
-              {rosterSeats.slice(0, 25).map((seat) => (
+              {visibleRosterSeats.map((seat) => (
                 <tr key={seat._id} className="border-b border-ui-border/60">
                   <td className="py-2">{seat.email}</td>
                   <td className="py-2">{seat.studentId || "-"}</td>
@@ -249,11 +288,50 @@ const RosterImportPanel: React.FC<RosterImportPanelProps> = ({
               ))}
             </tbody>
           </table>
-          {rosterSeats.length > 25 && (
-            <p className="text-xs text-text-muted mt-2">
-              Showing first 25 roster rows.
+          <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-text-muted">
+              Showing {firstVisibleRow}-{lastVisibleRow} of {rosterSeats.length}
+              {" "}roster rows
             </p>
-          )}
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-2 text-xs text-text-muted">
+                Rows per page
+                <select
+                  className="input w-auto py-1.5 text-sm"
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setPage(0);
+                  }}
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                </select>
+              </label>
+              <button
+                type="button"
+                className="btn-outline px-3 py-1.5"
+                disabled={currentPage === 0}
+                onClick={() => setPage(Math.max(0, currentPage - 1))}
+              >
+                Previous
+              </button>
+              <span className="min-w-[5rem] text-center text-xs text-text-muted">
+                Page {currentPage + 1} of {pageCount}
+              </span>
+              <button
+                type="button"
+                className="btn-outline px-3 py-1.5"
+                disabled={currentPage >= pageCount - 1}
+                onClick={() =>
+                  setPage(Math.min(pageCount - 1, currentPage + 1))
+                }
+              >
+                Next
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

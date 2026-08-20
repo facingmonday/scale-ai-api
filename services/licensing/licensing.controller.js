@@ -434,12 +434,15 @@ exports.revokeSeatReservation = async function revokeSeatReservation(
 
 exports.grantSeat = async function grantSeat(req, res, next) {
   try {
-    const { userId, classroomId, source, reason } = req.body || {};
+    const { userId, email, classroomId, source, reason } = req.body || {};
+    const normalizedEmail = String(email || "")
+      .trim()
+      .toLowerCase();
 
-    if (!userId || !classroomId) {
+    if ((!userId && !normalizedEmail) || !classroomId) {
       return res.status(400).json({
         success: false,
-        error: "userId and classroomId are required",
+        error: "classroomId and either email or userId are required",
       });
     }
 
@@ -449,11 +452,18 @@ exports.grantSeat = async function grantSeat(req, res, next) {
       req.organization._id
     );
 
-    const member = await Member.findById(userId);
-    if (!member) {
+    const member = normalizedEmail
+      ? await Member.findByEmail(normalizedEmail)
+      : await Member.findById(userId);
+    const organizationMembership = member?.getOrganizationMembership(
+      req.organization,
+    );
+    if (!member || !organizationMembership) {
       return res.status(404).json({
         success: false,
-        error: "Member not found",
+        error: normalizedEmail
+          ? "No organization member found with that email. Invite the student to the organization first."
+          : "Member not found in this organization",
       });
     }
 

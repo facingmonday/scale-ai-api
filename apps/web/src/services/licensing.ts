@@ -172,7 +172,8 @@ async function revokeSeatReservation(id: string): Promise<OrgSeatReservation> {
 }
 
 async function grantSeat(data: {
-  userId: string;
+  userId?: string;
+  email?: string;
   classroomId: string;
   source?: "manual_comp" | "teacher_assigned";
   reason?: string;

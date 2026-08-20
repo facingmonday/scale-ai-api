@@ -1,6 +1,21 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  Building2,
+  ClipboardList,
+  Link2,
+  ListChecks,
+  UsersRound,
+  type LucideIcon,
+} from "lucide-react";
 import classroomService from "@/services/classroom";
 import licensingService from "@/services/licensing";
+import ClassroomInviteStudentButton from "@/components/ClassroomInviteStudentButton";
+import { useAuth } from "@/context/AuthContext";
+import { useGlobalContext } from "@/context/GlobalContext";
+import {
+  buildClassroomJoinUrl,
+  copyTextToClipboard,
+} from "@/utils/classroomJoinLink";
 import type { ClassroomWithVirtuals } from "@/types/classroom";
 import type { ClassroomLicensingSummary, JoinPolicy } from "@/types/licensing";
 
@@ -8,32 +23,108 @@ interface ClassroomBillingSettingsProps {
   classroom: ClassroomWithVirtuals;
   onClassroomUpdated?: (classroom: ClassroomWithVirtuals) => void;
   onSeatGranted?: () => void;
+  onStudentInvited?: () => void;
 }
 
-const JOIN_POLICY_LABELS: Record<JoinPolicy, string> = {
-  invite_link: "Invite link required",
-  open: "Open to organization members",
-  roster_only: "Imported roster only",
-  closed: "Closed to new enrollments",
-};
+type AccessMode =
+  | "invite_anyone"
+  | "invite_roster"
+  | "organization_anyone"
+  | "organization_roster"
+  | "roster_only";
+
+const ACCESS_MODES: Array<{
+  value: AccessMode;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+}> = [
+    {
+      value: "invite_anyone",
+      label: "Anyone with link",
+      description: "Students can enroll when you share the private join link.",
+      icon: Link2,
+    },
+    {
+      value: "invite_roster",
+      label: "Roster + link",
+      description:
+        "Students need both the private join link and a matching roster entry.",
+      icon: ListChecks,
+    },
+    {
+      value: "organization_anyone",
+      label: "Organization members",
+      description:
+        "Organization members can find this class and enroll without a roster entry.",
+      icon: Building2,
+    },
+    {
+      value: "organization_roster",
+      label: "Organization roster",
+      description:
+        "Only organization members with a matching roster entry can enroll.",
+      icon: UsersRound,
+    },
+    {
+      value: "roster_only",
+      label: "Imported roster",
+      description:
+        "Only students with a matching imported roster entry can enroll.",
+      icon: ClipboardList,
+    },
+  ];
+
+function getAccessMode(
+  joinPolicy: JoinPolicy | undefined,
+  allowAnonymousJoin: boolean | undefined,
+): AccessMode {
+  if (joinPolicy === "open") {
+    return allowAnonymousJoin === false
+      ? "organization_roster"
+      : "organization_anyone";
+  }
+  if (joinPolicy === "roster_only") return "roster_only";
+  return allowAnonymousJoin === false ? "invite_roster" : "invite_anyone";
+}
+
+function getAccessSettings(mode: AccessMode): {
+  joinPolicy: Exclude<JoinPolicy, "closed">;
+  allowAnonymousJoin: boolean;
+} {
+  switch (mode) {
+    case "invite_roster":
+      return { joinPolicy: "invite_link", allowAnonymousJoin: false };
+    case "organization_anyone":
+      return { joinPolicy: "open", allowAnonymousJoin: true };
+    case "organization_roster":
+      return { joinPolicy: "open", allowAnonymousJoin: false };
+    case "roster_only":
+      return { joinPolicy: "roster_only", allowAnonymousJoin: false };
+    default:
+      return { joinPolicy: "invite_link", allowAnonymousJoin: true };
+  }
+}
 
 const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
   classroom,
   onClassroomUpdated,
   onSeatGranted,
+  onStudentInvited,
 }) => {
   const classroomId = classroom._id;
+  const { organization } = useAuth();
+  const globalContext = useGlobalContext();
+  const initialMode = getAccessMode(
+    classroom.joinPolicy,
+    classroom.allowAnonymousJoin,
+  );
   const [joinPolicy, setJoinPolicy] = useState<JoinPolicy>(
     classroom.joinPolicy || "invite_link",
   );
-  const [lastOpenJoinPolicy, setLastOpenJoinPolicy] = useState<JoinPolicy>(
-    classroom.joinPolicy && classroom.joinPolicy !== "closed"
-      ? classroom.joinPolicy
-      : "invite_link",
-  );
-  const [allowAnonymousJoin, setAllowAnonymousJoin] = useState(
-    classroom.allowAnonymousJoin !== false,
-  );
+  const [accessMode, setAccessMode] = useState<AccessMode>(initialMode);
+  const [lastOpenAccessMode, setLastOpenAccessMode] =
+    useState<AccessMode>(initialMode);
   const [summary, setSummary] = useState<ClassroomLicensingSummary | null>(
     null,
   );
@@ -43,11 +134,17 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
   const [orgSeatsAvailable, setOrgSeatsAvailable] = useState<number | null>(
     null,
   );
-  const [grantUserId, setGrantUserId] = useState("");
+  const [grantEmail, setGrantEmail] = useState("");
   const [grantReason, setGrantReason] = useState("");
   const [isGranting, setIsGranting] = useState(false);
   const [grantError, setGrantError] = useState<string | null>(null);
   const [grantSuccess, setGrantSuccess] = useState<string | null>(null);
+
+  const joinUrl = useMemo(() => {
+    const orgId = organization?.id;
+    if (!orgId || !classroomId) return "";
+    return buildClassroomJoinUrl(orgId, classroomId);
+  }, [organization?.id, classroomId]);
 
   const load = async () => {
     if (!classroomId) return;
@@ -63,9 +160,7 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
         billingSummary.orgSeatSummary?.floatingAvailable ??
         billingSummary.orgSeatSummary?.remainingSeats ??
         null;
-      setOrgSeatsAvailable(
-        typeof available === "number" ? available : null,
-      );
+      setOrgSeatsAvailable(typeof available === "number" ? available : null);
     } catch (e) {
       console.error("Failed to load classroom licensing:", e);
       setError("Failed to load classroom access settings.");
@@ -75,32 +170,37 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
   };
 
   useEffect(() => {
+    // This fetch only updates state after the request resolves.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classroomId]);
 
-  const saveSettings = async (overrides?: {
-    joinPolicy?: JoinPolicy;
-    allowAnonymousJoin?: boolean;
-  }) => {
-    const nextJoinPolicy = overrides?.joinPolicy ?? joinPolicy;
-    const nextAllowAnonymousJoin =
-      overrides?.allowAnonymousJoin ?? allowAnonymousJoin;
+  const saveSettings = async ({
+    mode = accessMode,
+    closed = false,
+  }: {
+    mode?: AccessMode;
+    closed?: boolean;
+  } = {}) => {
+    const settings = getAccessSettings(mode);
+    const nextJoinPolicy: JoinPolicy = closed ? "closed" : settings.joinPolicy;
 
     setIsSaving(true);
     setError(null);
     try {
       const response = await classroomService.update(classroomId, {
         joinPolicy: nextJoinPolicy,
-        allowAnonymousJoin: nextAllowAnonymousJoin,
+        allowAnonymousJoin: settings.allowAnonymousJoin,
       });
       const updated = response?.data || {
         ...classroom,
         joinPolicy: nextJoinPolicy,
-        allowAnonymousJoin: nextAllowAnonymousJoin,
+        allowAnonymousJoin: settings.allowAnonymousJoin,
       };
       setJoinPolicy(nextJoinPolicy);
-      setAllowAnonymousJoin(nextAllowAnonymousJoin);
+      setAccessMode(mode);
+      if (!closed) setLastOpenAccessMode(mode);
       onClassroomUpdated?.(updated);
       await load();
     } catch (e) {
@@ -112,24 +212,38 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
   };
 
   const isClosed = joinPolicy === "closed";
+  const selectedAccessMode = ACCESS_MODES.find(
+    (mode) => mode.value === accessMode,
+  );
 
   const handleEnrollmentToggle = (closed: boolean) => {
     if (closed) {
-      if (joinPolicy !== "closed") {
-        setLastOpenJoinPolicy(joinPolicy);
-      }
-      void saveSettings({ joinPolicy: "closed" });
+      if (!isClosed) setLastOpenAccessMode(accessMode);
+      void saveSettings({ mode: accessMode, closed: true });
       return;
     }
+    void saveSettings({ mode: lastOpenAccessMode });
+  };
 
-    void saveSettings({ joinPolicy: lastOpenJoinPolicy });
+  const handleCopyJoinLink = async () => {
+    if (!joinUrl) {
+      globalContext?.showToast?.("Unable to generate join link", "error");
+      return;
+    }
+    try {
+      await copyTextToClipboard(joinUrl);
+      globalContext?.showToast?.("Join link copied", "success");
+    } catch (e) {
+      console.error("Failed to copy join link:", e);
+      globalContext?.showToast?.("Failed to copy join link", "error");
+    }
   };
 
   const handleGrantSeat = async () => {
     if (!classroomId || isGranting) return;
-    const trimmedUserId = grantUserId.trim();
-    if (!trimmedUserId) {
-      setGrantError("Enter a student user ID.");
+    const email = grantEmail.trim().toLowerCase();
+    if (!email || !email.includes("@")) {
+      setGrantError("Enter a valid student email address.");
       return;
     }
 
@@ -138,13 +252,13 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
     setGrantSuccess(null);
     try {
       await licensingService.grantSeat({
-        userId: trimmedUserId,
+        email,
         classroomId,
         source: "manual_comp",
         reason: grantReason.trim() || undefined,
       });
-      setGrantSuccess("Seat granted and student enrolled.");
-      setGrantUserId("");
+      setGrantSuccess(`Seat granted to ${email} and student enrolled.`);
+      setGrantEmail("");
       setGrantReason("");
       onSeatGranted?.();
       await load();
@@ -153,7 +267,7 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
       const message =
         e && typeof e === "object" && "response" in e
           ? (e as { response?: { data?: { error?: string } } }).response?.data
-              ?.error
+            ?.error
           : undefined;
       setGrantError(message || "Failed to grant seat.");
     } finally {
@@ -163,12 +277,29 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
 
   return (
     <div className="card space-y-6">
-      <div>
-        <h2 className="heading-md">Enrollment Controls</h2>
-        <p className="text-text-muted">
-          Control who can enroll in this class. Seat billing is managed at the
-          organization level.
-        </p>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h2 className="heading-md">Enrollment Controls</h2>
+          <p className="text-text-muted">
+            Control who can enroll in this class. Seat billing is managed at the
+            organization level.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="btn-outline"
+            onClick={() => void handleCopyJoinLink()}
+            disabled={!joinUrl}
+          >
+            Copy join link
+          </button>
+          <ClassroomInviteStudentButton
+            classroomId={classroomId}
+            disabled={isLoading}
+            onSuccess={onStudentInvited}
+          />
+        </div>
       </div>
 
       {error && <p className="text-red-400 text-sm">{error}</p>}
@@ -182,11 +313,10 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
         >
           <button
             type="button"
-            className={`min-w-[5.5rem] px-4 py-2 rounded-md text-sm font-medium transition-all ${
-              !isClosed
-                ? "bg-brand-teal text-white shadow-sm"
-                : "text-text-muted hover:text-text-primary"
-            }`}
+            className={`min-w-[5.5rem] px-4 py-2 rounded-md text-sm font-medium transition-all ${!isClosed
+              ? "bg-brand-teal text-white shadow-sm"
+              : "text-text-muted hover:text-text-primary"
+              }`}
             disabled={isSaving || !isClosed}
             aria-pressed={!isClosed}
             onClick={() => handleEnrollmentToggle(false)}
@@ -195,11 +325,10 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
           </button>
           <button
             type="button"
-            className={`min-w-[5.5rem] px-4 py-2 rounded-md text-sm font-medium transition-all ${
-              isClosed
-                ? "bg-ui-muted text-text-primary shadow-sm"
-                : "text-text-muted hover:text-text-primary"
-            }`}
+            className={`min-w-[5.5rem] px-4 py-2 rounded-md text-sm font-medium transition-all ${isClosed
+              ? "bg-ui-muted text-text-primary shadow-sm"
+              : "text-text-muted hover:text-text-primary"
+              }`}
             disabled={isSaving || isClosed}
             aria-pressed={isClosed}
             onClick={() => handleEnrollmentToggle(true)}
@@ -210,56 +339,69 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
         {isSaving && <span className="text-text-muted text-sm">Saving...</span>}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <label className="flex flex-col gap-1">
-          <span className="label">Join Policy</span>
-          <select
-            className="input"
-            value={isClosed ? lastOpenJoinPolicy : joinPolicy}
-            onChange={(e) => {
-              const next = e.target.value as JoinPolicy;
-              setJoinPolicy(next);
-              if (next !== "closed") {
-                setLastOpenJoinPolicy(next);
-              }
-            }}
-            disabled={isSaving || isClosed}
-          >
-            {(Object.keys(JOIN_POLICY_LABELS) as JoinPolicy[])
-              .filter((policy) => policy !== "closed")
-              .map((policy) => (
-                <option key={policy} value={policy}>
-                  {JOIN_POLICY_LABELS[policy]}
-                </option>
-              ))}
-          </select>
-          {isClosed && (
-            <p className="text-text-muted text-xs mt-1">
-              Set enrollment to Open to change join policy.
-            </p>
-          )}
-        </label>
-
-        <div className="flex flex-col gap-3 justify-end pb-1">
-          <label className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              checked={allowAnonymousJoin}
-              onChange={(e) => setAllowAnonymousJoin(e.target.checked)}
-              disabled={isSaving}
-              className="w-4 h-4 rounded border-ui-border text-brand-teal focus:ring-brand-teal"
-            />
-            <span className="text-sm">
-              Allow students with the invite link who are not on the roster
-            </span>
-          </label>
+      <fieldset
+        disabled={isSaving || isClosed}
+        className="m-0 min-w-0 space-y-3 border-0 p-0"
+      >
+        <legend className="label">Who can enroll?</legend>
+        <div
+          className={`grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5 ml-10 pl-2 pt-2 ${isClosed ? "opacity-60" : ""
+            }`}
+          role="radiogroup"
+          aria-label="Who can enroll"
+        >
+          {ACCESS_MODES.map((mode) => {
+            const selected = accessMode === mode.value;
+            const Icon = mode.icon;
+            return (
+              <button
+                type="button"
+                key={mode.value}
+                role="radio"
+                aria-checked={selected}
+                onClick={() => setAccessMode(mode.value)}
+                className={`group flex min-h-[5.5rem] flex-col justify-between rounded-lg border px-3 py-3 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal/60 ${selected
+                  ? "border-brand-teal bg-brand-teal/10 shadow-sm"
+                  : "border-ui-border bg-ui-bg hover:border-brand-teal/50 hover:bg-ui-bg-hover"
+                  }`}
+              >
+                <span className="flex w-full justify-center">
+                  <span
+                    className={`flex h-8 w-8 items-center justify-center rounded-md ${selected
+                      ? "bg-brand-teal text-white"
+                      : "bg-ui-bg-hover text-text-muted group-hover:text-brand-teal"
+                      }`}
+                  >
+                    <Icon aria-hidden="true" size={17} strokeWidth={2} />
+                  </span>
+                </span>
+                <span className="mt-3 text-sm font-medium">{mode.label}</span>
+              </button>
+            );
+          })}
         </div>
-      </div>
+        {isClosed ? (
+          <p className="text-text-muted text-xs">
+            Set enrollment to Open to change who can enroll.
+          </p>
+        ) : (
+          selectedAccessMode && (
+            <div className="rounded-md bg-ui-bg-hover py-2.5 text-sm">
+              <p>
+                <span className="font-medium">{selectedAccessMode.label}:</span>{" "}
+                <span className="text-text-muted">
+                  {selectedAccessMode.description}
+                </span>
+              </p>
+            </div>
+          )
+        )}
+      </fieldset>
 
       <div className="flex justify-end">
         <button
           className="btn-teal"
-          disabled={isSaving}
+          disabled={isSaving || isClosed}
           onClick={() => void saveSettings()}
         >
           {isSaving ? "Saving..." : "Save Access Settings"}
@@ -268,10 +410,12 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
 
       <div className="border-t border-ui-border pt-6 space-y-4">
         <div>
-          <h3 className="heading-sm mb-1">Grant Organization Seat</h3>
+          <h3 className="heading-sm mb-1">
+            Enroll with an Organization Seat
+          </h3>
           <p className="text-text-muted text-sm">
-            Enroll a student using an organization seat without checkout. This
-            consumes one seat from your org pool
+            Enroll an existing organization member without checkout. This uses
+            one organization seat
             {orgSeatsAvailable !== null
               ? ` (${orgSeatsAvailable} available).`
               : "."}{" "}
@@ -286,16 +430,20 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
           <p className="text-green-400 text-sm">{grantSuccess}</p>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 pl-2">
           <label className="flex flex-col gap-1">
-            <span className="label">Student user ID</span>
+            <span className="label">Student email</span>
             <input
+              type="email"
               className="input"
-              value={grantUserId}
-              onChange={(e) => setGrantUserId(e.target.value)}
-              placeholder="MongoDB user _id"
+              value={grantEmail}
+              onChange={(e) => setGrantEmail(e.target.value)}
+              placeholder="student@example.edu"
               disabled={isGranting}
             />
+            <span className="text-text-muted text-xs">
+              The student must already be a member of this organization.
+            </span>
           </label>
           <label className="flex flex-col gap-1">
             <span className="label">Reason (optional)</span>
@@ -316,38 +464,15 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
             disabled={
               isGranting ||
               isLoading ||
+              !grantEmail.trim().includes("@") ||
               (orgSeatsAvailable !== null && orgSeatsAvailable <= 0)
             }
             onClick={() => void handleGrantSeat()}
           >
-            {isGranting ? "Granting..." : "Grant Seat"}
+            {isGranting ? "Enrolling..." : "Grant Seat and Enroll"}
           </button>
         </div>
       </div>
-
-      {/* <div className="border-t border-ui-border pt-6">
-        <h3 className="heading-sm mb-3">Seat Usage</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="p-3 rounded border border-ui-border">
-            <p className="text-xs text-text-muted">Seats Claimed</p>
-            <p className="text-xl font-semibold">
-              {isLoading ? "..." : (summary?.claimedSeats ?? 0)}
-            </p>
-          </div>
-          <div className="p-3 rounded border border-ui-border">
-            <p className="text-xs text-text-muted">Roster Reserved</p>
-            <p className="text-xl font-semibold">
-              {isLoading ? "..." : (summary?.roster.reserved ?? 0)}
-            </p>
-          </div>
-          <div className="p-3 rounded border border-ui-border">
-            <p className="text-xs text-text-muted">Roster Claimed</p>
-            <p className="text-xl font-semibold">
-              {isLoading ? "..." : (summary?.roster.claimed ?? 0)}
-            </p>
-          </div>
-        </div>
-      </div> */}
     </div>
   );
 };
