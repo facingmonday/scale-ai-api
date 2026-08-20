@@ -144,6 +144,35 @@ exports.clearRoster = async function clearRoster(req, res, next) {
   }
 };
 
+exports.removeRosterSeat = async function removeRosterSeat(req, res, next) {
+  try {
+    const { classroomId, seatId } = req.params;
+    await Classroom.validateAdminAccess(
+      classroomId,
+      req.clerkUser.id,
+      req.organization._id,
+    );
+
+    const result = await RosterSeat.removeSeat({
+      classroomId,
+      organizationId: req.organization._id,
+      seatId,
+      updatedBy: req.clerkUser.id,
+    });
+
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        error: "Roster seat not found",
+      });
+    }
+
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 exports.getRosterSeats = async function getRosterSeats(req, res, next) {
   try {
     const { classroomId } = req.params;
