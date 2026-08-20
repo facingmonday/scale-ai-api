@@ -515,6 +515,41 @@ test("Classroom Model Integration Tests", async (t) => {
     assert.equal(dashboard.decision.userId.toString(), studentId.toString());
   });
 
+  await t.test("getStudentDashboard hides a legacy published challenge before its start", async () => {
+    const orgId = new mongoose.Types.ObjectId();
+    const ownerId = new mongoose.Types.ObjectId();
+    const studentId = new mongoose.Types.ObjectId();
+    const classDoc = await Classroom.create({
+      name: "Scheduled Dashboard Class",
+      organization: orgId,
+      ownership: ownerId,
+      createdBy: "test",
+      updatedBy: "test",
+    });
+    await Challenge.create({
+      classroomId: classDoc._id,
+      title: "Future Challenge",
+      isPublished: true,
+      isClosed: false,
+      publishAt: new Date(Date.now() + 60_000),
+      automationMode: "FULL",
+      automationStatus: "acceptingSubmissions",
+      organization: orgId,
+      createdBy: "test",
+      updatedBy: "test",
+    });
+
+    const dashboard = await Classroom.getStudentDashboard(
+      classDoc._id,
+      orgId,
+      studentId
+    );
+
+    assert.equal(dashboard.activeScenario, null);
+    assert.equal(dashboard.decision, null);
+    assert.equal(dashboard.submissionStatus, null);
+  });
+
   await t.test("getStudentDashboard returns released results and class comparisons", async () => {
     const orgId = new mongoose.Types.ObjectId();
     const ownerId = new mongoose.Types.ObjectId();

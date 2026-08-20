@@ -292,6 +292,9 @@ submissionSchema.statics.createSubmission = async function (
   if (!challenge.isPublished) {
     throw new Error("Challenge is not published");
   }
+  if (!Challenge.hasStarted(challenge)) {
+    throw new Error("Challenge has not started yet");
+  }
   if (challenge.isClosed) {
     throw new Error("Challenge is closed");
   }
@@ -398,6 +401,9 @@ submissionSchema.statics.updateSubmission = async function (
   }
   if (!challenge.isPublished) {
     throw new Error("Challenge is not published");
+  }
+  if (!Challenge.hasStarted(challenge)) {
+    throw new Error("Challenge has not started yet");
   }
   if (challenge.isClosed) {
     throw new Error("Challenge is closed");

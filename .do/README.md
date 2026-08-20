@@ -9,6 +9,8 @@ Every paid service and worker uses one `apps-s-1vcpu-0.5gb` container: 512 MB RA
 
 Deployment secrets are read from the ignored root `.env.development` file for development and `.env.production` for production. Local processes use `.env.local` (with a temporary `.env` fallback for existing checkouts). The renderer streams the resolved JSON directly to `doctl`; it does not persist a resolved app spec.
 
+`SENDGRID_API_KEY` is intentionally configured as a visible, app-level runtime variable so every backend component inherits the same value. Other credentials remain component-level secrets.
+
 Bootstrap each environment from its committed template:
 
 ```sh

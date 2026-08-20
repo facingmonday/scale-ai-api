@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Dialog } from "primereact/dialog";
 import challengeService from "../services/challenge";
 import ChallengeForm, { type ScenarioFormValues } from "./ChallengeForm";
+import { getErrorMessage } from "../utils";
 
 interface ScenarioCreateFormProps {
   visible: boolean;
@@ -104,7 +105,7 @@ const ScenarioCreateForm: React.FC<ScenarioCreateFormProps> = ({
       onSuccess(String(challengeId));
     } catch (e) {
       console.error("Failed to create challenge:", e);
-      setError("Failed to create challenge. Please try again.");
+      setError(getErrorMessage(e));
       setIsSubmitting(false);
     }
   };

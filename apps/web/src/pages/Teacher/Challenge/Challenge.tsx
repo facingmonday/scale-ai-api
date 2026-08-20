@@ -14,6 +14,7 @@ import type { VariableDefinitionWithValue } from "@/types/decision";
 import { useGlobalContext } from "@/context/GlobalContext";
 import { getErrorMessage } from "@/utils";
 import {
+  getChallengeLifecycleStatus,
   getChallengePresentationBadgeClass,
   getChallengePresentationStatus,
 } from "@/utils/challengeStatus";
@@ -257,6 +258,7 @@ const Challenge: React.FC = () => {
   // Watch variables to ensure they're tracked by the form
   const watchedFormValues = form.watch();
   const watchedVariables = watchedFormValues.variables;
+  const lifecycleStatus = getChallengeLifecycleStatus(challenge);
 
   const handleFormFieldChange = <K extends keyof ScenarioFormValues>(
     field: K,
@@ -531,7 +533,9 @@ const Challenge: React.FC = () => {
                       </button>
                     </>
                   ) : null}
-                  {!isEditing && !challenge.isClosed ? (
+                  {!isEditing &&
+                  !challenge.isClosed &&
+                  lifecycleStatus !== "Scheduled" ? (
                     challenge.isPublished ? (
                       <button
                         className="btn-outline"
@@ -579,6 +583,7 @@ const Challenge: React.FC = () => {
             </FormProvider>
 
             {challenge.isPublished &&
+              lifecycleStatus !== "Scheduled" &&
               activeClassroom?._id &&
               id &&
               !challenge.isClosed && (
@@ -588,6 +593,7 @@ const Challenge: React.FC = () => {
               )}
 
             {challenge.isPublished &&
+              lifecycleStatus !== "Scheduled" &&
               activeClassroom?._id &&
               id &&
               !challenge.isClosed && (

@@ -94,7 +94,8 @@ test("challenge exports lifecycle statics", () => {
   assert.equal(typeof Challenge.getLifecycleStatus, "function");
 });
 
-test("getLifecycleStatus returns Draft, Open, Locked, and Closed", () => {
+test("getLifecycleStatus returns Scheduled without changing terminal precedence", () => {
+  const now = new Date("2026-09-01T14:00:00.000Z");
   assert.equal(
     Challenge.getLifecycleStatus({
       isPublished: false,
@@ -102,6 +103,48 @@ test("getLifecycleStatus returns Draft, Open, Locked, and Closed", () => {
       isClosed: false,
     }),
     "Draft"
+  );
+  assert.equal(
+    Challenge.getLifecycleStatus(
+      {
+        isPublished: false,
+        isLockedForStudents: false,
+        isClosed: false,
+        publishAt: new Date("2026-09-01T15:00:00.000Z"),
+        automationMode: "FULL",
+        automationStatus: "SCHEDULED",
+      },
+      now
+    ),
+    "Scheduled"
+  );
+  assert.equal(
+    Challenge.getLifecycleStatus(
+      {
+        isPublished: true,
+        isLockedForStudents: false,
+        isClosed: false,
+        publishAt: new Date("2026-09-01T15:00:00.000Z"),
+        automationMode: "FULL",
+        automationStatus: "acceptingSubmissions",
+      },
+      now
+    ),
+    "Scheduled"
+  );
+  assert.equal(
+    Challenge.getLifecycleStatus(
+      {
+        isPublished: false,
+        isLockedForStudents: false,
+        isClosed: false,
+        publishAt: new Date("2026-09-01T13:00:00.000Z"),
+        automationMode: "FULL",
+        automationStatus: "SCHEDULED",
+      },
+      now
+    ),
+    "Scheduled"
   );
   assert.equal(
     Challenge.getLifecycleStatus({
@@ -132,9 +175,95 @@ test("getLifecycleStatus returns Draft, Open, Locked, and Closed", () => {
       isPublished: true,
       isLockedForStudents: true,
       isClosed: true,
-    }),
+      publishAt: new Date("2026-09-01T15:00:00.000Z"),
+      automationMode: "FULL",
+    }, now),
     "Closed"
   );
+});
+
+test("student visibility requires both publication and the configured start", () => {
+  const beforeStart = new Date("2026-09-01T14:00:00.000Z");
+  const atStart = new Date("2026-09-01T15:00:00.000Z");
+  const challenge = {
+    isPublished: true,
+    publishAt: new Date("2026-09-01T15:00:00.000Z"),
+  };
+
+  assert.equal(Challenge.hasStarted(challenge, beforeStart), false);
+  assert.equal(Challenge.isVisibleToStudents(challenge, beforeStart), false);
+  assert.equal(Challenge.hasStarted(challenge, atStart), true);
+  assert.equal(Challenge.isVisibleToStudents(challenge, atStart), true);
+  assert.equal(
+    Challenge.isVisibleToStudents({ ...challenge, isPublished: false }, atStart),
+    false
+  );
+});
+
+test("publish preserves a future full-automation challenge as scheduled", async () => {
+  const challenge = new Challenge({
+    classroomId: "507f1f77bcf86cd799439011",
+    title: "Future challenge",
+    publishAt: new Date(Date.now() + 60_000),
+    automationMode: "FULL",
+    automationStatus: "SCHEDULED",
+    organization: "507f1f77bcf86cd799439012",
+    createdBy: "test",
+    updatedBy: "test",
+  });
+  challenge.save = async () => challenge;
+
+  await challenge.publish("teacher");
+
+  assert.equal(challenge.isPublished, false);
+  assert.equal(challenge.automationStatus, "SCHEDULED");
+  assert.equal(challenge.updatedBy, "teacher");
+});
+
+test("publish rejects a future start in manual automation mode", async () => {
+  const challenge = new Challenge({
+    classroomId: "507f1f77bcf86cd799439011",
+    title: "Manual future challenge",
+    publishAt: new Date(Date.now() + 60_000),
+    automationMode: "MANUAL",
+    organization: "507f1f77bcf86cd799439012",
+    createdBy: "test",
+    updatedBy: "test",
+  });
+
+  await assert.rejects(
+    challenge.publish("teacher"),
+    /Full automation is required to schedule a future challenge start/
+  );
+});
+
+test("publishDueScenarios opens a scheduled challenge once it is due", async () => {
+  const dueChallenge = {
+    _id: { toString: () => "challenge-id" },
+    classroomId: "classroom-id",
+    title: "Due challenge",
+    async publish(clerkUserId) {
+      this.publishedBy = clerkUserId;
+      this.isPublished = true;
+      this.automationStatus = "acceptingSubmissions";
+    },
+  };
+  const model = {
+    find(query) {
+      assert.equal(query.automationMode, "FULL");
+      assert.equal(query.isPublished, false);
+      return { sort: async () => [dueChallenge] };
+    },
+    getActiveScenario: async () => null,
+  };
+
+  const results = await Challenge.publishDueScenarios.call(model, new Date());
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0].status, "published");
+  assert.equal(dueChallenge.isPublished, true);
+  assert.equal(dueChallenge.automationStatus, "acceptingSubmissions");
+  assert.equal(dueChallenge.publishedBy, "system");
 });
 
 test("lifecycleStatus virtual is included in toJSON", () => {

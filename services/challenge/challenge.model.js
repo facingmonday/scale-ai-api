@@ -51,8 +51,8 @@ const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
  *           type: boolean
  *         lifecycleStatus:
  *           type: string
- *           enum: [Draft, Open, Locked, Closed]
- *           description: Derived from isPublished, isLockedForStudents, and isClosed
+ *           enum: [Draft, Scheduled, Open, Locked, Closed]
+ *           description: Derived from the configured start and publish/lock/close flags
  *         allowLateSubmissions:
  *           type: boolean
  *         lateSubmissionPolicy:
@@ -230,13 +230,60 @@ scenarioSchema.set("toJSON", { virtuals: true });
 scenarioSchema.set("toObject", { virtuals: true });
 
 /**
- * Derive lifecycle status from publish/lock/close flags.
- * @param {{ isPublished?: boolean, isLockedForStudents?: boolean, isClosed?: boolean }} challenge
- * @returns {"Draft"|"Open"|"Locked"|"Closed"}
+ * Determine whether a challenge's configured start instant has arrived.
+ * Challenges without a start date are eligible to start immediately.
+ * @param {{ publishAt?: Date|string|null }} challenge
+ * @param {Date} [now]
+ * @returns {boolean}
  */
-scenarioSchema.statics.getLifecycleStatus = function (challenge) {
-  if (!challenge?.isPublished) return "Draft";
+scenarioSchema.statics.hasStarted = function (challenge, now = new Date()) {
+  if (!challenge?.publishAt) return true;
+  const publishAt = new Date(challenge.publishAt).getTime();
+  if (Number.isNaN(publishAt)) return false;
+  return publishAt <= now.getTime();
+};
+
+/**
+ * Determine whether students may see a challenge.
+ * @param {{ isPublished?: boolean, publishAt?: Date|string|null }} challenge
+ * @param {Date} [now]
+ * @returns {boolean}
+ */
+scenarioSchema.statics.isVisibleToStudents = function (
+  challenge,
+  now = new Date()
+) {
+  return !!challenge?.isPublished && this.hasStarted(challenge, now);
+};
+
+/**
+ * Derive lifecycle status from the schedule and publish/lock/close flags.
+ * @param {{ isPublished?: boolean, isLockedForStudents?: boolean, isClosed?: boolean, publishAt?: Date|string|null, automationMode?: string, automationStatus?: string }} challenge
+ * @param {Date} [now]
+ * @returns {"Draft"|"Scheduled"|"Open"|"Locked"|"Closed"}
+ */
+scenarioSchema.statics.getLifecycleStatus = function (
+  challenge,
+  now = new Date()
+) {
+  if (!challenge) return "Draft";
   if (challenge.isClosed) return "Closed";
+  const hasScheduledStart =
+    !!challenge.publishAt &&
+    (challenge.isPublished ||
+      challenge.automationMode === "FULL" ||
+      challenge.automationStatus === "SCHEDULED");
+  const waitingForPublishWorker =
+    !challenge.isPublished &&
+    challenge.automationStatus === "SCHEDULED" &&
+    !!challenge.publishAt;
+  if (
+    hasScheduledStart &&
+    (!this.hasStarted(challenge, now) || waitingForPublishWorker)
+  ) {
+    return "Scheduled";
+  }
+  if (!challenge.isPublished) return "Draft";
   if (challenge.isLockedForStudents) return "Locked";
   return "Open";
 };
@@ -582,6 +629,20 @@ scenarioSchema.methods.updateVariables = async function (
  * @returns {Promise<Object>} Updated challenge
  */
 scenarioSchema.methods.publish = async function (clerkUserId) {
+  if (!this.constructor.hasStarted(this)) {
+    if (this.automationMode !== "FULL") {
+      throw new Error(
+        "Full automation is required to schedule a future challenge start"
+      );
+    }
+    this.isPublished = false;
+    this.automationStatus = "SCHEDULED";
+    this.automationError = null;
+    this.updatedBy = clerkUserId;
+    await this.save();
+    return this;
+  }
+
   // Check if there's already an active published challenge
   const activeScenario = await this.constructor.getActiveScenario(
     this.classroomId
