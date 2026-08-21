@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const mongoose = require("mongoose");
 const {
   setupTestDb,
   teardownTestDb,
@@ -123,6 +124,22 @@ test("enrollment ensureJoin", async (t) => {
 
     const roster = await Enrollment.getClassRoster(classroom._id);
     assert.equal(roster[0].studentId, "S-100");
+
+    await Profile.create({
+      classroomId: classroom._id,
+      userId: member._id,
+      studentId: "PROFILE-OLD",
+      shopName: "Existing profile",
+      storeDescription: "Existing profile description",
+      storeLocation: "Existing profile location",
+      profileType: new mongoose.Types.ObjectId(),
+      organization: org._id,
+      createdBy: member.clerkUserId,
+      updatedBy: member.clerkUserId,
+    });
+
+    const rosterWithProfile = await Enrollment.getClassRoster(classroom._id);
+    assert.equal(rosterWithProfile[0].studentId, "S-100");
     restoreClerk();
   });
 
@@ -393,8 +410,6 @@ test("enrollment ensureJoin", async (t) => {
     const org = await createOrganization({ clerkOrganizationId: "org_join_404" });
     const member = await createMember({ clerkUserId: "user_404" });
     const restoreClerk = stubClerkMembership(Member);
-    const mongoose = require("mongoose");
-
     await assert.rejects(
       Enrollment.ensureJoin({
         orgId: org.clerkOrganizationId,

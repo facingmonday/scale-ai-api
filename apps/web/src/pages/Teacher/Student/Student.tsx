@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Dialog } from "primereact/dialog";
 import { Button } from "primereact/button";
 import BasicLayout from "../../../components/Layouts/BasicLayout";
@@ -15,8 +15,10 @@ import LoadingOverlay from "../../../components/LoadingOverlay";
 const Student: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { activeClassroom } = useAuth();
-  const activeClassroomId = activeClassroom?._id;
+  const requestedClassroomId = searchParams.get("classroomId");
+  const activeClassroomId = requestedClassroomId || activeClassroom?._id;
   const [student, setStudent] = useState<MemberWithVirtuals | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,6 +26,10 @@ const Student: React.FC = () => {
   const [showResetDialog, setShowResetDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isEditingEnrollment, setIsEditingEnrollment] = useState(false);
+  const [isSavingEnrollment, setIsSavingEnrollment] = useState(false);
+  const [enrollmentStudentId, setEnrollmentStudentId] = useState("");
+  const [enrollmentError, setEnrollmentError] = useState<string | null>(null);
 
   const formatClerkDate = (value?: string | number | null) => {
     if (!value) return "-";
@@ -41,7 +47,11 @@ const Student: React.FC = () => {
         id,
         activeClassroomId,
       );
-      setStudent(response.data || response);
+      const nextStudent = response.data || response;
+      setStudent(nextStudent);
+      setEnrollmentStudentId(
+        nextStudent.enrollment?.studentId || nextStudent.studentId || "",
+      );
     } catch (err) {
       console.error("Failed to fetch student:", err);
       setError("Failed to load student");
@@ -49,6 +59,45 @@ const Student: React.FC = () => {
       setIsLoading(false);
     }
   }, [activeClassroomId, id]);
+
+  const handleSaveEnrollment = async () => {
+    if (!id || !activeClassroomId) return;
+
+    setIsSavingEnrollment(true);
+    setEnrollmentError(null);
+    try {
+      const response = await enrollmentService.updateStudentEnrollment(
+        activeClassroomId,
+        id,
+        { studentId: enrollmentStudentId.trim() },
+      );
+      const updatedEnrollment = response.data;
+      setStudent((current) =>
+        current
+          ? {
+              ...current,
+              studentId: updatedEnrollment.studentId,
+              enrollment: updatedEnrollment,
+            }
+          : current,
+      );
+      setEnrollmentStudentId(updatedEnrollment.studentId || "");
+      setIsEditingEnrollment(false);
+    } catch (err) {
+      console.error("Failed to update enrollment:", err);
+      setEnrollmentError("Failed to update the enrollment student ID");
+    } finally {
+      setIsSavingEnrollment(false);
+    }
+  };
+
+  const handleCancelEnrollmentEdit = () => {
+    setEnrollmentStudentId(
+      student?.enrollment?.studentId || student?.studentId || "",
+    );
+    setEnrollmentError(null);
+    setIsEditingEnrollment(false);
+  };
 
   useEffect(() => {
     if (id) {
@@ -157,7 +206,7 @@ const Student: React.FC = () => {
 
                 <div className="min-w-0 flex-1">
                   <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-text-muted">
-                    Student
+                    Member information
                   </p>
                   <h1 className="heading-xl mb-5">
                     {student.name ||
@@ -189,14 +238,6 @@ const Student: React.FC = () => {
                         ) : (
                           "-"
                         )}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-xs font-semibold uppercase tracking-wider text-text-muted">
-                        Student ID
-                      </dt>
-                      <dd className="mt-1 font-medium text-text-primary">
-                        {student.studentId || "-"}
                       </dd>
                     </div>
                     <div>
@@ -252,6 +293,122 @@ const Student: React.FC = () => {
                   </dl>
                 </div>
               </div>
+            </div>
+
+            <div className="card mb-6">
+              <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-text-muted">
+                    Classroom enrollment
+                  </p>
+                  <h2 className="heading-md">
+                    {activeClassroom?.name || "Current classroom"}
+                  </h2>
+                </div>
+                {student.enrollment && !isEditingEnrollment && (
+                  <Button
+                    label="Edit enrollment"
+                    icon="pi pi-pencil"
+                    onClick={() => {
+                      setEnrollmentError(null);
+                      setIsEditingEnrollment(true);
+                    }}
+                    outlined
+                    className="[&_.p-button-icon]:mr-2"
+                  />
+                )}
+              </div>
+
+              {!student.enrollment ? (
+                <p className="text-text-muted">
+                  This student does not have an active enrollment in the selected classroom.
+                </p>
+              ) : (
+                <dl className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-3">
+                  <div>
+                    <dt className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                      Student ID
+                    </dt>
+                    <dd className="mt-1 font-medium text-text-primary">
+                      {isEditingEnrollment ? (
+                        <input
+                          type="text"
+                          className="input max-w-sm"
+                          value={enrollmentStudentId}
+                          onChange={(event) =>
+                            setEnrollmentStudentId(event.target.value)
+                          }
+                          maxLength={20}
+                          autoFocus
+                        />
+                      ) : (
+                        student.enrollment.studentId ||
+                        student.profileStudentId ||
+                        student.studentId ||
+                        "-"
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                      Enrollment role
+                    </dt>
+                    <dd className="mt-1 capitalize font-medium text-text-primary">
+                      {student.enrollment.role || "-"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                      Joined classroom
+                    </dt>
+                    <dd className="mt-1 font-medium text-text-primary">
+                      {formatClerkDate(
+                        student.enrollment.joinedAt
+                          ? new Date(student.enrollment.joinedAt).toISOString()
+                          : null,
+                      )}
+                    </dd>
+                  </div>
+                </dl>
+              )}
+
+              {isEditingEnrollment && (
+                <div className="mt-5 border-t border-ui-border pt-4">
+                  <p className="mb-4 text-sm text-text-muted">
+                    This updates the classroom enrollment and the default used when the student creates a store profile. It does not change an existing store profile.
+                  </p>
+                  {enrollmentError && (
+                    <p className="mb-4 text-sm text-red-400">{enrollmentError}</p>
+                  )}
+                  <div className="flex gap-2">
+                    <Button
+                      label="Save"
+                      icon="pi pi-check"
+                      onClick={() => void handleSaveEnrollment()}
+                      loading={isSavingEnrollment}
+                      disabled={isSavingEnrollment}
+                      className="[&_.p-button-icon]:mr-2"
+                    />
+                    <Button
+                      label="Cancel"
+                      icon="pi pi-times"
+                      onClick={handleCancelEnrollmentEdit}
+                      disabled={isSavingEnrollment}
+                      text
+                      className="[&_.p-button-icon]:mr-2"
+                    />
+                  </div>
+                </div>
+              )}
+              {!isEditingEnrollment &&
+                !student.enrollment?.studentId &&
+                student.profileStudentId && (
+                  <p className="mt-4 text-sm text-text-muted">
+                    This ID is currently sourced from the store profile. Choose
+                    Edit enrollment and save to copy it to the classroom
+                    enrollment.
+                  </p>
+                )}
             </div>
 
             {activeClassroom?._id && id && (

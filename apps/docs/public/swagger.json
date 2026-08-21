@@ -3079,6 +3079,60 @@
             "description": "Student removed successfully."
           }
         }
+      },
+      "patch": {
+        "summary": "Update a student's classroom enrollment",
+        "description": "Updates classroom-specific enrollment data, including the student ID. Requires org:admin role.",
+        "tags": [
+          "Enrollments"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "classroomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "studentId"
+                ],
+                "properties": {
+                  "studentId": {
+                    "type": "string",
+                    "maxLength": 20
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Enrollment updated successfully."
+          }
+        }
       }
     },
     "/v1/enrollment/admin/transfer": {

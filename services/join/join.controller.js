@@ -56,12 +56,17 @@ exports.join = async function join(req, res) {
       },
     });
   } catch (error) {
-    console.error("Error in join:", {
-      message: error?.message,
-      status: error?.status,
-      code: error?.errors?.[0]?.code,
-      data: error?.errors,
-    });
+    const isExpectedPaymentRequired =
+      error?.statusCode === 402 && error?.code === "PAYMENT_REQUIRED";
+
+    if (!isExpectedPaymentRequired) {
+      console.error("Error in join:", {
+        message: error?.message,
+        status: error?.statusCode,
+        code: error?.code,
+        details: error?.details,
+      });
+    }
 
     if (error?.statusCode) {
       return res
@@ -80,5 +85,4 @@ exports.join = async function join(req, res) {
     });
   }
 };
-
 

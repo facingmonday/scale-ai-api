@@ -62,6 +62,21 @@ async function removeStudent(classroomId: string, userId: string) {
   return response.data;
 }
 
+async function updateStudentEnrollment(
+  classroomId: string,
+  userId: string,
+  data: { studentId: string },
+) {
+  const response = await axios.patch(
+    `${API_HOST}/${API_VERSION}/enrollment/admin/class/${classroomId}/student/${userId}`,
+    data,
+    {
+      headers: await TokenHandler.getHeaders(),
+    },
+  );
+  return response.data;
+}
+
 async function leaveClass(classroomId: string) {
   const response = await axios.post(
     `${API_HOST}/${API_VERSION}/enrollment/class/${classroomId}/leave`,
@@ -132,6 +147,7 @@ const enrollmentService = {
   joinClass,
   getRoster,
   removeStudent,
+  updateStudentEnrollment,
   leaveClass,
   transferStudent,
   getMyClasses,

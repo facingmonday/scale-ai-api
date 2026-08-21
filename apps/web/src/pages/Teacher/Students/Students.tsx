@@ -20,7 +20,11 @@ const Students: React.FC = () => {
   const handleStudentClick = (student: StudentDisplay) => {
     const id = student.userId || student.id;
     if (!id) return;
-    navigate(`/students/${id}`);
+    const selectedClassroomId = student.classroomId || classroomId;
+    const query = selectedClassroomId
+      ? `?classroomId=${encodeURIComponent(selectedClassroomId)}`
+      : "";
+    navigate(`/students/${id}${query}`);
   };
 
   const handleStudentsLoaded = (_students: StudentDisplay[], count: number) => {

@@ -97,6 +97,14 @@ export interface ClerkMemberProfile {
   lastActiveAt: string | number | null;
 }
 
+export interface MemberEnrollmentDetails {
+  _id: string;
+  classroomId: string;
+  role: "admin" | "member";
+  studentId: string;
+  joinedAt: string | Date;
+}
+
 /**
  * Member model
  */
@@ -166,6 +174,8 @@ export interface Member {
  */
 export interface MemberWithVirtuals extends Member {
   studentId?: string;
+  profileStudentId?: string;
+  enrollment?: MemberEnrollmentDetails | null;
   clerkProfile?: ClerkMemberProfile | null;
   fullName: string; // Virtual: computed from firstName + lastName
   name: string; // Virtual: fullName || username || clerkUserId

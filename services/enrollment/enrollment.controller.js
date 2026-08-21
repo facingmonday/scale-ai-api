@@ -257,6 +257,75 @@ exports.removeStudent = async function (req, res) {
 };
 
 /**
+ * Update classroom-specific enrollment data for a student.
+ * PATCH /v1/enrollment/admin/class/:classroomId/student/:userId
+ */
+exports.updateStudentEnrollment = async function (req, res) {
+  try {
+    const { classroomId, userId } = req.params;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    if (typeof req.body?.studentId !== "string") {
+      return res.status(400).json({ error: "studentId must be a string" });
+    }
+
+    const studentId = req.body.studentId.trim();
+    if (studentId.length > 20) {
+      return res.status(400).json({
+        error: "studentId must be 20 characters or fewer",
+      });
+    }
+
+    await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId,
+    );
+
+    const enrollment = await Enrollment.findOne({
+      classroomId,
+      userId,
+      organization: organizationId,
+      isRemoved: false,
+    });
+
+    if (!enrollment) {
+      return res.status(404).json({ error: "Enrollment not found" });
+    }
+
+    enrollment.studentId = studentId || undefined;
+    enrollment.updatedBy = clerkUserId;
+    await enrollment.save();
+
+    return res.json({
+      success: true,
+      message: "Enrollment updated successfully",
+      data: {
+        _id: enrollment._id,
+        classroomId: enrollment.classroomId,
+        userId: enrollment.userId,
+        role: enrollment.role,
+        studentId: enrollment.studentId || "",
+        joinedAt: enrollment.joinedAt,
+      },
+    });
+  } catch (error) {
+    console.error("Error updating student enrollment:", error);
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    if (error.name === "ValidationError" || error.name === "CastError") {
+      return res.status(400).json({ error: error.message });
+    }
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+/**
  * Student leaves class
  * POST /v1/enrollment/class/:classroomId/leave
  */
