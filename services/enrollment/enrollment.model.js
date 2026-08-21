@@ -740,16 +740,29 @@ enrollmentSchema.statics.ensureJoin = async function ({
       joinSource,
     });
 
+    let rosterSeat;
     if (claim?.rosterSeatId) {
-      const rosterSeat = await RosterSeat.findOne({
+      rosterSeat = await RosterSeat.findOne({
         _id: claim.rosterSeatId,
         classroomId: classroom._id,
         organization: organization._id,
       })
         .select("studentId")
         .lean();
-      rosterStudentId = rosterSeat?.studentId || undefined;
     }
+
+    if (!rosterSeat && studentEmail) {
+      rosterSeat = await RosterSeat.findOne({
+        classroomId: classroom._id,
+        organization: organization._id,
+        email: studentEmail.trim().toLowerCase(),
+        status: { $ne: "revoked" },
+      })
+        .select("studentId")
+        .lean();
+    }
+
+    rosterStudentId = rosterSeat?.studentId || undefined;
   }
 
   const clerkMembership = await Member.getOrCreateClerkOrgMembership(

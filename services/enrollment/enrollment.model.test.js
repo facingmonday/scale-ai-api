@@ -126,6 +126,62 @@ test("enrollment ensureJoin", async (t) => {
     restoreClerk();
   });
 
+  await t.test("copies roster student ID when an existing paid claim has no roster link", async () => {
+    await clearCollections();
+    const org = await createOrganization({ clerkOrganizationId: "org_join_paid_roster_id" });
+    const classroom = await createClassroom(org._id, { joinPolicy: "open" });
+    const member = await createMember({
+      clerkUserId: "user_paid_roster_id",
+      organizationMemberships: [
+        {
+          id: "orgmem_paid_roster_id",
+          organizationId: org._id,
+          role: "org:member",
+          organization: { id: org.clerkOrganizationId, name: org.name },
+          createdAt: new Date(),
+        },
+      ],
+    });
+    const restoreClerk = stubClerkMembership(Member);
+    const rosterSeat = await RosterSeat.create({
+      classroomId: classroom._id,
+      email: "paid.student@example.com",
+      studentId: "PAID-100",
+      organization: org._id,
+      createdBy: member.clerkUserId,
+      updatedBy: member.clerkUserId,
+    });
+    const paidClaim = await SeatClaim.create({
+      classroomId: classroom._id,
+      userId: member._id,
+      source: "stripe_student",
+      organization: org._id,
+      createdBy: "stripe_webhook",
+      updatedBy: "stripe_webhook",
+    });
+
+    const { enrollment } = await Enrollment.ensureJoin({
+      orgId: org.clerkOrganizationId,
+      classroomId: classroom._id,
+      clerkUserId: member.clerkUserId,
+      member,
+      studentEmail: "  Paid.Student@Example.COM  ",
+      joinSource: "invite_link",
+    });
+
+    assert.equal(enrollment.studentId, "PAID-100");
+
+    const unchangedClaim = await SeatClaim.findById(paidClaim._id);
+    assert.equal(unchangedClaim.rosterSeatId, undefined);
+
+    const unchangedRosterSeat = await RosterSeat.findById(rosterSeat._id);
+    assert.equal(unchangedRosterSeat.status, "reserved");
+
+    const roster = await Enrollment.getClassRoster(classroom._id);
+    assert.equal(roster[0].studentId, "PAID-100");
+    restoreClerk();
+  });
+
   await t.test("restores the roster student ID after removal and rejoin", async () => {
     await clearCollections();
     const org = await createOrganization({ clerkOrganizationId: "org_join_restore_id" });
