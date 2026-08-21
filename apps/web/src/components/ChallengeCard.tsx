@@ -14,6 +14,7 @@ export interface ScenarioListItem {
   createdDate?: string | Date;
   createdAt?: string | Date;
   publishAt?: string | Date | null;
+  publishMode?: "MANUAL" | "SCHEDULED";
   submissionDeadlineAt?: string | Date | null;
   closeSubmissionsAt?: string | Date | null;
   processAt?: string | Date | null;
@@ -54,7 +55,14 @@ export const ChallengeCard: React.FC<ChallengeCardProps> = ({
             </div>
             <div className="flex gap-2">
               <span className="badge badge-muted text-[10px] py-0 px-2">
-                {challenge.automationMode === "FULL" ? "Automated" : "Manual"}
+                {challenge.publishMode === "SCHEDULED"
+                  ? "Scheduled opening"
+                  : "Manual opening"}
+              </span>
+              <span className="badge badge-muted text-[10px] py-0 px-2">
+                {challenge.automationMode === "FULL"
+                  ? "Full automation"
+                  : "Instructor controlled"}
               </span>
               <span
                 className={`badge text-[10px] py-0 px-2 ${
@@ -72,7 +80,10 @@ export const ChallengeCard: React.FC<ChallengeCardProps> = ({
             </div>
           </div>
           <div className="text-sm text-text-muted mt-0.5">
-            Opens {formatDateTime(challenge.publishAt)} · Due{" "}
+            {challenge.publishMode === "SCHEDULED"
+              ? `Opens ${formatDateTime(challenge.publishAt)}`
+              : "Opens when published"}{" "}
+            · Due{" "}
             {formatDateTime(challenge.submissionDeadlineAt)}
           </div>
 

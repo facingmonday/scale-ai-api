@@ -264,6 +264,7 @@ classroomSchema.statics.getDashboard = async function (
         isClosed: activeScenario.isClosed,
         isLockedForStudents: activeScenario.isLockedForStudents,
         lifecycleStatus: Challenge.getLifecycleStatus(activeScenario),
+        publishMode: Challenge.getPublishMode(activeScenario),
       }
     : null;
 
@@ -418,6 +419,7 @@ classroomSchema.statics.getStudentDashboard = async function (
         isClosed: visibleScenario.isClosed,
         isLockedForStudents: visibleScenario.isLockedForStudents,
         lifecycleStatus: Challenge.getLifecycleStatus(visibleScenario),
+        publishMode: Challenge.getPublishMode(visibleScenario),
         week: visibleScenario.week,
         publishAt: visibleScenario.publishAt,
         submissionDeadlineAt: visibleScenario.submissionDeadlineAt,

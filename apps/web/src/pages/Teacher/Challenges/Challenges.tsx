@@ -20,6 +20,7 @@ type ScenarioListItem = {
   createdDate?: string | Date;
   createdAt?: string | Date;
   publishAt?: string | Date | null;
+  publishMode?: "MANUAL" | "SCHEDULED";
   submissionDeadlineAt?: string | Date | null;
   closeSubmissionsAt?: string | Date | null;
   processAt?: string | Date | null;
@@ -340,7 +341,9 @@ const Challenges: React.FC = () => {
                                       className="pi pi-calendar text-xs"
                                       aria-hidden="true"
                                     />
-                                    Opens {formatDateTime(challenge.publishAt)}
+                                    {challenge.publishMode === "SCHEDULED"
+                                      ? `Opens ${formatDateTime(challenge.publishAt)}`
+                                      : "Opens when published"}
                                   </span>
                                   <span className="flex items-center gap-1.5">
                                     <i
@@ -356,9 +359,14 @@ const Challenges: React.FC = () => {
                               </div>
                               <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
                                 <span className="badge badge-muted">
+                                  {challenge.publishMode === "SCHEDULED"
+                                    ? "Scheduled opening"
+                                    : "Manual opening"}
+                                </span>
+                                <span className="badge badge-muted">
                                   {challenge.automationMode === "FULL"
-                                    ? "Automated"
-                                    : "Manual"}
+                                    ? "Full automation"
+                                    : "Instructor controlled"}
                                 </span>
                                 <span
                                   className={`badge ${

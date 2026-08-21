@@ -30,6 +30,11 @@ const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
  *         publishAt:
  *           type: string
  *           format: date-time
+ *         publishMode:
+ *           type: string
+ *           enum: [MANUAL, SCHEDULED]
+ *           default: MANUAL
+ *           description: Controls initial challenge opening independently of post-opening automation.
  *         submissionDeadlineAt:
  *           type: string
  *           format: date-time
@@ -63,6 +68,7 @@ const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
  *         automationMode:
  *           type: string
  *           enum: [MANUAL, FULL]
+ *           description: Controls deadline, result-processing, and feedback automation after opening.
  *         automationStatus:
  *           type: string
  *           enum: [UNSCHEDULED, SCHEDULED, PUBLISHED, PROCESSING, COMPLETED, BLOCKED, FAILED, DRAFT, acceptingSubmissions, submissionsClosed, queuedForProcessing, processed, feedbackReleased]
@@ -113,6 +119,13 @@ const scenarioSchema = new mongoose.Schema({
   publishAt: {
     type: Date,
     default: null,
+  },
+  publishMode: {
+    type: String,
+    enum: ["MANUAL", "SCHEDULED"],
+    default: function () {
+      return this.publishAt ? "SCHEDULED" : "MANUAL";
+    },
   },
   submissionDeadlineAt: {
     type: Date,
@@ -223,11 +236,17 @@ scenarioSchema.index({ classroomId: 1, isPublished: 1, isClosed: 1 });
 scenarioSchema.index({ classroomId: 1, createdDate: -1 });
 scenarioSchema.index({ organization: 1, classroomId: 1 });
 scenarioSchema.index({ isPublished: 1, isClosed: 1, publishAt: 1 });
+scenarioSchema.index({ publishMode: 1, isPublished: 1, publishAt: 1 });
 scenarioSchema.index({ isPublished: 1, isClosed: 1, submissionDeadlineAt: 1 });
 scenarioSchema.index({ automationMode: 1, automationStatus: 1 });
 
-scenarioSchema.set("toJSON", { virtuals: true });
-scenarioSchema.set("toObject", { virtuals: true });
+function serializeChallenge(doc, ret) {
+  ret.publishMode = doc.constructor.getPublishMode(doc);
+  return ret;
+}
+
+scenarioSchema.set("toJSON", { virtuals: true, transform: serializeChallenge });
+scenarioSchema.set("toObject", { virtuals: true, transform: serializeChallenge });
 
 /**
  * Determine whether a challenge's configured start instant has arrived.
@@ -257,8 +276,21 @@ scenarioSchema.statics.isVisibleToStudents = function (
 };
 
 /**
+ * Resolve the opening method for both current and legacy challenges.
+ * Legacy documents with a start date were scheduled; those without one were
+ * opened manually.
+ * @param {{ publishMode?: string, publishAt?: Date|string|null }} challenge
+ * @returns {"MANUAL"|"SCHEDULED"}
+ */
+scenarioSchema.statics.getPublishMode = function (challenge) {
+  if (challenge?.publishMode === "SCHEDULED") return "SCHEDULED";
+  if (challenge?.publishMode === "MANUAL") return "MANUAL";
+  return challenge?.publishAt ? "SCHEDULED" : "MANUAL";
+};
+
+/**
  * Derive lifecycle status from the schedule and publish/lock/close flags.
- * @param {{ isPublished?: boolean, isLockedForStudents?: boolean, isClosed?: boolean, publishAt?: Date|string|null, automationMode?: string, automationStatus?: string }} challenge
+ * @param {{ isPublished?: boolean, isLockedForStudents?: boolean, isClosed?: boolean, publishAt?: Date|string|null, publishMode?: string }} challenge
  * @param {Date} [now]
  * @returns {"Draft"|"Scheduled"|"Open"|"Locked"|"Closed"}
  */
@@ -269,14 +301,8 @@ scenarioSchema.statics.getLifecycleStatus = function (
   if (!challenge) return "Draft";
   if (challenge.isClosed) return "Closed";
   const hasScheduledStart =
-    !!challenge.publishAt &&
-    (challenge.isPublished ||
-      challenge.automationMode === "FULL" ||
-      challenge.automationStatus === "SCHEDULED");
-  const waitingForPublishWorker =
-    !challenge.isPublished &&
-    challenge.automationStatus === "SCHEDULED" &&
-    !!challenge.publishAt;
+    this.getPublishMode(challenge) === "SCHEDULED" && !!challenge.publishAt;
+  const waitingForPublishWorker = hasScheduledStart && !challenge.isPublished;
   if (
     hasScheduledStart &&
     (!this.hasStarted(challenge, now) || waitingForPublishWorker)
@@ -357,6 +383,7 @@ scenarioSchema.statics.createScenario = async function (
     variables,
     imageUrl,
     publishAt,
+    publishMode,
     submissionDeadlineAt,
     closeSubmissionsAt,
     processAt,
@@ -372,23 +399,31 @@ scenarioSchema.statics.createScenario = async function (
   } = scenarioData;
 
   const resolvedAutomationMode = automationMode || "FULL";
-  const shouldScheduleAutomation =
-    resolvedAutomationMode === "FULL" &&
-    Boolean(publishAt || submissionDeadlineAt);
+  const resolvedPublishMode =
+    publishMode || (publishAt ? "SCHEDULED" : "MANUAL");
+  if (resolvedPublishMode === "SCHEDULED" && !publishAt) {
+    throw new Error("publishAt is required for scheduled opening");
+  }
+  const resolvedPublishAt = resolvedPublishMode === "MANUAL" ? null : publishAt;
+  const resolvedFeedbackReleaseMode =
+    resolvedAutomationMode === "MANUAL" && feedbackReleaseMode === "DELAYED"
+      ? "MANUAL"
+      : feedbackReleaseMode || "IMMEDIATE";
 
   const scheduleFields = {
-    publishAt: publishAt || null,
+    publishAt: resolvedPublishAt || null,
+    publishMode: resolvedPublishMode,
     submissionDeadlineAt: submissionDeadlineAt || null,
     closeSubmissionsAt: closeSubmissionsAt || submissionDeadlineAt || null,
     processAt: processAt || submissionDeadlineAt || null,
     feedbackReleaseAt: feedbackReleaseAt || null,
-    feedbackReleaseMode: feedbackReleaseMode || "IMMEDIATE",
+    feedbackReleaseMode: resolvedFeedbackReleaseMode,
     allowLateSubmissions: allowLateSubmissions || false,
     lateSubmissionPolicy: lateSubmissionPolicy || { penaltyPercentPerDay: 0 },
     automationMode: resolvedAutomationMode,
     automationStatus:
       automationStatus ||
-      (shouldScheduleAutomation ? "SCHEDULED" : "UNSCHEDULED"),
+      (resolvedPublishMode === "SCHEDULED" ? "SCHEDULED" : "UNSCHEDULED"),
     missingSubmissionPolicy: missingSubmissionPolicy || "SKIP",
     punishAbsentStudents: punishAbsentStudents || "none",
   };
@@ -478,10 +513,16 @@ scenarioSchema.statics.createScenario = async function (
  * @returns {Promise<Object|null>} Active challenge with variables or null
  */
 scenarioSchema.statics.getActiveScenario = async function (classroomId) {
+  const now = new Date();
   const challenge = await this.findOne({
     classroomId,
     isPublished: true,
     isClosed: false,
+    $or: [
+      { publishMode: "MANUAL" },
+      { publishAt: null },
+      { publishAt: { $lte: now } },
+    ],
   }).sort({ week: -1 });
 
   if (!challenge) {
@@ -629,18 +670,23 @@ scenarioSchema.methods.updateVariables = async function (
  * @returns {Promise<Object>} Updated challenge
  */
 scenarioSchema.methods.publish = async function (clerkUserId) {
-  if (!this.constructor.hasStarted(this)) {
-    if (this.automationMode !== "FULL") {
-      throw new Error(
-        "Full automation is required to schedule a future challenge start"
-      );
-    }
+  const publishMode = this.constructor.getPublishMode(this);
+  if (publishMode === "SCHEDULED" && !this.publishAt) {
+    throw new Error("publishAt is required for scheduled opening");
+  }
+  if (publishMode === "SCHEDULED" && !this.constructor.hasStarted(this)) {
     this.isPublished = false;
+    this.publishMode = "SCHEDULED";
     this.automationStatus = "SCHEDULED";
     this.automationError = null;
     this.updatedBy = clerkUserId;
     await this.save();
     return this;
+  }
+
+  if (publishMode === "MANUAL") {
+    this.publishMode = "MANUAL";
+    this.publishAt = null;
   }
 
   // Check if there's already an active published challenge
@@ -652,10 +698,8 @@ scenarioSchema.methods.publish = async function (clerkUserId) {
   }
 
   this.isPublished = true;
-  if (this.automationMode === "FULL") {
-    this.automationStatus = "acceptingSubmissions";
-    this.automationError = null;
-  }
+  this.automationStatus = "acceptingSubmissions";
+  this.automationError = null;
   this.updatedBy = clerkUserId;
   await this.save();
   return this;
@@ -668,11 +712,11 @@ scenarioSchema.methods.publish = async function (clerkUserId) {
  */
 scenarioSchema.methods.unpublish = async function (clerkUserId) {
   this.isPublished = false;
-  if (this.automationMode === "FULL") {
-    this.automationStatus =
-      this.publishAt || this.submissionDeadlineAt ? "SCHEDULED" : "UNSCHEDULED";
-    this.automationError = null;
-  }
+  this.isLockedForStudents = false;
+  this.publishMode = "MANUAL";
+  this.publishAt = null;
+  this.automationStatus = "UNSCHEDULED";
+  this.automationError = null;
   this.updatedBy = clerkUserId;
   await this.save();
   return this;
@@ -739,11 +783,9 @@ scenarioSchema.methods.open = async function (clerkUserId) {
   this.isClosed = false;
   this.isLockedForStudents = false;
   this.isFeedbackReleased = false;
-  if (this.automationMode === "FULL") {
-    this.automationStatus = this.isPublished ? "acceptingSubmissions" : "SCHEDULED";
-    this.automatedProcessedAt = null;
-    this.automationError = null;
-  }
+  this.automationStatus = this.isPublished ? "acceptingSubmissions" : "UNSCHEDULED";
+  this.automatedProcessedAt = null;
+  this.automationError = null;
   this.updatedBy = clerkUserId;
   await this.save();
   return this;
@@ -776,6 +818,24 @@ scenarioSchema.methods.canPublish = async function () {
     !activeScenario || activeScenario._id.toString() === this._id.toString()
   );
 };
+
+scenarioSchema.pre("validate", function (next) {
+  if (!this.publishMode) {
+    this.publishMode = this.constructor.getPublishMode(this);
+  }
+  if (this.publishMode === "MANUAL") {
+    this.publishAt = null;
+  } else if (!this.publishAt) {
+    this.invalidate("publishAt", "publishAt is required for scheduled opening");
+  }
+  if (
+    this.automationMode === "MANUAL" &&
+    this.feedbackReleaseMode === "DELAYED"
+  ) {
+    this.feedbackReleaseMode = "MANUAL";
+  }
+  next();
+});
 
 // Track creation state for post-save hooks
 scenarioSchema.pre("save", function (next) {
@@ -1508,16 +1568,20 @@ scenarioSchema.methods.markAutomationBlocked = async function (message) {
 };
 
 /**
- * Publish all due scheduled challenges in FULL automation mode
+ * Publish all due scheduled challenges, independently of result automation.
  * @param {Date} now - Reference time for due-date comparison
  * @returns {Promise<Array>} Per-challenge result entries
  */
 scenarioSchema.statics.publishDueScenarios = async function (now) {
   const dueScenarios = await this.find({
-    automationMode: "FULL",
     isPublished: false,
     isClosed: false,
     publishAt: { $ne: null, $lte: now },
+    $or: [
+      { publishMode: "SCHEDULED" },
+      { publishMode: { $exists: false } },
+      { publishMode: null },
+    ],
   }).sort({ publishAt: 1, week: 1 });
 
   const results = [];
