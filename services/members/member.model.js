@@ -436,6 +436,56 @@ memberSchema.methods.getContactFromClerk = async function () {
   }
 };
 
+/**
+ * Fetch the canonical, admin-safe identity fields for this member from Clerk.
+ * Authentication secrets and private/unsafe metadata are intentionally omitted.
+ */
+memberSchema.methods.getProfileFromClerk = async function () {
+  const clerkUser = await clerkClient.users.getUser(this.clerkUserId);
+  const emailAddresses = (clerkUser.emailAddresses || []).map((email) => ({
+    id: email.id,
+    emailAddress: email.emailAddress || "",
+    verification: {
+      status: email.verification?.status || "",
+      strategy: email.verification?.strategy || "",
+    },
+  }));
+  const phoneNumbers = (clerkUser.phoneNumbers || []).map((phone) => ({
+    id: phone.id,
+    phoneNumber: phone.phoneNumber || "",
+    verification: {
+      status: phone.verification?.status || "",
+      strategy: phone.verification?.strategy || "",
+    },
+  }));
+  const primaryEmail = emailAddresses.find(
+    (email) => email.id === clerkUser.primaryEmailAddressId,
+  );
+  const primaryPhone = phoneNumbers.find(
+    (phone) => phone.id === clerkUser.primaryPhoneNumberId,
+  );
+  const firstName = clerkUser.firstName || "";
+  const lastName = clerkUser.lastName || "";
+
+  return {
+    id: clerkUser.id,
+    firstName,
+    lastName,
+    fullName: [firstName, lastName].filter(Boolean).join(" "),
+    username: clerkUser.username || "",
+    imageUrl: clerkUser.imageUrl || "",
+    hasImage: clerkUser.hasImage || false,
+    email: primaryEmail?.emailAddress || emailAddresses[0]?.emailAddress || "",
+    emailAddresses,
+    phone: primaryPhone?.phoneNumber || phoneNumbers[0]?.phoneNumber || "",
+    phoneNumbers,
+    createdAt: clerkUser.createdAt || null,
+    updatedAt: clerkUser.updatedAt || null,
+    lastSignInAt: clerkUser.lastSignInAt || null,
+    lastActiveAt: clerkUser.lastActiveAt || null,
+  };
+};
+
 memberSchema.methods.getEmailFromClerk = async function () {
   try {
     const { email } = await this.getContactFromClerk();
@@ -1869,21 +1919,21 @@ memberSchema.statics.addUserToOrganization = async function (
 memberSchema.statics.formatMemberResponse = async function (
   member,
   orgMembership,
-  fetchClerkContactInfo = false
+  fetchClerkProfile = false,
 ) {
   if (!member || !orgMembership) {
     return null;
   }
 
-  // Always try to fetch full email and phone from Clerk first
   let email = "";
   let phone = "";
+  let clerkProfile = null;
 
   try {
-    // Fetch full contact info from Clerk
-    if (fetchClerkContactInfo) {
-      email = await member.getEmailFromClerk();
-      phone = await member.getPhoneFromClerk();
+    if (fetchClerkProfile) {
+      clerkProfile = await member.getProfileFromClerk();
+      email = clerkProfile.email;
+      phone = clerkProfile.phone;
     } else {
       email = member.maskedEmail || "";
       phone = member.maskedPhone || "";
@@ -1895,10 +1945,29 @@ memberSchema.statics.formatMemberResponse = async function (
     phone = member.maskedPhone || "";
   }
 
+  const memberObject = member.toObject();
+  const firstName = clerkProfile?.firstName || member.firstName || "";
+  const lastName = clerkProfile?.lastName || member.lastName || "";
+  const fullName =
+    clerkProfile?.fullName || [firstName, lastName].filter(Boolean).join(" ");
+  const username = clerkProfile?.username || member.username || "";
+
   return {
-    ...member.toObject(),
+    ...memberObject,
+    firstName,
+    lastName,
+    fullName,
+    name: fullName || username || member.clerkUserId,
+    username,
+    imageUrl: clerkProfile?.imageUrl || member.imageUrl || "",
+    hasImage: clerkProfile?.hasImage ?? member.hasImage ?? false,
     email: email,
     phone: phone,
+    emailAddresses:
+      clerkProfile?.emailAddresses || memberObject.emailAddresses || [],
+    phoneNumbers:
+      clerkProfile?.phoneNumbers || memberObject.phoneNumbers || [],
+    clerkProfile,
     maskedEmail: member.maskedEmail || "",
     maskedPhone: member.maskedPhone || "",
     organizationMembership: orgMembership,

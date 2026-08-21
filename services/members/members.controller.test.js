@@ -12,6 +12,7 @@ const {
   createMember,
   createEnrollment,
 } = require("../../test/helpers/factories");
+const Member = require("./member.model");
 
 test("members controller exports handlers", () => {
   assert.equal(typeof controller.getAllMembers, "function");
@@ -20,7 +21,34 @@ test("members controller exports handlers", () => {
 
 test("member detail includes the active classroom enrollment student ID", async (t) => {
   await setupTestDb();
+  const originalGetProfileFromClerk = Member.prototype.getProfileFromClerk;
+  Member.prototype.getProfileFromClerk = async function () {
+    return {
+      id: this.clerkUserId,
+      firstName: "Myles",
+      lastName: "Williams",
+      fullName: "Myles Williams",
+      username: "myles",
+      imageUrl: "https://images.example.com/myles.png",
+      hasImage: true,
+      email: "myles@example.com",
+      emailAddresses: [
+        {
+          id: "email_detail",
+          emailAddress: "myles@example.com",
+          verification: { status: "verified", strategy: "email_code" },
+        },
+      ],
+      phone: "",
+      phoneNumbers: [],
+      createdAt: 1,
+      updatedAt: 2,
+      lastSignInAt: 3,
+      lastActiveAt: 4,
+    };
+  };
   t.after(async () => {
+    Member.prototype.getProfileFromClerk = originalGetProfileFromClerk;
     await teardownTestDb();
   });
   await clearCollections();
@@ -70,4 +98,7 @@ test("member detail includes the active classroom enrollment student ID", async 
 
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.studentId, "S-DETAIL");
+  assert.equal(res.body.fullName, "Myles Williams");
+  assert.equal(res.body.email, "myles@example.com");
+  assert.equal(res.body.clerkProfile.emailAddresses.length, 1);
 });

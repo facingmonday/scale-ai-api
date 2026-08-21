@@ -40,9 +40,10 @@ async function getStats() {
   return response.data;
 }
 
-async function getById(id: string) {
+async function getById(id: string, classroomId?: string) {
   const response = await axios.get(`${API_HOST}/${API_VERSION}/members/${id}`, {
     headers: await TokenHandler.getHeaders(),
+    params: classroomId ? { classroomId } : undefined,
   });
   return response.data;
 }

@@ -16,6 +16,7 @@ const Student: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { activeClassroom } = useAuth();
+  const activeClassroomId = activeClassroom?._id;
   const [student, setStudent] = useState<MemberWithVirtuals | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,13 +25,22 @@ const Student: React.FC = () => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
+  const formatClerkDate = (value?: string | number | null) => {
+    if (!value) return "-";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString();
+  };
+
   const fetchStudent = useCallback(async () => {
     if (!id) return;
 
     setIsLoading(true);
     setError(null);
     try {
-      const response = await membersService.getById(id);
+      const response = await membersService.getById(
+        id,
+        activeClassroomId,
+      );
       setStudent(response.data || response);
     } catch (err) {
       console.error("Failed to fetch student:", err);
@@ -38,11 +48,13 @@ const Student: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [id]);
+  }, [activeClassroomId, id]);
 
   useEffect(() => {
     if (id) {
-      fetchStudent();
+      // The route parameter is the external trigger for this fetch.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      void fetchStudent();
     }
   }, [id, fetchStudent]);
 
@@ -129,18 +141,117 @@ const Student: React.FC = () => {
       ) : (
         <div className="page">
           <div className="container">
-            <h1 className="heading-xl mb-6">
-              {student.name ||
-                `${student.firstName || ""} ${student.lastName || ""}`.trim() ||
-                "Student"}
-            </h1>
             <div className="card mb-6">
-              {student.email && (
-                <p className="text-text-muted mb-2">Email: {student.email}</p>
-              )}
-              <p className="text-text-muted text-sm">
-                Student ID: {student.studentId || "-"}
-              </p>
+              <div className="flex flex-col gap-6 md:flex-row md:items-start">
+                {student.imageUrl ? (
+                  <img
+                    src={student.imageUrl}
+                    alt=""
+                    className="size-20 rounded-full border border-ui-border object-cover"
+                  />
+                ) : (
+                  <div className="flex size-20 shrink-0 items-center justify-center rounded-full bg-brand-teal/15 text-2xl font-bold text-brand-blue">
+                    {(student.firstName?.[0] || student.lastName?.[0] || "S").toUpperCase()}
+                  </div>
+                )}
+
+                <div className="min-w-0 flex-1">
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-text-muted">
+                    Student
+                  </p>
+                  <h1 className="heading-xl mb-5">
+                    {student.name ||
+                      `${student.firstName || ""} ${student.lastName || ""}`.trim() ||
+                      "Student"}
+                  </h1>
+
+                  <dl className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2 xl:grid-cols-3">
+                    <div>
+                      <dt className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                        Full name
+                      </dt>
+                      <dd className="mt-1 font-medium text-text-primary">
+                        {student.fullName || student.name || "-"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                        Primary email
+                      </dt>
+                      <dd className="mt-1 break-all font-medium text-text-primary">
+                        {student.email ? (
+                          <a
+                            href={`mailto:${student.email}`}
+                            className="text-brand-blue hover:underline"
+                          >
+                            {student.email}
+                          </a>
+                        ) : (
+                          "-"
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                        Student ID
+                      </dt>
+                      <dd className="mt-1 font-medium text-text-primary">
+                        {student.studentId || "-"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                        Username
+                      </dt>
+                      <dd className="mt-1 font-medium text-text-primary">
+                        {student.username || "-"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                        Phone
+                      </dt>
+                      <dd className="mt-1 font-medium text-text-primary">
+                        {student.phone || "-"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                        Clerk user ID
+                      </dt>
+                      <dd className="mt-1 break-all font-mono text-sm text-text-primary">
+                        {student.clerkUserId || "-"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                        Email status
+                      </dt>
+                      <dd className="mt-1 capitalize font-medium text-text-primary">
+                        {student.clerkProfile?.emailAddresses.find(
+                          (email) => email.emailAddress === student.email,
+                        )?.verification.status || "-"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                        Account created
+                      </dt>
+                      <dd className="mt-1 font-medium text-text-primary">
+                        {formatClerkDate(student.clerkProfile?.createdAt)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                        Last sign-in
+                      </dt>
+                      <dd className="mt-1 font-medium text-text-primary">
+                        {formatClerkDate(student.clerkProfile?.lastSignInAt)}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              </div>
             </div>
 
             {activeClassroom?._id && id && (

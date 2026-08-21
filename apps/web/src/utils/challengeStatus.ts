@@ -17,6 +17,7 @@ export interface ChallengeLifecycleInput {
   lifecycleStatus?: ChallengeLifecycleStatus;
   automationStatus?: string;
   automationMode?: string;
+  publishMode?: "MANUAL" | "SCHEDULED";
   publishAt?: string | Date | null;
 }
 
@@ -47,16 +48,14 @@ export function getChallengeLifecycleStatus(
   const publishAt = challenge.publishAt
     ? new Date(challenge.publishAt).getTime()
     : null;
+  const resolvedPublishMode =
+    challenge.publishMode || (challenge.publishAt ? "SCHEDULED" : "MANUAL");
   const hasScheduledStart =
+    resolvedPublishMode === "SCHEDULED" &&
     publishAt !== null &&
-    !Number.isNaN(publishAt) &&
-    (challenge.isPublished ||
-      challenge.automationMode === "FULL" ||
-      challenge.automationStatus === "SCHEDULED");
+    !Number.isNaN(publishAt);
   const waitingForPublishWorker =
-    !challenge.isPublished &&
-    challenge.automationStatus === "SCHEDULED" &&
-    publishAt !== null;
+    !challenge.isPublished && hasScheduledStart;
   const startsInFuture = publishAt !== null && publishAt > Date.now();
   if (hasScheduledStart && (startsInFuture || waitingForPublishWorker)) {
     return "Scheduled";

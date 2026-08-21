@@ -1,6 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
+process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || "test-key";
+
 const controller = require("./challenge.controller");
 const Challenge = require("./challenge.model");
 const Classroom = require("../classroom/classroom.model");
@@ -34,6 +36,7 @@ test("publishScenario keeps a future full-automation challenge scheduled", async
     isPublished: false,
     isClosed: false,
     publishAt: new Date(Date.now() + 60_000),
+    publishMode: "SCHEDULED",
     automationMode: "FULL",
     automationStatus: "SCHEDULED",
     async publish(clerkUserId) {
@@ -74,7 +77,7 @@ test("publishScenario keeps a future full-automation challenge scheduled", async
   assert.equal(challenge.publishedBy, "teacher-id");
 });
 
-test("publishScenario rejects a future start in manual automation mode", async (t) => {
+test("publishScenario permits scheduled opening with manual result automation", async (t) => {
   const originals = {
     findOne: Challenge.findOne,
     validateAdminAccess: Classroom.validateAdminAccess,
@@ -84,14 +87,19 @@ test("publishScenario rejects a future start in manual automation mode", async (
     Classroom.validateAdminAccess = originals.validateAdminAccess;
   });
 
-  Challenge.findOne = async () => ({
+  const challenge = {
     _id: "challenge-id",
     classroomId: "classroom-id",
     isPublished: false,
     isClosed: false,
     publishAt: new Date(Date.now() + 60_000),
+    publishMode: "SCHEDULED",
     automationMode: "MANUAL",
-  });
+    async publish() {
+      this.automationStatus = "SCHEDULED";
+    },
+  };
+  Challenge.findOne = async () => challenge;
   Classroom.validateAdminAccess = async () => {};
 
   let statusCode = 200;
@@ -116,16 +124,27 @@ test("publishScenario rejects a future start in manual automation mode", async (
     res
   );
 
-  assert.equal(statusCode, 400);
-  assert.match(body.error, /Full automation is required/);
+  assert.equal(statusCode, 200);
+  assert.equal(body.message, "Challenge scheduled successfully");
+  assert.equal(challenge.automationStatus, "SCHEDULED");
 });
 
-test("createScenario rejects a future start in manual automation mode", async (t) => {
+test("createScenario derives scheduled opening for an older payload", async (t) => {
   const originalValidateAdminAccess = Classroom.validateAdminAccess;
+  const originalCreateScenario = Challenge.createScenario;
+  const originalTrigger = AutomationTask.trigger;
   t.after(() => {
     Classroom.validateAdminAccess = originalValidateAdminAccess;
+    Challenge.createScenario = originalCreateScenario;
+    AutomationTask.trigger = originalTrigger;
   });
   Classroom.validateAdminAccess = async () => {};
+  let createdInput;
+  Challenge.createScenario = async (_classroomId, input) => {
+    createdInput = input;
+    return { _id: "challenge-id", classroomId: "classroom-id" };
+  };
+  AutomationTask.trigger = async () => {};
 
   let statusCode = 200;
   let body;
@@ -154,11 +173,13 @@ test("createScenario rejects a future start in manual automation mode", async (t
     res
   );
 
-  assert.equal(statusCode, 400);
-  assert.match(body.error, /Full automation is required/);
+  assert.equal(statusCode, 201);
+  assert.equal(createdInput.publishMode, "SCHEDULED");
+  assert.equal(createdInput.automationMode, "MANUAL");
+  assert.equal(createdInput.automationStatus, "SCHEDULED");
 });
 
-test("updateScenario rejects a future start in manual automation mode", async (t) => {
+test("updateScenario rejects scheduled opening without a start", async (t) => {
   const originals = {
     findOne: Challenge.findOne,
     validateAdminAccess: Classroom.validateAdminAccess,
@@ -194,8 +215,8 @@ test("updateScenario rejects a future start in manual automation mode", async (t
     {
       params: { challengeId: "challenge-id" },
       body: {
-        publishAt: new Date(Date.now() + 60_000).toISOString(),
-        automationMode: "MANUAL",
+        publishAt: null,
+        publishMode: "SCHEDULED",
       },
       organization: { _id: "organization-id" },
       clerkUser: { id: "teacher-id" },
@@ -204,7 +225,110 @@ test("updateScenario rejects a future start in manual automation mode", async (t
   );
 
   assert.equal(statusCode, 400);
-  assert.match(body.error, /Full automation is required/);
+  assert.match(body.error, /publishAt is required/);
+});
+
+test("updateScenario locks opening fields after publication", async (t) => {
+  const originals = {
+    findOne: Challenge.findOne,
+    validateAdminAccess: Classroom.validateAdminAccess,
+  };
+  t.after(() => {
+    Challenge.findOne = originals.findOne;
+    Classroom.validateAdminAccess = originals.validateAdminAccess;
+  });
+  Challenge.findOne = async () => ({
+    _id: "challenge-id",
+    classroomId: "classroom-id",
+    isPublished: true,
+    publishMode: "SCHEDULED",
+    publishAt: new Date("2026-08-20T15:00:00.000Z"),
+    submissionDeadlineAt: null,
+    automationMode: "FULL",
+    canEdit: () => true,
+  });
+  Classroom.validateAdminAccess = async () => {};
+
+  let statusCode = 200;
+  let body;
+  const res = {
+    status(status) {
+      statusCode = status;
+      return this;
+    },
+    json(payload) {
+      body = payload;
+      return this;
+    },
+  };
+
+  await controller.updateScenario(
+    {
+      params: { challengeId: "challenge-id" },
+      body: { publishMode: "MANUAL", publishAt: null },
+      organization: { _id: "organization-id" },
+      clerkUser: { id: "teacher-id" },
+    },
+    res
+  );
+
+  assert.equal(statusCode, 400);
+  assert.match(body.error, /Unpublish the challenge first/);
+});
+
+test("updateScenario derives publish mode for an older payload", async (t) => {
+  const originals = {
+    findOne: Challenge.findOne,
+    validateAdminAccess: Classroom.validateAdminAccess,
+  };
+  t.after(() => {
+    Challenge.findOne = originals.findOne;
+    Classroom.validateAdminAccess = originals.validateAdminAccess;
+  });
+  const challenge = {
+    _id: "challenge-id",
+    classroomId: "classroom-id",
+    isPublished: false,
+    isClosed: false,
+    publishMode: "MANUAL",
+    publishAt: null,
+    submissionDeadlineAt: new Date("2026-08-22T15:00:00.000Z"),
+    automationMode: "MANUAL",
+    feedbackReleaseMode: "IMMEDIATE",
+    canEdit: () => true,
+    save: async () => {},
+    _loadVariables: async () => {},
+    toObject() {
+      return { ...this };
+    },
+  };
+  Challenge.findOne = async () => challenge;
+  Classroom.validateAdminAccess = async () => {};
+
+  let statusCode = 200;
+  const res = {
+    status(status) {
+      statusCode = status;
+      return this;
+    },
+    json() {
+      return this;
+    },
+  };
+
+  await controller.updateScenario(
+    {
+      params: { challengeId: "challenge-id" },
+      body: { publishAt: "2026-08-21T15:00:00.000Z" },
+      organization: { _id: "organization-id" },
+      clerkUser: { id: "teacher-id" },
+    },
+    res
+  );
+
+  assert.equal(statusCode, 200);
+  assert.equal(challenge.publishMode, "SCHEDULED");
+  assert.equal(challenge.automationStatus, "SCHEDULED");
 });
 
 test("student challenge detail returns 404 before the scheduled start", async (t) => {

@@ -23,6 +23,7 @@ test("scheduled challenges default to full automation metadata when configured",
 
   await challenge.validate();
 
+  assert.equal(challenge.publishMode, "SCHEDULED");
   assert.equal(challenge.automationMode, "FULL");
   assert.equal(challenge.automationStatus, "SCHEDULED");
   assert.equal(challenge.missingSubmissionPolicy, "FORWARD_PREVIOUS");
@@ -50,6 +51,7 @@ test("new challenge automation fields are validated successfully", async () => {
 
   await challenge.validate();
 
+  assert.equal(challenge.publishMode, "SCHEDULED");
   assert.equal(challenge.feedbackReleaseMode, "DELAYED");
   assert.equal(challenge.automationMode, "FULL");
   assert.equal(challenge.isLockedForStudents, true);
@@ -220,21 +222,24 @@ test("publish preserves a future full-automation challenge as scheduled", async 
   assert.equal(challenge.updatedBy, "teacher");
 });
 
-test("publish rejects a future start in manual automation mode", async () => {
+test("scheduled opening is independent of manual result automation", async () => {
   const challenge = new Challenge({
     classroomId: "507f1f77bcf86cd799439011",
     title: "Manual future challenge",
     publishAt: new Date(Date.now() + 60_000),
+    publishMode: "SCHEDULED",
     automationMode: "MANUAL",
     organization: "507f1f77bcf86cd799439012",
     createdBy: "test",
     updatedBy: "test",
   });
+  challenge.save = async () => challenge;
 
-  await assert.rejects(
-    challenge.publish("teacher"),
-    /Full automation is required to schedule a future challenge start/
-  );
+  await challenge.publish("teacher");
+
+  assert.equal(challenge.isPublished, false);
+  assert.equal(challenge.publishMode, "SCHEDULED");
+  assert.equal(challenge.automationStatus, "SCHEDULED");
 });
 
 test("publishDueScenarios opens a scheduled challenge once it is due", async () => {
@@ -250,8 +255,8 @@ test("publishDueScenarios opens a scheduled challenge once it is due", async () 
   };
   const model = {
     find(query) {
-      assert.equal(query.automationMode, "FULL");
       assert.equal(query.isPublished, false);
+      assert.equal(query.$or[0].publishMode, "SCHEDULED");
       return { sort: async () => [dueChallenge] };
     },
     getActiveScenario: async () => null,
@@ -264,6 +269,55 @@ test("publishDueScenarios opens a scheduled challenge once it is due", async () 
   assert.equal(dueChallenge.isPublished, true);
   assert.equal(dueChallenge.automationStatus, "acceptingSubmissions");
   assert.equal(dueChallenge.publishedBy, "system");
+});
+
+test("post-opening workers remain limited to full automation", async () => {
+  const model = {
+    find(query) {
+      assert.equal(query.automationMode, "FULL");
+      assert.equal(query.isPublished, true);
+      return { sort: async () => [] };
+    },
+  };
+
+  const results = await Challenge.closeDueSubmissions.call(model, new Date());
+  assert.deepEqual(results, []);
+});
+
+test("legacy publish mode resolves from publishAt", () => {
+  assert.equal(
+    Challenge.getPublishMode({ publishAt: new Date() }),
+    "SCHEDULED"
+  );
+  assert.equal(Challenge.getPublishMode({ publishAt: null }), "MANUAL");
+  assert.equal(
+    Challenge.getPublishMode({ publishMode: "MANUAL", publishAt: new Date() }),
+    "MANUAL"
+  );
+});
+
+test("unpublish resets opening to a manual draft", async () => {
+  const challenge = new Challenge({
+    classroomId: "507f1f77bcf86cd799439011",
+    title: "Open scheduled challenge",
+    isPublished: true,
+    isLockedForStudents: true,
+    publishMode: "SCHEDULED",
+    publishAt: new Date(),
+    automationMode: "FULL",
+    organization: "507f1f77bcf86cd799439012",
+    createdBy: "test",
+    updatedBy: "test",
+  });
+  challenge.save = async () => challenge;
+
+  await challenge.unpublish("teacher");
+
+  assert.equal(challenge.isPublished, false);
+  assert.equal(challenge.isLockedForStudents, false);
+  assert.equal(challenge.publishMode, "MANUAL");
+  assert.equal(challenge.publishAt, null);
+  assert.equal(challenge.automationStatus, "UNSCHEDULED");
 });
 
 test("lifecycleStatus virtual is included in toJSON", () => {
@@ -280,6 +334,7 @@ test("lifecycleStatus virtual is included in toJSON", () => {
 
   assert.equal(challenge.lifecycleStatus, "Locked");
   assert.equal(challenge.toJSON().lifecycleStatus, "Locked");
+  assert.equal(challenge.toJSON().publishMode, "MANUAL");
 });
 
 const leaderboardMetricDefinitions = [

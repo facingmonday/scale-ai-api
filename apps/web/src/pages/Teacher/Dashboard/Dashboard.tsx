@@ -161,7 +161,15 @@ const Dashboard: React.FC = () => {
     const now = Date.now();
     return [...challenges]
       .filter((challenge) => {
-        if (challenge.isPublished || challenge.isClosed || !challenge.publishAt) {
+        const publishMode =
+          challenge.publishMode ||
+          (challenge.publishAt ? "SCHEDULED" : "MANUAL");
+        if (
+          publishMode !== "SCHEDULED" ||
+          challenge.isPublished ||
+          challenge.isClosed ||
+          !challenge.publishAt
+        ) {
           return false;
         }
         return new Date(challenge.publishAt).getTime() >= now;
@@ -789,8 +797,8 @@ const Dashboard: React.FC = () => {
                 header="Automation"
                 body={(rowData: Challenge) =>
                   rowData.automationMode === "FULL"
-                    ? rowData.automationStatus || "SCHEDULED"
-                    : "Manual"
+                    ? `Full · ${rowData.automationStatus || "Unscheduled"}`
+                    : "Instructor controlled"
                 }
                 sortable
                 sortField="automationStatus"

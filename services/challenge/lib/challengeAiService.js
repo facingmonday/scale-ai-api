@@ -450,8 +450,11 @@ async function createChallengeFromPrompt({
         title: generated.title,
         description: generated.description,
         ...generated.schedule,
+        publishMode: generated.schedule.publishAt ? "SCHEDULED" : "MANUAL",
         automationMode: "FULL",
-        automationStatus: "SCHEDULED",
+        automationStatus: generated.schedule.publishAt
+          ? "SCHEDULED"
+          : "UNSCHEDULED",
       },
       organizationId,
       clerkUserId,

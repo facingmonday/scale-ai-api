@@ -76,7 +76,7 @@ exports.getMemberById = async (req, res) => {
     const formattedMember = await Member.formatMemberResponse(
       member,
       orgMembership,
-      false
+      true,
     );
 
     const classroomId =

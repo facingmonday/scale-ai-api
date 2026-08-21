@@ -30,6 +30,7 @@ export interface Challenge extends BaseSchema {
   isLockedForStudents?: boolean;
   lifecycleStatus?: ChallengeLifecycleStatus;
   publishAt?: string | Date | null;
+  publishMode?: "MANUAL" | "SCHEDULED";
   submissionDeadlineAt?: string | Date | null;
   closeSubmissionsAt?: string | Date | null;
   processAt?: string | Date | null;

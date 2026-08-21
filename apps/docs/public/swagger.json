@@ -729,6 +729,15 @@
             "type": "string",
             "format": "date-time"
           },
+          "publishMode": {
+            "type": "string",
+            "enum": [
+              "MANUAL",
+              "SCHEDULED"
+            ],
+            "default": "MANUAL",
+            "description": "Controls initial challenge opening independently of post-opening automation."
+          },
           "submissionDeadlineAt": {
             "type": "string",
             "format": "date-time"
@@ -786,7 +795,8 @@
             "enum": [
               "MANUAL",
               "FULL"
-            ]
+            ],
+            "description": "Controls deadline, result-processing, and feedback automation after opening."
           },
           "automationStatus": {
             "type": "string",
@@ -2551,6 +2561,46 @@
         "responses": {
           "200": {
             "description": "Number of roster entries removed and active claims detached."
+          }
+        }
+      }
+    },
+    "/v1/licensing/classrooms/{classroomId}/roster-seats/{seatId}": {
+      "delete": {
+        "summary": "Remove a single classroom roster seat",
+        "description": "Remove one roster entry without unenrolling a student who already joined. Requires org:admin role.",
+        "tags": [
+          "Licensing"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "classroomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "seatId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Roster entry removed and any active claim detached."
+          },
+          "404": {
+            "description": "Roster seat not found in this classroom."
           }
         }
       }
