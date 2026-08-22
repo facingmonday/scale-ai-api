@@ -49,6 +49,7 @@ export interface CreateScenarioRequest {
   imageUrl?: string;
   variables?: Record<string, unknown>;
   publishAt?: string | null;
+  publishMode?: "MANUAL" | "SCHEDULED";
   submissionDeadlineAt?: string | null;
   closeSubmissionsAt?: string | null;
   processAt?: string | null;

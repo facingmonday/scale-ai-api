@@ -139,6 +139,50 @@ router.delete(
 
 /**
  * @openapi
+ * /v1/enrollment/admin/class/{classroomId}/student/{userId}:
+ *   patch:
+ *     summary: Update a student's classroom enrollment
+ *     description: Updates the classroom enrollment student ID and synchronizes an existing store profile in the same classroom. Requires org:admin role.
+ *     tags:
+ *       - Enrollments
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - name: classroomId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: userId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - studentId
+ *             properties:
+ *               studentId:
+ *                 type: string
+ *                 maxLength: 20
+ *     responses:
+ *       200:
+ *         description: Enrollment updated successfully.
+ */
+router.patch(
+  "/admin/class/:classroomId/student/:userId",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.updateStudentEnrollment
+);
+
+/**
+ * @openapi
  * /v1/enrollment/admin/transfer:
  *   post:
  *     summary: Transfer student to another classroom

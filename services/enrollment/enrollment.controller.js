@@ -2,6 +2,7 @@ const Classroom = require("../classroom/classroom.model");
 const Member = require("../members/member.model");
 const Enrollment = require("./enrollment.model");
 const Organization = require("../organizations/organization.model");
+const Profile = require("../profile/profile.model");
 
 /**
  * Student joins class
@@ -253,6 +254,106 @@ exports.removeStudent = async function (req, res) {
       });
     }
     res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Update classroom-specific enrollment data for a student.
+ * PATCH /v1/enrollment/admin/class/:classroomId/student/:userId
+ */
+exports.updateStudentEnrollment = async function (req, res) {
+  try {
+    const { classroomId, userId } = req.params;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    if (typeof req.body?.studentId !== "string") {
+      return res.status(400).json({ error: "studentId must be a string" });
+    }
+
+    const studentId = req.body.studentId.trim();
+    if (studentId.length > 20) {
+      return res.status(400).json({
+        error: "studentId must be 20 characters or fewer",
+      });
+    }
+
+    await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId,
+    );
+
+    const [enrollment, profile] = await Promise.all([
+      Enrollment.findOne({
+        classroomId,
+        userId,
+        organization: organizationId,
+        isRemoved: false,
+      }),
+      Profile.findOne({
+        classroomId,
+        userId,
+        organization: organizationId,
+      })
+        .select("_id studentId")
+        .lean(),
+    ]);
+
+    if (!enrollment) {
+      return res.status(404).json({ error: "Enrollment not found" });
+    }
+
+    if (profile && !studentId) {
+      return res.status(400).json({
+        error: "studentId cannot be blank while a store profile exists",
+      });
+    }
+
+    enrollment.studentId = studentId || undefined;
+    enrollment.updatedBy = clerkUserId;
+    await Promise.all([
+      enrollment.save(),
+      profile
+        ? Profile.updateOne(
+            {
+              _id: profile._id,
+              classroomId,
+              userId,
+              organization: organizationId,
+            },
+            { $set: { studentId, updatedBy: clerkUserId } },
+            { runValidators: true },
+          )
+        : Promise.resolve(),
+    ]);
+
+    return res.json({
+      success: true,
+      message: "Enrollment updated successfully",
+      data: {
+        _id: enrollment._id,
+        classroomId: enrollment.classroomId,
+        userId: enrollment.userId,
+        role: enrollment.role,
+        studentId: enrollment.studentId || "",
+        joinedAt: enrollment.joinedAt,
+        profileUpdated: !!profile,
+        profileStudentId: profile ? studentId : "",
+      },
+    });
+  } catch (error) {
+    console.error("Error updating student enrollment:", error);
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    if (error.name === "ValidationError" || error.name === "CastError") {
+      return res.status(400).json({ error: error.message });
+    }
+    return res.status(500).json({ error: error.message });
   }
 };
 

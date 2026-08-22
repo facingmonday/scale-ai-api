@@ -16,6 +16,7 @@ const {
 
 const SCHEDULE_FIELDS = [
   "publishAt",
+  "publishMode",
   "submissionDeadlineAt",
   "closeSubmissionsAt",
   "processAt",
@@ -46,6 +47,12 @@ function normalizeScheduleInput(body) {
 
   if (body.publishAt !== undefined) {
     schedule.publishAt = parseOptionalDate(body.publishAt, "publishAt");
+  }
+  if (body.publishMode !== undefined) {
+    schedule.publishMode = body.publishMode || "MANUAL";
+  }
+  if (schedule.publishMode === "MANUAL") {
+    schedule.publishAt = null;
   }
   if (body.submissionDeadlineAt !== undefined) {
     schedule.submissionDeadlineAt = parseOptionalDate(
@@ -107,30 +114,21 @@ function normalizeScheduleInput(body) {
   return schedule;
 }
 
-function assertFutureStartUsesFullAutomation(
-  publishAt,
-  automationMode,
-  now = new Date()
-) {
-  if (
-    publishAt &&
-    new Date(publishAt).getTime() > now.getTime() &&
-    automationMode !== "FULL"
-  ) {
-    const error = new Error(
-      "Full automation is required to schedule a future challenge start"
-    );
+function validateOpeningSchedule(publishMode, publishAt) {
+  if (publishMode === "SCHEDULED" && !publishAt) {
+    const error = new Error("publishAt is required for scheduled opening");
     error.statusCode = 400;
     throw error;
   }
 }
 
+function sameInstant(left, right) {
+  if (!left && !right) return true;
+  if (!left || !right) return false;
+  return new Date(left).getTime() === new Date(right).getTime();
+}
+
 function nextAutomationStatus(challenge, scheduleUpdates = {}) {
-  const automationMode =
-    scheduleUpdates.automationMode !== undefined
-      ? scheduleUpdates.automationMode
-      : challenge.automationMode;
-  if (automationMode !== "FULL") return "UNSCHEDULED";
   if (challenge.isClosed) {
     return challenge.feedbackReleaseMode === "IMMEDIATE" ? "feedbackReleased" : "processed";
   }
@@ -138,15 +136,17 @@ function nextAutomationStatus(challenge, scheduleUpdates = {}) {
     return challenge.isLockedForStudents ? "submissionsClosed" : "acceptingSubmissions";
   }
 
+  const publishMode =
+    scheduleUpdates.publishMode !== undefined
+      ? scheduleUpdates.publishMode
+      : Challenge.getPublishMode(challenge);
   const publishAt =
     scheduleUpdates.publishAt !== undefined
       ? scheduleUpdates.publishAt
       : challenge.publishAt;
-  const deadlineAt =
-    scheduleUpdates.submissionDeadlineAt !== undefined
-      ? scheduleUpdates.submissionDeadlineAt
-      : challenge.submissionDeadlineAt;
-  return publishAt || deadlineAt ? "SCHEDULED" : "UNSCHEDULED";
+  return publishMode === "SCHEDULED" && publishAt
+    ? "SCHEDULED"
+    : "UNSCHEDULED";
 }
 
 function isChallengeCalculationComplete(challenge) {
@@ -249,10 +249,19 @@ exports.createScenario = async function (req, res) {
     );
 
     const createAutomationMode = scheduleInput.automationMode || "FULL";
-    assertFutureStartUsesFullAutomation(
-      scheduleInput.publishAt,
-      createAutomationMode
-    );
+    const createPublishMode =
+      scheduleInput.publishMode ||
+      (scheduleInput.publishAt ? "SCHEDULED" : "MANUAL");
+    validateOpeningSchedule(createPublishMode, scheduleInput.publishAt);
+    if (createPublishMode === "MANUAL") {
+      scheduleInput.publishAt = null;
+    }
+    if (
+      createAutomationMode === "MANUAL" &&
+      scheduleInput.feedbackReleaseMode === "DELAYED"
+    ) {
+      scheduleInput.feedbackReleaseMode = "MANUAL";
+    }
 
     // Create challenge using static method
     const challenge = await Challenge.createScenario(
@@ -263,13 +272,10 @@ exports.createScenario = async function (req, res) {
         variables,
         imageUrl,
         ...scheduleInput,
+        publishMode: createPublishMode,
         automationMode: createAutomationMode,
         automationStatus:
-          createAutomationMode === "FULL"
-            ? scheduleInput.publishAt || scheduleInput.submissionDeadlineAt
-              ? "SCHEDULED"
-              : "UNSCHEDULED"
-            : "UNSCHEDULED",
+          createPublishMode === "SCHEDULED" ? "SCHEDULED" : "UNSCHEDULED",
       },
       organizationId,
       clerkUserId
@@ -420,6 +426,15 @@ exports.updateScenario = async function (req, res) {
           ? req.body.submissionDeadlineAt
           : challenge.submissionDeadlineAt,
     });
+    const currentPublishMode = Challenge.getPublishMode(challenge);
+    const effectivePublishMode =
+      scheduleInput.publishMode !== undefined
+        ? scheduleInput.publishMode
+        : req.body.publishAt !== undefined
+          ? scheduleInput.publishAt
+            ? "SCHEDULED"
+            : "MANUAL"
+        : currentPublishMode;
     const effectiveAutomationMode =
       scheduleInput.automationMode !== undefined
         ? scheduleInput.automationMode
@@ -428,10 +443,20 @@ exports.updateScenario = async function (req, res) {
       scheduleInput.publishAt !== undefined
         ? scheduleInput.publishAt
         : challenge.publishAt;
-    assertFutureStartUsesFullAutomation(
-      effectivePublishAt,
-      effectiveAutomationMode
-    );
+    validateOpeningSchedule(effectivePublishMode, effectivePublishAt);
+
+    if (
+      challenge.isPublished &&
+      ((req.body.publishMode !== undefined &&
+        effectivePublishMode !== currentPublishMode) ||
+        (req.body.publishAt !== undefined &&
+          !sameInstant(effectivePublishAt, challenge.publishAt)))
+    ) {
+      return res.status(400).json({
+        error:
+          "Challenge opening method and start date cannot be changed after opening. Unpublish the challenge first.",
+      });
+    }
 
     // Update allowed fields (excluding variables)
     const allowedFields = ["title", "description", "imageUrl"];
@@ -446,13 +471,15 @@ exports.updateScenario = async function (req, res) {
         challenge[field] = value;
       }
     });
-
+    challenge.publishMode = effectivePublishMode;
+    if (effectivePublishMode === "MANUAL") {
+      challenge.publishAt = null;
+    }
     if (
-      effectivePublishAt &&
-      new Date(effectivePublishAt).getTime() > Date.now()
+      effectiveAutomationMode === "MANUAL" &&
+      challenge.feedbackReleaseMode === "DELAYED"
     ) {
-      challenge.isPublished = false;
-      challenge.isLockedForStudents = false;
+      challenge.feedbackReleaseMode = "MANUAL";
     }
 
     if (SCHEDULE_FIELDS.some((field) => req.body[field] !== undefined)) {
@@ -541,14 +568,13 @@ exports.publishScenario = async function (req, res) {
       });
     }
 
-    const isFutureStart = !Challenge.hasStarted(challenge);
-    assertFutureStartUsesFullAutomation(
-      challenge.publishAt,
-      challenge.automationMode
-    );
+    const publishMode = Challenge.getPublishMode(challenge);
+    validateOpeningSchedule(publishMode, challenge.publishAt);
+    const opensImmediately =
+      publishMode === "MANUAL" || Challenge.hasStarted(challenge);
 
     // Future challenges may be scheduled while another challenge is active.
-    if (!isFutureStart) {
+    if (opensImmediately) {
       const activeScenario = await Challenge.getActiveScenario(
         challenge.classroomId
       );
@@ -572,7 +598,7 @@ exports.publishScenario = async function (req, res) {
     const autoEnabled = String(
       process.env.AUTO_GENERATE_SUBMISSIONS_ON_PUBLISH ?? "false"
     ).toLowerCase();
-    if (!isFutureStart && autoEnabled === "true") {
+    if (opensImmediately && autoEnabled === "true") {
       try {
         autoSubmissionResult = await Decision.autoCreateDecisionsForChallenge({
           challengeId: challenge._id,
@@ -594,9 +620,9 @@ exports.publishScenario = async function (req, res) {
 
     res.json({
       success: true,
-      message: isFutureStart
-        ? "Challenge scheduled successfully"
-        : "Challenge published successfully",
+      message: opensImmediately
+        ? "Challenge published successfully"
+        : "Challenge scheduled successfully",
       data: challenge,
       autoSubmissionResult,
     });
@@ -1021,6 +1047,7 @@ exports.getCurrentScenario = async function (req, res) {
           lifecycleStatus: Challenge.getLifecycleStatus(challenge),
           week: challenge.week,
           publishAt: challenge.publishAt,
+          publishMode: Challenge.getPublishMode(challenge),
           submissionDeadlineAt: challenge.submissionDeadlineAt,
           automationMode: challenge.automationMode,
           automationStatus: challenge.automationStatus,
@@ -1078,6 +1105,7 @@ exports.getCurrentScenarioForAdmin = async function (req, res) {
           isLockedForStudents: challenge.isLockedForStudents,
           lifecycleStatus: Challenge.getLifecycleStatus(challenge),
           publishAt: challenge.publishAt,
+          publishMode: Challenge.getPublishMode(challenge),
           submissionDeadlineAt: challenge.submissionDeadlineAt,
           automationMode: challenge.automationMode,
           automationStatus: challenge.automationStatus,

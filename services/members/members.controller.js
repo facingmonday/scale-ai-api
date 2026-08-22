@@ -1,4 +1,5 @@
 const Member = require("./member.model");
+const Profile = require("../profile/profile.model");
 
 /**
  * Get all members for the current organization
@@ -76,7 +77,7 @@ exports.getMemberById = async (req, res) => {
     const formattedMember = await Member.formatMemberResponse(
       member,
       orgMembership,
-      false
+      true,
     );
 
     const classroomId =
@@ -85,17 +86,39 @@ exports.getMemberById = async (req, res) => {
       member.activeClassroom?.classroomId;
     if (classroomId) {
       const Enrollment = require("../enrollment/enrollment.model");
-      const enrollment = await Enrollment.findOne({
-        classroomId,
-        userId: member._id,
-        organization: organization._id,
-        isRemoved: false,
-      })
-        .select("studentId")
-        .lean();
-      formattedMember.studentId = enrollment?.studentId || "";
+      const [enrollment, profile] = await Promise.all([
+        Enrollment.findOne({
+          classroomId,
+          userId: member._id,
+          organization: organization._id,
+          isRemoved: false,
+        })
+          .select("classroomId role studentId joinedAt")
+          .lean(),
+        Profile.findOne({
+          classroomId,
+          userId: member._id,
+          organization: organization._id,
+        })
+          .select("studentId")
+          .lean(),
+      ]);
+      formattedMember.profileStudentId = profile?.studentId || "";
+      formattedMember.studentId =
+        enrollment?.studentId || profile?.studentId || "";
+      formattedMember.enrollment = enrollment
+        ? {
+            _id: enrollment._id,
+            classroomId: enrollment.classroomId,
+            role: enrollment.role,
+            studentId: enrollment.studentId || "",
+            joinedAt: enrollment.joinedAt,
+          }
+        : null;
     } else {
       formattedMember.studentId = "";
+      formattedMember.profileStudentId = "";
+      formattedMember.enrollment = null;
     }
 
     res.status(200).json(formattedMember);

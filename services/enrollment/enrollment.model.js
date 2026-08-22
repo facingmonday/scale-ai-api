@@ -267,7 +267,7 @@ enrollmentSchema.statics.getClassRoster = async function (classroomId) {
       lastName: member?.lastName || "",
       role: enrollment.role,
       joinedAt: enrollment.joinedAt,
-      studentId: profile?.studentId || enrollment.studentId || "",
+      studentId: enrollment.studentId || profile?.studentId || "",
       profile,
     };
   });

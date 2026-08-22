@@ -92,4 +92,47 @@ test("join controller", async (t) => {
     assert.ok(enrollment);
     restoreClerk();
   });
+
+  await t.test("returns payment required without logging an application error", async () => {
+    await clearCollections();
+    const org = await createOrganization({ clerkOrganizationId: "org_join_payment_ctrl" });
+    const classroom = await createClassroom(org._id, {
+      joinPolicy: "open",
+      studentPaysAllowed: true,
+    });
+    const member = await createMember({ clerkUserId: "user_join_payment_ctrl" });
+    const restoreClerk = stubClerkMembership(Member);
+    await createSeatPool(org._id, { totalSeats: 0, usedSeats: 0 });
+    const originalConsoleError = console.error;
+    const loggedErrors = [];
+    console.error = (...args) => loggedErrors.push(args);
+
+    try {
+      const res = mockRes();
+      await controller.join(
+        {
+          body: { orgId: org.clerkOrganizationId, classroomId: classroom._id },
+          clerkUser: {
+            id: member.clerkUserId,
+            primaryEmailAddressId: "email_payment",
+            emailAddresses: [
+              {
+                id: "email_payment",
+                emailAddress: "payment.student@example.com",
+              },
+            ],
+          },
+          user: member,
+        },
+        res,
+      );
+
+      assert.equal(res.statusCode, 402);
+      assert.equal(res.body.code, "PAYMENT_REQUIRED");
+      assert.equal(loggedErrors.length, 0);
+    } finally {
+      console.error = originalConsoleError;
+      restoreClerk();
+    }
+  });
 });

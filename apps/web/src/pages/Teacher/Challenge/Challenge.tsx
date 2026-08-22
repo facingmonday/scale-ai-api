@@ -63,6 +63,7 @@ const Challenge: React.FC = () => {
       description: "",
       imageUrl: "",
       publishAt: "",
+      publishMode: "MANUAL",
       submissionDeadlineAt: "",
       closeSubmissionsAt: "",
       processAt: "",
@@ -150,6 +151,8 @@ const Challenge: React.FC = () => {
             description: next.description || "",
             imageUrl: next.imageUrl || "",
             publishAt: toDateTimeLocalValue(next.publishAt),
+            publishMode:
+              next.publishMode || (next.publishAt ? "SCHEDULED" : "MANUAL"),
             submissionDeadlineAt: toDateTimeLocalValue(
               next.submissionDeadlineAt,
             ),
@@ -284,6 +287,7 @@ const Challenge: React.FC = () => {
         description: values.description.trim(),
         imageUrl: values.imageUrl?.trim() || undefined,
         publishAt: values.publishAt || null,
+        publishMode: values.publishMode || "MANUAL",
         submissionDeadlineAt: values.submissionDeadlineAt || null,
         closeSubmissionsAt: values.closeSubmissionsAt || null,
         processAt: values.processAt || null,
@@ -335,6 +339,7 @@ const Challenge: React.FC = () => {
           description: currentValues.description.trim(),
           imageUrl: currentValues.imageUrl?.trim() || undefined,
           publishAt: currentValues.publishAt || null,
+          publishMode: currentValues.publishMode || "MANUAL",
           submissionDeadlineAt: currentValues.submissionDeadlineAt || null,
           closeSubmissionsAt: currentValues.closeSubmissionsAt || null,
           processAt: currentValues.processAt || null,
@@ -457,10 +462,21 @@ const Challenge: React.FC = () => {
                   {!isEditing && !challenge.isClosed ? (
                     <button
                       className="btn-outline"
-                      onClick={() => setIsEditing(true)}
+                      onClick={() => {
+                        setIsEditing(true);
+                        if (lifecycleStatus === "Scheduled") {
+                          requestAnimationFrame(() =>
+                            document
+                              .getElementById("challenge-opening")
+                              ?.scrollIntoView({ behavior: "smooth" }),
+                          );
+                        }
+                      }}
                       type="button"
                     >
-                      Edit
+                      {lifecycleStatus === "Scheduled"
+                        ? "Edit schedule"
+                        : "Edit"}
                     </button>
                   ) : null}
                   {isEditing ? (
@@ -487,6 +503,9 @@ const Challenge: React.FC = () => {
                             publishAt: toDateTimeLocalValue(
                               challenge.publishAt,
                             ),
+                            publishMode:
+                              challenge.publishMode ||
+                              (challenge.publishAt ? "SCHEDULED" : "MANUAL"),
                             submissionDeadlineAt: toDateTimeLocalValue(
                               challenge.submissionDeadlineAt,
                             ),
@@ -552,7 +571,7 @@ const Challenge: React.FC = () => {
                         onClick={handlePublish}
                         disabled={isPublishing}
                       >
-                        {isPublishing ? "Publishing..." : "Publish"}
+                        {isPublishing ? "Publishing..." : "Publish now"}
                       </button>
                     )
                   ) : null}
@@ -563,6 +582,7 @@ const Challenge: React.FC = () => {
                 values={watchedFormValues}
                 onChange={handleFormFieldChange}
                 disabled={!isEditing || isPublishing}
+                openingLocked={challenge.isPublished}
                 automationError={challenge.automationError}
               />
 

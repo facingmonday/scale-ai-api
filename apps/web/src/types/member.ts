@@ -3,6 +3,7 @@
  */
 export interface EmailAddress {
   id: string;
+  emailAddress?: string;
   verification: {
     status: string;
     strategy: string;
@@ -14,6 +15,7 @@ export interface EmailAddress {
  */
 export interface PhoneNumber {
   id: string;
+  phoneNumber?: string;
   verification: {
     status: string;
     strategy: string;
@@ -72,6 +74,35 @@ export interface MemberPreferences {
   push: boolean;
   marketing: boolean;
   transactional: boolean;
+}
+
+/**
+ * Canonical identity fields fetched from Clerk for an admin member-detail view.
+ */
+export interface ClerkMemberProfile {
+  id: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  username: string;
+  imageUrl: string;
+  hasImage: boolean;
+  email: string;
+  emailAddresses: EmailAddress[];
+  phone: string;
+  phoneNumbers: PhoneNumber[];
+  createdAt: string | number | null;
+  updatedAt: string | number | null;
+  lastSignInAt: string | number | null;
+  lastActiveAt: string | number | null;
+}
+
+export interface MemberEnrollmentDetails {
+  _id: string;
+  classroomId: string;
+  role: "admin" | "member";
+  studentId: string;
+  joinedAt: string | Date;
 }
 
 /**
@@ -143,6 +174,9 @@ export interface Member {
  */
 export interface MemberWithVirtuals extends Member {
   studentId?: string;
+  profileStudentId?: string;
+  enrollment?: MemberEnrollmentDetails | null;
+  clerkProfile?: ClerkMemberProfile | null;
   fullName: string; // Virtual: computed from firstName + lastName
   name: string; // Virtual: fullName || username || clerkUserId
   primaryEmailAddress?: EmailAddress; // Virtual
