@@ -142,7 +142,7 @@ router.delete(
  * /v1/enrollment/admin/class/{classroomId}/student/{userId}:
  *   patch:
  *     summary: Update a student's classroom enrollment
- *     description: Updates classroom-specific enrollment data, including the student ID. Requires org:admin role.
+ *     description: Updates the classroom enrollment student ID and synchronizes an existing store profile in the same classroom. Requires org:admin role.
  *     tags:
  *       - Enrollments
  *     security:

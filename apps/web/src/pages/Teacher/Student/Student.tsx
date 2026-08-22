@@ -30,6 +30,7 @@ const Student: React.FC = () => {
   const [isSavingEnrollment, setIsSavingEnrollment] = useState(false);
   const [enrollmentStudentId, setEnrollmentStudentId] = useState("");
   const [enrollmentError, setEnrollmentError] = useState<string | null>(null);
+  const [profileRefreshKey, setProfileRefreshKey] = useState(0);
 
   const formatClerkDate = (value?: string | number | null) => {
     if (!value) return "-";
@@ -77,11 +78,15 @@ const Student: React.FC = () => {
           ? {
               ...current,
               studentId: updatedEnrollment.studentId,
+              profileStudentId: updatedEnrollment.profileStudentId,
               enrollment: updatedEnrollment,
             }
           : current,
       );
       setEnrollmentStudentId(updatedEnrollment.studentId || "");
+      if (updatedEnrollment.profileUpdated) {
+        setProfileRefreshKey((current) => current + 1);
+      }
       setIsEditingEnrollment(false);
     } catch (err) {
       console.error("Failed to update enrollment:", err);
@@ -375,7 +380,9 @@ const Student: React.FC = () => {
               {isEditingEnrollment && (
                 <div className="mt-5 border-t border-ui-border pt-4">
                   <p className="mb-4 text-sm text-text-muted">
-                    This updates the classroom enrollment and the default used when the student creates a store profile. It does not change an existing store profile.
+                    This updates the classroom enrollment. If a store profile
+                    already exists in this classroom, its student ID is updated
+                    as well.
                   </p>
                   {enrollmentError && (
                     <p className="mb-4 text-sm text-red-400">{enrollmentError}</p>
@@ -417,6 +424,7 @@ const Student: React.FC = () => {
                 <div className="mb-6">
                   <h2 className="heading-lg mb-4">Profile</h2>
                   <StudentStoreView
+                    key={`${activeClassroom._id}-${id}-${profileRefreshKey}`}
                     studentId={id}
                     classroomId={activeClassroom._id}
                   />

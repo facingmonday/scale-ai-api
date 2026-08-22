@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const mongoose = require("mongoose");
 const {
   setupTestDb,
   teardownTestDb,
@@ -8,6 +9,7 @@ const {
 const controller = require("./enrollment.controller");
 const Classroom = require("../classroom/classroom.model");
 const Enrollment = require("./enrollment.model");
+const Profile = require("../profile/profile.model");
 const {
   createOrganization,
   createClassroom,
@@ -62,7 +64,7 @@ test("joinClass returns 404 when class not found", async (t) => {
   assert.equal(res.body.error, "Class not found");
 });
 
-test("updateStudentEnrollment updates only the scoped classroom enrollment", async (t) => {
+test("updateStudentEnrollment synchronizes the scoped enrollment and profile", async (t) => {
   await setupTestDb();
   const originalValidateAdminAccess = Classroom.validateAdminAccess;
   Classroom.validateAdminAccess = async () => true;
@@ -81,6 +83,18 @@ test("updateStudentEnrollment updates only the scoped classroom enrollment", asy
     userId: member._id,
     organizationId: org._id,
   });
+  const profile = await Profile.create({
+    classroomId: classroom._id,
+    userId: member._id,
+    studentId: "S-OLD",
+    shopName: "Existing profile",
+    storeDescription: "Existing profile description",
+    storeLocation: "Existing profile location",
+    profileType: new mongoose.Types.ObjectId(),
+    organization: org._id,
+    createdBy: member.clerkUserId,
+    updatedBy: member.clerkUserId,
+  });
   const res = mockRes();
 
   await controller.updateStudentEnrollment(
@@ -98,10 +112,30 @@ test("updateStudentEnrollment updates only the scoped classroom enrollment", asy
 
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.data.studentId, "S-EDITED");
+  assert.equal(res.body.data.profileUpdated, true);
+  assert.equal(res.body.data.profileStudentId, "S-EDITED");
 
   const updated = await Enrollment.findById(enrollment._id);
   assert.equal(updated.studentId, "S-EDITED");
   assert.equal(updated.updatedBy, "teacher_edit");
+  const updatedProfile = await Profile.findById(profile._id).lean();
+  assert.equal(updatedProfile.studentId, "S-EDITED");
+  assert.equal(updatedProfile.updatedBy, "teacher_edit");
+
+  const blankRes = mockRes();
+  await controller.updateStudentEnrollment(
+    {
+      params: {
+        classroomId: classroom._id.toString(),
+        userId: member._id.toString(),
+      },
+      body: { studentId: "" },
+      organization: org,
+      clerkUser: { id: "teacher_edit" },
+    },
+    blankRes,
+  );
+  assert.equal(blankRes.statusCode, 400);
 
   const crossOrgRes = mockRes();
   await controller.updateStudentEnrollment(
@@ -120,4 +154,6 @@ test("updateStudentEnrollment updates only the scoped classroom enrollment", asy
   assert.equal(crossOrgRes.statusCode, 404);
   const unchanged = await Enrollment.findById(enrollment._id);
   assert.equal(unchanged.studentId, "S-EDITED");
+  const unchangedProfile = await Profile.findById(profile._id).lean();
+  assert.equal(unchangedProfile.studentId, "S-EDITED");
 });

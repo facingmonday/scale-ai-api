@@ -2,6 +2,7 @@ const Classroom = require("../classroom/classroom.model");
 const Member = require("../members/member.model");
 const Enrollment = require("./enrollment.model");
 const Organization = require("../organizations/organization.model");
+const Profile = require("../profile/profile.model");
 
 /**
  * Student joins class
@@ -283,20 +284,49 @@ exports.updateStudentEnrollment = async function (req, res) {
       organizationId,
     );
 
-    const enrollment = await Enrollment.findOne({
-      classroomId,
-      userId,
-      organization: organizationId,
-      isRemoved: false,
-    });
+    const [enrollment, profile] = await Promise.all([
+      Enrollment.findOne({
+        classroomId,
+        userId,
+        organization: organizationId,
+        isRemoved: false,
+      }),
+      Profile.findOne({
+        classroomId,
+        userId,
+        organization: organizationId,
+      })
+        .select("_id studentId")
+        .lean(),
+    ]);
 
     if (!enrollment) {
       return res.status(404).json({ error: "Enrollment not found" });
     }
 
+    if (profile && !studentId) {
+      return res.status(400).json({
+        error: "studentId cannot be blank while a store profile exists",
+      });
+    }
+
     enrollment.studentId = studentId || undefined;
     enrollment.updatedBy = clerkUserId;
-    await enrollment.save();
+    await Promise.all([
+      enrollment.save(),
+      profile
+        ? Profile.updateOne(
+            {
+              _id: profile._id,
+              classroomId,
+              userId,
+              organization: organizationId,
+            },
+            { $set: { studentId, updatedBy: clerkUserId } },
+            { runValidators: true },
+          )
+        : Promise.resolve(),
+    ]);
 
     return res.json({
       success: true,
@@ -308,6 +338,8 @@ exports.updateStudentEnrollment = async function (req, res) {
         role: enrollment.role,
         studentId: enrollment.studentId || "",
         joinedAt: enrollment.joinedAt,
+        profileUpdated: !!profile,
+        profileStudentId: profile ? studentId : "",
       },
     });
   } catch (error) {
