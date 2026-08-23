@@ -15,6 +15,7 @@ test("isOrgPaidSource includes grant sources", () => {
   assert.equal(SeatClaim.isOrgPaidSource("teacher_assigned"), true);
   assert.equal(SeatClaim.isOrgPaidSource("enterprise"), true);
   assert.equal(SeatClaim.isOrgPaidSource("stripe_student"), false);
+  assert.equal(SeatClaim.isOrgPaidSource("teacher_open"), false);
 });
 
 test("getPrimaryEmail normalizes member email", () => {

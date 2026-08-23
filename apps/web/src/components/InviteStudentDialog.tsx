@@ -30,6 +30,9 @@ const InviteStudentDialog: React.FC<InviteStudentDialogProps> = ({
 
   const isValid = email.trim().length > 0 && email.includes("@");
   const isSuccess = sentJoinLink !== null;
+  const isUnlimitedInviteEnrollment =
+    summary?.classroom.joinPolicy === "invite_link" &&
+    summary.classroom.allowAnonymousJoin !== false;
 
   useEffect(() => {
     if (!visible || !classroomId) return;
@@ -42,8 +45,11 @@ const InviteStudentDialog: React.FC<InviteStudentDialogProps> = ({
   }, [classroomId, visible]);
 
   const billingMessage = useMemo(() => {
+    if (isUnlimitedInviteEnrollment) {
+      return "Anyone with the private link can enroll for free without using an organization seat.";
+    }
     return "Students need an organization seat or individual payment before enrolling in this classroom.";
-  }, []);
+  }, [isUnlimitedInviteEnrollment]);
 
   const reset = () => {
     setEmail("");
@@ -205,7 +211,10 @@ const InviteStudentDialog: React.FC<InviteStudentDialogProps> = ({
             <p className="text-text-muted text-sm mt-2">{billingMessage}</p>
             {summary && (
               <p className="text-text-muted text-xs mt-1">
-                Seats claimed: {summary.claimedSeats}. Roster reserved:{" "}
+                {isUnlimitedInviteEnrollment
+                  ? "Active enrollments"
+                  : "Seats claimed"}
+                : {summary.claimedSeats}. Roster reserved:{" "}
                 {summary.roster.reserved}. Roster claimed:{" "}
                 {summary.roster.claimed}.
               </p>

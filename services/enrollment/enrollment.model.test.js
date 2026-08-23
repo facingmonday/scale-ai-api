@@ -18,6 +18,7 @@ const { assertRejectsWithCode } = require("../../test/helpers/assertErrors");
 const Enrollment = require("./enrollment.model");
 const Member = require("../members/member.model");
 const SeatClaim = require("../licensing/seatClaim.model");
+const SeatPool = require("../licensing/seatPool.model");
 const RosterSeat = require("../licensing/rosterSeat.model");
 const Profile = require("../profile/profile.model");
 
@@ -353,6 +354,92 @@ test("enrollment ensureJoin", async (t) => {
     assert.equal(enrollment.studentId, undefined);
     const claim = await SeatClaim.findActiveClaim(classroom._id, member._id);
     assert.equal(claim.rosterSeatId, undefined);
+    restoreClerk();
+  });
+
+  await t.test("Anyone with link enrolls unlimited students without paid seats", async () => {
+    await clearCollections();
+    const org = await createOrganization({
+      clerkOrganizationId: "org_join_unlimited_link",
+    });
+    const classroom = await createClassroom(org._id, {
+      joinPolicy: "invite_link",
+      allowAnonymousJoin: true,
+    });
+    const members = await Promise.all([
+      createMember({ clerkUserId: "user_unlimited_link_1" }),
+      createMember({ clerkUserId: "user_unlimited_link_2" }),
+    ]);
+    const restoreClerk = stubClerkMembership(Member);
+    const pool = await createSeatPool(org._id, {
+      totalSeats: 0,
+      usedSeats: 0,
+    });
+
+    for (const member of members) {
+      const result = await Enrollment.ensureJoin({
+        orgId: org.clerkOrganizationId,
+        classroomId: classroom._id,
+        clerkUserId: member.clerkUserId,
+        member,
+        studentEmail: member.email,
+        joinSource: "invite_link",
+      });
+      assert.ok(result.enrollment);
+
+      const claim = await SeatClaim.findActiveClaim(classroom._id, member._id);
+      assert.ok(claim);
+      assert.equal(claim.source, "teacher_open");
+      assert.equal(claim.seatPoolId, undefined);
+    }
+
+    const unchangedPool = await SeatPool.findById(pool._id);
+    assert.equal(unchangedPool.usedSeats, 0);
+    assert.equal(
+      await Enrollment.countDocuments({
+        classroomId: classroom._id,
+        isRemoved: false,
+      }),
+      members.length,
+    );
+    restoreClerk();
+  });
+
+  await t.test("Roster + link still requires a paid seat", async () => {
+    await clearCollections();
+    const org = await createOrganization({
+      clerkOrganizationId: "org_join_roster_link_payment",
+    });
+    const classroom = await createClassroom(org._id, {
+      joinPolicy: "invite_link",
+      allowAnonymousJoin: false,
+    });
+    const rosterEmail = "roster-link-payment@example.com";
+    const member = await createMember({
+      clerkUserId: "user_roster_link_payment",
+    });
+    const restoreClerk = stubClerkMembership(Member);
+    await createSeatPool(org._id, { totalSeats: 0, usedSeats: 0 });
+    await RosterSeat.create({
+      classroomId: classroom._id,
+      email: rosterEmail,
+      organization: org._id,
+      createdBy: member.clerkUserId,
+      updatedBy: member.clerkUserId,
+    });
+
+    await assertRejectsWithCode(
+      Enrollment.ensureJoin({
+        orgId: org.clerkOrganizationId,
+        classroomId: classroom._id,
+        clerkUserId: member.clerkUserId,
+        member,
+        studentEmail: rosterEmail,
+        joinSource: "invite_link",
+      }),
+      "PAYMENT_REQUIRED",
+      { statusCode: 402 },
+    );
     restoreClerk();
   });
 

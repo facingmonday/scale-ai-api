@@ -591,7 +591,7 @@ enrollmentSchema.statics.releaseSeatsOnOrgRemoval = async function ({
 };
 
 /**
- * Grant an org seat to a student and enroll them in a classroom.
+ * Enroll a student through unlimited link access or an organization seat.
  */
 enrollmentSchema.statics.grantOrgSeatAndEnroll = async function ({
   classroom,
@@ -604,6 +604,9 @@ enrollmentSchema.statics.grantOrgSeatAndEnroll = async function ({
   const SeatClaim = require("../licensing/seatClaim.model");
   const SeatPool = require("../licensing/seatPool.model");
   const { makeLicensingError } = require("../licensing/licensing.errors");
+  const {
+    isUnlimitedInviteEnrollment,
+  } = require("../licensing/joinPolicy");
 
   const GRANT_SOURCES = ["manual_comp", "teacher_assigned"];
   const grantSource = GRANT_SOURCES.includes(source) ? source : "manual_comp";
@@ -633,6 +636,31 @@ enrollmentSchema.statics.grantOrgSeatAndEnroll = async function ({
       grantedBy,
     );
     return { claim: existingClaim, enrollment, decision: "already_claimed" };
+  }
+
+  if (isUnlimitedInviteEnrollment(classroom)) {
+    const { claim } = await SeatClaim.createClaim({
+      classroom,
+      member,
+      source: "teacher_open",
+      createdBy: grantedBy,
+      metadata: {
+        enrollmentPolicy: "anyone_with_link",
+        reason: reason || undefined,
+        grantedBy,
+        grantedAt: new Date().toISOString(),
+      },
+    });
+
+    const enrollment = await this.enrollUser(
+      classroom._id,
+      member._id,
+      "member",
+      organization._id,
+      grantedBy,
+    );
+
+    return { claim, enrollment, decision: "teacher_open" };
   }
 
   const prepaidPool = await SeatPool.claimFloatingPrepaidSeatAtomically({

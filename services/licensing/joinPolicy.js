@@ -59,7 +59,20 @@ function assertRosterAccessAllowed({ classroom, rosterSeat, joinPolicy }) {
   }
 }
 
+/**
+ * "Anyone with link" classrooms are intentionally unlimited. Students who
+ * enter through the private invite link do not consume an organization seat
+ * and are never sent through student checkout.
+ */
+function isUnlimitedInviteEnrollment(classroom) {
+  const joinPolicy = classroom?.joinPolicy || "invite_link";
+  return (
+    joinPolicy === "invite_link" && classroom?.allowAnonymousJoin !== false
+  );
+}
+
 module.exports = {
   assertJoinPolicyAllowed,
   assertRosterAccessAllowed,
+  isUnlimitedInviteEnrollment,
 };

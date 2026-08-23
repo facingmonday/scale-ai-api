@@ -5,6 +5,7 @@ const { makeLicensingError } = require("./licensing.errors");
 const {
   assertJoinPolicyAllowed,
   assertRosterAccessAllowed,
+  isUnlimitedInviteEnrollment,
 } = require("./joinPolicy");
 
 const ORG_PAID_SOURCES = ["org_prepaid", "org_reserved"];
@@ -220,12 +221,17 @@ seatClaimSchema.statics.releaseSeatOnRemoval = async function ({
     return { action: "held", claim: held };
   }
 
+  const returnsOrganizationSeat =
+    Boolean(claim.seatPoolId) || this.isOrgPaidSource(claim.source);
   const released = await this.releaseOrgPaidClaim(
     claim,
     organizationId,
     updatedBy,
   );
-  return { action: "released_to_org", claim: released };
+  return {
+    action: returnsOrganizationSeat ? "released_to_org" : "revoked",
+    claim: released,
+  };
 };
 
 seatClaimSchema.statics.findReusableStudentClaim = async function ({
@@ -465,6 +471,20 @@ seatClaimSchema.statics.claimSeatOrRequireCheckout = async function ({
     rosterSeat,
     joinPolicy,
   });
+
+  if (isUnlimitedInviteEnrollment(classroom)) {
+    return {
+      allowed: true,
+      ...(await this.createClaim({
+        classroom,
+        member,
+        source: "teacher_open",
+        rosterSeat,
+        createdBy: clerkUserId,
+        metadata: { enrollmentPolicy: "anyone_with_link" },
+      })),
+    };
+  }
 
   const reusableStudentClaim = await this.findReusableStudentClaimForJoin({
     organizationId: organization._id,

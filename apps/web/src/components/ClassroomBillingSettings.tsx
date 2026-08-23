@@ -42,7 +42,8 @@ const ACCESS_MODES: Array<{
     {
       value: "invite_anyone",
       label: "Anyone with link",
-      description: "Students can enroll when you share the private join link.",
+      description:
+        "Any number of students can enroll for free when you share the private join link.",
       icon: Link2,
     },
     {
@@ -122,6 +123,9 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
   const [joinPolicy, setJoinPolicy] = useState<JoinPolicy>(
     classroom.joinPolicy || "invite_link",
   );
+  const [savedAllowAnonymousJoin, setSavedAllowAnonymousJoin] = useState(
+    classroom.allowAnonymousJoin !== false,
+  );
   const [accessMode, setAccessMode] = useState<AccessMode>(initialMode);
   const [lastOpenAccessMode, setLastOpenAccessMode] =
     useState<AccessMode>(initialMode);
@@ -199,6 +203,7 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
         allowAnonymousJoin: settings.allowAnonymousJoin,
       };
       setJoinPolicy(nextJoinPolicy);
+      setSavedAllowAnonymousJoin(settings.allowAnonymousJoin);
       setAccessMode(mode);
       if (!closed) setLastOpenAccessMode(mode);
       onClassroomUpdated?.(updated);
@@ -212,6 +217,10 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
   };
 
   const isClosed = joinPolicy === "closed";
+  const isUnlimitedInviteEnrollment =
+    !isClosed &&
+    joinPolicy === "invite_link" &&
+    savedAllowAnonymousJoin;
   const selectedAccessMode = ACCESS_MODES.find(
     (mode) => mode.value === accessMode,
   );
@@ -257,7 +266,11 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
         source: "manual_comp",
         reason: grantReason.trim() || undefined,
       });
-      setGrantSuccess(`Seat granted to ${email} and student enrolled.`);
+      setGrantSuccess(
+        isUnlimitedInviteEnrollment
+          ? `${email} enrolled without using a paid seat.`
+          : `Seat granted to ${email} and student enrolled.`,
+      );
       setGrantEmail("");
       setGrantReason("");
       onSeatGranted?.();
@@ -281,8 +294,9 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
         <div>
           <h2 className="heading-md">Enrollment Controls</h2>
           <p className="text-text-muted">
-            Control who can enroll in this class. Seat billing is managed at the
-            organization level.
+            {isUnlimitedInviteEnrollment
+              ? "Anyone with the private link can enroll without using a paid seat."
+              : "Control who can enroll in this class. Seat billing is managed at the organization level."}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -411,17 +425,29 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
       <div className="border-t border-ui-border pt-6 space-y-4">
         <div>
           <h3 className="heading-sm mb-1">
-            Enroll with an Organization Seat
+            {isUnlimitedInviteEnrollment
+              ? "Enroll a Student"
+              : "Enroll with an Organization Seat"}
           </h3>
           <p className="text-text-muted text-sm">
-            Enroll an existing organization member without checkout. This uses
-            one organization seat
-            {orgSeatsAvailable !== null
-              ? ` (${orgSeatsAvailable} available).`
-              : "."}{" "}
-            {summary
-              ? `This class currently has ${summary.claimedSeats} claimed seat${summary.claimedSeats === 1 ? "" : "s"}.`
-              : null}
+            {isUnlimitedInviteEnrollment ? (
+              <>
+                Enroll an existing organization member without checkout. Anyone
+                with the private link can enroll without using an organization
+                seat.
+              </>
+            ) : (
+              <>
+                Enroll an existing organization member without checkout. This
+                uses one organization seat
+                {orgSeatsAvailable !== null
+                  ? ` (${orgSeatsAvailable} available).`
+                  : "."}{" "}
+                {summary
+                  ? `This class currently has ${summary.claimedSeats} claimed seat${summary.claimedSeats === 1 ? "" : "s"}.`
+                  : null}
+              </>
+            )}
           </p>
         </div>
 
@@ -465,11 +491,17 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
               isGranting ||
               isLoading ||
               !grantEmail.trim().includes("@") ||
-              (orgSeatsAvailable !== null && orgSeatsAvailable <= 0)
+              (!isUnlimitedInviteEnrollment &&
+                orgSeatsAvailable !== null &&
+                orgSeatsAvailable <= 0)
             }
             onClick={() => void handleGrantSeat()}
           >
-            {isGranting ? "Enrolling..." : "Grant Seat and Enroll"}
+            {isGranting
+              ? "Enrolling..."
+              : isUnlimitedInviteEnrollment
+                ? "Enroll Student"
+                : "Grant Seat and Enroll"}
           </button>
         </div>
       </div>
