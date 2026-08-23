@@ -6,8 +6,6 @@ const EVENT_TYPES = Object.freeze({
   CHALLENGE_LEDGERS_COMPLETE: "CHALLENGE_LEDGERS_COMPLETE",
 });
 
-const TERMINAL_JOB_STATUSES = new Set(["completed", "failed"]);
-
 const ledgerCompletionEventSchema = new mongoose.Schema({
   eventType: {
     type: String,
@@ -89,103 +87,110 @@ async function enqueuePersistedEvent(event) {
 ledgerCompletionEventSchema.statics.evaluateChallenge = async function (
   challengeId,
 ) {
+  const Challenge = require("../challenge/challenge.model");
   const Decision = require("../decision/decision.model");
   const SimulationJob = require("./job.model");
   const LedgerEntry = require("../ledger/ledger.model");
 
+  const challenge = await Challenge.findById(challengeId)
+    .select("organization")
+    .lean();
+  if (!challenge) throw new Error(`Challenge not found: ${challengeId}`);
+  const scopedQuery = {
+    challengeId,
+    organization: challenge.organization,
+  };
+
   const [decisions, jobs, ledgers] = await Promise.all([
-    Decision.find({ challengeId }).select("_id userId ledgerEntryId").lean(),
-    SimulationJob.find({ challengeId })
+    Decision.find(scopedQuery).select("_id userId").lean(),
+    SimulationJob.find(scopedQuery)
       .select("_id decisionId userId status dryRun")
       .lean(),
-    LedgerEntry.find({ challengeId }).select("_id decisionId userId").lean(),
+    LedgerEntry.find(scopedQuery).select("_id decisionId userId").lean(),
   ]);
+
+  const failedJobCount = jobs.filter((job) => job.status === "failed").length;
+  const completedJobCount = jobs.filter(
+    (job) => job.status === "completed",
+  ).length;
+  const baseResult = {
+    expectedDecisionCount: decisions.length,
+    completedJobCount,
+    failedJobCount,
+    ledgerCount: ledgers.length,
+  };
+
+  if (jobs.some((job) => job.dryRun)) {
+    return { ready: false, reason: "dry-run-job", ...baseResult };
+  }
+  if (failedJobCount > 0) {
+    return { ready: false, reason: "analysis-failed", ...baseResult };
+  }
+  if (jobs.some((job) => job.status !== "completed")) {
+    return { ready: false, reason: "analysis-not-terminal", ...baseResult };
+  }
+  if (jobs.length !== decisions.length) {
+    return {
+      ready: false,
+      reason: jobs.length < decisions.length ? "missing-job" : "job-count-mismatch",
+      ...baseResult,
+    };
+  }
+  if (ledgers.length !== decisions.length) {
+    return {
+      ready: false,
+      reason:
+        ledgers.length < decisions.length
+          ? "ledger-not-written"
+          : "ledger-count-mismatch",
+      ...baseResult,
+    };
+  }
 
   if (decisions.length === 0) {
     return {
       ready: true,
       reason: "no-submissions",
-      expectedDecisionCount: 0,
-      completedJobCount: 0,
-      failedJobCount: 0,
-      ledgerCount: 0,
+      ...baseResult,
     };
   }
 
-  const jobsByDecision = new Map();
-  const jobsByUser = new Map();
-  for (const job of jobs) {
-    if (job.decisionId) jobsByDecision.set(asString(job.decisionId), job);
-    jobsByUser.set(asString(job.userId), job);
-  }
-
-  const ledgersByDecision = new Map();
-  const ledgersByUser = new Map();
-  for (const ledger of ledgers) {
-    if (ledger.decisionId) {
-      ledgersByDecision.set(asString(ledger.decisionId), ledger);
-    }
-    ledgersByUser.set(asString(ledger.userId), ledger);
-  }
-
-  let completedJobCount = 0;
-  let failedJobCount = 0;
-  let ledgerCount = 0;
-
   for (const decision of decisions) {
-    const job =
-      jobsByDecision.get(asString(decision._id)) ||
-      jobsByUser.get(asString(decision.userId));
-
-    if (!job) {
+    const matchingJobs = jobs.filter((job) =>
+      job.decisionId
+        ? asString(job.decisionId) === asString(decision._id)
+        : asString(job.userId) === asString(decision.userId),
+    );
+    if (matchingJobs.length !== 1) {
       return {
         ready: false,
-        reason: "missing-job",
+        reason: "decision-job-mismatch",
         decisionId: decision._id,
-        expectedDecisionCount: decisions.length,
+        matchCount: matchingJobs.length,
+        ...baseResult,
       };
     }
 
-    if (!TERMINAL_JOB_STATUSES.has(job.status)) {
+    const matchingLedgers = ledgers.filter((ledger) =>
+      ledger.decisionId
+        ? asString(ledger.decisionId) === asString(decision._id)
+        : asString(ledger.userId) === asString(decision.userId),
+    );
+    if (matchingLedgers.length !== 1) {
       return {
         ready: false,
-        reason: "analysis-not-terminal",
+        reason: "decision-ledger-mismatch",
         decisionId: decision._id,
-        jobId: job._id,
-        jobStatus: job.status,
-        expectedDecisionCount: decisions.length,
+        matchCount: matchingLedgers.length,
+        ...baseResult,
       };
     }
-
-    if (job.status === "failed") {
-      failedJobCount += 1;
-      continue;
-    }
-
-    const ledger =
-      ledgersByDecision.get(asString(decision._id)) ||
-      ledgersByUser.get(asString(decision.userId));
-    if (!ledger || job.dryRun) {
-      return {
-        ready: false,
-        reason: job.dryRun ? "dry-run-has-no-ledger" : "ledger-not-written",
-        decisionId: decision._id,
-        jobId: job._id,
-        expectedDecisionCount: decisions.length,
-      };
-    }
-
-    completedJobCount += 1;
-    ledgerCount += 1;
   }
 
   return {
     ready: true,
-    reason: "all-analysis-terminal",
-    expectedDecisionCount: decisions.length,
-    completedJobCount,
-    failedJobCount,
-    ledgerCount,
+    reason: "all-ledgers-written",
+    ...baseResult,
   };
 };
 
@@ -353,6 +358,15 @@ ledgerCompletionEventSchema.statics.dispatchEvent = async function (
   }
 
   try {
+    let debrief = null;
+    if (event.eventType === EVENT_TYPES.CHALLENGE_LEDGERS_COMPLETE) {
+      const challengeDebriefService = require("../challenge/lib/challengeDebriefService");
+      debrief = await challengeDebriefService.generateChallengeDebrief({
+        challengeId: event.challengeId,
+        organizationId: event.organization,
+      });
+    }
+
     const AutomationTask = require("../ai/automationTask.model");
     const triggerType =
       event.eventType === EVENT_TYPES.STUDENT_LEDGER_COMPLETE
@@ -379,7 +393,14 @@ ledgerCompletionEventSchema.statics.dispatchEvent = async function (
     event.processedAt = new Date();
     event.error = null;
     await event.save();
-    return { success: true, eventId: event._id, automation: result };
+    return {
+      success: true,
+      eventId: event._id,
+      automation: result,
+      debrief: debrief
+        ? { skipped: debrief.skipped, status: debrief.teacherDebrief?.status }
+        : null,
+    };
   } catch (error) {
     event.status = "failed";
     event.error = error.message;

@@ -203,6 +203,24 @@ const scenarioSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  teacherDebrief: {
+    type: new mongoose.Schema(
+      {
+        summary: { type: String, default: "" },
+        status: {
+          type: String,
+          enum: ["pending", "processing", "completed", "failed"],
+          default: "pending",
+        },
+        generatedAt: { type: Date, default: null },
+        attempts: { type: Number, default: 0, min: 0 },
+        error: { type: String, default: null },
+      },
+      { _id: false },
+    ),
+    default: undefined,
+    select: false,
+  },
   missingSubmissionPolicy: {
     type: String,
     enum: ["FORWARD_PREVIOUS", "USE_DEFAULTS", "SKIP"],
@@ -563,18 +581,24 @@ scenarioSchema.statics.getScenariosByClass = async function (
  * Get challenge by ID with class validation
  * @param {string} challengeId - Challenge ID
  * @param {string} organizationId - Organization ID (optional, for validation)
+ * @param {Object} options - Detail fields to include
  * @returns {Promise<Object|null>} Challenge with variables or null
  */
 scenarioSchema.statics.getScenarioById = async function (
   challengeId,
-  organizationId = null
+  organizationId = null,
+  options = {},
 ) {
   const query = { _id: challengeId };
   if (organizationId) {
     query.organization = organizationId;
   }
 
-  const challenge = await this.findOne(query);
+  let challengeQuery = this.findOne(query);
+  if (options.includeTeacherDebrief) {
+    challengeQuery = challengeQuery.select("+teacherDebrief");
+  }
+  const challenge = await challengeQuery;
   if (!challenge) {
     return null;
   }

@@ -30,6 +30,7 @@ beforeEach(async () => {
 async function createChallengeFixture({
   withDecision = true,
   feedbackReleaseMode = "MANUAL",
+  dryRun = false,
 } = {}) {
   const organization = new mongoose.Types.ObjectId();
   const classroomId = new mongoose.Types.ObjectId();
@@ -62,12 +63,58 @@ async function createChallengeFixture({
       challengeId: challenge._id,
       decisionId: decision._id,
       userId,
+      dryRun,
     },
     organization,
     "test-admin",
   );
   return { organization, classroomId, userId, challenge, decision, job };
 }
+
+test("rejects failed and dry-run jobs from aggregate completion", async () => {
+  const failed = await createChallengeFixture();
+  await failed.challenge.beginResultCalculation("test-admin");
+  await failed.job.markFailed("simulation failed");
+
+  let result = await LedgerCompletionEvent.recordChallengeLedgersComplete(
+    failed.challenge._id,
+    { enqueue: false },
+  );
+  assert.equal(result.ready, false);
+  assert.equal(result.reason, "analysis-failed");
+  assert.equal(await LedgerCompletionEvent.countDocuments(), 0);
+
+  await clearCollections();
+  const preview = await createChallengeFixture({ dryRun: true });
+  await preview.challenge.beginResultCalculation("test-admin");
+  await preview.job.markCompleted();
+  await writeLedger(preview);
+
+  result = await LedgerCompletionEvent.recordChallengeLedgersComplete(
+    preview.challenge._id,
+    { enqueue: false },
+  );
+  assert.equal(result.ready, false);
+  assert.equal(result.reason, "dry-run-job");
+  assert.equal(await LedgerCompletionEvent.countDocuments(), 0);
+});
+
+test("requires the single ledger to belong to the matching Decision", async () => {
+  const fixture = await createChallengeFixture();
+  await fixture.challenge.beginResultCalculation("test-admin");
+  await fixture.job.markCompleted();
+  const ledger = await writeLedger(fixture);
+  ledger.decisionId = new mongoose.Types.ObjectId();
+  await ledger.save();
+
+  const result = await LedgerCompletionEvent.recordChallengeLedgersComplete(
+    fixture.challenge._id,
+    { enqueue: false },
+  );
+  assert.equal(result.ready, false);
+  assert.equal(result.reason, "decision-ledger-mismatch");
+  assert.equal(await LedgerCompletionEvent.countDocuments(), 0);
+});
 
 async function writeLedger(fixture) {
   return LedgerEntry.create({
@@ -209,9 +256,14 @@ test("failed event dispatch remains observable and succeeds on retry", async () 
     assert.equal(persisted.status, "failed");
     assert.equal(persisted.attempts, 1);
     assert.match(persisted.error, /temporary automation failure/);
+    const challengeAfterFirstDispatch = await Challenge.findById(
+      fixture.challenge._id,
+    ).select("+teacherDebrief");
+    assert.equal(challengeAfterFirstDispatch.teacherDebrief.status, "completed");
 
     const result = await LedgerCompletionEvent.dispatchEvent(event._id);
     assert.equal(result.success, true);
+    assert.equal(result.debrief.skipped, true);
     persisted = await LedgerCompletionEvent.findById(event._id).lean();
     assert.equal(persisted.status, "completed");
     assert.equal(persisted.attempts, 2);

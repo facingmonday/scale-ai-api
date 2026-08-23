@@ -9,6 +9,7 @@ const SimulationWorker = require("../job/lib/simulationWorker");
 const SimulationBatch = require("../job/simulationBatch.model");
 const SimulationJob = require("../job/job.model");
 const challengeAiService = require("./lib/challengeAiService");
+const challengeDebriefService = require("./lib/challengeDebriefService");
 const {
   enqueueSimulationBatchSubmit,
 } = require("../../lib/queues/simulation-batch-worker");
@@ -192,7 +193,9 @@ exports.getScenarioById = async function (req, res) {
     const organizationId = req.organization?._id;
 
     // Use static method which handles variable loading
-    const challenge = await Challenge.getScenarioById(id, organizationId);
+    const challenge = await Challenge.getScenarioById(id, organizationId, {
+      includeTeacherDebrief: true,
+    });
 
     if (!challenge) {
       return res.status(404).json({ error: "Challenge not found" });
@@ -827,6 +830,10 @@ exports.rerunScenario = async function (req, res) {
       });
     }
 
+    await challengeDebriefService.resetChallengeDebriefForRerun({
+      challengeId,
+      organizationId,
+    });
     await challenge.beginResultCalculation(clerkUserId);
 
     // 1. Delete existing ledger entries for this challenge
@@ -915,6 +922,11 @@ exports.cancelBatchAndRerunScenario = async function (req, res) {
         error: "Challenge outcome must be set before rerunning",
       });
     }
+
+    await challengeDebriefService.resetChallengeDebriefForRerun({
+      challengeId,
+      organizationId,
+    });
 
     // 1. Cancel any in-progress OpenAI batch (batch mode only)
     let batchCancelled = false;
@@ -1371,6 +1383,55 @@ exports.exportScenario = async function (req, res) {
       return res.status(404).json({ error: error.message });
     if (error.message.includes("Insufficient permissions"))
       return res.status(403).json({ error: error.message });
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Generate or regenerate the teacher-only aggregate challenge debrief.
+ * POST /api/admin/challenges/:challengeId/debrief
+ */
+exports.generateScenarioDebrief = async function (req, res) {
+  try {
+    const { challengeId } = req.params;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    const challenge = await Challenge.findOne({
+      _id: challengeId,
+      organization: organizationId,
+    }).select("classroomId");
+    if (!challenge) {
+      return res.status(404).json({ error: "Challenge not found" });
+    }
+
+    await Classroom.validateAdminAccess(
+      challenge.classroomId,
+      clerkUserId,
+      organizationId,
+    );
+
+    const result = await challengeDebriefService.generateChallengeDebrief({
+      challengeId,
+      organizationId,
+      force: true,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: { teacherDebrief: result.teacherDebrief },
+    });
+  } catch (error) {
+    console.error("Error generating challenge debrief:", error);
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
     return res.status(500).json({ error: error.message });
   }
 };

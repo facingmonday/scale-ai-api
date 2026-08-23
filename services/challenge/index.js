@@ -271,6 +271,14 @@ router.post(
   controller.releaseFeedbackScenario
 );
 
+/** Generate or regenerate the teacher-only challenge debrief. */
+router.post(
+  "/admin/challenges/:challengeId/debrief",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.generateScenarioDebrief,
+);
+
 /**
  * @openapi
  * /v1/admin/challenges/{challengeId}/export:

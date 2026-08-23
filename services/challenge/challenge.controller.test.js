@@ -11,6 +11,7 @@ const LedgerEntry = require("../ledger/ledger.model");
 const JobService = require("../job/lib/jobService");
 const AutomationTask = require("../ai/automationTask.model");
 const challengeAiService = require("./lib/challengeAiService");
+const challengeDebriefService = require("./lib/challengeDebriefService");
 
 test("challenge controller exports handlers", () => {
   assert.equal(typeof controller.getScenarios, "function");
@@ -365,6 +366,97 @@ test("student challenge detail returns 404 before the scheduled start", async (t
   assert.deepEqual(body, { error: "Challenge not found" });
 });
 
+test("admin challenge detail explicitly includes the teacher debrief", async (t) => {
+  const originalGetScenarioById = Challenge.getScenarioById;
+  t.after(() => {
+    Challenge.getScenarioById = originalGetScenarioById;
+  });
+  let receivedOptions;
+  Challenge.getScenarioById = async (_id, _organizationId, options) => {
+    receivedOptions = options;
+    return { _id: "challenge-id", isClosed: false };
+  };
+
+  let body;
+  await controller.getScenarioById(
+    {
+      params: { id: "challenge-id" },
+      organization: { _id: "organization-id" },
+    },
+    {
+      status() {
+        return this;
+      },
+      json(payload) {
+        body = payload;
+        return this;
+      },
+    },
+  );
+
+  assert.deepEqual(receivedOptions, { includeTeacherDebrief: true });
+  assert.equal(body.success, true);
+});
+
+test("manual debrief generation validates teacher access and uses the shared service", async (t) => {
+  const originals = {
+    findOne: Challenge.findOne,
+    validateAdminAccess: Classroom.validateAdminAccess,
+    generateChallengeDebrief: challengeDebriefService.generateChallengeDebrief,
+  };
+  t.after(() => {
+    Challenge.findOne = originals.findOne;
+    Classroom.validateAdminAccess = originals.validateAdminAccess;
+    challengeDebriefService.generateChallengeDebrief =
+      originals.generateChallengeDebrief;
+  });
+
+  const calls = [];
+  Challenge.findOne = () => ({
+    select: async () => ({ classroomId: "classroom-id" }),
+  });
+  Classroom.validateAdminAccess = async (...args) => {
+    calls.push(["validate", ...args]);
+  };
+  challengeDebriefService.generateChallengeDebrief = async (args) => {
+    calls.push(["generate", args]);
+    return {
+      teacherDebrief: { status: "completed", summary: "Teacher summary" },
+    };
+  };
+
+  let body;
+  await controller.generateScenarioDebrief(
+    {
+      params: { challengeId: "challenge-id" },
+      organization: { _id: "organization-id" },
+      clerkUser: { id: "teacher-id" },
+    },
+    {
+      status() {
+        return this;
+      },
+      json(payload) {
+        body = payload;
+        return this;
+      },
+    },
+  );
+
+  assert.deepEqual(calls, [
+    ["validate", "classroom-id", "teacher-id", "organization-id"],
+    [
+      "generate",
+      {
+        challengeId: "challenge-id",
+        organizationId: "organization-id",
+        force: true,
+      },
+    ],
+  ]);
+  assert.equal(body.data.teacherDebrief.summary, "Teacher summary");
+});
+
 test("createScenarioWithAI validates access and returns the generated challenge", async (t) => {
   const originals = {
     validateAdminAccess: Classroom.validateAdminAccess,
@@ -448,6 +540,8 @@ test("cancelBatchAndRerunScenario closes and reconciles a recovered challenge", 
     resetJobsForScenario: JobService.resetJobsForScenario,
     deleteLedgerEntriesForScenario: LedgerEntry.deleteLedgerEntriesForScenario,
     createJobsForScenario: JobService.createJobsForScenario,
+    resetChallengeDebriefForRerun:
+      challengeDebriefService.resetChallengeDebriefForRerun,
   };
   t.after(() => {
     if (originalSimulationMode === undefined) delete process.env.SIMULATION_MODE;
@@ -459,6 +553,8 @@ test("cancelBatchAndRerunScenario closes and reconciles a recovered challenge", 
     LedgerEntry.deleteLedgerEntriesForScenario =
       originals.deleteLedgerEntriesForScenario;
     JobService.createJobsForScenario = originals.createJobsForScenario;
+    challengeDebriefService.resetChallengeDebriefForRerun =
+      originals.resetChallengeDebriefForRerun;
   });
 
   process.env.SIMULATION_MODE = "direct";
@@ -492,6 +588,9 @@ test("cancelBatchAndRerunScenario closes and reconciles a recovered challenge", 
   JobService.createJobsForScenario = async (...args) => {
     calls.push(["create-jobs", args[5]]);
     return [{ _id: "job-id" }];
+  };
+  challengeDebriefService.resetChallengeDebriefForRerun = async (args) => {
+    calls.push(["reset-debrief", args]);
   };
 
   let responseStatus = 200;
@@ -528,5 +627,9 @@ test("cancelBatchAndRerunScenario closes and reconciles a recovered challenge", 
   assert.deepEqual(calls.find(([name]) => name === "create-jobs"), [
     "create-jobs",
     { enqueue: true },
+  ]);
+  assert.deepEqual(calls.find(([name]) => name === "reset-debrief"), [
+    "reset-debrief",
+    { challengeId: "challenge-id", organizationId: "organization-id" },
   ]);
 });
