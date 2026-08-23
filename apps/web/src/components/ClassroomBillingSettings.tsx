@@ -42,8 +42,7 @@ const ACCESS_MODES: Array<{
     {
       value: "invite_anyone",
       label: "Anyone with link",
-      description:
-        "Any number of students can enroll for free when you share the private join link.",
+      description: "Students can enroll when you share the private join link.",
       icon: Link2,
     },
     {
@@ -217,7 +216,7 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
   };
 
   const isClosed = joinPolicy === "closed";
-  const isUnlimitedInviteEnrollment =
+  const allowsComplimentaryManualEnrollment =
     !isClosed &&
     joinPolicy === "invite_link" &&
     savedAllowAnonymousJoin;
@@ -267,7 +266,7 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
         reason: grantReason.trim() || undefined,
       });
       setGrantSuccess(
-        isUnlimitedInviteEnrollment
+        allowsComplimentaryManualEnrollment
           ? `${email} enrolled without using a paid seat.`
           : `Seat granted to ${email} and student enrolled.`,
       );
@@ -294,9 +293,8 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
         <div>
           <h2 className="heading-md">Enrollment Controls</h2>
           <p className="text-text-muted">
-            {isUnlimitedInviteEnrollment
-              ? "Anyone with the private link can enroll without using a paid seat."
-              : "Control who can enroll in this class. Seat billing is managed at the organization level."}
+            Control who can enroll in this class. Students joining themselves
+            still need an organization seat or individual payment.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -425,15 +423,15 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
       <div className="border-t border-ui-border pt-6 space-y-4">
         <div>
           <h3 className="heading-sm mb-1">
-            {isUnlimitedInviteEnrollment
+            {allowsComplimentaryManualEnrollment
               ? "Enroll a Student"
               : "Enroll with an Organization Seat"}
           </h3>
           <p className="text-text-muted text-sm">
-            {isUnlimitedInviteEnrollment ? (
+            {allowsComplimentaryManualEnrollment ? (
               <>
-                Enroll an existing organization member without checkout. Anyone
-                with the private link can enroll without using an organization
+                Enroll an existing organization member without checkout.
+                Students enrolled here by a teacher do not use an organization
                 seat.
               </>
             ) : (
@@ -491,7 +489,7 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
               isGranting ||
               isLoading ||
               !grantEmail.trim().includes("@") ||
-              (!isUnlimitedInviteEnrollment &&
+              (!allowsComplimentaryManualEnrollment &&
                 orgSeatsAvailable !== null &&
                 orgSeatsAvailable <= 0)
             }
@@ -499,7 +497,7 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
           >
             {isGranting
               ? "Enrolling..."
-              : isUnlimitedInviteEnrollment
+              : allowsComplimentaryManualEnrollment
                 ? "Enroll Student"
                 : "Grant Seat and Enroll"}
           </button>

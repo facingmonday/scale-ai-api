@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const {
   assertJoinPolicyAllowed,
   assertRosterAccessAllowed,
-  isUnlimitedInviteEnrollment,
+  allowsComplimentaryManualEnrollment,
 } = require("./joinPolicy");
 
 const classroomId = "507f1f77bcf86cd799439011";
@@ -93,23 +93,23 @@ test("roster seat satisfies roster_only access check", () => {
   );
 });
 
-test("only Anyone with link is an unlimited enrollment policy", () => {
+test("only Anyone with link allows complimentary manual enrollment", () => {
   assert.equal(
-    isUnlimitedInviteEnrollment({
+    allowsComplimentaryManualEnrollment({
       joinPolicy: "invite_link",
       allowAnonymousJoin: true,
     }),
     true,
   );
   assert.equal(
-    isUnlimitedInviteEnrollment({
+    allowsComplimentaryManualEnrollment({
       joinPolicy: "invite_link",
       allowAnonymousJoin: false,
     }),
     false,
   );
   assert.equal(
-    isUnlimitedInviteEnrollment({
+    allowsComplimentaryManualEnrollment({
       joinPolicy: "open",
       allowAnonymousJoin: true,
     }),

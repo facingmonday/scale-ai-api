@@ -357,41 +357,34 @@ test("enrollment ensureJoin", async (t) => {
     restoreClerk();
   });
 
-  await t.test("Anyone with link enrolls unlimited students without paid seats", async () => {
+  await t.test("Anyone with link still requires payment when no organization seat is available", async () => {
     await clearCollections();
     const org = await createOrganization({
-      clerkOrganizationId: "org_join_unlimited_link",
+      clerkOrganizationId: "org_join_paid_link",
     });
     const classroom = await createClassroom(org._id, {
       joinPolicy: "invite_link",
       allowAnonymousJoin: true,
     });
-    const members = await Promise.all([
-      createMember({ clerkUserId: "user_unlimited_link_1" }),
-      createMember({ clerkUserId: "user_unlimited_link_2" }),
-    ]);
+    const member = await createMember({ clerkUserId: "user_paid_link" });
     const restoreClerk = stubClerkMembership(Member);
     const pool = await createSeatPool(org._id, {
       totalSeats: 0,
       usedSeats: 0,
     });
 
-    for (const member of members) {
-      const result = await Enrollment.ensureJoin({
+    await assertRejectsWithCode(
+      Enrollment.ensureJoin({
         orgId: org.clerkOrganizationId,
         classroomId: classroom._id,
         clerkUserId: member.clerkUserId,
         member,
         studentEmail: member.email,
         joinSource: "invite_link",
-      });
-      assert.ok(result.enrollment);
-
-      const claim = await SeatClaim.findActiveClaim(classroom._id, member._id);
-      assert.ok(claim);
-      assert.equal(claim.source, "teacher_open");
-      assert.equal(claim.seatPoolId, undefined);
-    }
+      }),
+      "PAYMENT_REQUIRED",
+      { statusCode: 402 },
+    );
 
     const unchangedPool = await SeatPool.findById(pool._id);
     assert.equal(unchangedPool.usedSeats, 0);
@@ -400,7 +393,14 @@ test("enrollment ensureJoin", async (t) => {
         classroomId: classroom._id,
         isRemoved: false,
       }),
-      members.length,
+      0,
+    );
+    assert.equal(
+      await SeatClaim.countDocuments({
+        classroomId: classroom._id,
+        status: "active",
+      }),
+      0,
     );
     restoreClerk();
   });

@@ -5,7 +5,6 @@ const { makeLicensingError } = require("./licensing.errors");
 const {
   assertJoinPolicyAllowed,
   assertRosterAccessAllowed,
-  isUnlimitedInviteEnrollment,
 } = require("./joinPolicy");
 
 const ORG_PAID_SOURCES = ["org_prepaid", "org_reserved"];
@@ -471,20 +470,6 @@ seatClaimSchema.statics.claimSeatOrRequireCheckout = async function ({
     rosterSeat,
     joinPolicy,
   });
-
-  if (isUnlimitedInviteEnrollment(classroom)) {
-    return {
-      allowed: true,
-      ...(await this.createClaim({
-        classroom,
-        member,
-        source: "teacher_open",
-        rosterSeat,
-        createdBy: clerkUserId,
-        metadata: { enrollmentPolicy: "anyone_with_link" },
-      })),
-    };
-  }
 
   const reusableStudentClaim = await this.findReusableStudentClaimForJoin({
     organizationId: organization._id,

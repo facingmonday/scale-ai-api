@@ -60,11 +60,11 @@ function assertRosterAccessAllowed({ classroom, rosterSeat, joinPolicy }) {
 }
 
 /**
- * "Anyone with link" classrooms are intentionally unlimited. Students who
- * enter through the private invite link do not consume an organization seat
- * and are never sent through student checkout.
+ * Teachers may manually enroll students without consuming a paid seat when
+ * the classroom accepts anyone with its private link. Self-service joins must
+ * still continue through the normal organization-seat/payment flow.
  */
-function isUnlimitedInviteEnrollment(classroom) {
+function allowsComplimentaryManualEnrollment(classroom) {
   const joinPolicy = classroom?.joinPolicy || "invite_link";
   return (
     joinPolicy === "invite_link" && classroom?.allowAnonymousJoin !== false
@@ -74,5 +74,5 @@ function isUnlimitedInviteEnrollment(classroom) {
 module.exports = {
   assertJoinPolicyAllowed,
   assertRosterAccessAllowed,
-  isUnlimitedInviteEnrollment,
+  allowsComplimentaryManualEnrollment,
 };

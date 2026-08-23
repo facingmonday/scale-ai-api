@@ -46,7 +46,9 @@ stripe trigger checkout.session.completed
 ## Flow summary
 
 - Org admins purchase seats via `POST /v1/licensing/org/checkout`.
-- "Anyone with link" classrooms allow unlimited non-billable enrollment.
+- Teachers can manually enroll students without checkout in "Anyone with link"
+  classrooms; students joining themselves still require an organization seat or
+  individual payment.
 - Students in seat-backed enrollment modes hit the paywall via `POST /v1/licensing/student/checkout` when no organization seat is available.
 - Webhooks grant org pool capacity or create a per-classroom `SeatClaim`.
 - Seat-backed classroom enrollments consume one prepaid org seat when available.

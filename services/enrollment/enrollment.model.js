@@ -605,7 +605,7 @@ enrollmentSchema.statics.grantOrgSeatAndEnroll = async function ({
   const SeatPool = require("../licensing/seatPool.model");
   const { makeLicensingError } = require("../licensing/licensing.errors");
   const {
-    isUnlimitedInviteEnrollment,
+    allowsComplimentaryManualEnrollment,
   } = require("../licensing/joinPolicy");
 
   const GRANT_SOURCES = ["manual_comp", "teacher_assigned"];
@@ -638,7 +638,7 @@ enrollmentSchema.statics.grantOrgSeatAndEnroll = async function ({
     return { claim: existingClaim, enrollment, decision: "already_claimed" };
   }
 
-  if (isUnlimitedInviteEnrollment(classroom)) {
+  if (allowsComplimentaryManualEnrollment(classroom)) {
     const { claim } = await SeatClaim.createClaim({
       classroom,
       member,
