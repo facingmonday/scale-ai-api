@@ -713,7 +713,7 @@ const Dashboard: React.FC = () => {
             challenges={challenges}
           />
           <div
-            className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6"
+            className="teacher-stat-card-grid"
             aria-label="Classroom statistics"
           >
             <MetricCard
