@@ -168,7 +168,9 @@ test("enrollment billing integration", async (t) => {
   await t.test("grantOrgSeatAndEnroll consumes pool and enrolls student", async () => {
     await clearCollections();
     const org = await createOrganization();
-    const classroomA = await createClassroom(org._id);
+    const classroomA = await createClassroom(org._id, {
+      joinPolicy: "open",
+    });
     const clerkUserId = "billing_grant_user";
     const pool = await createSeatPool(org._id, { totalSeats: 5, usedSeats: 0 });
 
@@ -199,5 +201,40 @@ test("enrollment billing integration", async (t) => {
     const claim = await SeatClaim.findActiveClaim(classroomA._id, member._id);
     assert.ok(claim);
     assert.equal(claim.source, "manual_comp");
+  });
+
+  await t.test("manual enrollment is free for Anyone with link", async () => {
+    await clearCollections();
+    const org = await createOrganization();
+    const classroom = await createClassroom(org._id, {
+      joinPolicy: "invite_link",
+      allowAnonymousJoin: true,
+    });
+    const clerkUserId = "billing_unlimited_grant_user";
+    const pool = await createSeatPool(org._id, {
+      totalSeats: 0,
+      usedSeats: 0,
+    });
+    const member = await createMember({
+      clerkUserId: `unlimited_grant_${Date.now()}`,
+      email: `unlimited-grant-${Date.now()}@example.com`,
+    });
+
+    const result = await Enrollment.grantOrgSeatAndEnroll({
+      classroom,
+      organization: org,
+      member,
+      source: "manual_comp",
+      reason: "Link classroom enrollment",
+      grantedBy: clerkUserId,
+    });
+
+    assert.equal(result.decision, "teacher_open");
+    assert.ok(result.enrollment);
+    assert.equal(result.claim.source, "teacher_open");
+    assert.equal(result.claim.seatPoolId, undefined);
+
+    const unchangedPool = await SeatPool.findById(pool._id);
+    assert.equal(unchangedPool.usedSeats, 0);
   });
 });

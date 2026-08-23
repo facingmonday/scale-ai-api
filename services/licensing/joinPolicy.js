@@ -59,7 +59,20 @@ function assertRosterAccessAllowed({ classroom, rosterSeat, joinPolicy }) {
   }
 }
 
+/**
+ * Teachers may manually enroll students without consuming a paid seat when
+ * the classroom accepts anyone with its private link. Self-service joins must
+ * still continue through the normal organization-seat/payment flow.
+ */
+function allowsComplimentaryManualEnrollment(classroom) {
+  const joinPolicy = classroom?.joinPolicy || "invite_link";
+  return (
+    joinPolicy === "invite_link" && classroom?.allowAnonymousJoin !== false
+  );
+}
+
 module.exports = {
   assertJoinPolicyAllowed,
   assertRosterAccessAllowed,
+  allowsComplimentaryManualEnrollment,
 };

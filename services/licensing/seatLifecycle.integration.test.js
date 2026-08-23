@@ -109,6 +109,35 @@ test("seat lifecycle integration", async (t) => {
     assert.equal(repointed.status, "active");
   });
 
+  await t.test("teacher-open remove revokes access without changing the pool", async () => {
+    await clearCollections();
+    const org = await createOrganization();
+    const classroom = await createClassroom(org._id);
+    const userId = new mongoose.Types.ObjectId();
+    const clerkUserId = "teacher_open_remove_user";
+    const pool = await createSeatPool(org._id, {
+      totalSeats: 0,
+      usedSeats: 0,
+    });
+    const claim = await createSeatClaim({
+      classroomId: classroom._id,
+      userId,
+      organizationId: org._id,
+      overrides: { source: "teacher_open", createdBy: clerkUserId },
+    });
+
+    const result = await SeatClaim.releaseSeatOnRemoval({
+      classroomId: classroom._id,
+      userId,
+      organizationId: org._id,
+      updatedBy: clerkUserId,
+    });
+
+    assert.equal(result.action, "revoked");
+    assert.equal((await SeatClaim.findById(claim._id)).status, "revoked");
+    assert.equal((await SeatPool.findById(pool._id)).usedSeats, 0);
+  });
+
   await t.test("org reserved remove keeps reservation claimed and reclaims on rejoin", async () => {
     await clearCollections();
     const org = await createOrganization();

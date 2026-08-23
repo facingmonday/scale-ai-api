@@ -122,6 +122,9 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
   const [joinPolicy, setJoinPolicy] = useState<JoinPolicy>(
     classroom.joinPolicy || "invite_link",
   );
+  const [savedAllowAnonymousJoin, setSavedAllowAnonymousJoin] = useState(
+    classroom.allowAnonymousJoin !== false,
+  );
   const [accessMode, setAccessMode] = useState<AccessMode>(initialMode);
   const [lastOpenAccessMode, setLastOpenAccessMode] =
     useState<AccessMode>(initialMode);
@@ -199,6 +202,7 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
         allowAnonymousJoin: settings.allowAnonymousJoin,
       };
       setJoinPolicy(nextJoinPolicy);
+      setSavedAllowAnonymousJoin(settings.allowAnonymousJoin);
       setAccessMode(mode);
       if (!closed) setLastOpenAccessMode(mode);
       onClassroomUpdated?.(updated);
@@ -212,6 +216,10 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
   };
 
   const isClosed = joinPolicy === "closed";
+  const allowsComplimentaryManualEnrollment =
+    !isClosed &&
+    joinPolicy === "invite_link" &&
+    savedAllowAnonymousJoin;
   const selectedAccessMode = ACCESS_MODES.find(
     (mode) => mode.value === accessMode,
   );
@@ -257,7 +265,11 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
         source: "manual_comp",
         reason: grantReason.trim() || undefined,
       });
-      setGrantSuccess(`Seat granted to ${email} and student enrolled.`);
+      setGrantSuccess(
+        allowsComplimentaryManualEnrollment
+          ? `${email} enrolled without using a paid seat.`
+          : `Seat granted to ${email} and student enrolled.`,
+      );
       setGrantEmail("");
       setGrantReason("");
       onSeatGranted?.();
@@ -281,8 +293,8 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
         <div>
           <h2 className="heading-md">Enrollment Controls</h2>
           <p className="text-text-muted">
-            Control who can enroll in this class. Seat billing is managed at the
-            organization level.
+            Control who can enroll in this class. Students joining themselves
+            still need an organization seat or individual payment.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -411,17 +423,29 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
       <div className="border-t border-ui-border pt-6 space-y-4">
         <div>
           <h3 className="heading-sm mb-1">
-            Enroll with an Organization Seat
+            {allowsComplimentaryManualEnrollment
+              ? "Enroll a Student"
+              : "Enroll with an Organization Seat"}
           </h3>
           <p className="text-text-muted text-sm">
-            Enroll an existing organization member without checkout. This uses
-            one organization seat
-            {orgSeatsAvailable !== null
-              ? ` (${orgSeatsAvailable} available).`
-              : "."}{" "}
-            {summary
-              ? `This class currently has ${summary.claimedSeats} claimed seat${summary.claimedSeats === 1 ? "" : "s"}.`
-              : null}
+            {allowsComplimentaryManualEnrollment ? (
+              <>
+                Enroll an existing organization member without checkout.
+                Students enrolled here by a teacher do not use an organization
+                seat.
+              </>
+            ) : (
+              <>
+                Enroll an existing organization member without checkout. This
+                uses one organization seat
+                {orgSeatsAvailable !== null
+                  ? ` (${orgSeatsAvailable} available).`
+                  : "."}{" "}
+                {summary
+                  ? `This class currently has ${summary.claimedSeats} claimed seat${summary.claimedSeats === 1 ? "" : "s"}.`
+                  : null}
+              </>
+            )}
           </p>
         </div>
 
@@ -465,11 +489,17 @@ const ClassroomBillingSettings: React.FC<ClassroomBillingSettingsProps> = ({
               isGranting ||
               isLoading ||
               !grantEmail.trim().includes("@") ||
-              (orgSeatsAvailable !== null && orgSeatsAvailable <= 0)
+              (!allowsComplimentaryManualEnrollment &&
+                orgSeatsAvailable !== null &&
+                orgSeatsAvailable <= 0)
             }
             onClick={() => void handleGrantSeat()}
           >
-            {isGranting ? "Enrolling..." : "Grant Seat and Enroll"}
+            {isGranting
+              ? "Enrolling..."
+              : allowsComplimentaryManualEnrollment
+                ? "Enroll Student"
+                : "Grant Seat and Enroll"}
           </button>
         </div>
       </div>

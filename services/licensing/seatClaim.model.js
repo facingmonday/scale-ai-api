@@ -220,12 +220,17 @@ seatClaimSchema.statics.releaseSeatOnRemoval = async function ({
     return { action: "held", claim: held };
   }
 
+  const returnsOrganizationSeat =
+    Boolean(claim.seatPoolId) || this.isOrgPaidSource(claim.source);
   const released = await this.releaseOrgPaidClaim(
     claim,
     organizationId,
     updatedBy,
   );
-  return { action: "released_to_org", claim: released };
+  return {
+    action: returnsOrganizationSeat ? "released_to_org" : "revoked",
+    claim: released,
+  };
 };
 
 seatClaimSchema.statics.findReusableStudentClaim = async function ({

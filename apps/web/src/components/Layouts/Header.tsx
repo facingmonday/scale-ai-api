@@ -144,7 +144,7 @@ export default function Header() {
                             setOpenMobileMenu(false);
                           }}
                         >
-                          Profile
+                          Store Profile
                         </button>
                       )}
 
@@ -348,7 +348,7 @@ export default function Header() {
                             setOpenUserMenu(false);
                           }}
                         >
-                          Profile
+                          Store Profile
                         </button>
                       )}
 

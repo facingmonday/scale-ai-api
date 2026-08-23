@@ -20,6 +20,7 @@ import {
   TeacherActionRequired,
   LeaderboardSnapshot,
   ClassroomHeader,
+  MetricCard,
 } from "@/components/dashboard";
 import type { Challenge } from "@/types/challenge";
 import type { StudentDisplay } from "@/types/components";
@@ -32,6 +33,7 @@ import { Dialog } from "primereact/dialog";
 import { Button } from "primereact/button";
 import { getErrorMessage } from "@/utils/error";
 import {
+  getChallengeLifecycleStatus,
   getChallengePresentationBadgeClass,
   getChallengePresentationStatus,
 } from "@/utils/challengeStatus";
@@ -191,6 +193,40 @@ const Dashboard: React.FC = () => {
       ),
     [challenges]
   );
+
+  const challengeStats = useMemo(() => {
+    const lifecycleStatuses = challenges.map((challenge) =>
+      getChallengeLifecycleStatus(challenge)
+    );
+    const completedChallenges = challenges.filter((challenge) => {
+      const status = getChallengePresentationStatus(challenge, {
+        audience: "teacher",
+      });
+      return status === "Completed" || status === "Closed";
+    }).length;
+    const enrolledStudents = dashboard?.students ?? 0;
+    const hasActiveChallenge = lifecycleStatuses.includes("Open");
+    const completionRate =
+      hasActiveChallenge && enrolledStudents > 0
+        ? Math.min(
+            100,
+            Math.round(
+              ((dashboard?.submissionsCompleted ?? 0) / enrolledStudents) * 100
+            )
+          )
+        : null;
+
+    return {
+      total: challenges.length,
+      active: lifecycleStatuses.filter((status) => status === "Open").length,
+      scheduled: lifecycleStatuses.filter((status) => status === "Scheduled")
+        .length,
+      completed: completedChallenges,
+      completionRate,
+      hasActiveChallenge,
+      enrolledStudents,
+    };
+  }, [challenges, dashboard?.students, dashboard?.submissionsCompleted]);
 
   // Fetch dashboard once; pass it to child components that need it.
   const fetchDashboard = useCallback(async (silent = false) => {
@@ -676,6 +712,56 @@ const Dashboard: React.FC = () => {
             isLoadingDashboard={isLoadingDashboard}
             challenges={challenges}
           />
+          <div
+            className="teacher-stat-card-grid"
+            aria-label="Classroom statistics"
+          >
+            <MetricCard
+              label="Enrolled Students"
+              value={challengeStats.enrolledStudents}
+              icon="pi-users"
+              iconColor="text-brand-blue"
+            />
+            <MetricCard
+              label="Total Challenges"
+              value={challengeStats.total}
+              icon="pi-list"
+              iconColor="text-brand-blue"
+            />
+            <MetricCard
+              label="Active Challenges"
+              value={challengeStats.active}
+              icon="pi-play-circle"
+              iconColor="text-brand-teal"
+            />
+            <MetricCard
+              label="Scheduled Challenges"
+              value={challengeStats.scheduled}
+              icon="pi-calendar"
+              iconColor="text-brand-orange"
+            />
+            <MetricCard
+              label="Completed Challenges"
+              value={challengeStats.completed}
+              icon="pi-check-circle"
+              iconColor="text-green-500"
+            />
+            <MetricCard
+              label="Class Completion Rate"
+              value={
+                challengeStats.completionRate === null
+                  ? "—"
+                  : `${challengeStats.completionRate}%`
+              }
+              icon="pi-chart-line"
+              iconColor="text-brand-orange"
+              footer={
+                challengeStats.hasActiveChallenge
+                  ? "Current challenge"
+                  : "No active challenge"
+              }
+            />
+          </div>
         </div>
         <div className="container">
           <div className="flex flex-col lg:flex-row gap-4 w-full">

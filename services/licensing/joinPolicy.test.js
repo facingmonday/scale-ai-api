@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const {
   assertJoinPolicyAllowed,
   assertRosterAccessAllowed,
+  allowsComplimentaryManualEnrollment,
 } = require("./joinPolicy");
 
 const classroomId = "507f1f77bcf86cd799439011";
@@ -89,5 +90,29 @@ test("roster seat satisfies roster_only access check", () => {
       rosterSeat: { _id: "rs1", email: "student@example.com" },
       joinPolicy: "roster_only",
     })
+  );
+});
+
+test("only Anyone with link allows complimentary manual enrollment", () => {
+  assert.equal(
+    allowsComplimentaryManualEnrollment({
+      joinPolicy: "invite_link",
+      allowAnonymousJoin: true,
+    }),
+    true,
+  );
+  assert.equal(
+    allowsComplimentaryManualEnrollment({
+      joinPolicy: "invite_link",
+      allowAnonymousJoin: false,
+    }),
+    false,
+  );
+  assert.equal(
+    allowsComplimentaryManualEnrollment({
+      joinPolicy: "open",
+      allowAnonymousJoin: true,
+    }),
+    false,
   );
 });

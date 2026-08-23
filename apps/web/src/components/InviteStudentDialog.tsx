@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Dialog } from "primereact/dialog";
 import classroomService from "../services/classroom";
 import licensingService from "../services/licensing";
@@ -41,9 +41,8 @@ const InviteStudentDialog: React.FC<InviteStudentDialogProps> = ({
       });
   }, [classroomId, visible]);
 
-  const billingMessage = useMemo(() => {
-    return "Students need an organization seat or individual payment before enrolling in this classroom.";
-  }, []);
+  const billingMessage =
+    "Students need an organization seat or individual payment before enrolling in this classroom.";
 
   const reset = () => {
     setEmail("");
