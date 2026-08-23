@@ -31,6 +31,7 @@ import ScenarioCancelBatchAndReRun from "@/components/ChallengeCancelBatchAndReR
 import ScenarioRemoveOutcomeAction from "@/components/ChallengeRemoveOutcomeAction";
 import ScenarioStoreTypeSummary from "@/components/ChallengeProfileTypeSummary";
 import MissingScenarioSubmissionsList from "@/components/MissingChallengeDecisionsList";
+import TeacherDebriefCard from "@/components/TeacherDebriefCard";
 
 const toDateTimeLocalValue = (value?: string | Date | null) => {
   if (!value) return "";
@@ -49,6 +50,7 @@ const Challenge: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [isGeneratingDebrief, setIsGeneratingDebrief] = useState(false);
   const [scenarioVariableDefinitions, setScenarioVariableDefinitions] =
     useState<VariableDefinitionWithValue[]>([]);
   const [storeTypeLabelMap, setStoreTypeLabelMap] = useState<
@@ -407,6 +409,23 @@ const Challenge: React.FC = () => {
     }
   };
 
+  const handleGenerateDebrief = async () => {
+    if (!id || isGeneratingDebrief) return;
+
+    setIsGeneratingDebrief(true);
+    try {
+      globalContext?.showToast?.("Generating challenge debrief...", "loading");
+      await challengeService.generateDebrief(id);
+      globalContext?.showToast?.("Challenge debrief generated", "success");
+      await fetchScenario(true);
+    } catch (e) {
+      console.error("Failed to generate challenge debrief:", e);
+      globalContext?.showToast?.(getErrorMessage(e), "error");
+    } finally {
+      setIsGeneratingDebrief(false);
+    }
+  };
+
   if (error) {
     return (
       <BasicLayout>
@@ -638,11 +657,16 @@ const Challenge: React.FC = () => {
             {challenge.isPublished &&
               activeClassroom?._id &&
               id &&
-              challenge.isClosed &&
-              challenge.stats && (
+              challenge.isClosed && (
                 <div className="mb-4 space-y-6">
+                  <TeacherDebriefCard
+                    debrief={challenge.teacherDebrief}
+                    isGenerating={isGeneratingDebrief}
+                    onGenerate={() => void handleGenerateDebrief()}
+                  />
+
                   {/* Profile Type Stats */}
-                  {challenge.stats.storeTypeStats &&
+                  {challenge.stats?.storeTypeStats &&
                     Object.keys(challenge.stats.storeTypeStats).length > 0 && (
                       <div className="">
                         <div className="flex justify-between gap-2 mb-4 ml-2">
@@ -675,35 +699,37 @@ const Challenge: React.FC = () => {
                     )}
 
                   {/* Decisions List */}
-                  <div className="mb-4">
-                    <div className="flex justify-between items-end gap-2 mb-4">
-                      <h2 className="heading-md">Student Decisions</h2>
-                      <div className="flex flex-row gap-4">
-                        <MetricCard
-                          label="Total Enrolled"
-                          value={challenge.stats.totalEnrolled}
-                          icon="pi-users"
-                          iconColor="text-brand-blue"
-                        />
-                        <MetricCard
-                          label="Submitted"
-                          value={challenge.stats.submittedCount}
-                          icon="pi-check-circle"
-                          iconColor="text-green-500"
-                        />
-                        <MetricCard
-                          label="Missing"
-                          value={challenge.stats.missingCount}
-                          icon="pi-exclamation-circle"
-                          iconColor="text-red-500"
-                        />
+                  {challenge.stats && (
+                    <div className="mb-4">
+                      <div className="flex justify-between items-end gap-2 mb-4">
+                        <h2 className="heading-md">Student Decisions</h2>
+                        <div className="flex flex-row gap-4">
+                          <MetricCard
+                            label="Total Enrolled"
+                            value={challenge.stats.totalEnrolled}
+                            icon="pi-users"
+                            iconColor="text-brand-blue"
+                          />
+                          <MetricCard
+                            label="Submitted"
+                            value={challenge.stats.submittedCount}
+                            icon="pi-check-circle"
+                            iconColor="text-green-500"
+                          />
+                          <MetricCard
+                            label="Missing"
+                            value={challenge.stats.missingCount}
+                            icon="pi-exclamation-circle"
+                            iconColor="text-red-500"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-6">
+                        <ScenarioSubmissionsList challengeId={id} />
+                        <MissingScenarioSubmissionsList challengeId={id} />
                       </div>
                     </div>
-                    <div className="space-y-6">
-                      <ScenarioSubmissionsList challengeId={id} />
-                      <MissingScenarioSubmissionsList challengeId={id} />
-                    </div>
-                  </div>
+                  )}
                 </div>
               )}
 

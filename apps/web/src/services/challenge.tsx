@@ -110,6 +110,17 @@ async function cancelBatchAndRerun(challengeId: string) {
   return response.data;
 }
 
+async function generateDebrief(challengeId: string) {
+  const response = await axios.post(
+    `${API_HOST}/${API_VERSION}/admin/challenges/${challengeId}/debrief`,
+    {},
+    {
+      headers: await TokenHandler.getHeaders(),
+    },
+  );
+  return response.data;
+}
+
 async function getCurrent(classroomId: string) {
   const url = new URL(`${API_HOST}/${API_VERSION}/student/challenges/current`);
   url.searchParams.append("classroomId", classroomId);
@@ -228,6 +239,7 @@ const challengeService = {
   approve,
   rerun,
   cancelBatchAndRerun,
+  generateDebrief,
   releaseFeedback,
   getCurrent,
   getCurrentAdmin,

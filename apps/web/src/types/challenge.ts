@@ -9,6 +9,14 @@ import type { Profile } from "./profile";
  */
 export type StoreTypeKey = string;
 
+export interface TeacherDebrief {
+  summary?: string;
+  status: "pending" | "processing" | "completed" | "failed";
+  generatedAt?: string | null;
+  attempts?: number;
+  error?: string | null;
+}
+
 export type ChallengeLifecycleStatus =
   | "Draft"
   | "Scheduled"
@@ -52,6 +60,7 @@ export interface Challenge extends BaseSchema {
   ledgerEntry?: LedgerEntry;
   variables?: Record<string, unknown>; // Object where keys match variable definition keys and values are the challenge variable values
   stats?: ScenarioStats;
+  teacherDebrief?: TeacherDebrief;
 }
 
 /**
