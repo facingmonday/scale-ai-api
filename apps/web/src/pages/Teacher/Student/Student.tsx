@@ -247,22 +247,6 @@ const Student: React.FC = () => {
                     </div>
                     <div>
                       <dt className="text-xs font-semibold uppercase tracking-wider text-text-muted">
-                        Username
-                      </dt>
-                      <dd className="mt-1 font-medium text-text-primary">
-                        {student.username || "-"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-xs font-semibold uppercase tracking-wider text-text-muted">
-                        Phone
-                      </dt>
-                      <dd className="mt-1 font-medium text-text-primary">
-                        {student.phone || "-"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-xs font-semibold uppercase tracking-wider text-text-muted">
                         Clerk user ID
                       </dt>
                       <dd className="mt-1 break-all font-mono text-sm text-text-primary">
