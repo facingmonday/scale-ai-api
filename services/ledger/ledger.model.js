@@ -407,8 +407,8 @@ function jsonTypeFor(dataType) {
 
 /**
  * Build the OpenAI JSON schema for an AI response, driven entirely by the
- * classroom's MetricDefinitions. The response includes `summary`,
- * `randomEvent`, plus one property per active metric.
+ * classroom's MetricDefinitions. The response includes `summary` plus one
+ * property per active metric.
  */
 ledgerEntrySchema.statics.buildResponseJsonSchema = async function (classroomId) {
   const metricDefs = await MetricDefinition.getActive(classroomId);
@@ -418,9 +418,8 @@ ledgerEntrySchema.statics.buildResponseJsonSchema = async function (classroomId)
       description:
         "A detailed summary of the results of the simulation. Explain key factors that contributed to the results and what the student could learn from this period.",
     },
-    randomEvent: { type: ["string", "null"] },
   };
-  const required = ["summary", "randomEvent"];
+  const required = ["summary"];
 
   for (const def of metricDefs) {
     properties[def.key] = {
@@ -511,15 +510,6 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
     .map((m) => ({ role: m.role, content: m.content }))
     .filter((m) => m.role && typeof m.content === "string");
 
-  const chancePercent =
-    outcome?.randomEventChancePercent !== undefined
-      ? Number(outcome.randomEventChancePercent)
-      : 0;
-  const shouldGenerateEvent =
-    Number.isFinite(chancePercent) &&
-    chancePercent > 0 &&
-    Math.random() * 100 < chancePercent;
-
   const metricsEnvelope = (Array.isArray(metricDefs) ? metricDefs : []).map(
     (def) => ({
       key: def.key,
@@ -584,7 +574,7 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
         type: "metrics_to_calculate",
         instruction:
           "These are the metrics you MUST compute and return. For each metric, follow its aiPromptRule. " +
-          "Use the dataType to determine the value type. Return EXACTLY these keys (plus summary and randomEvent).",
+          "Use the dataType to determine the value type. Return EXACTLY these keys (plus summary).",
         data: metricsEnvelope,
       }),
     },
@@ -614,7 +604,7 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
         },
       ]
       : []),
-    ...(hasOutcomeContext || shouldGenerateEvent
+    ...(hasOutcomeContext
       ? [
         {
           role: "user",
@@ -624,12 +614,6 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
               "Treat this outcome as the authoritative realized conditions. Apply it directly in your calculations. " +
               "If it contradicts the challenge's expected conditions, the outcome wins.",
             data: outcomeData,
-            ...(shouldGenerateEvent
-              ? {
-                randomEventInstruction:
-                    "Generate ONE plausible educational random operational event grounded in the inputs and set randomEvent to that event text (1-3 sentences). Apply its impact in your metric calculations.",
-              }
-              : {}),
           }),
         },
       ]
@@ -725,7 +709,7 @@ ledgerEntrySchema.statics.hardenAISimulationMessages = function (messages) {
       "- Use plain JSON values (numbers as numbers, booleans as booleans, strings as strings).",
       "- Each metric key in the response must match the key set declared in metrics_to_calculate exactly.",
       "- Follow each metric's aiPromptRule when computing its value (carry-forward, allowed range, formula hints).",
-      "- Always include both `summary` (string) and `randomEvent` (string or null).",
+      "- Always include `summary` (string).",
     ].join("\n"),
   };
 
@@ -1039,15 +1023,6 @@ ledgerEntrySchema.statics.normalizeAndValidateAISimulationResult = async functio
   if (typeof aiResult.summary !== "string") {
     throw new Error("summary must be a string");
   }
-  if (
-    aiResult.randomEvent !== null &&
-    aiResult.randomEvent !== undefined &&
-    typeof aiResult.randomEvent !== "string"
-  ) {
-    throw new Error("randomEvent must be a string or null");
-  }
-  if (aiResult.randomEvent === undefined) aiResult.randomEvent = null;
-
   if (!classroomId) return aiResult;
 
   const defs = await MetricDefinition.getActive(classroomId);

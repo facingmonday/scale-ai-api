@@ -22,7 +22,9 @@ async function buildTemplatePayloadFromClassroom({
     classroomId,
     ...(includeInactive === "true" ? {} : { isActive: true }),
   })
-    .select("key label description isActive")
+    .select(
+      "key label description startingBalance initialStartupCost isActive"
+    )
     .sort({ label: 1 })
     .lean();
 
@@ -92,6 +94,14 @@ async function buildTemplatePayloadFromClassroom({
       key: st.key,
       label: st.label,
       description: st.description || "",
+      startingBalance:
+        st.startingBalance !== undefined && st.startingBalance !== null
+          ? Number(st.startingBalance)
+          : 0,
+      initialStartupCost:
+        st.initialStartupCost !== undefined && st.initialStartupCost !== null
+          ? Number(st.initialStartupCost)
+          : 0,
       isActive: st.isActive !== false,
     })),
     variableDefinitionsByAppliesTo: defsByAppliesTo,

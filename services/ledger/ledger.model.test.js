@@ -136,6 +136,7 @@ test("hardenAISimulationMessages prepends policy and normalizes roles to user", 
   assert.equal(hardened.length, 5);
   assert.equal(hardened[0].role, "system");
   assert.equal(hardened.filter((m) => m.role === "user").length, 4);
+  assert.equal(hardened[0].content.includes("randomEvent"), false);
 });
 
 test("buildAISimulationPrompt omits redundant and empty simulation context", () => {
@@ -209,6 +210,11 @@ test("buildAISimulationPrompt omits redundant and empty simulation context", () 
   assert.equal(profileEnvelope.data.studentId, undefined);
   assert.equal(profileEnvelope.data.storeTypeId, undefined);
   assert.equal(profileEnvelope.data.variablesDetailed, undefined);
+
+  const metricsEnvelope = envelopes.find(
+    (envelope) => envelope?.type === "metrics_to_calculate"
+  );
+  assert.equal(metricsEnvelope.instruction.includes("randomEvent"), false);
 
   const historyEnvelope = envelopes.find(
     (envelope) => envelope?.type === "ledger_history"
@@ -356,4 +362,6 @@ test("buildResponseJsonSchema keeps metric rules out of the response schema", as
 
   assert.deepEqual(schema.properties.profit, { type: "number" });
   assert.equal(typeof schema.properties.summary.description, "string");
+  assert.equal(schema.properties.randomEvent, undefined);
+  assert.equal(schema.required.includes("randomEvent"), false);
 });

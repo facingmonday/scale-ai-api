@@ -261,6 +261,17 @@ async function main() {
     for (const org of organizations) {
       try {
         await ClassroomTemplate.copyGlobalToOrganization(org._id, systemUserId);
+        const repairStats =
+          await ClassroomTemplate.repairLegacySellingPricesForOrganization(
+            org._id,
+            systemUserId
+          );
+        if (repairStats.classroomsRepaired > 0) {
+          console.log(
+            `Repaired legacy selling prices for org ${org._id}:`,
+            repairStats
+          );
+        }
       } catch (e) {
         console.error(
           `⚠️  Failed ensuring default classroom template for org ${org._id}:`,
