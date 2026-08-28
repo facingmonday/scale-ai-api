@@ -15,6 +15,7 @@ interface StudentListProps {
   onStudentsLoaded?: (students: StudentDisplay[], count: number) => void;
   emptyState?: React.ReactNode;
   pageSize?: number;
+  showClassroomColumn?: boolean;
 }
 
 const StudentList: React.FC<StudentListProps> = ({
@@ -27,6 +28,7 @@ const StudentList: React.FC<StudentListProps> = ({
   onStudentsLoaded,
   emptyState,
   pageSize = 10,
+  showClassroomColumn = true,
 }) => {
   const [students, setStudents] = useState<StudentDisplay[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -328,7 +330,9 @@ const StudentList: React.FC<StudentListProps> = ({
           }
         />
         <Column field="email" header="Email" sortable sortField="email" />
-        <Column field="classroomId" header="Classroom" />
+        {showClassroomColumn && (
+          <Column field="classroomId" header="Classroom" />
+        )}
         <Column
           field="studentId"
           header="Student ID"

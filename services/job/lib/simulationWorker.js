@@ -12,6 +12,49 @@ const MetricDefinition = require("../../metricDefinition/metricDefinition.model"
  * dynamic metric-driven ledger entries.
  */
 class SimulationWorker {
+  static async buildPriorMetrics(profile, ledgerHistory, classroomId) {
+    const history = Array.isArray(ledgerHistory) ? ledgerHistory : [];
+    const priorChallengeEntries = history.filter(
+      (entry) => entry?.challengeId !== null && entry?.challengeId !== undefined
+    );
+    const sourceEntry =
+      priorChallengeEntries.at(-1) || history.at(-1) || null;
+    let priorMetrics = {};
+
+    if (sourceEntry) {
+      const map = sourceEntry.metrics;
+      priorMetrics =
+        map instanceof Map
+          ? Object.fromEntries(map)
+          : map && typeof map === "object"
+            ? { ...map }
+            : {};
+    } else {
+      const defs = await MetricDefinition.getActive(classroomId);
+      for (const def of defs) {
+        if (
+          def.defaultInitialValue !== null &&
+          def.defaultInitialValue !== undefined
+        ) {
+          priorMetrics[def.key] = def.defaultInitialValue;
+        }
+      }
+    }
+
+    // A Week 0/setup ledger is not a completed challenge. For the first real
+    // challenge, seed cash from the profile even if that setup ledger contains
+    // the legacy zero defaults.
+    if (priorChallengeEntries.length === 0) {
+      const startingBalance = Number(profile?.startingBalance);
+      if (Number.isFinite(startingBalance)) {
+        priorMetrics.cashBefore = startingBalance;
+        priorMetrics.cashAfter = startingBalance;
+      }
+    }
+
+    return priorMetrics;
+  }
+
   static async processJob(jobId, options = {}) {
     const {
       isFinalAttempt = true,
@@ -126,25 +169,11 @@ class SimulationWorker {
       job.challengeId
     );
 
-    // Build prior metrics from the most recent ledger entry, or fall back to
-    // each MetricDefinition.defaultInitialValue when there's no history.
-    let priorMetrics = {};
-    if (ledgerHistory.length > 0) {
-      const lastEntry = ledgerHistory[ledgerHistory.length - 1];
-      const map = lastEntry.metrics;
-      if (map instanceof Map) {
-        priorMetrics = Object.fromEntries(map);
-      } else if (map && typeof map === "object") {
-        priorMetrics = { ...map };
-      }
-    } else {
-      const defs = await MetricDefinition.getActive(job.classroomId);
-      for (const def of defs) {
-        if (def.defaultInitialValue !== null && def.defaultInitialValue !== undefined) {
-          priorMetrics[def.key] = def.defaultInitialValue;
-        }
-      }
-    }
+    const priorMetrics = await this.buildPriorMetrics(
+      profile,
+      ledgerHistory,
+      job.classroomId
+    );
 
     return {
       profile,
@@ -203,10 +232,6 @@ class SimulationWorker {
       ...(context.challenge?.variables &&
       typeof context.challenge.variables === "object"
         ? context.challenge.variables
-        : {}),
-      ...(context.decision?.challengeVariableAnswers &&
-      typeof context.decision.challengeVariableAnswers === "object"
-        ? context.decision.challengeVariableAnswers
         : {}),
     };
 

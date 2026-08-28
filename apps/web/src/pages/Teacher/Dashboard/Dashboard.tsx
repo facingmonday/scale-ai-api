@@ -376,11 +376,6 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const formatDate = (date: string | Date | undefined) => {
-    if (!date) return "—";
-    return new Date(date).toLocaleDateString();
-  };
-
   const formatDateTime = (date: string | Date | null | undefined) => {
     if (!date) return "—";
     return new Date(date).toLocaleString();
@@ -392,7 +387,7 @@ const Dashboard: React.FC = () => {
     });
     return (
       <span className={`badge ${getChallengePresentationBadgeClass(status)}`}>
-        {status}
+        {status === "Calculating Results" ? "Calculating" : status}
       </span>
     );
   };
@@ -808,6 +803,7 @@ const Dashboard: React.FC = () => {
               classroomId={classroomId}
               onStudentClick={handleStudentClick}
               onDelete={openRemoveStudentDialog}
+              showClassroomColumn={false}
             />
           </div>
         </div>
@@ -888,13 +884,6 @@ const Dashboard: React.FC = () => {
                 }
                 sortable
                 sortField="automationStatus"
-              />
-              <Column
-                field="createdAt"
-                header="Created"
-                body={(rowData: Challenge) => formatDate(rowData.createdDate)}
-                sortable
-                sortField="createdAt"
               />
             </DataTable>
           </div>

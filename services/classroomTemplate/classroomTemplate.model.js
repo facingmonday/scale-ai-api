@@ -855,7 +855,7 @@ classroomTemplateSchema.statics.getPizzaShopMetricDefinitions = function () {
       aggregation: "sum",
       aiPromptRule:
         "revenue = sales * realizedUnitPrice, rounded to cents. realizedUnitPrice = avgSellingPricePerUnit * (pricing-multiplier from decisions, default 1).",
-      displayIn: { table: true, kpi: true, chart: true, leaderboard: true, detail: true },
+      displayIn: { table: true, kpi: true, chart: true, leaderboard: false, detail: true },
       sortOrder: 20,
     },
     {
@@ -915,7 +915,7 @@ classroomTemplateSchema.statics.getPizzaShopMetricDefinitions = function () {
       aggregation: "last",
       aiPromptRule:
         "cashAfter = cashBefore + netProfit, rounded to cents.",
-      displayIn: { table: true, kpi: true, chart: true, leaderboard: true, detail: true },
+      displayIn: { table: true, kpi: true, chart: true, leaderboard: false, detail: true },
       sortOrder: 70,
     },
   ];

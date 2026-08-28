@@ -26,14 +26,19 @@ const ScenarioStoreTypeSummary: React.FC<ScenarioStoreTypeSummaryProps> = ({
     navigate(`/decisions/${decisionId}`);
   };
 
-  const numericDefs = sortMetricDefinitions(
+  const allNumericDefs = sortMetricDefinitions(
     metricDefinitions.filter(
       (md) => md.dataType === "number" && md.isActive !== false
     )
-  ).slice(0, 4);
+  );
+  const numericDefs = allNumericDefs.slice(0, 4);
+  const primaryMetricKey =
+    stats.winners?.[0]?.primaryMetricKey || stats.losers?.[0]?.primaryMetricKey;
 
   const primaryDef =
-    numericDefs.find((md) => md.displayIn?.leaderboard) || numericDefs[0];
+    allNumericDefs.find((md) => md.key === primaryMetricKey) ||
+    allNumericDefs.find((md) => md.displayIn?.leaderboard) ||
+    allNumericDefs[0];
 
   return (
     <div className="border-1 border-ui-border rounded-xl p-6 bg-gradient-to-br from-ui-surface to-ui-muted/30 shadow-sm hover:shadow-md transition-shadow">

@@ -5,3 +5,40 @@ const Model = require("./metricDefinition.model");
 test("metricDefinition.model schema has required organization field", () => {
   assert.ok(Model.schema.obj.organization !== undefined || Model.schema.paths.organization);
 });
+
+test("supply-chain leaderboards use net profit despite legacy flags", () => {
+  const definitions = [
+    "sales",
+    "revenue",
+    "costs",
+    "waste",
+    "netProfit",
+    "cashBefore",
+    "cashAfter",
+  ].map((key) => ({
+    key,
+    dataType: "number",
+    displayIn: { leaderboard: key === "revenue" || key === "cashAfter" },
+  }));
+
+  assert.equal(
+    Model.selectLeaderboardDefinition(definitions).key,
+    "netProfit"
+  );
+});
+
+test("other classroom types retain their configured leaderboard metric", () => {
+  const definitions = [
+    { key: "followers", dataType: "number" },
+    {
+      key: "engagementRate",
+      dataType: "number",
+      displayIn: { leaderboard: true },
+    },
+  ];
+
+  assert.equal(
+    Model.selectLeaderboardDefinition(definitions).key,
+    "engagementRate"
+  );
+});

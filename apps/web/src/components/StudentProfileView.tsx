@@ -120,6 +120,25 @@ const StudentProfileView: React.FC<StudentProfileViewProps> = ({
               <span className="text-text-primary">{profile.studentId}</span>
             </div>
           )}
+
+          <dl className="mt-4 grid gap-4 border-t border-ui-border pt-4 sm:grid-cols-2">
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                Location
+              </dt>
+              <dd className="mt-1 break-words text-text-primary">
+                {profile.storeLocation?.trim() || "Not provided"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                Description
+              </dt>
+              <dd className="mt-1 whitespace-pre-wrap break-words text-text-primary">
+                {profile.storeDescription?.trim() || "Not provided"}
+              </dd>
+            </div>
+          </dl>
         </div>
 
         {latestEntry && metricDefinitions.length > 0 && (

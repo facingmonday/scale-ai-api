@@ -10,6 +10,7 @@ test("ledger model exports AI simulation helpers", () => {
   assert.equal(typeof LedgerEntry.shouldInspectOpenAIRequest, "function");
   assert.equal(typeof LedgerEntry.inspectOpenAIRequest, "function");
   assert.equal(typeof LedgerEntry.inspectOpenAIResponse, "function");
+  assert.equal(typeof LedgerEntry.enforceFirstPeriodCash, "function");
   assert.equal(typeof LedgerEntry.normalizeAndValidateAISimulationResult, "function");
   assert.equal(typeof LedgerEntry.runAISimulation, "function");
 });
@@ -218,6 +219,121 @@ test("buildAISimulationPrompt omits redundant and empty simulation context", () 
       metrics: { cashAfter: 50 },
     },
   ]);
+});
+
+test("buildAISimulationOpenAIRequest preserves outcome documents and separates student forecasts", async (t) => {
+  const VariableDefinition = require("../variableDefinition/variableDefinition.model");
+  const MetricDefinition = require("../metricDefinition/metricDefinition.model");
+  const originalFilterContext =
+    VariableDefinition.filterVariablesForAIContext;
+  const originalFilterScope =
+    VariableDefinition.filterVariablesByActiveDefinitions;
+  const originalGetActive = MetricDefinition.getActive;
+  t.after(() => {
+    VariableDefinition.filterVariablesForAIContext = originalFilterContext;
+    VariableDefinition.filterVariablesByActiveDefinitions = originalFilterScope;
+    MetricDefinition.getActive = originalGetActive;
+  });
+
+  VariableDefinition.filterVariablesForAIContext = async (_classroomId, ctx) =>
+    ctx;
+  VariableDefinition.filterVariablesByActiveDefinitions = async (
+    _classroomId,
+    _scope,
+    values
+  ) => values;
+  MetricDefinition.getActive = async () => [];
+
+  const outcomeDocument = {
+    variables: {},
+    toObject() {
+      return {
+        classroomId: "classroom-id",
+        challengeId: "challenge-id",
+        notes: "Actual conversion is 12%.",
+        hiddenNotes: "Use 120 realized orders for every student.",
+        variables: {},
+      };
+    },
+  };
+
+  const { rawMessages, request } =
+    await LedgerEntry.buildAISimulationOpenAIRequest(
+      {
+        profile: { startingBalance: 50000 },
+        challenge: {
+          _id: "challenge-id",
+          classroomId: "classroom-id",
+          title: "Viral Rush",
+          variables: { configuredDemand: 120 },
+        },
+        outcome: outcomeDocument,
+        decision: {
+          classroomId: "classroom-id",
+          challengeVariableAnswers: { expectedConversion: 10 },
+          variables: {},
+        },
+        ledgerHistory: [],
+        priorMetrics: { cashAfter: 50000 },
+      },
+      []
+    );
+
+  const parseEnvelopes = (messages) =>
+    messages
+      .map((message) => {
+        try {
+          return JSON.parse(message.content);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+  const rawEnvelopes = parseEnvelopes(rawMessages);
+  const challengeEnvelope = rawEnvelopes.find(
+    (envelope) => envelope.type === "challenge"
+  );
+  const answersEnvelope = rawEnvelopes.find(
+    (envelope) => envelope.type === "student_challenge_answers"
+  );
+  const outcomeEnvelope = rawEnvelopes.find(
+    (envelope) => envelope.type === "global_outcome"
+  );
+
+  assert.deepEqual(challengeEnvelope.data.variables, { configuredDemand: 120 });
+  assert.deepEqual(answersEnvelope.data, { expectedConversion: 10 });
+  assert.equal(outcomeEnvelope.data.notes, "Actual conversion is 12%.");
+  assert.equal(
+    outcomeEnvelope.data.hiddenNotes,
+    "Use 120 realized orders for every student."
+  );
+  assert.ok(
+    parseEnvelopes(request.messages).some(
+      (envelope) => envelope.type === "global_outcome"
+    )
+  );
+});
+
+test("enforceFirstPeriodCash uses starting balance only for the first challenge", () => {
+  const firstResult = LedgerEntry.enforceFirstPeriodCash(
+    { cashBefore: 0, cashAfter: 125, netProfit: 125 },
+    {
+      profile: { startingBalance: 50000 },
+      ledgerHistory: [{ challengeId: null, metrics: { cashAfter: 0 } }],
+    }
+  );
+  assert.equal(firstResult.cashBefore, 50000);
+  assert.equal(firstResult.cashAfter, 50125);
+
+  const laterResult = LedgerEntry.enforceFirstPeriodCash(
+    { cashBefore: 51000, cashAfter: 51125, netProfit: 125 },
+    {
+      profile: { startingBalance: 50000 },
+      ledgerHistory: [{ challengeId: "previous", metrics: { cashAfter: 51000 } }],
+    }
+  );
+  assert.equal(laterResult.cashBefore, 51000);
+  assert.equal(laterResult.cashAfter, 51125);
 });
 
 test("buildResponseJsonSchema keeps metric rules out of the response schema", async (t) => {

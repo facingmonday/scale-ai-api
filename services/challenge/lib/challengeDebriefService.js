@@ -106,9 +106,7 @@ function buildAnonymousAggregateFromRows({
     (definition) => definition.dataType === "number",
   );
   const performanceDefinition =
-    numericMetricDefinitions.find(
-      (definition) => definition.displayIn?.leaderboard,
-    ) || numericMetricDefinitions[0] || null;
+    MetricDefinition.selectLeaderboardDefinition(numericMetricDefinitions);
 
   const profileTypeMap = new Map();
   for (const row of rows) {
