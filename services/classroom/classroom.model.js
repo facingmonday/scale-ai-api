@@ -278,19 +278,20 @@ classroomSchema.statics.getDashboard = async function (
   }
 
   const MetricDefinition = require("../metricDefinition/metricDefinition.model");
-  const [leaderboardDef, metricDefinitionCount] = await Promise.all([
-    MetricDefinition.findOne({
+  const [leaderboardDefinitions, metricDefinitionCount] = await Promise.all([
+    MetricDefinition.find({
       classroomId,
       organization: organizationId,
       isActive: true,
       dataType: "number",
-      "displayIn.leaderboard": true,
     }).sort({ sortOrder: 1, label: 1 }),
     MetricDefinition.countDocuments({
       classroomId,
       organization: organizationId,
     }),
   ]);
+  const leaderboardDef =
+    MetricDefinition.selectLeaderboardDefinition(leaderboardDefinitions);
 
   let leaderboardTop10 = [];
   let leaderboardMetric = null;
@@ -560,9 +561,7 @@ classroomSchema.statics.getStudentDashboard = async function (
     });
 
     const leaderboardDefinition =
-      numericDefinitions.find(
-        (definition) => definition.displayIn?.leaderboard
-      ) || numericDefinitions[0] || null;
+      MetricDefinition.selectLeaderboardDefinition(numericDefinitions);
     let rank = null;
 
     if (leaderboardDefinition) {

@@ -1051,11 +1051,12 @@ scenarioSchema.statics.getStoreTypeStats = async function (
   submissionsWithStores,
   metricDefinitions = []
 ) {
+  const MetricDefinition = require("../metricDefinition/metricDefinition.model");
   const numericDefs = (metricDefinitions || []).filter(
     (md) => md && md.dataType === "number" && md.isActive !== false
   );
   const leaderboardDef =
-    numericDefs.find((md) => md.displayIn?.leaderboard) || numericDefs[0];
+    MetricDefinition.selectLeaderboardDefinition(numericDefs);
 
   const emptyTotals = () => {
     const t = {};

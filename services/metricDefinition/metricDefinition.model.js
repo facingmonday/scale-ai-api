@@ -182,6 +182,43 @@ metricDefinitionSchema.statics.getActive = async function (classroomId) {
 };
 
 /**
+ * Select the single metric used to rank results. Supply-chain classrooms use
+ * net profit even when legacy definitions still flag revenue and cash balance.
+ * Other classroom types retain their configured leaderboard metric.
+ */
+metricDefinitionSchema.statics.selectLeaderboardDefinition = function (
+  definitions
+) {
+  const numericDefs = (Array.isArray(definitions) ? definitions : []).filter(
+    (definition) =>
+      definition &&
+      definition.dataType === "number" &&
+      definition.isActive !== false
+  );
+  const keys = new Set(numericDefs.map((definition) => definition.key));
+  const supplyChainKeys = [
+    "sales",
+    "revenue",
+    "costs",
+    "waste",
+    "netProfit",
+    "cashBefore",
+    "cashAfter",
+  ];
+  const isSupplyChainLedger = supplyChainKeys.every((key) => keys.has(key));
+
+  if (isSupplyChainLedger) {
+    return numericDefs.find((definition) => definition.key === "netProfit");
+  }
+
+  return (
+    numericDefs.find((definition) => definition.displayIn?.leaderboard) ||
+    numericDefs[0] ||
+    null
+  );
+};
+
+/**
  * Get the set of active metric keys for a classroom.
  */
 metricDefinitionSchema.statics.getActiveKeys = async function (classroomId) {
