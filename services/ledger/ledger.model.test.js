@@ -10,7 +10,8 @@ test("ledger model exports AI simulation helpers", () => {
   assert.equal(typeof LedgerEntry.shouldInspectOpenAIRequest, "function");
   assert.equal(typeof LedgerEntry.inspectOpenAIRequest, "function");
   assert.equal(typeof LedgerEntry.inspectOpenAIResponse, "function");
-  assert.equal(typeof LedgerEntry.enforceFirstPeriodCash, "function");
+  assert.equal(typeof LedgerEntry.calculateOpeningCash, "function");
+  assert.equal(typeof LedgerEntry.enforceCashContinuity, "function");
   assert.equal(typeof LedgerEntry.normalizeAndValidateAISimulationResult, "function");
   assert.equal(typeof LedgerEntry.runAISimulation, "function");
 });
@@ -150,6 +151,8 @@ test("buildAISimulationPrompt omits redundant and empty simulation context", () 
       storeTypeId: "profile-type-id",
       storeTypeLabel: "Campus Kiosk",
       storeTypeDescription: "A compact campus operation.",
+      startingBalance: 50000,
+      initialStartupCost: 13000,
       variablesDetailed: { capacity: { value: 40 } },
       capacity: 40,
     },
@@ -206,6 +209,9 @@ test("buildAISimulationPrompt omits redundant and empty simulation context", () 
     description: "A compact campus operation.",
   });
   assert.equal(profileEnvelope.data.capacity, 40);
+  assert.equal(profileEnvelope.data.startingBalance, 50000);
+  assert.equal(profileEnvelope.data.initialStartupCost, 13000);
+  assert.equal(profileEnvelope.data.openingCashAfterStartupCost, 37000);
   assert.equal(profileEnvelope.data.profileId, undefined);
   assert.equal(profileEnvelope.data.studentId, undefined);
   assert.equal(profileEnvelope.data.storeTypeId, undefined);
@@ -266,7 +272,7 @@ test("buildAISimulationOpenAIRequest preserves outcome documents and separates s
   const { rawMessages, request } =
     await LedgerEntry.buildAISimulationOpenAIRequest(
       {
-        profile: { startingBalance: 50000 },
+        profile: { startingBalance: 50000, initialStartupCost: 20000 },
         challenge: {
           _id: "challenge-id",
           classroomId: "classroom-id",
@@ -280,7 +286,7 @@ test("buildAISimulationOpenAIRequest preserves outcome documents and separates s
           variables: {},
         },
         ledgerHistory: [],
-        priorMetrics: { cashAfter: 50000 },
+        priorMetrics: { cashAfter: 30000 },
       },
       []
     );
@@ -305,6 +311,9 @@ test("buildAISimulationOpenAIRequest preserves outcome documents and separates s
   const outcomeEnvelope = rawEnvelopes.find(
     (envelope) => envelope.type === "global_outcome"
   );
+  const profileEnvelope = rawEnvelopes.find(
+    (envelope) => envelope.type === "profile_configuration"
+  );
 
   assert.deepEqual(challengeEnvelope.data.variables, { configuredDemand: 120 });
   assert.deepEqual(answersEnvelope.data, { expectedConversion: 10 });
@@ -313,6 +322,9 @@ test("buildAISimulationOpenAIRequest preserves outcome documents and separates s
     outcomeEnvelope.data.hiddenNotes,
     "Use 120 realized orders for every student."
   );
+  assert.equal(profileEnvelope.data.startingBalance, 50000);
+  assert.equal(profileEnvelope.data.initialStartupCost, 20000);
+  assert.equal(profileEnvelope.data.openingCashAfterStartupCost, 30000);
   assert.ok(
     parseEnvelopes(request.messages).some(
       (envelope) => envelope.type === "global_outcome"
@@ -320,26 +332,57 @@ test("buildAISimulationOpenAIRequest preserves outcome documents and separates s
   );
 });
 
-test("enforceFirstPeriodCash uses starting balance only for the first challenge", () => {
-  const firstResult = LedgerEntry.enforceFirstPeriodCash(
+test("enforceCashContinuity anchors every challenge to prior cashAfter", () => {
+  const firstResult = LedgerEntry.enforceCashContinuity(
     { cashBefore: 0, cashAfter: 125, netProfit: 125 },
-    {
-      profile: { startingBalance: 50000 },
-      ledgerHistory: [{ challengeId: null, metrics: { cashAfter: 0 } }],
-    }
+    { priorMetrics: { cashAfter: 30000 } }
   );
-  assert.equal(firstResult.cashBefore, 50000);
-  assert.equal(firstResult.cashAfter, 50125);
+  assert.equal(firstResult.cashBefore, 30000);
+  assert.equal(firstResult.cashAfter, 30125);
 
-  const laterResult = LedgerEntry.enforceFirstPeriodCash(
-    { cashBefore: 51000, cashAfter: 51125, netProfit: 125 },
-    {
-      profile: { startingBalance: 50000 },
-      ledgerHistory: [{ challengeId: "previous", metrics: { cashAfter: 51000 } }],
-    }
+  const laterResult = LedgerEntry.enforceCashContinuity(
+    { cashBefore: 0, cashAfter: 125, netProfit: 125 },
+    { priorMetrics: new Map([["cashAfter", 51000]]) }
   );
   assert.equal(laterResult.cashBefore, 51000);
   assert.equal(laterResult.cashAfter, 51125);
+});
+
+test("calculateOpeningCash deducts the profile type startup cost once", () => {
+  assert.equal(
+    LedgerEntry.calculateOpeningCash({
+      startingBalance: 50000,
+      initialStartupCost: 20000,
+    }),
+    30000
+  );
+  assert.equal(
+    LedgerEntry.calculateOpeningCash({
+      startingBalance: 50000,
+      initialStartupCost: 45000,
+    }),
+    5000
+  );
+});
+
+test("cash continuity uses the prior metrics saved with a batch job", () => {
+  const batchResult = LedgerEntry.enforceCashContinuity(
+    { cashBefore: 0, cashAfter: 125, netProfit: 125 },
+    { priorMetrics: { cashAfter: 30000 } }
+  );
+
+  assert.equal(batchResult.cashBefore, 30000);
+  assert.equal(batchResult.cashAfter, 30125);
+});
+
+test("cash continuity leaves results unchanged without prior cash", () => {
+  const batchResult = LedgerEntry.enforceCashContinuity(
+    { cashBefore: 10, cashAfter: 135, netProfit: 125 },
+    { priorMetrics: {} }
+  );
+
+  assert.equal(batchResult.cashBefore, 10);
+  assert.equal(batchResult.cashAfter, 135);
 });
 
 test("buildResponseJsonSchema keeps metric rules out of the response schema", async (t) => {

@@ -351,7 +351,7 @@ const StoreTypePage: React.FC = () => {
                       disabled={isSaving}
                     />
                     <p className="text-text-muted text-xs mt-1">
-                      Starting cash balance for new student profiles of this type.
+                      Capital available before the one-time startup cost is deducted.
                     </p>
                   </div>
 
@@ -376,7 +376,7 @@ const StoreTypePage: React.FC = () => {
                       disabled={isSaving}
                     />
                     <p className="text-text-muted text-xs mt-1">
-                      One-time cost applied when a student creates a profile.
+                      Deducted once from starting capital before the first challenge.
                     </p>
                   </div>
                 </div>

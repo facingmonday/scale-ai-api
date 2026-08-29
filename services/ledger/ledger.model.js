@@ -121,7 +121,29 @@ const PROFILE_METADATA_KEYS = [
   "storeDescription",
   "storeLocation",
   "startingBalance",
+  "initialStartupCost",
 ];
+
+function calculateOpeningCash(profile) {
+  const startingBalanceRaw = profile?.startingBalance;
+  if (startingBalanceRaw === null || startingBalanceRaw === undefined) {
+    return null;
+  }
+
+  const startingBalance = Number(startingBalanceRaw);
+  if (!Number.isFinite(startingBalance)) return null;
+
+  const startupCostRaw = profile?.initialStartupCost;
+  const parsedStartupCost =
+    startupCostRaw === null || startupCostRaw === undefined
+      ? 0
+      : Number(startupCostRaw);
+  const initialStartupCost = Number.isFinite(parsedStartupCost)
+    ? parsedStartupCost
+    : 0;
+
+  return round2(startingBalance - initialStartupCost);
+}
 
 /**
  * LedgerEntry - The chronological record of a student's simulated results.
@@ -546,6 +568,13 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
     if (profile.startingBalance !== undefined) {
       data.startingBalance = profile.startingBalance;
     }
+    if (profile.initialStartupCost !== undefined) {
+      data.initialStartupCost = profile.initialStartupCost;
+    }
+    const openingCash = calculateOpeningCash(profile);
+    if (openingCash !== null) {
+      data.openingCashAfterStartupCost = openingCash;
+    }
 
     for (const [key, value] of Object.entries(profile)) {
       if (!PROFILE_METADATA_KEYS.includes(key)) data[key] = value;
@@ -709,6 +738,8 @@ ledgerEntrySchema.statics.hardenAISimulationMessages = function (messages) {
       "- Use plain JSON values (numbers as numbers, booleans as booleans, strings as strings).",
       "- Each metric key in the response must match the key set declared in metrics_to_calculate exactly.",
       "- Follow each metric's aiPromptRule when computing its value (carry-forward, allowed range, formula hints).",
+      "- cashBefore MUST equal prior_ledger_entry.cashAfter. The Week 0 ledger already reflects startingBalance minus the one-time initialStartupCost, so NEVER deduct the startup cost again in a challenge's costs or netProfit.",
+      "- cashAfter MUST equal cashBefore plus netProfit.",
       "- Always include `summary` (string).",
     ].join("\n"),
   };
@@ -979,30 +1010,38 @@ ledgerEntrySchema.statics.buildAISimulationOpenAIRequest = async function (
   return result;
 };
 
-/**
- * Keep the first real challenge anchored to the profile's configured starting
- * balance. Legacy Week 0 ledgers may contain zero-valued cash metrics.
- */
-ledgerEntrySchema.statics.enforceFirstPeriodCash = function (aiResult, context) {
-  const history = Array.isArray(context?.ledgerHistory)
-    ? context.ledgerHistory
-    : [];
-  const hasPriorChallenge = history.some(
-    (entry) => entry?.challengeId !== null && entry?.challengeId !== undefined
-  );
-  const startingBalance = Number(context?.profile?.startingBalance);
+ledgerEntrySchema.statics.calculateOpeningCash = calculateOpeningCash;
 
-  if (hasPriorChallenge || !Number.isFinite(startingBalance)) return aiResult;
+/**
+ * Keep every challenge's cash values anchored to the preceding ledger entry.
+ * Week 0 is the authoritative opening ledger; later challenges carry forward
+ * the most recent challenge ledger through priorMetrics.
+ */
+ledgerEntrySchema.statics.enforceCashContinuity = function (aiResult, context) {
+  const priorMetrics = context?.priorMetrics;
+  const priorCashRaw =
+    priorMetrics instanceof Map
+      ? priorMetrics.get("cashAfter")
+      : priorMetrics?.cashAfter;
+  const priorCash = Number(priorCashRaw);
+
+  if (
+    priorCashRaw === null ||
+    priorCashRaw === undefined ||
+    !Number.isFinite(priorCash)
+  ) {
+    return aiResult;
+  }
 
   if (Object.prototype.hasOwnProperty.call(aiResult, "cashBefore")) {
-    aiResult.cashBefore = round2(startingBalance);
+    aiResult.cashBefore = round2(priorCash);
   }
   if (
     Object.prototype.hasOwnProperty.call(aiResult, "cashAfter") &&
     typeof aiResult.netProfit === "number" &&
     Number.isFinite(aiResult.netProfit)
   ) {
-    aiResult.cashAfter = round2(startingBalance + aiResult.netProfit);
+    aiResult.cashAfter = round2(priorCash + aiResult.netProfit);
   }
 
   return aiResult;
@@ -1094,7 +1133,7 @@ ledgerEntrySchema.statics.runAISimulation = async function (context) {
     throw new Error(`Failed to parse AI response as JSON: ${error.message}`);
   }
 
-  this.enforceFirstPeriodCash(aiResult, context);
+  this.enforceCashContinuity(aiResult, context);
 
   console.log(`AI response: ${JSON.stringify(aiResult, null, 2)}`);
 

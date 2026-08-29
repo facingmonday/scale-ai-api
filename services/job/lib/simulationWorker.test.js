@@ -8,13 +8,12 @@ test("simulationWorker exports processJob", () => {
   assert.equal(typeof SimulationWorker.buildPriorMetrics, "function");
 });
 
-test("buildPriorMetrics replaces legacy Week 0 cash with the profile starting balance", async () => {
+test("buildPriorMetrics treats Week 0 as the authoritative opening ledger", async () => {
   const priorMetrics = await SimulationWorker.buildPriorMetrics(
-    { startingBalance: 50000 },
     [
       {
         challengeId: null,
-        metrics: { sales: 0, cashBefore: 0, cashAfter: 0 },
+        metrics: { sales: 0, cashBefore: 30000, cashAfter: 30000 },
       },
     ],
     "classroom-id"
@@ -22,14 +21,13 @@ test("buildPriorMetrics replaces legacy Week 0 cash with the profile starting ba
 
   assert.deepEqual(priorMetrics, {
     sales: 0,
-    cashBefore: 50000,
-    cashAfter: 50000,
+    cashBefore: 30000,
+    cashAfter: 30000,
   });
 });
 
 test("buildPriorMetrics carries cash from a completed challenge", async () => {
   const priorMetrics = await SimulationWorker.buildPriorMetrics(
-    { startingBalance: 50000 },
     [
       { challengeId: null, metrics: { cashAfter: 0 } },
       {

@@ -233,6 +233,7 @@ storeSchema.statics.createStoreVariables = async function (
  * @param {string} userId
  * @param {string} organizationId
  * @param {string} clerkUserId
+ * @param {Object|null} profileTypeInput
  * @returns {Promise<void>}
  */
 storeSchema.statics.seedInitialLedgerEntry = async function (
@@ -240,7 +241,8 @@ storeSchema.statics.seedInitialLedgerEntry = async function (
   classroomId,
   userId,
   organizationId,
-  clerkUserId
+  clerkUserId,
+  profileTypeInput = null
 ) {
   const existingInitial = await LedgerEntry.findOne({
     classroomId,
@@ -269,6 +271,25 @@ storeSchema.statics.seedInitialLedgerEntry = async function (
     }
   }
 
+  let profileType = profileTypeInput;
+  if (!profileType) {
+    const profile = await this.findById(profileId)
+      .select("profileType")
+      .populate("profileType", "startingBalance initialStartupCost")
+      .lean();
+    profileType = profile?.profileType || null;
+  }
+
+  const openingCash = LedgerEntry.calculateOpeningCash(profileType);
+  if (openingCash !== null) {
+    if (Object.prototype.hasOwnProperty.call(metrics, "cashBefore")) {
+      metrics.cashBefore = openingCash;
+    }
+    if (Object.prototype.hasOwnProperty.call(metrics, "cashAfter")) {
+      metrics.cashAfter = openingCash;
+    }
+  }
+
   await LedgerEntry.createLedgerEntry(
     {
       profileId,
@@ -278,14 +299,20 @@ storeSchema.statics.seedInitialLedgerEntry = async function (
       userId,
       metrics,
       randomEvent: null,
-      summary: "Week 0: Profile setup — initial values seeded from classroom metric definitions.",
+      summary:
+        "Week 0: Profile setup — opening cash reflects starting balance minus the one-time startup cost.",
       aiMetadata: {
         model: "system_seed",
         runId: uuidv4(),
         generatedAt: new Date(),
       },
       calculationContext: {
-        profileVariables: {},
+        profileVariables: profileType
+          ? {
+            startingBalance: profileType.startingBalance,
+            initialStartupCost: profileType.initialStartupCost,
+          }
+          : {},
         challengeVariables: {},
         decisionVariables: {},
         outcomeVariables: {},
@@ -720,7 +747,8 @@ storeSchema.statics.updateStore = async function (
       classroomId,
       userId,
       organizationId,
-      clerkUserId
+      clerkUserId,
+      storeTypeDoc
     );
   } else {
     // Update existing profile fields
@@ -779,7 +807,8 @@ storeSchema.statics.updateStore = async function (
             classroomId,
             userId,
             organizationId,
-            clerkUserId
+            clerkUserId,
+            storeTypeDoc
           );
         }
       }

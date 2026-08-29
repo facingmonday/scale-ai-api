@@ -1005,7 +1005,7 @@ classroomTemplateSchema.statics.getPizzaShopMetricDefinitions = function () {
       format: "currency",
       aggregation: "last",
       aiPromptRule:
-        "Carry-forward: this MUST equal the previous ledger entry's cashAfter (or the starting balance for the first entry). Do not modify.",
+        "Carry-forward: this MUST equal prior_ledger_entry.cashAfter. Week 0 already reflects startingBalance - initialStartupCost; never deduct startup cost again in challenge costs.",
       displayIn: { table: false, kpi: false, chart: false, leaderboard: false, detail: true },
       sortOrder: 60,
     },
