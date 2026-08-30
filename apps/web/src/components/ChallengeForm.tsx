@@ -316,25 +316,27 @@ const ChallengeForm: React.FC<ScenarioFormProps> = ({
                 </select>
               </label>
 
-              <label className="flex flex-col gap-2 md:col-span-2">
-                <span className="label">Punishment for forwarded decisions</span>
-                <select
-                  className="input"
-                  value={values.punishAbsentStudents || "none"}
-                  onChange={(event) =>
-                    onChange(
-                      "punishAbsentStudents",
-                      event.target.value as "high" | "medium" | "low" | "none",
-                    )
-                  }
-                  disabled={disabled}
-                >
-                  <option value="none">None</option>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                </select>
-              </label>
+              {(values.missingSubmissionPolicy || "SKIP") !== "SKIP" && (
+                <label className="flex flex-col gap-2 md:col-span-2">
+                  <span className="label">Punishment for missing decisions</span>
+                  <select
+                    className="input"
+                    value={values.punishAbsentStudents || "none"}
+                    onChange={(event) =>
+                      onChange(
+                        "punishAbsentStudents",
+                        event.target.value as "high" | "medium" | "low" | "none",
+                      )
+                    }
+                    disabled={disabled}
+                  >
+                    <option value="none">None</option>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </label>
+              )}
             </div>
           </div>
         </div>

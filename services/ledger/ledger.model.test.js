@@ -233,6 +233,56 @@ test("buildAISimulationPrompt omits redundant and empty simulation context", () 
   ]);
 });
 
+test("buildAISimulationPrompt applies the configured punishment to default decisions", () => {
+  const messages = LedgerEntry.buildAISimulationPrompt(
+    [],
+    { profileType: "campus-kiosk" },
+    { title: "Test challenge", variables: {} },
+    { notes: "Shared outcome", variables: {} },
+    {
+      variables: { price: 12 },
+      generation: {
+        method: "DEFAULTS",
+        meta: { absentPunishmentLevel: "high" },
+      },
+    },
+    [],
+    {},
+    []
+  );
+
+  const penalty = messages.find((message) =>
+    message.content.includes("ABSENCE PENALTY")
+  );
+  assert.ok(penalty);
+  assert.match(penalty.content, /ABSENCE PENALTY — HIGH/);
+  assert.match(penalty.content, /substantially lower profit/);
+});
+
+test("buildAISimulationPrompt does not punish defaults when punishment is none", () => {
+  const messages = LedgerEntry.buildAISimulationPrompt(
+    [],
+    { profileType: "campus-kiosk" },
+    { title: "Test challenge", variables: {} },
+    { notes: "Shared outcome", variables: {} },
+    {
+      variables: { price: 12 },
+      generation: {
+        method: "DEFAULTS",
+        meta: { absentPunishmentLevel: null },
+      },
+    },
+    [],
+    {},
+    []
+  );
+
+  assert.equal(
+    messages.some((message) => message.content.includes("ABSENCE PENALTY")),
+    false
+  );
+});
+
 test("buildAISimulationOpenAIRequest preserves outcome documents and separates student forecasts", async (t) => {
   const VariableDefinition = require("../variableDefinition/variableDefinition.model");
   const MetricDefinition = require("../metricDefinition/metricDefinition.model");

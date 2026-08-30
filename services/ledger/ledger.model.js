@@ -664,13 +664,34 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
   ];
 
   const decisionGenerationMethod = decision?.generation?.method || "MANUAL";
-  if (decisionGenerationMethod !== "MANUAL") {
+  const configuredAbsencePunishment = String(
+    decision?.generation?.meta?.absentPunishmentLevel || ""
+  )
+    .trim()
+    .toLowerCase();
+  const absencePunishmentLevel = ["low", "medium", "high"].includes(
+    configuredAbsencePunishment
+  )
+    ? configuredAbsencePunishment
+    : null;
+
+  if (decisionGenerationMethod !== "MANUAL" && absencePunishmentLevel) {
+    const punishmentGuidance = {
+      low:
+        "Apply a mild disadvantage: slightly weaker execution, modest lost demand or waste, and somewhat lower profit than the same decisions would normally produce.",
+      medium:
+        "Apply a noticeable disadvantage: operational mistakes should cause below-average service, more lost demand or waste, and meaningfully lower profit.",
+      high:
+        "Apply a severe disadvantage: poor execution should cause major stockouts and/or waste, service failures, and substantially lower profit.",
+    };
+
     messages.push({
       role: "user",
       content:
-        `IMPORTANT (ABSENCE PENALTY): These decisions were auto-generated (method: ${decisionGenerationMethod}). ` +
-        `The outcome for this period should reflect non-participation. Bias the result toward negative or stagnant performance ` +
-        `for metrics whose aiPromptRule indicates they are sensitive to student engagement.`,
+        `IMPORTANT (ABSENCE PENALTY — ${absencePunishmentLevel.toUpperCase()}): These decisions were auto-generated ` +
+        `(method: ${decisionGenerationMethod}) because the student did not submit. ` +
+        `${punishmentGuidance[absencePunishmentLevel]} Apply the penalty only through execution and metrics whose ` +
+        `aiPromptRule makes them sensitive to participation; do not change authoritative shared outcome conditions or hard capacity constraints.`,
     });
   }
 

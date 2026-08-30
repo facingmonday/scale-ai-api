@@ -10,6 +10,12 @@ const clampNumber = require("./lib/clampNumber");
 const buildJsonSchemaFromDefinitions = require("./lib/buildJsonSchemaFromDefinitions");
 const fillMissingWithDefaults = require("./lib/fillMissingWithDefaults");
 const normalizeSelectAllowedValues = require("./lib/normalizeSelectAllowedValues");
+
+function normalizeAbsencePunishmentLevel(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["low", "medium", "high"].includes(normalized) ? normalized : null;
+}
+
 /**
  * @openapi
  * components:
@@ -988,6 +994,9 @@ submissionSchema.statics.forwardPreviousDecisionsForChallenge = async function (
   }
 
   const previousScenarios = allScenarios.slice(0, currentScenarioIndex);
+  const absentPunishmentLevel = normalizeAbsencePunishmentLevel(
+    punishAbsentStudents
+  );
 
   let created = 0;
   let existing = 0;
@@ -1024,22 +1033,6 @@ submissionSchema.statics.forwardPreviousDecisionsForChallenge = async function (
       }
 
       if (!previousSubmission || !previousSubmission.variables) {
-        let absentPunishmentLevel = null;
-
-        if (punishAbsentStudents) {
-          const normalized =
-            typeof punishAbsentStudents === "string"
-              ? punishAbsentStudents.toLowerCase()
-              : String(punishAbsentStudents).toLowerCase();
-          if (
-            normalized !== "none" &&
-            normalized !== null &&
-            normalized !== undefined
-          ) {
-            absentPunishmentLevel = normalized;
-          }
-        }
-
         try {
           const profile = await Profile.findOne({
             classroomId,
@@ -1174,6 +1167,7 @@ submissionSchema.statics.forwardPreviousDecisionsForChallenge = async function (
             forwardedFromScenarioId: previousSubmission.challengeId || null,
             forwardedFromSubmissionId: previousSubmission._id || null,
             meta: {
+              absentPunishmentLevel,
               note: "Auto-created on challenge outcome (FORWARD_PREVIOUS)",
             },
           },
@@ -1209,6 +1203,7 @@ submissionSchema.statics.useDefaultsForDecisions = async function ({
   challengeId,
   organizationId,
   clerkUserId,
+  punishAbsentStudents,
 }) {
   const Profile = require("../profile/profile.model");
 
@@ -1232,6 +1227,9 @@ submissionSchema.statics.useDefaultsForDecisions = async function ({
   }
 
   const classroomId = challenge.classroomId;
+  const absentPunishmentLevel = normalizeAbsencePunishmentLevel(
+    punishAbsentStudents
+  );
 
   const missingUserIds = await this.getMissingSubmissions(
     classroomId,
@@ -1316,6 +1314,7 @@ submissionSchema.statics.useDefaultsForDecisions = async function ({
           generation: {
             method: "DEFAULTS",
             meta: {
+              absentPunishmentLevel,
               note: "Auto-created on challenge outcome (USE_DEFAULTS)",
             },
           },
