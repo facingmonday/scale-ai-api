@@ -1,14 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import outcomeService from "@/services/outcome";
 import challengeService from "@/services/challenge";
-import decisionService from "@/services/decision";
 import type { Outcome as ScenarioOutcomeModel } from "@/types/outcome";
 import { useAuth } from "@/context/AuthContext";
 import { useGlobalContext } from "@/context/GlobalContext";
 import { getErrorMessage } from "@/utils";
 import AITextField from "./AIComponents/AITextField";
 import type { Challenge } from "@/types/challenge";
-import { InputNumber } from "primereact/inputnumber";
 import { InputTextarea } from "primereact/inputtextarea";
 
 export type ScenarioOutcomeProps = {
@@ -46,23 +44,11 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isReleasingFeedback, setIsReleasingFeedback] = useState(false);
+  const [locallyReleasedChallengeId, setLocallyReleasedChallengeId] = useState<
+    string | null
+  >(null);
   const [notesDraft, setNotesDraft] = useState("");
   const [hiddenNotesDraft, setHiddenNotesDraft] = useState("");
-  const [randomEventChancePercent, setRandomEventChancePercent] = useState<
-    number | null
-  >(0);
-  const [missingSubmissionCount, setMissingSubmissionCount] = useState<
-    number | null
-  >(null);
-  const [
-    autoGenerateSubmissionsOnOutcome,
-    setAutoGenerateSubmissionsOnOutcome,
-  ] = useState<"USE_AI" | "FORWARD_PREVIOUS" | "USE_DEFAULTS" | "SKIP" | null>(
-    null,
-  );
-  const [punishAbsentStudents, setPunishAbsentStudents] = useState<
-    "high" | "medium" | "low" | "none" | null
-  >(null);
 
   const canEdit = useMemo(() => {
     if (!isAdmin) return false;
@@ -96,17 +82,9 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
       if (next) {
         setNotesDraft(next.notes || "");
         setHiddenNotesDraft(next.hiddenNotes || "");
-        setRandomEventChancePercent(next.randomEventChancePercent ?? 0);
-        setAutoGenerateSubmissionsOnOutcome(
-          next.autoGenerateSubmissionsOnOutcome || null,
-        );
-        setPunishAbsentStudents(next.punishAbsentStudents || null);
       } else {
         setNotesDraft("");
         setHiddenNotesDraft("");
-        setRandomEventChancePercent(0);
-        setAutoGenerateSubmissionsOnOutcome(null);
-        setPunishAbsentStudents(null);
       }
     } catch (err) {
       // Common: 404 when no outcome exists (or not yet approved for students)
@@ -114,14 +92,11 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
       onChange?.(null);
       setNotesDraft("");
       setHiddenNotesDraft("");
-      setRandomEventChancePercent(0);
 
       // Only log error if it's an admin view (students commonly "don't have it yet")
       if (isAdmin) {
         console.error("Failed to fetch challenge outcome:", err);
       }
-      setAutoGenerateSubmissionsOnOutcome(null);
-      setPunishAbsentStudents(null);
     } finally {
       setIsLoading(false);
     }
@@ -131,45 +106,12 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
     void fetchOutcome();
   }, [fetchOutcome]);
 
-  const fetchMissingSubmissions = useCallback(async () => {
-    if (!challengeId || !isAdmin) return;
-
-    try {
-      const {
-        data: { missingSubmissions },
-      } = await decisionService.getMissingSubmissionsForScenario(challengeId);
-      setMissingSubmissionCount(missingSubmissions?.length ?? 0);
-    } catch (err) {
-      console.error("Failed to fetch missing decisions:", err);
-      setMissingSubmissionCount(null);
-    }
-  }, [challengeId, isAdmin]);
-
-  useEffect(() => {
-    if (isEditing && isAdmin) {
-      void fetchMissingSubmissions();
-    }
-  }, [isEditing, isAdmin, fetchMissingSubmissions]);
-
   const buildPayload = useCallback(
     () => ({
       notes: notesDraft.trim() || undefined,
       hiddenNotes: hiddenNotesDraft.trim() || undefined,
-      randomEventChancePercent:
-        randomEventChancePercent !== null
-          ? randomEventChancePercent
-          : undefined,
-      autoGenerateSubmissionsOnOutcome:
-        autoGenerateSubmissionsOnOutcome || undefined,
-      punishAbsentStudents: punishAbsentStudents || undefined,
     }),
-    [
-      notesDraft,
-      hiddenNotesDraft,
-      randomEventChancePercent,
-      autoGenerateSubmissionsOnOutcome,
-      punishAbsentStudents,
-    ],
+    [notesDraft, hiddenNotesDraft],
   );
 
   const handleSaveDraft = useCallback(async () => {
@@ -221,9 +163,10 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
     return (
       !!challenge.isClosed &&
       !challenge.isFeedbackReleased &&
+      locallyReleasedChallengeId !== challengeId &&
       challenge.automationStatus === "processed"
     );
-  }, [isAdmin, challenge]);
+  }, [isAdmin, challenge, locallyReleasedChallengeId, challengeId]);
 
   const handleReleaseFeedback = useCallback(async () => {
     if (!challengeId) return;
@@ -232,8 +175,13 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
     try {
       global?.showToast("Releasing feedback...", "loading");
       await challengeService.releaseFeedback(challengeId);
+      setLocallyReleasedChallengeId(challengeId);
       global?.showToast("Feedback released and students notified", "success");
-      await onChallengeUpdated?.();
+      try {
+        await onChallengeUpdated?.();
+      } catch (refreshError) {
+        console.error("Feedback released, but challenge refresh failed:", refreshError);
+      }
     } catch (err) {
       console.error("Failed to release feedback:", err);
       const errorMessage = getErrorMessage(err);
@@ -343,17 +291,6 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
                   </div>
                 </div>
               )}
-              {outcome.randomEventChancePercent !== undefined &&
-                outcome.randomEventChancePercent > 0 && (
-                  <div className="mt-3">
-                    <div className="text-sm text-text-secondary mb-1">
-                      Random Event Chance
-                    </div>
-                    <div className="text-sm text-text-primary">
-                      {outcome.randomEventChancePercent}%
-                    </div>
-                  </div>
-                )}
             </>
           )}
         </div>
@@ -397,180 +334,7 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
               </p>
             </div>
 
-            <div>
-              <label
-                className="label"
-                htmlFor="challenge-outcome-random-event-chance"
-              >
-                Random Event Chance (%)
-              </label>
-              <InputNumber
-                id="challenge-outcome-random-event-chance"
-                value={randomEventChancePercent ?? 0}
-                onValueChange={(e) => setRandomEventChancePercent(e.value ?? 0)}
-                min={0}
-                max={100}
-                suffix="%"
-                disabled={!isAdmin || isSaving}
-                className="input w-full"
-              />
-              <p className="text-xs text-text-muted mt-1">
-                Probability (0-100%) that a random event will occur for this
-                challenge outcome. Set to 0 to disable random events.
-              </p>
-            </div>
           </div>
-
-          {missingSubmissionCount !== null && missingSubmissionCount > 0 && (
-            <div className="mt-2 rounded-md border border-ui-border bg-ui-muted px-4 py-4">
-              <div className="mb-3">
-                <p className="text-base font-medium text-text-primary">
-                  {missingSubmissionCount}{" "}
-                  {missingSubmissionCount === 1
-                    ? "student has"
-                    : "students have"}{" "}
-                  not submitted for this challenge.
-                </p>
-                <p className="text-sm text-text-secondary mt-1">
-                  What would you like to do with students who haven't filled out
-                  a decision?
-                </p>
-              </div>
-              <div className="flex flex-col gap-3">
-                <label className="flex items-center gap-2 cursor-pointer w-full">
-                  <input
-                    type="radio"
-                    name="auto-generate"
-                    checked={
-                      autoGenerateSubmissionsOnOutcome === "SKIP" ||
-                      autoGenerateSubmissionsOnOutcome === null
-                    }
-                    onChange={() => {
-                      setAutoGenerateSubmissionsOnOutcome("SKIP");
-                      setPunishAbsentStudents("none");
-                    }}
-                    className="flex-shrink-0"
-                    style={{ scale: 1.2 }}
-                  />
-                  <span className="text-sm text-text-primary">
-                    Skip unsubmitted students
-                  </span>
-                </label>
-
-                <label className="flex items-center gap-2 cursor-pointer w-full">
-                  <input
-                    type="radio"
-                    name="auto-generate"
-                    value="USE_DEFAULTS"
-                    checked={
-                      autoGenerateSubmissionsOnOutcome === "USE_DEFAULTS"
-                    }
-                    onChange={() =>
-                      setAutoGenerateSubmissionsOnOutcome("USE_DEFAULTS")
-                    }
-                    style={{ scale: 1.2 }}
-                    className="flex-shrink-0"
-                  />
-                  <span className="text-sm text-text-primary">
-                    Use default values
-                  </span>
-                </label>
-
-                <label className="flex items-center gap-2 cursor-pointer w-full">
-                  <input
-                    type="radio"
-                    name="auto-generate"
-                    value="FORWARD_PREVIOUS"
-                    checked={
-                      autoGenerateSubmissionsOnOutcome === "FORWARD_PREVIOUS"
-                    }
-                    onChange={() =>
-                      setAutoGenerateSubmissionsOnOutcome("FORWARD_PREVIOUS")
-                    }
-                    className="flex-shrink-0"
-                    style={{ scale: 1.2 }}
-                  />
-                  <div>
-                    <span className="text-sm text-text-primary">
-                      Use previous decision from the student
-                    </span>
-                    {autoGenerateSubmissionsOnOutcome ===
-                      "FORWARD_PREVIOUS" && (
-                        <p className="text-xs text-text-muted mt-1">
-                          Students who have never made a decision will have one
-                          created using AI.
-                        </p>
-                      )}
-                  </div>
-                </label>
-              </div>
-              {autoGenerateSubmissionsOnOutcome !== null &&
-                autoGenerateSubmissionsOnOutcome !== "SKIP" && (
-                  <div className="mt-4">
-                    <label className="label">
-                      Punishment level for absent students
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        className={
-                          punishAbsentStudents === null
-                            ? "btn-teal"
-                            : "btn-outline"
-                        }
-                        onClick={() => setPunishAbsentStudents(null)}
-                        disabled={!isAdmin || isSaving}
-                      >
-                        No punishment
-                      </button>
-                      <button
-                        type="button"
-                        className={
-                          punishAbsentStudents === "low"
-                            ? "btn-teal"
-                            : "btn-outline"
-                        }
-                        onClick={() => setPunishAbsentStudents("low")}
-                        disabled={!isAdmin || isSaving}
-                      >
-                        Low
-                      </button>
-                      <button
-                        type="button"
-                        className={
-                          punishAbsentStudents === "medium"
-                            ? "btn-teal"
-                            : "btn-outline"
-                        }
-                        onClick={() => setPunishAbsentStudents("medium")}
-                        disabled={!isAdmin || isSaving}
-                      >
-                        Medium
-                      </button>
-                      <button
-                        type="button"
-                        className={
-                          punishAbsentStudents === "high"
-                            ? "btn-teal"
-                            : "btn-outline"
-                        }
-                        onClick={() => setPunishAbsentStudents("high")}
-                        disabled={!isAdmin || isSaving}
-                      >
-                        High
-                      </button>
-                    </div>
-                    {autoGenerateSubmissionsOnOutcome ===
-                      "FORWARD_PREVIOUS" && (
-                        <p className="text-xs text-text-muted mt-2">
-                          Note: Will only apply to students who have never made a
-                          decision.
-                        </p>
-                      )}
-                  </div>
-                )}
-            </div>
-          )}
 
           <div className="mt-4 flex items-center justify-end gap-3">
             <button
@@ -580,13 +344,6 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
                 setIsEditing(false);
                 setNotesDraft(outcome?.notes || "");
                 setHiddenNotesDraft(outcome?.hiddenNotes || "");
-                setRandomEventChancePercent(
-                  outcome?.randomEventChancePercent ?? 0,
-                );
-                setAutoGenerateSubmissionsOnOutcome(
-                  outcome?.autoGenerateSubmissionsOnOutcome || null,
-                );
-                setPunishAbsentStudents(outcome?.punishAbsentStudents || null);
               }}
               disabled={isSaving}
             >

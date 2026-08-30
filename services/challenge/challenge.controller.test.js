@@ -9,6 +9,7 @@ const Classroom = require("../classroom/classroom.model");
 const Outcome = require("../outcome/outcome.model");
 const LedgerEntry = require("../ledger/ledger.model");
 const JobService = require("../job/lib/jobService");
+const SimulationJob = require("../job/job.model");
 const AutomationTask = require("../ai/automationTask.model");
 const challengeAiService = require("./lib/challengeAiService");
 const challengeDebriefService = require("./lib/challengeDebriefService");
@@ -18,6 +19,61 @@ test("challenge controller exports handlers", () => {
   assert.equal(typeof controller.createScenario, "function");
   assert.equal(typeof controller.createScenarioWithAI, "function");
   assert.equal(typeof controller.publishScenario, "function");
+});
+
+test("releaseFeedbackScenario cannot release or notify twice", async (t) => {
+  const originals = {
+    findOne: Challenge.findOne,
+    findOneAndUpdate: Challenge.findOneAndUpdate,
+    validateAdminAccess: Classroom.validateAdminAccess,
+    jobExists: SimulationJob.exists,
+    sendResultsNotifications: LedgerEntry.sendResultsNotifications,
+  };
+  t.after(() => {
+    Challenge.findOne = originals.findOne;
+    Challenge.findOneAndUpdate = originals.findOneAndUpdate;
+    Classroom.validateAdminAccess = originals.validateAdminAccess;
+    SimulationJob.exists = originals.jobExists;
+    LedgerEntry.sendResultsNotifications = originals.sendResultsNotifications;
+  });
+
+  Challenge.findOne = async () => ({
+    _id: "challenge-id",
+    classroomId: "classroom-id",
+    automationStatus: "processed",
+    isFeedbackReleased: false,
+  });
+  Classroom.validateAdminAccess = async () => true;
+  SimulationJob.exists = async () => false;
+  Challenge.findOneAndUpdate = async () => null;
+  let notificationCount = 0;
+  LedgerEntry.sendResultsNotifications = async () => {
+    notificationCount += 1;
+  };
+
+  let statusCode = 200;
+  let body;
+  await controller.releaseFeedbackScenario(
+    {
+      params: { challengeId: "challenge-id" },
+      organization: { _id: "organization-id" },
+      clerkUser: { id: "teacher-id" },
+    },
+    {
+      status(code) {
+        statusCode = code;
+        return this;
+      },
+      json(payload) {
+        body = payload;
+        return this;
+      },
+    }
+  );
+
+  assert.equal(statusCode, 400);
+  assert.deepEqual(body, { error: "Feedback is already released" });
+  assert.equal(notificationCount, 0);
 });
 
 test("publishScenario keeps a future full-automation challenge scheduled", async (t) => {

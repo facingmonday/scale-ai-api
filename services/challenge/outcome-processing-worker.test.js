@@ -3,7 +3,24 @@ const assert = require("node:assert/strict");
 
 const {
   markOutcomeProcessingFailed,
+  getMissingSubmissionSettings,
 } = require("../../lib/queues/outcome-processing-worker");
+
+test("outcome processing reads missing-decision settings from the challenge", () => {
+  assert.deepEqual(
+    getMissingSubmissionSettings({
+      missingSubmissionPolicy: "FORWARD_PREVIOUS",
+      punishAbsentStudents: "medium",
+      autoGenerateSubmissionsOnOutcome: "USE_DEFAULTS",
+    }),
+    { mode: "FORWARD_PREVIOUS", punishment: "medium" }
+  );
+
+  assert.deepEqual(getMissingSubmissionSettings({}), {
+    mode: "SKIP",
+    punishment: "none",
+  });
+});
 
 test("outcome processing only marks a challenge failed after the final attempt", async () => {
   const updates = [];

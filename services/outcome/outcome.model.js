@@ -22,14 +22,6 @@ const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
  *           type: string
  *         hiddenNotes:
  *           type: string
- *         randomEventChancePercent:
- *           type: number
- *         autoGenerateSubmissionsOnOutcome:
- *           type: string
- *           enum: [USE_AI, FORWARD_PREVIOUS, USE_DEFAULTS, SKIP]
- *         punishAbsentStudents:
- *           type: string
- *           enum: [high, medium, low, none]
  *         variables:
  *           type: object
  *           description: Map of resolved outcome variable values.
@@ -56,28 +48,6 @@ const scenarioOutcomeSchema = new mongoose.Schema({
   hiddenNotes: {
     type: String,
     default: "",
-  },
-  // Probability (0-100) that a random event will occur for this challenge outcome.
-  // Default 0 means random events are disabled.
-  randomEventChancePercent: {
-    type: Number,
-    default: 0,
-    min: 0,
-    max: 100,
-  },
-  // Auto-generate decisions for missing students when outcome is set.
-  // SKIP intentionally leaves missing students without a ledger entry.
-  autoGenerateSubmissionsOnOutcome: {
-    type: String,
-    enum: ["USE_AI", "FORWARD_PREVIOUS", "USE_DEFAULTS", "SKIP"],
-    default: null,
-  },
-  // Punishment level for absent students when using FORWARD_PREVIOUS
-  // Options: "high", "medium", "low", "none", or undefined/null (no punishment)
-  punishAbsentStudents: {
-    type: String,
-    enum: ["high", "medium", "low", "none"],
-    default: null,
   },
   approved: {
     type: Boolean,
@@ -117,21 +87,6 @@ scenarioOutcomeSchema.statics.createOrUpdateOutcome = async function (
 ) {
   let outcome = await this.findOne({ challengeId });
 
-  const normalizedChancePercent =
-    outcomeData.randomEventChancePercent !== undefined
-      ? outcomeData.randomEventChancePercent
-      : undefined;
-
-  const normalizedAutoGenerate =
-    outcomeData.autoGenerateSubmissionsOnOutcome !== undefined
-      ? outcomeData.autoGenerateSubmissionsOnOutcome || null
-      : undefined;
-
-  const normalizedPunishAbsent =
-    outcomeData.punishAbsentStudents !== undefined
-      ? outcomeData.punishAbsentStudents || "none"
-      : "none";
-
   const normalizedApproved =
     outcomeData.approved !== undefined
       ? !!outcomeData.approved
@@ -144,15 +99,6 @@ scenarioOutcomeSchema.statics.createOrUpdateOutcome = async function (
       outcomeData.hiddenNotes !== undefined
         ? outcomeData.hiddenNotes
         : outcome.hiddenNotes;
-    if (normalizedChancePercent !== undefined) {
-      outcome.randomEventChancePercent = normalizedChancePercent;
-    }
-    if (normalizedAutoGenerate !== undefined) {
-      outcome.autoGenerateSubmissionsOnOutcome = normalizedAutoGenerate;
-    }
-    if (normalizedPunishAbsent !== undefined) {
-      outcome.punishAbsentStudents = normalizedPunishAbsent;
-    }
     if (normalizedApproved !== undefined) {
       outcome.approved = normalizedApproved;
     }
@@ -167,10 +113,6 @@ scenarioOutcomeSchema.statics.createOrUpdateOutcome = async function (
       classroomId: classroomId || null,
       notes: outcomeData.notes || "",
       hiddenNotes: outcomeData.hiddenNotes || "",
-      randomEventChancePercent:
-        normalizedChancePercent !== undefined ? normalizedChancePercent : 0,
-      autoGenerateSubmissionsOnOutcome: normalizedAutoGenerate || null,
-      punishAbsentStudents: normalizedPunishAbsent || null,
       approved: normalizedApproved !== undefined ? normalizedApproved : false,
       organization: organizationId,
       createdBy: clerkUserId,

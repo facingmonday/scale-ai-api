@@ -10,7 +10,7 @@ const {
  * Set challenge outcome
  * POST /api/admin/challenges/:challengeId/outcome
  * This enqueues a background job to:
- * - auto-generate missing decisions (optional)
+ * - apply the challenge's scheduled missing-decision policy
  * - create simulation jobs
  * - enqueue batch submit (if enabled)
  * - close the challenge
@@ -18,13 +18,7 @@ const {
 exports.setScenarioOutcome = async function (req, res) {
   try {
     const { challengeId } = req.params;
-    const {
-      notes,
-      hiddenNotes,
-      randomEventChancePercent,
-      autoGenerateSubmissionsOnOutcome,
-      punishAbsentStudents,
-    } = req.body;
+    const { notes, hiddenNotes } = req.body;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
@@ -59,9 +53,6 @@ exports.setScenarioOutcome = async function (req, res) {
       {
         notes,
         hiddenNotes,
-        randomEventChancePercent,
-        autoGenerateSubmissionsOnOutcome,
-        punishAbsentStudents,
         approved: true,
       },
       organizationId,
@@ -107,13 +98,7 @@ exports.setScenarioOutcome = async function (req, res) {
 exports.saveScenarioOutcomeDraft = async function (req, res) {
   try {
     const { challengeId } = req.params;
-    const {
-      notes,
-      hiddenNotes,
-      randomEventChancePercent,
-      autoGenerateSubmissionsOnOutcome,
-      punishAbsentStudents,
-    } = req.body;
+    const { notes, hiddenNotes } = req.body;
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
@@ -144,9 +129,6 @@ exports.saveScenarioOutcomeDraft = async function (req, res) {
       {
         notes,
         hiddenNotes,
-        randomEventChancePercent,
-        autoGenerateSubmissionsOnOutcome,
-        punishAbsentStudents,
         approved: false,
       },
       organizationId,

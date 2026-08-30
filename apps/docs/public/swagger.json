@@ -223,27 +223,6 @@
           "hiddenNotes": {
             "type": "string"
           },
-          "randomEventChancePercent": {
-            "type": "number"
-          },
-          "autoGenerateSubmissionsOnOutcome": {
-            "type": "string",
-            "enum": [
-              "USE_AI",
-              "FORWARD_PREVIOUS",
-              "USE_DEFAULTS",
-              "SKIP"
-            ]
-          },
-          "punishAbsentStudents": {
-            "type": "string",
-            "enum": [
-              "high",
-              "medium",
-              "low",
-              "none"
-            ]
-          },
           "variables": {
             "type": "object",
             "description": "Map of resolved outcome variable values."
