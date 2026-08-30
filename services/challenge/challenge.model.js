@@ -1734,20 +1734,6 @@ scenarioSchema.statics.processDueOutcomes = async function (now) {
         challenge.isLockedForStudents = true;
       }
 
-      if (!outcome.autoGenerateSubmissionsOnOutcome) {
-        outcome.autoGenerateSubmissionsOnOutcome =
-          challenge.missingSubmissionPolicy === "FORWARD_PREVIOUS"
-            ? "FORWARD_PREVIOUS"
-            : challenge.missingSubmissionPolicy === "USE_DEFAULTS"
-            ? "USE_DEFAULTS"
-            : "SKIP";
-      }
-      if (!outcome.punishAbsentStudents) {
-        outcome.punishAbsentStudents = challenge.punishAbsentStudents || "none";
-      }
-      outcome.updatedBy = AUTOMATION_SYSTEM_USER;
-      await outcome.save();
-
       challenge.automationStatus = "queuedForProcessing";
       challenge.automationError = null;
       challenge.automationLastCheckedAt = now;

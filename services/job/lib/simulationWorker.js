@@ -12,7 +12,7 @@ const MetricDefinition = require("../../metricDefinition/metricDefinition.model"
  * dynamic metric-driven ledger entries.
  */
 class SimulationWorker {
-  static async buildPriorMetrics(profile, ledgerHistory, classroomId) {
+  static async buildPriorMetrics(ledgerHistory, classroomId) {
     const history = Array.isArray(ledgerHistory) ? ledgerHistory : [];
     const priorChallengeEntries = history.filter(
       (entry) => entry?.challengeId !== null && entry?.challengeId !== undefined
@@ -38,17 +38,6 @@ class SimulationWorker {
         ) {
           priorMetrics[def.key] = def.defaultInitialValue;
         }
-      }
-    }
-
-    // A Week 0/setup ledger is not a completed challenge. For the first real
-    // challenge, seed cash from the profile even if that setup ledger contains
-    // the legacy zero defaults.
-    if (priorChallengeEntries.length === 0) {
-      const startingBalance = Number(profile?.startingBalance);
-      if (Number.isFinite(startingBalance)) {
-        priorMetrics.cashBefore = startingBalance;
-        priorMetrics.cashAfter = startingBalance;
       }
     }
 
@@ -170,7 +159,6 @@ class SimulationWorker {
     );
 
     const priorMetrics = await this.buildPriorMetrics(
-      profile,
       ledgerHistory,
       job.classroomId
     );
@@ -216,6 +204,7 @@ class SimulationWorker {
       "storeDescription",
       "storeLocation",
       "startingBalance",
+      "initialStartupCost",
       "currentDetails",
       "variablesDetailed",
     ];

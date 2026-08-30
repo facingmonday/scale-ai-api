@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 
 const Outcome = require("./outcome.model");
 
-test("challenge outcome drafts preserve hidden notes and skip policy", async () => {
+test("challenge outcome drafts only store shared result context", async () => {
   const outcome = new Outcome({
     challengeId: "507f1f77bcf86cd799439013",
     notes: "Public result context",
@@ -18,5 +18,6 @@ test("challenge outcome drafts preserve hidden notes and skip policy", async () 
   await outcome.validate();
 
   assert.equal(outcome.hiddenNotes, "Instructor-only automation context");
-  assert.equal(outcome.autoGenerateSubmissionsOnOutcome, "SKIP");
+  assert.equal(outcome.autoGenerateSubmissionsOnOutcome, undefined);
+  assert.equal(outcome.punishAbsentStudents, undefined);
 });

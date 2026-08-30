@@ -121,7 +121,29 @@ const PROFILE_METADATA_KEYS = [
   "storeDescription",
   "storeLocation",
   "startingBalance",
+  "initialStartupCost",
 ];
+
+function calculateOpeningCash(profile) {
+  const startingBalanceRaw = profile?.startingBalance;
+  if (startingBalanceRaw === null || startingBalanceRaw === undefined) {
+    return null;
+  }
+
+  const startingBalance = Number(startingBalanceRaw);
+  if (!Number.isFinite(startingBalance)) return null;
+
+  const startupCostRaw = profile?.initialStartupCost;
+  const parsedStartupCost =
+    startupCostRaw === null || startupCostRaw === undefined
+      ? 0
+      : Number(startupCostRaw);
+  const initialStartupCost = Number.isFinite(parsedStartupCost)
+    ? parsedStartupCost
+    : 0;
+
+  return round2(startingBalance - initialStartupCost);
+}
 
 /**
  * LedgerEntry - The chronological record of a student's simulated results.
@@ -407,8 +429,8 @@ function jsonTypeFor(dataType) {
 
 /**
  * Build the OpenAI JSON schema for an AI response, driven entirely by the
- * classroom's MetricDefinitions. The response includes `summary`,
- * `randomEvent`, plus one property per active metric.
+ * classroom's MetricDefinitions. The response includes `summary` plus one
+ * property per active metric.
  */
 ledgerEntrySchema.statics.buildResponseJsonSchema = async function (classroomId) {
   const metricDefs = await MetricDefinition.getActive(classroomId);
@@ -418,9 +440,8 @@ ledgerEntrySchema.statics.buildResponseJsonSchema = async function (classroomId)
       description:
         "A detailed summary of the results of the simulation. Explain key factors that contributed to the results and what the student could learn from this period.",
     },
-    randomEvent: { type: ["string", "null"] },
   };
-  const required = ["summary", "randomEvent"];
+  const required = ["summary"];
 
   for (const def of metricDefs) {
     properties[def.key] = {
@@ -511,15 +532,6 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
     .map((m) => ({ role: m.role, content: m.content }))
     .filter((m) => m.role && typeof m.content === "string");
 
-  const chancePercent =
-    outcome?.randomEventChancePercent !== undefined
-      ? Number(outcome.randomEventChancePercent)
-      : 0;
-  const shouldGenerateEvent =
-    Number.isFinite(chancePercent) &&
-    chancePercent > 0 &&
-    Math.random() * 100 < chancePercent;
-
   const metricsEnvelope = (Array.isArray(metricDefs) ? metricDefs : []).map(
     (def) => ({
       key: def.key,
@@ -556,6 +568,13 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
     if (profile.startingBalance !== undefined) {
       data.startingBalance = profile.startingBalance;
     }
+    if (profile.initialStartupCost !== undefined) {
+      data.initialStartupCost = profile.initialStartupCost;
+    }
+    const openingCash = calculateOpeningCash(profile);
+    if (openingCash !== null) {
+      data.openingCashAfterStartupCost = openingCash;
+    }
 
     for (const [key, value] of Object.entries(profile)) {
       if (!PROFILE_METADATA_KEYS.includes(key)) data[key] = value;
@@ -584,7 +603,7 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
         type: "metrics_to_calculate",
         instruction:
           "These are the metrics you MUST compute and return. For each metric, follow its aiPromptRule. " +
-          "Use the dataType to determine the value type. Return EXACTLY these keys (plus summary and randomEvent).",
+          "Use the dataType to determine the value type. Return EXACTLY these keys (plus summary).",
         data: metricsEnvelope,
       }),
     },
@@ -614,7 +633,7 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
         },
       ]
       : []),
-    ...(hasOutcomeContext || shouldGenerateEvent
+    ...(hasOutcomeContext
       ? [
         {
           role: "user",
@@ -624,12 +643,6 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
               "Treat this outcome as the authoritative realized conditions. Apply it directly in your calculations. " +
               "If it contradicts the challenge's expected conditions, the outcome wins.",
             data: outcomeData,
-            ...(shouldGenerateEvent
-              ? {
-                randomEventInstruction:
-                    "Generate ONE plausible educational random operational event grounded in the inputs and set randomEvent to that event text (1-3 sentences). Apply its impact in your metric calculations.",
-              }
-              : {}),
           }),
         },
       ]
@@ -651,13 +664,34 @@ ledgerEntrySchema.statics.buildAISimulationPrompt = function (
   ];
 
   const decisionGenerationMethod = decision?.generation?.method || "MANUAL";
-  if (decisionGenerationMethod !== "MANUAL") {
+  const configuredAbsencePunishment = String(
+    decision?.generation?.meta?.absentPunishmentLevel || ""
+  )
+    .trim()
+    .toLowerCase();
+  const absencePunishmentLevel = ["low", "medium", "high"].includes(
+    configuredAbsencePunishment
+  )
+    ? configuredAbsencePunishment
+    : null;
+
+  if (decisionGenerationMethod !== "MANUAL" && absencePunishmentLevel) {
+    const punishmentGuidance = {
+      low:
+        "Apply a mild disadvantage: slightly weaker execution, modest lost demand or waste, and somewhat lower profit than the same decisions would normally produce.",
+      medium:
+        "Apply a noticeable disadvantage: operational mistakes should cause below-average service, more lost demand or waste, and meaningfully lower profit.",
+      high:
+        "Apply a severe disadvantage: poor execution should cause major stockouts and/or waste, service failures, and substantially lower profit.",
+    };
+
     messages.push({
       role: "user",
       content:
-        `IMPORTANT (ABSENCE PENALTY): These decisions were auto-generated (method: ${decisionGenerationMethod}). ` +
-        `The outcome for this period should reflect non-participation. Bias the result toward negative or stagnant performance ` +
-        `for metrics whose aiPromptRule indicates they are sensitive to student engagement.`,
+        `IMPORTANT (ABSENCE PENALTY — ${absencePunishmentLevel.toUpperCase()}): These decisions were auto-generated ` +
+        `(method: ${decisionGenerationMethod}) because the student did not submit. ` +
+        `${punishmentGuidance[absencePunishmentLevel]} Apply the penalty only through execution and metrics whose ` +
+        `aiPromptRule makes them sensitive to participation; do not change authoritative shared outcome conditions or hard capacity constraints.`,
     });
   }
 
@@ -725,7 +759,9 @@ ledgerEntrySchema.statics.hardenAISimulationMessages = function (messages) {
       "- Use plain JSON values (numbers as numbers, booleans as booleans, strings as strings).",
       "- Each metric key in the response must match the key set declared in metrics_to_calculate exactly.",
       "- Follow each metric's aiPromptRule when computing its value (carry-forward, allowed range, formula hints).",
-      "- Always include both `summary` (string) and `randomEvent` (string or null).",
+      "- cashBefore MUST equal prior_ledger_entry.cashAfter. The Week 0 ledger already reflects startingBalance minus the one-time initialStartupCost, so NEVER deduct the startup cost again in a challenge's costs or netProfit.",
+      "- cashAfter MUST equal cashBefore plus netProfit.",
+      "- Always include `summary` (string).",
     ].join("\n"),
   };
 
@@ -995,30 +1031,38 @@ ledgerEntrySchema.statics.buildAISimulationOpenAIRequest = async function (
   return result;
 };
 
-/**
- * Keep the first real challenge anchored to the profile's configured starting
- * balance. Legacy Week 0 ledgers may contain zero-valued cash metrics.
- */
-ledgerEntrySchema.statics.enforceFirstPeriodCash = function (aiResult, context) {
-  const history = Array.isArray(context?.ledgerHistory)
-    ? context.ledgerHistory
-    : [];
-  const hasPriorChallenge = history.some(
-    (entry) => entry?.challengeId !== null && entry?.challengeId !== undefined
-  );
-  const startingBalance = Number(context?.profile?.startingBalance);
+ledgerEntrySchema.statics.calculateOpeningCash = calculateOpeningCash;
 
-  if (hasPriorChallenge || !Number.isFinite(startingBalance)) return aiResult;
+/**
+ * Keep every challenge's cash values anchored to the preceding ledger entry.
+ * Week 0 is the authoritative opening ledger; later challenges carry forward
+ * the most recent challenge ledger through priorMetrics.
+ */
+ledgerEntrySchema.statics.enforceCashContinuity = function (aiResult, context) {
+  const priorMetrics = context?.priorMetrics;
+  const priorCashRaw =
+    priorMetrics instanceof Map
+      ? priorMetrics.get("cashAfter")
+      : priorMetrics?.cashAfter;
+  const priorCash = Number(priorCashRaw);
+
+  if (
+    priorCashRaw === null ||
+    priorCashRaw === undefined ||
+    !Number.isFinite(priorCash)
+  ) {
+    return aiResult;
+  }
 
   if (Object.prototype.hasOwnProperty.call(aiResult, "cashBefore")) {
-    aiResult.cashBefore = round2(startingBalance);
+    aiResult.cashBefore = round2(priorCash);
   }
   if (
     Object.prototype.hasOwnProperty.call(aiResult, "cashAfter") &&
     typeof aiResult.netProfit === "number" &&
     Number.isFinite(aiResult.netProfit)
   ) {
-    aiResult.cashAfter = round2(startingBalance + aiResult.netProfit);
+    aiResult.cashAfter = round2(priorCash + aiResult.netProfit);
   }
 
   return aiResult;
@@ -1039,15 +1083,6 @@ ledgerEntrySchema.statics.normalizeAndValidateAISimulationResult = async functio
   if (typeof aiResult.summary !== "string") {
     throw new Error("summary must be a string");
   }
-  if (
-    aiResult.randomEvent !== null &&
-    aiResult.randomEvent !== undefined &&
-    typeof aiResult.randomEvent !== "string"
-  ) {
-    throw new Error("randomEvent must be a string or null");
-  }
-  if (aiResult.randomEvent === undefined) aiResult.randomEvent = null;
-
   if (!classroomId) return aiResult;
 
   const defs = await MetricDefinition.getActive(classroomId);
@@ -1119,7 +1154,7 @@ ledgerEntrySchema.statics.runAISimulation = async function (context) {
     throw new Error(`Failed to parse AI response as JSON: ${error.message}`);
   }
 
-  this.enforceFirstPeriodCash(aiResult, context);
+  this.enforceCashContinuity(aiResult, context);
 
   console.log(`AI response: ${JSON.stringify(aiResult, null, 2)}`);
 

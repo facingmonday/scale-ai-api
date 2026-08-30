@@ -79,14 +79,6 @@ export interface CreateScenarioWithAIRequest {
 export interface SetScenarioOutcomeRequest {
   notes?: string;
   hiddenNotes?: string;
-  randomEventChancePercent?: number; // 0-100
-  autoGenerateSubmissionsOnOutcome?:
-    | "USE_AI"
-    | "FORWARD_PREVIOUS"
-    | "USE_DEFAULTS"
-    | "SKIP"
-    | null;
-  punishAbsentStudents?: "high" | "medium" | "low" | "none" | null;
 }
 
 /**

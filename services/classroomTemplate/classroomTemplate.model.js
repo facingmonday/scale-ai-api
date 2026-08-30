@@ -6,6 +6,15 @@ const VariableValue = require("../variableDefinition/variableValue.model");
 const MetricDefinition = require("../metricDefinition/metricDefinition.model");
 const { STORE_TYPE_PRESETS } = require("../profile/profileTypePresets");
 const defaultTemplatesData = require("./defaultTemplatesData");
+
+const SUPPLY_CHAIN_TEMPLATE_VERSION = 2;
+const LEGACY_UNIFORM_SELLING_PRICE = 16;
+const SELLING_PRICE_VARIABLE_KEYS = [
+  "avg-selling-price-per-unit",
+  "average-selling-price-per-unit",
+  "avgSellingPricePerUnit",
+  "averageSellingPricePerUnit",
+];
 /**
  * @openapi
  * components:
@@ -597,6 +606,71 @@ All operating costs must remain realistic, proportional, and capacity-aware. The
 - If costs exceed plausible bounds, adjust them downward to the nearest realistic level.
 `;
 
+const PRODUCTION_CAPACITY_AND_USAGE_PROMPT = `
+PRODUCTION CAPACITY AND INVENTORY USAGE (REQUIRED)
+
+This section supersedes any instruction that treats inventory buckets as substitutes or specifies a default consumption order across buckets.
+
+For every active inventory bucket that supports production, identify its matching:
+- beginning inventory units
+- usable received units
+- goods-per-unit value
+- required ending safety stock
+- waste occurring before production, if any
+
+MEANING OF GOODS PER UNIT:
+A goods-per-unit value is an OUTPUT RATE: the number of finished goods supported by one inventory unit.
+
+Example interpretation:
+- goods-per-unit = 12 means ONE inventory unit supports TWELVE finished goods.
+- It does NOT mean twelve inventory units are required for one finished good.
+
+NEVER divide available inventory units by goods-per-unit when calculating finished-goods capacity.
+
+AVAILABLE INVENTORY:
+availableUnitsForProduction =
+  beginUnits
+  + usableReceivedUnits
+  - preProductionWasteUnits
+  - reservedEndingSafetyStockUnits
+
+Do not include rejected receipts, discarded overflow, or unusable overflow inventory.
+
+BUCKET CAPACITY:
+finishedGoodsSupportedByBucket =
+  availableUnitsForProduction × goodsPerUnit
+
+INVENTORY USAGE:
+inventoryUnitsUsed =
+  finishedGoodsProduced ÷ goodsPerUnit
+
+Only finished-goods counts must be whole numbers. Keep sufficient precision for inventory-unit usage and monetary calculations.
+
+OVERALL PRODUCTION CAPACITY:
+When each finished good requires support from multiple active inventory buckets, those buckets are complementary inputs, not substitutes.
+
+overallProductionCapacity =
+  floor(minimum finishedGoodsSupportedByBucket across all required buckets)
+
+Do not add the bucket capacities together and do not consume one bucket completely before moving to another. Each finished good consumes the proportional amount required from every applicable bucket.
+
+SALES:
+sales =
+  floor(min(realizedDemand, plannedProduction, overallProductionCapacity))
+
+Realized demand must come from global_outcome. Student forecasts and expectations may influence preparation decisions, but they must not replace authoritative realized demand.
+
+PLAUSIBILITY GUARDRAIL:
+Before returning the result:
+- Recalculate every bucket using multiplication: availableUnitsForProduction × goodsPerUnit.
+- Check specifically that goods-per-unit was not accidentally treated as units-per-good.
+- Confirm inventoryUnitsUsed = finishedGoodsProduced ÷ goodsPerUnit.
+- Confirm sales does not exceed demand, planned production, or production capacity.
+- If sales is substantially below all three limits, identify and quantify an explicit cause from the supplied inputs.
+- Do not invent an operational constraint to justify an unexpectedly low result.
+- If no supplied condition explains the low result, correct the calculation before responding.
+`;
+
 function ensureDefaultCostGuardrailsPrompt(prompts) {
   const arr = Array.isArray(prompts) ? prompts : [];
   const alreadyPresent = arr.some(
@@ -608,6 +682,37 @@ function ensureDefaultCostGuardrailsPrompt(prompts) {
   );
   if (alreadyPresent) return arr;
   return [...arr, { role: "system", content: DEFAULT_COST_GUARDRAILS_PROMPT }];
+}
+
+function ensureProductionCapacityAndUsagePrompt(prompts) {
+  const arr = Array.isArray(prompts) ? prompts : [];
+  const alreadyPresent = arr.some(
+    (p) =>
+      p &&
+      typeof p === "object" &&
+      typeof p.content === "string" &&
+      p.content.includes("PRODUCTION CAPACITY AND INVENTORY USAGE (REQUIRED)")
+  );
+  if (alreadyPresent) return arr;
+
+  const prompt = {
+    role: "system",
+    content: PRODUCTION_CAPACITY_AND_USAGE_PROMPT,
+  };
+  const costGuardrailIndex = arr.findIndex(
+    (p) =>
+      p &&
+      typeof p === "object" &&
+      typeof p.content === "string" &&
+      p.content.includes("COST GUARDRAILS AND REALISM CONSTRAINTS")
+  );
+
+  if (costGuardrailIndex < 0) return [...arr, prompt];
+  return [
+    ...arr.slice(0, costGuardrailIndex),
+    prompt,
+    ...arr.slice(costGuardrailIndex),
+  ];
 }
 
 /**
@@ -622,7 +727,7 @@ classroomTemplateSchema.statics.getDefaultClassroomPrompts = function () {
       content:
         "You are a learning-simulation engine. Given a profile configuration, a challenge, a global outcome, the student's decisions, and the prior ledger entry, compute the metrics listed in metrics_to_calculate. " +
         "For each metric, follow its aiPromptRule when present. Use the dataType to determine the value type. " +
-        "Return ONLY valid JSON matching the provided schema. Always include `summary` (string) and `randomEvent` (string or null).",
+        "Return ONLY valid JSON matching the provided schema. Always include `summary` (string).",
     },
   ];
 };
@@ -681,9 +786,6 @@ Overflow inventory may NEVER be carried forward as normal inventory.
 5. USAGE (MAKE)
 Inventory may only be used if it exists:
 usedUnits ≤ beginUnits + receivedUnits
-
-Default consumption order:
-refrigerated → ambient → notForResale
 
 6. WASTE
 wasteUnits ≥ 0
@@ -825,6 +927,7 @@ Before returning output:
         "Apply realistic business logic and environmental effects. Return ONLY valid JSON matching the provided schema.",
     },
     { role: "system", content: warehouseRules },
+    { role: "system", content: PRODUCTION_CAPACITY_AND_USAGE_PROMPT },
     { role: "system", content: DEFAULT_COST_GUARDRAILS_PROMPT },
   ];
 };
@@ -902,7 +1005,7 @@ classroomTemplateSchema.statics.getPizzaShopMetricDefinitions = function () {
       format: "currency",
       aggregation: "last",
       aiPromptRule:
-        "Carry-forward: this MUST equal the previous ledger entry's cashAfter (or the starting balance for the first entry). Do not modify.",
+        "Carry-forward: this MUST equal prior_ledger_entry.cashAfter. Week 0 already reflects startingBalance - initialStartupCost; never deduct startup cost again in challenge costs.",
       displayIn: { table: false, kpi: false, chart: false, leaderboard: false, detail: true },
       sortOrder: 60,
     },
@@ -1271,6 +1374,82 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
   return result;
 }
 
+function getExpectedSellingPricesByStoreTypeKey() {
+  const valuesByStoreTypeKey = buildDefaultStoreTypeValuesByStoreTypeKey();
+
+  return Object.fromEntries(
+    Object.entries(valuesByStoreTypeKey).map(([storeTypeKey, values]) => [
+      storeTypeKey,
+      values["avg-selling-price-per-unit"],
+    ])
+  );
+}
+
+function getPresentSellingPriceKeys(values) {
+  if (!values || typeof values !== "object" || Array.isArray(values)) {
+    return [];
+  }
+
+  return SELLING_PRICE_VARIABLE_KEYS.filter((key) =>
+    Object.prototype.hasOwnProperty.call(values, key)
+  );
+}
+
+/**
+ * Patch the known legacy template defect where every built-in profile type
+ * inherited the shared $16 selling-price default. The all-types signature is
+ * deliberately strict so administrator-authored pricing is never overwritten.
+ */
+function repairLegacyUniformSellingPrices(storeTypeValuesByKey) {
+  const source =
+    storeTypeValuesByKey &&
+    typeof storeTypeValuesByKey === "object" &&
+    !Array.isArray(storeTypeValuesByKey)
+      ? storeTypeValuesByKey
+      : {};
+  const expectedPrices = getExpectedSellingPricesByStoreTypeKey();
+  const expectedEntries = Object.entries(expectedPrices);
+
+  const hasLegacySignature = expectedEntries.every(([storeTypeKey]) => {
+    const values = source[storeTypeKey];
+    const priceKeys = getPresentSellingPriceKeys(values);
+    return (
+      priceKeys.length > 0 &&
+      priceKeys.every(
+        (priceKey) =>
+          Number(values[priceKey]) === LEGACY_UNIFORM_SELLING_PRICE
+      )
+    );
+  });
+
+  if (!hasLegacySignature) {
+    return { changed: false, values: source };
+  }
+
+  const repaired = { ...source };
+  expectedEntries.forEach(([storeTypeKey, expectedPrice]) => {
+    const currentValues = source[storeTypeKey];
+    const priceKeys = getPresentSellingPriceKeys(currentValues);
+    const nextValues = { ...currentValues };
+    priceKeys.forEach((priceKey) => {
+      nextValues[priceKey] = expectedPrice;
+    });
+    repaired[storeTypeKey] = nextValues;
+  });
+
+  return { changed: true, values: repaired };
+}
+
+classroomTemplateSchema.statics.getDefaultStoreTypeValuesByStoreTypeKey =
+  function () {
+    return buildDefaultStoreTypeValuesByStoreTypeKey();
+  };
+
+classroomTemplateSchema.statics.repairLegacyUniformSellingPrices =
+  function (storeTypeValuesByKey) {
+    return repairLegacyUniformSellingPrices(storeTypeValuesByKey);
+  };
+
 classroomTemplateSchema.statics.ensureGlobalDefaultTemplate =
   async function () {
     const key = this.GLOBAL_DEFAULT_KEY;
@@ -1315,19 +1494,18 @@ classroomTemplateSchema.statics.ensureGlobalDefaultTemplate =
         });
       }
 
-      if (
-        !payload.storeTypeValuesByStoreTypeKey ||
-        typeof payload.storeTypeValuesByStoreTypeKey !== "object" ||
-        Object.keys(payload.storeTypeValuesByStoreTypeKey).length === 0
-      ) {
-        payload.storeTypeValuesByStoreTypeKey =
-          buildDefaultStoreTypeValuesByStoreTypeKey();
-      }
+      // This global template is developer-managed. Rebuild its profile-type
+      // defaults from source on every startup so code changes cannot leave a
+      // stale, nonempty payload in the database.
+      payload.storeTypeValuesByStoreTypeKey =
+        buildDefaultStoreTypeValuesByStoreTypeKey();
 
       if (!Array.isArray(payload.prompts) || payload.prompts.length === 0) {
         payload.prompts = this.getPizzaShopPrompts();
       } else {
-        payload.prompts = ensureDefaultCostGuardrailsPrompt(payload.prompts);
+        payload.prompts = ensureProductionCapacityAndUsagePrompt(
+          ensureDefaultCostGuardrailsPrompt(payload.prompts)
+        );
       }
 
       if (!Array.isArray(payload.metricDefinitions)) {
@@ -1335,7 +1513,12 @@ classroomTemplateSchema.statics.ensureGlobalDefaultTemplate =
       }
 
       existing.payload = payload;
+      existing.version = Math.max(
+        Number(existing.version) || 1,
+        SUPPLY_CHAIN_TEMPLATE_VERSION
+      );
       existing.updatedBy = existing.updatedBy || "system_startup";
+      existing.markModified("payload");
       await existing.save();
       return existing;
     }
@@ -1370,7 +1553,7 @@ classroomTemplateSchema.statics.ensureGlobalDefaultTemplate =
       description:
         "Default developer-managed template for SCALE LXP Supply Chain 101 simulation.",
       isActive: true,
-      version: 1,
+      version: SUPPLY_CHAIN_TEMPLATE_VERSION,
       payload,
       createdBy: "system_startup",
       updatedBy: "system_startup",
@@ -1943,7 +2126,7 @@ classroomTemplateSchema.statics.ensureGlobalCourseTemplate = async function (tem
           `You are a learning-simulation engine for a ${templateData.label} course. ` +
           `Compute the metrics in metrics_to_calculate based on the active profile, the challenge, the realized outcome, and the student's decisions. ` +
           `Reflect realistic dynamics and domain-specific constraints relevant to ${templateData.label}. ` +
-          `Return ONLY valid JSON matching the provided schema. Always include \`summary\` (string) and \`randomEvent\` (string or null).`
+          `Return ONLY valid JSON matching the provided schema. Always include \`summary\` (string).`
       }
     ],
   };
@@ -2024,14 +2207,27 @@ classroomTemplateSchema.statics.copyGlobalToOrganization = async function (
         hasChanges = true;
       }
 
+      if (globalTemplate.key === this.GLOBAL_DEFAULT_KEY) {
+        const repairedPrices = repairLegacyUniformSellingPrices(
+          payload.storeTypeValuesByStoreTypeKey
+        );
+        if (repairedPrices.changed) {
+          payload.storeTypeValuesByStoreTypeKey = repairedPrices.values;
+          hasChanges = true;
+        }
+      }
+
       // Backfill prompts if missing
       if (!Array.isArray(payload.prompts) || payload.prompts.length === 0) {
         payload.prompts = globalTemplate.payload?.prompts || [];
         hasChanges = true;
       } else {
-        // Ensure cost guardrails exist if it is the supply chain template
+        // Ensure supply-chain calculation guardrails exist without replacing
+        // administrator-authored prompts.
         if (globalTemplate.key === this.GLOBAL_DEFAULT_KEY) {
-          const patchedPrompts = ensureDefaultCostGuardrailsPrompt(payload.prompts);
+          const patchedPrompts = ensureProductionCapacityAndUsagePrompt(
+            ensureDefaultCostGuardrailsPrompt(payload.prompts)
+          );
           if (patchedPrompts.length !== payload.prompts.length) {
             payload.prompts = patchedPrompts;
             hasChanges = true;
@@ -2086,6 +2282,7 @@ classroomTemplateSchema.statics.copyGlobalToOrganization = async function (
       if (hasChanges) {
         existingOrgTemplate.payload = payload;
         existingOrgTemplate.updatedBy = clerkUserId;
+        existingOrgTemplate.markModified("payload");
         await existingOrgTemplate.save();
       }
 
@@ -2114,6 +2311,196 @@ classroomTemplateSchema.statics.copyGlobalToOrganization = async function (
   const defaultTemplate = copiedTemplates.find(t => t.key === this.GLOBAL_DEFAULT_KEY);
   return defaultTemplate || copiedTemplates[0];
 };
+
+/**
+ * Repair existing classroom/profile values created from the legacy template
+ * whose built-in profile types all shared the $16 baseline price.
+ *
+ * The migration is idempotent and only updates classrooms that contain every
+ * built-in profile type with the exact uniform-$16 signature. It also repairs
+ * legacy profile-level copies of the same value so they cannot override the
+ * corrected profile-type value during simulation.
+ */
+classroomTemplateSchema.statics.repairLegacySellingPricesForOrganization =
+  async function (organizationId, clerkUserId = "system_startup") {
+    if (!organizationId) {
+      throw new Error("organizationId is required");
+    }
+
+    const expectedPrices = getExpectedSellingPricesByStoreTypeKey();
+    const expectedStoreTypeKeys = Object.keys(expectedPrices);
+    const profileTypes = await ProfileType.find({
+      organization: organizationId,
+      key: { $in: expectedStoreTypeKeys },
+    })
+      .select("_id classroomId key")
+      .lean();
+
+    if (profileTypes.length === 0) {
+      return {
+        classroomsRepaired: 0,
+        profileTypeValuesRepaired: 0,
+        profileValuesRepaired: 0,
+      };
+    }
+
+    const profileTypesByClassroom = new Map();
+    profileTypes.forEach((profileType) => {
+      const classroomKey = String(profileType.classroomId);
+      if (!profileTypesByClassroom.has(classroomKey)) {
+        profileTypesByClassroom.set(classroomKey, new Map());
+      }
+      profileTypesByClassroom
+        .get(classroomKey)
+        .set(profileType.key, profileType);
+    });
+
+    const profileTypeValues = await VariableValue.find({
+      organization: organizationId,
+      appliesTo: "profileType",
+      ownerId: { $in: profileTypes.map((profileType) => profileType._id) },
+      variableKey: { $in: SELLING_PRICE_VARIABLE_KEYS },
+    })
+      .select("_id ownerId variableKey value")
+      .lean();
+
+    const valuesByOwnerId = new Map();
+    profileTypeValues.forEach((value) => {
+      const ownerKey = String(value.ownerId);
+      if (!valuesByOwnerId.has(ownerKey)) valuesByOwnerId.set(ownerKey, []);
+      valuesByOwnerId.get(ownerKey).push(value);
+    });
+
+    const staleClassroomIds = [];
+    const profileTypePriceOps = [];
+    const expectedTypeCount = expectedStoreTypeKeys.length;
+
+    profileTypesByClassroom.forEach((profileTypesByKey, classroomId) => {
+      if (profileTypesByKey.size !== expectedTypeCount) return;
+
+      const hasLegacySignature = expectedStoreTypeKeys.every((storeTypeKey) => {
+        const profileType = profileTypesByKey.get(storeTypeKey);
+        if (!profileType) return false;
+        const values = valuesByOwnerId.get(String(profileType._id)) || [];
+        return (
+          values.length > 0 &&
+          values.every(
+            (value) =>
+              Number(value.value) === LEGACY_UNIFORM_SELLING_PRICE
+          )
+        );
+      });
+
+      if (!hasLegacySignature) return;
+      staleClassroomIds.push(classroomId);
+
+      expectedStoreTypeKeys.forEach((storeTypeKey) => {
+        const profileType = profileTypesByKey.get(storeTypeKey);
+        const values = valuesByOwnerId.get(String(profileType._id)) || [];
+        values.forEach((value) => {
+          profileTypePriceOps.push({
+            updateOne: {
+              filter: {
+                _id: value._id,
+                organization: organizationId,
+                value: value.value,
+              },
+              update: {
+                $set: {
+                  value: expectedPrices[storeTypeKey],
+                  updatedBy: clerkUserId,
+                  updatedDate: new Date(),
+                },
+              },
+            },
+          });
+        });
+      });
+    });
+
+    let profileTypeValuesRepaired = 0;
+    if (profileTypePriceOps.length > 0) {
+      const result = await VariableValue.bulkWrite(profileTypePriceOps, {
+        ordered: false,
+      });
+      profileTypeValuesRepaired = result?.modifiedCount || 0;
+    }
+
+    let profileValuesRepaired = 0;
+    if (staleClassroomIds.length > 0) {
+      const Profile = require("../profile/profile.model");
+      const staleProfileTypes = profileTypes.filter((profileType) =>
+        staleClassroomIds.includes(String(profileType.classroomId))
+      );
+      const storeTypeKeyById = new Map(
+        staleProfileTypes.map((profileType) => [
+          String(profileType._id),
+          profileType.key,
+        ])
+      );
+      const profiles = await Profile.find({
+        organization: organizationId,
+        classroomId: { $in: staleClassroomIds },
+        profileType: {
+          $in: staleProfileTypes.map((profileType) => profileType._id),
+        },
+      })
+        .select("_id profileType")
+        .lean();
+      const profileTypeKeyByProfileId = new Map(
+        profiles.map((profile) => [
+          String(profile._id),
+          storeTypeKeyById.get(String(profile.profileType)),
+        ])
+      );
+      const legacyProfileValues = await VariableValue.find({
+        organization: organizationId,
+        appliesTo: "profile",
+        ownerId: { $in: profiles.map((profile) => profile._id) },
+        variableKey: { $in: SELLING_PRICE_VARIABLE_KEYS },
+      })
+        .select("_id ownerId value")
+        .lean();
+      const profilePriceOps = legacyProfileValues
+        .filter(
+          (value) =>
+            Number(value.value) === LEGACY_UNIFORM_SELLING_PRICE &&
+            profileTypeKeyByProfileId.has(String(value.ownerId))
+        )
+        .map((value) => ({
+          updateOne: {
+            filter: {
+              _id: value._id,
+              organization: organizationId,
+              value: value.value,
+            },
+            update: {
+              $set: {
+                value:
+                  expectedPrices[
+                    profileTypeKeyByProfileId.get(String(value.ownerId))
+                  ],
+                updatedBy: clerkUserId,
+                updatedDate: new Date(),
+              },
+            },
+          },
+        }));
+
+      if (profilePriceOps.length > 0) {
+        const result = await VariableValue.bulkWrite(profilePriceOps, {
+          ordered: false,
+        });
+        profileValuesRepaired = result?.modifiedCount || 0;
+      }
+    }
+
+    return {
+      classroomsRepaired: staleClassroomIds.length,
+      profileTypeValuesRepaired,
+      profileValuesRepaired,
+    };
+  };
 
 // ----------------------------
 // Apply template to classroom

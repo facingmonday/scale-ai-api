@@ -1479,18 +1479,37 @@ exports.releaseFeedbackScenario = async function (req, res) {
       });
     }
 
-    challenge.isFeedbackReleased = true;
-    challenge.automationStatus = "feedbackReleased";
-    challenge.automationLastCheckedAt = new Date();
-    await challenge.save();
+    // Claim the release atomically so duplicate requests (for example, from
+    // two open browser tabs) cannot send the notification twice.
+    const releasedChallenge = await Challenge.findOneAndUpdate(
+      {
+        _id: challenge._id,
+        organization: organizationId,
+        isFeedbackReleased: { $ne: true },
+      },
+      {
+        $set: {
+          isFeedbackReleased: true,
+          automationStatus: "feedbackReleased",
+          automationLastCheckedAt: new Date(),
+        },
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!releasedChallenge) {
+      return res.status(400).json({
+        error: "Feedback is already released",
+      });
+    }
 
     // Trigger student notifications in bulk
-    await LedgerEntry.sendResultsNotifications(challenge._id);
+    await LedgerEntry.sendResultsNotifications(releasedChallenge._id);
 
     res.json({
       success: true,
       message: "Feedback released successfully and notifications sent.",
-      data: challenge,
+      data: releasedChallenge,
     });
   } catch (error) {
     console.error("Error releasing feedback:", error);

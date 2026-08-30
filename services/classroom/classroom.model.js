@@ -890,10 +890,19 @@ classroomSchema.statics.seedSubmissionVariables = async function (
 
   for (const def of variableDefinitions) {
     try {
+      const storageKey = VariableDefinition.createVariableKey({
+        label: def.label,
+        appliesTo: def.appliesTo,
+        challengeId: null,
+      });
+
       // Check if variable already exists
       const exists = await VariableDefinition.findOne({
+        organization: organizationId,
         classroomId,
-        key: def.key,
+        appliesTo: def.appliesTo,
+        key: storageKey,
+        challengeId: null,
       }).select("_id");
 
       if (exists) {
