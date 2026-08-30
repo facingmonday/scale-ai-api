@@ -455,6 +455,20 @@ test("Classroom Model Integration Tests", async (t) => {
     assert.equal(dashboard.leaderboardTop10[0].userId.toString(), student2Id.toString());
     assert.equal(dashboard.leaderboardTop10[0].metricTotal, 500);
     assert.equal(dashboard.leaderboardTop10[0].profileName, "Pizza Queen");
+    assert.equal(dashboard.leaderboards.length, 1);
+    assert.equal(dashboard.leaderboards[0].metric.key, "profit");
+    assert.equal(dashboard.leaderboards[0].direction, "desc");
+    assert.deepEqual(
+      dashboard.leaderboards[0].entries.map((entry) => [
+        entry.profileName,
+        entry.metricTotal,
+        entry.rank,
+      ]),
+      [
+        ["Pizza Queen", 500, 1],
+        ["Slice King", 250, 2],
+      ]
+    );
     assert.equal(dashboard.pendingApprovals, 1);
   });
 
@@ -472,6 +486,193 @@ test("Classroom Model Integration Tests", async (t) => {
     const dashboard = await Classroom.getDashboard(classDoc._id, orgId);
 
     assert.equal(dashboard.metricDefinitionCount, 0);
+  });
+
+  await t.test("getDashboard builds six cumulative supply-chain leaderboards", async () => {
+    const orgId = new mongoose.Types.ObjectId();
+    const otherOrgId = new mongoose.Types.ObjectId();
+    const classDoc = await Classroom.create({
+      name: "Six Category Dashboard",
+      organization: orgId,
+      ownership: new mongoose.Types.ObjectId(),
+      createdBy: "test",
+      updatedBy: "test",
+    });
+    const profileType = await ProfileType.create({
+      classroomId: classDoc._id,
+      key: "restaurant",
+      label: "Restaurant",
+      organization: orgId,
+      createdBy: "test",
+      updatedBy: "test",
+    });
+    await MetricDefinition.create(
+      ClassroomTemplate.getPizzaShopMetricDefinitions().map((definition) => ({
+        ...definition,
+        classroomId: classDoc._id,
+        organization: orgId,
+        createdBy: "test",
+        updatedBy: "test",
+      }))
+    );
+
+    const names = ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"];
+    const userIds = names.map(() => new mongoose.Types.ObjectId());
+    await Profile.create(
+      names.map((shopName, index) => ({
+        classroomId: classDoc._id,
+        userId: userIds[index],
+        studentId: `S-${index + 1}`,
+        shopName,
+        storeDescription: "Test store",
+        storeLocation: "Campus",
+        profileType: profileType._id,
+        organization: orgId,
+        createdBy: "test",
+        updatedBy: "test",
+      }))
+    );
+
+    const firstChallengeId = new mongoose.Types.ObjectId();
+    const secondChallengeId = new mongoose.Types.ObjectId();
+    const entries = [];
+    names.forEach((_, index) => {
+      const firstCosts = index === 0 ? 5 : index === 1 ? 4 : (index + 1) * 4;
+      const secondCosts = index === 0 ? 5 : index === 1 ? 6 : (index + 1) * 6;
+      const firstMetrics = {
+        sales: 10 + index,
+        costs: firstCosts,
+        waste: 0,
+        netProfit: 10 + index * 10,
+        cashBefore: 1000,
+        cashAfter: 5000 + index * 100,
+      };
+      const secondMetrics = {
+        sales: 20 + index,
+        costs: secondCosts,
+        waste: 0,
+        netProfit: 20 + index * 10,
+        cashBefore: firstMetrics.cashAfter,
+        cashAfter: 1000 + index * 100,
+      };
+      if (index < names.length - 1) {
+        firstMetrics.revenue = 100 + index * 10;
+        secondMetrics.revenue = 200 + index * 10;
+      }
+      entries.push(
+        {
+          classroomId: classDoc._id,
+          challengeId: firstChallengeId,
+          userId: userIds[index],
+          metrics: firstMetrics,
+          summary: "First result",
+          aiMetadata: { model: "test", runId: `first-${index}` },
+          organization: orgId,
+          createdBy: "test",
+          updatedBy: "test",
+          createdDate: new Date("2026-08-01T00:00:00Z"),
+        },
+        {
+          classroomId: classDoc._id,
+          challengeId: secondChallengeId,
+          userId: userIds[index],
+          metrics: secondMetrics,
+          summary: "Second result",
+          aiMetadata: { model: "test", runId: `second-${index}` },
+          organization: orgId,
+          createdBy: "test",
+          updatedBy: "test",
+          createdDate: new Date("2026-08-08T00:00:00Z"),
+        }
+      );
+    });
+    await LedgerEntry.create(entries);
+    await LedgerEntry.create({
+      classroomId: classDoc._id,
+      challengeId: new mongoose.Types.ObjectId(),
+      userId: userIds[0],
+      metrics: {
+        sales: 999999,
+        revenue: 999999,
+        costs: -999999,
+        waste: -999999,
+        netProfit: 999999,
+        cashAfter: 999999,
+      },
+      summary: "Cross-tenant result",
+      aiMetadata: { model: "test", runId: "other-org" },
+      organization: otherOrgId,
+      createdBy: "test",
+      updatedBy: "test",
+    });
+
+    const dashboard = await Classroom.getDashboard(classDoc._id, orgId);
+    assert.deepEqual(
+      dashboard.leaderboards.map(({ metric, direction }) => [
+        metric.key,
+        direction,
+      ]),
+      [
+        ["netProfit", "desc"],
+        ["sales", "desc"],
+        ["revenue", "desc"],
+        ["costs", "asc"],
+        ["waste", "asc"],
+        ["cashAfter", "desc"],
+      ]
+    );
+    dashboard.leaderboards.forEach((category) => {
+      assert.ok(category.entries.length <= 5);
+    });
+    const revenue = dashboard.leaderboards.find(
+      ({ metric }) => metric.key === "revenue"
+    );
+    assert.equal(revenue.entries.length, 5);
+    assert.ok(revenue.entries.every(({ profileName }) => profileName !== "Foxtrot"));
+
+    const costs = dashboard.leaderboards.find(
+      ({ metric }) => metric.key === "costs"
+    );
+    assert.deepEqual(
+      costs.entries.slice(0, 3).map(({ profileName, metricTotal, rank }) => [
+        profileName,
+        metricTotal,
+        rank,
+      ]),
+      [
+        ["Alpha", 10, 1],
+        ["Bravo", 10, 1],
+        ["Charlie", 30, 3],
+      ]
+    );
+    const waste = dashboard.leaderboards.find(
+      ({ metric }) => metric.key === "waste"
+    );
+    assert.deepEqual(
+      waste.entries.map(({ profileName, rank }) => [profileName, rank]),
+      [
+        ["Alpha", 1],
+        ["Bravo", 1],
+        ["Charlie", 1],
+        ["Delta", 1],
+        ["Echo", 1],
+      ]
+    );
+    assert.ok(waste.entries.every(({ isTied }) => isTied));
+    const cashBalance = dashboard.leaderboards.find(
+      ({ metric }) => metric.key === "cashAfter"
+    );
+    assert.deepEqual(
+      cashBalance.entries.slice(0, 2).map(({ profileName, metricTotal }) => [
+        profileName,
+        metricTotal,
+      ]),
+      [
+        ["Foxtrot", 1500],
+        ["Echo", 1400],
+      ]
+    );
+    assert.equal(dashboard.leaderboardTop10[0].metricTotal, 130);
   });
 
   await t.test("getStudentDashboard static (with fix verification)", async () => {

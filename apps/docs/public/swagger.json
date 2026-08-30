@@ -678,6 +678,112 @@
           }
         }
       },
+      "LeaderboardMetric": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "currency",
+              "count",
+              "units",
+              "percent",
+              "text"
+            ]
+          },
+          "aggregation": {
+            "type": "string",
+            "enum": [
+              "sum",
+              "avg",
+              "last",
+              "max",
+              "min",
+              "none"
+            ]
+          }
+        }
+      },
+      "LeaderboardEntry": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "profileName": {
+            "type": "string"
+          },
+          "studentId": {
+            "type": "string"
+          },
+          "metricTotal": {
+            "type": "number"
+          },
+          "rank": {
+            "type": "integer"
+          },
+          "isTied": {
+            "type": "boolean"
+          }
+        }
+      },
+      "LeaderboardCategory": {
+        "type": "object",
+        "properties": {
+          "metric": {
+            "$ref": "#/components/schemas/LeaderboardMetric"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          },
+          "entries": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {
+              "$ref": "#/components/schemas/LeaderboardEntry"
+            }
+          }
+        }
+      },
+      "InstructorDashboard": {
+        "type": "object",
+        "properties": {
+          "leaderboardMetric": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LeaderboardMetric"
+              }
+            ],
+            "nullable": true
+          },
+          "leaderboardTop10": {
+            "type": "array",
+            "description": "Backward-compatible cumulative Net Profit leaderboard.",
+            "items": {
+              "$ref": "#/components/schemas/LeaderboardEntry"
+            }
+          },
+          "leaderboards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LeaderboardCategory"
+            }
+          }
+        }
+      },
       "Challenge": {
         "type": "object",
         "required": [
@@ -3921,7 +4027,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Dashboard statistics."
+            "description": "Dashboard statistics.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstructorDashboard"
+                }
+              }
+            }
           }
         }
       }

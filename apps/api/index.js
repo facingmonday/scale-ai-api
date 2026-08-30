@@ -250,6 +250,7 @@ async function main() {
   // This is safe to run on every startup (idempotent).
   try {
     const ClassroomTemplate = require("../../services/classroomTemplate/classroomTemplate.model");
+    const MetricDefinition = require("../../services/metricDefinition/metricDefinition.model");
     await ClassroomTemplate.ensureAllGlobalTemplates();
 
     // Ensure every organization has the default template copied locally.
@@ -270,6 +271,17 @@ async function main() {
           console.log(
             `Repaired legacy selling prices for org ${org._id}:`,
             repairStats
+          );
+        }
+        const leaderboardRepairStats =
+          await MetricDefinition.repairSupplyChainLeaderboardFlagsForOrganization(
+            org._id,
+            systemUserId
+          );
+        if (leaderboardRepairStats.classroomsRepaired > 0) {
+          console.log(
+            `Enabled six-category leaderboards for org ${org._id}:`,
+            leaderboardRepairStats
           );
         }
       } catch (e) {

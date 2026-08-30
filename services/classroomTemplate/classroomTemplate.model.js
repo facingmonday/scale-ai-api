@@ -7,7 +7,24 @@ const MetricDefinition = require("../metricDefinition/metricDefinition.model");
 const { STORE_TYPE_PRESETS } = require("../profile/profileTypePresets");
 const defaultTemplatesData = require("./defaultTemplatesData");
 
-const SUPPLY_CHAIN_TEMPLATE_VERSION = 2;
+const SUPPLY_CHAIN_TEMPLATE_VERSION = 3;
+const SUPPLY_CHAIN_METRIC_KEYS = [
+  "sales",
+  "revenue",
+  "costs",
+  "waste",
+  "netProfit",
+  "cashBefore",
+  "cashAfter",
+];
+const SUPPLY_CHAIN_LEADERBOARD_KEYS = new Set([
+  "sales",
+  "revenue",
+  "costs",
+  "waste",
+  "netProfit",
+  "cashAfter",
+]);
 const LEGACY_UNIFORM_SELLING_PRICE = 16;
 const SELLING_PRICE_VARIABLE_KEYS = [
   "avg-selling-price-per-unit",
@@ -15,6 +32,31 @@ const SELLING_PRICE_VARIABLE_KEYS = [
   "avgSellingPricePerUnit",
   "averageSellingPricePerUnit",
 ];
+
+function ensureSupplyChainLeaderboardFlags(metricDefinitions) {
+  if (!Array.isArray(metricDefinitions)) {
+    return { changed: false, definitions: metricDefinitions };
+  }
+  const keys = new Set(metricDefinitions.map((definition) => definition?.key));
+  if (
+    keys.size !== SUPPLY_CHAIN_METRIC_KEYS.length ||
+    !SUPPLY_CHAIN_METRIC_KEYS.every((key) => keys.has(key))
+  ) {
+    return { changed: false, definitions: metricDefinitions };
+  }
+
+  let changed = false;
+  const definitions = metricDefinitions.map((definition) => {
+    const leaderboard = SUPPLY_CHAIN_LEADERBOARD_KEYS.has(definition.key);
+    if (definition.displayIn?.leaderboard === leaderboard) return definition;
+    changed = true;
+    return {
+      ...definition,
+      displayIn: { ...definition.displayIn, leaderboard },
+    };
+  });
+  return { changed, definitions };
+}
 /**
  * @openapi
  * components:
@@ -946,7 +988,7 @@ classroomTemplateSchema.statics.getPizzaShopMetricDefinitions = function () {
       aggregation: "sum",
       aiPromptRule:
         "Whole-number units of finished goods sold this period, bounded by demand and inventory available for sale.",
-      displayIn: { table: true, kpi: true, chart: true, leaderboard: false, detail: true },
+      displayIn: { table: true, kpi: true, chart: true, leaderboard: true, detail: true },
       sortOrder: 10,
     },
     {
@@ -958,7 +1000,7 @@ classroomTemplateSchema.statics.getPizzaShopMetricDefinitions = function () {
       aggregation: "sum",
       aiPromptRule:
         "revenue = sales * realizedUnitPrice, rounded to cents. realizedUnitPrice = avgSellingPricePerUnit * (pricing-multiplier from decisions, default 1).",
-      displayIn: { table: true, kpi: true, chart: true, leaderboard: false, detail: true },
+      displayIn: { table: true, kpi: true, chart: true, leaderboard: true, detail: true },
       sortOrder: 20,
     },
     {
@@ -970,7 +1012,7 @@ classroomTemplateSchema.statics.getPizzaShopMetricDefinitions = function () {
       aggregation: "sum",
       aiPromptRule:
         "Total of ingredient, labor, logistics, holding, overflow, waste-disposal and other costs (see COST GUARDRAILS).",
-      displayIn: { table: true, kpi: true, chart: true, leaderboard: false, detail: true },
+      displayIn: { table: true, kpi: true, chart: true, leaderboard: true, detail: true },
       sortOrder: 30,
     },
     {
@@ -982,7 +1024,7 @@ classroomTemplateSchema.statics.getPizzaShopMetricDefinitions = function () {
       aggregation: "sum",
       aiPromptRule:
         "Cost of inventory wasted this period (wasteUnits × unit cost across buckets).",
-      displayIn: { table: true, kpi: false, chart: true, leaderboard: false, detail: true },
+      displayIn: { table: true, kpi: false, chart: true, leaderboard: true, detail: true },
       sortOrder: 40,
     },
     {
@@ -1018,7 +1060,7 @@ classroomTemplateSchema.statics.getPizzaShopMetricDefinitions = function () {
       aggregation: "last",
       aiPromptRule:
         "cashAfter = cashBefore + netProfit, rounded to cents.",
-      displayIn: { table: true, kpi: true, chart: true, leaderboard: false, detail: true },
+      displayIn: { table: true, kpi: true, chart: true, leaderboard: true, detail: true },
       sortOrder: 70,
     },
   ];
@@ -1508,9 +1550,9 @@ classroomTemplateSchema.statics.ensureGlobalDefaultTemplate =
         );
       }
 
-      if (!Array.isArray(payload.metricDefinitions)) {
-        payload.metricDefinitions = this.getPizzaShopMetricDefinitions();
-      }
+      // This global template is developer-managed; keep its canonical metrics
+      // synchronized with source just like the built-in profile defaults.
+      payload.metricDefinitions = this.getPizzaShopMetricDefinitions();
 
       existing.payload = payload;
       existing.version = Math.max(
@@ -2242,6 +2284,14 @@ classroomTemplateSchema.statics.copyGlobalToOrganization = async function (
       ) {
         payload.metricDefinitions = globalTemplate.payload?.metricDefinitions || [];
         hasChanges = true;
+      } else if (globalTemplate.key === this.GLOBAL_DEFAULT_KEY) {
+        const patchedMetrics = ensureSupplyChainLeaderboardFlags(
+          payload.metricDefinitions
+        );
+        if (patchedMetrics.changed) {
+          payload.metricDefinitions = patchedMetrics.definitions;
+          hasChanges = true;
+        }
       }
 
       // Backfill profileTypes financial fields (startingBalance, initialStartupCost) if missing

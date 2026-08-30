@@ -759,7 +759,7 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
         <div className="container">
-          <div className="flex flex-col lg:flex-row gap-4 w-full">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 w-full">
             <div className="card flex-1">
               <TeacherCurrentChallengeCard
                 classroomId={classroomId}
@@ -777,14 +777,14 @@ const Dashboard: React.FC = () => {
                 dashboard={dashboard}
               />
             </div>
-            <div className="card flex-1">
-              <LeaderboardSnapshot
-                challengeId={activeScenarioId}
-                variant="teacher"
-                dashboard={dashboard}
-              />
-            </div>
           </div>
+        </div>
+        <div className="container">
+          <LeaderboardSnapshot
+            challengeId={activeScenarioId}
+            variant="teacher"
+            dashboard={dashboard}
+          />
         </div>
         <div className="container">
           <div className="card">

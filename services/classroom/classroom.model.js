@@ -8,6 +8,126 @@ const Outcome = require("../outcome/outcome.model");
 const Profile = require("../profile/profile.model");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
 const ClassroomTemplate = require("../classroomTemplate/classroomTemplate.model");
+
+async function buildLeaderboardCategory({
+  classroomId,
+  organizationId,
+  definition,
+  direction,
+  limit = 5,
+}) {
+  const metricField = `metrics.${definition.key}`;
+  const metricExpression = `$${metricField}`;
+  const aggregationExpression =
+    definition.aggregation === "last"
+      ? { $first: metricExpression }
+      : definition.aggregation === "avg"
+        ? { $avg: metricExpression }
+        : definition.aggregation === "max"
+          ? { $max: metricExpression }
+          : definition.aggregation === "min"
+            ? { $min: metricExpression }
+            : { $sum: metricExpression };
+  const sortDirection = direction === "asc" ? 1 : -1;
+  const pipeline = [
+    {
+      $match: {
+        classroomId: new mongoose.Types.ObjectId(classroomId),
+        organization: new mongoose.Types.ObjectId(organizationId),
+        challengeId: { $ne: null },
+        [metricField]: { $type: "number" },
+      },
+    },
+  ];
+
+  if (definition.aggregation === "last") {
+    pipeline.push({ $sort: { createdDate: -1, _id: -1 } });
+  }
+
+  pipeline.push(
+    {
+      $group: {
+        _id: "$userId",
+        metricTotal: aggregationExpression,
+        classroomId: { $first: "$classroomId" },
+        organization: { $first: "$organization" },
+      },
+    },
+    {
+      $lookup: {
+        from: "profiles",
+        let: {
+          userIdField: "$_id",
+          classroomIdField: "$classroomId",
+          organizationField: "$organization",
+        },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ["$userId", "$$userIdField"] },
+                  { $eq: ["$classroomId", "$$classroomIdField"] },
+                  { $eq: ["$organization", "$$organizationField"] },
+                ],
+              },
+            },
+          },
+          { $project: { shopName: 1, studentId: 1, _id: 1 } },
+        ],
+        as: "profile",
+      },
+    },
+    { $unwind: { path: "$profile", preserveNullAndEmptyArrays: false } },
+    {
+      $project: {
+        _id: 0,
+        userId: "$_id",
+        metricTotal: 1,
+        profileName: "$profile.shopName",
+        profileId: "$profile._id",
+        studentId: "$profile.studentId",
+      },
+    },
+    {
+      $sort: {
+        metricTotal: sortDirection,
+        profileName: 1,
+        userId: 1,
+      },
+    },
+    // Fetch one extra row so a tie crossing the five-row cutoff is still
+    // identified for the final visible entry.
+    { $limit: limit + 1 }
+  );
+
+  const rows = await LedgerEntry.aggregate(pipeline);
+  let previousValue;
+  let previousRank = 0;
+  const rankedRows = rows.map((row, index) => {
+    const rank =
+      index > 0 && row.metricTotal === previousValue ? previousRank : index + 1;
+    previousValue = row.metricTotal;
+    previousRank = rank;
+    const isTied = rows.some(
+      (candidate, candidateIndex) =>
+        candidateIndex !== index && candidate.metricTotal === row.metricTotal
+    );
+    return { ...row, rank, isTied };
+  });
+  const entries = rankedRows.slice(0, limit);
+
+  return {
+    metric: {
+      key: definition.key,
+      label: definition.label,
+      format: definition.format,
+      aggregation: definition.aggregation,
+    },
+    direction,
+    entries,
+  };
+}
 /**
  * @openapi
  * components:
@@ -87,6 +207,65 @@ const ClassroomTemplate = require("../classroomTemplate/classroomTemplate.model"
  *             missingSubmissionPolicy:
  *               type: string
  *               enum: [FORWARD_PREVIOUS, USE_DEFAULTS, SKIP]
+ *     LeaderboardMetric:
+ *       type: object
+ *       properties:
+ *         key:
+ *           type: string
+ *         label:
+ *           type: string
+ *         format:
+ *           type: string
+ *           enum: [currency, count, units, percent, text]
+ *         aggregation:
+ *           type: string
+ *           enum: [sum, avg, last, max, min, none]
+ *     LeaderboardEntry:
+ *       type: object
+ *       properties:
+ *         userId:
+ *           type: string
+ *         profileId:
+ *           type: string
+ *         profileName:
+ *           type: string
+ *         studentId:
+ *           type: string
+ *         metricTotal:
+ *           type: number
+ *         rank:
+ *           type: integer
+ *         isTied:
+ *           type: boolean
+ *     LeaderboardCategory:
+ *       type: object
+ *       properties:
+ *         metric:
+ *           $ref: '#/components/schemas/LeaderboardMetric'
+ *         direction:
+ *           type: string
+ *           enum: [asc, desc]
+ *         entries:
+ *           type: array
+ *           maxItems: 5
+ *           items:
+ *             $ref: '#/components/schemas/LeaderboardEntry'
+ *     InstructorDashboard:
+ *       type: object
+ *       properties:
+ *         leaderboardMetric:
+ *           allOf:
+ *             - $ref: '#/components/schemas/LeaderboardMetric'
+ *           nullable: true
+ *         leaderboardTop10:
+ *           type: array
+ *           description: Backward-compatible cumulative Net Profit leaderboard.
+ *           items:
+ *             $ref: '#/components/schemas/LeaderboardEntry'
+ *         leaderboards:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/LeaderboardCategory'
  */
 const classroomSchema = new mongoose.Schema({
   name: {
@@ -292,9 +471,21 @@ classroomSchema.statics.getDashboard = async function (
   ]);
   const leaderboardDef =
     MetricDefinition.selectLeaderboardDefinition(leaderboardDefinitions);
+  const leaderboardSelections =
+    MetricDefinition.selectLeaderboardDefinitions(leaderboardDefinitions);
 
   let leaderboardTop10 = [];
   let leaderboardMetric = null;
+  const leaderboards = await Promise.all(
+    leaderboardSelections.map(({ definition, direction }) =>
+      buildLeaderboardCategory({
+        classroomId,
+        organizationId,
+        definition,
+        direction,
+      })
+    )
+  );
 
   if (leaderboardDef) {
     const metricPath = `$metrics.${leaderboardDef.key}`;
@@ -308,6 +499,7 @@ classroomSchema.statics.getDashboard = async function (
       {
         $match: {
           classroomId: new mongoose.Types.ObjectId(classroomId),
+          organization: new mongoose.Types.ObjectId(organizationId),
           challengeId: { $ne: null },
         },
       },
@@ -326,6 +518,7 @@ classroomSchema.statics.getDashboard = async function (
           let: {
             userIdField: "$_id",
             classroomIdField: "$classroomId",
+            organizationField: new mongoose.Types.ObjectId(organizationId),
           },
           pipeline: [
             {
@@ -334,6 +527,7 @@ classroomSchema.statics.getDashboard = async function (
                   $and: [
                     { $eq: ["$userId", "$$userIdField"] },
                     { $eq: ["$classroomId", "$$classroomIdField"] },
+                    { $eq: ["$organization", "$$organizationField"] },
                   ],
                 },
               },
@@ -388,6 +582,7 @@ classroomSchema.statics.getDashboard = async function (
     submissionsCompleted: submissionsCompleted,
     leaderboardTop10: leaderboardTop10,
     leaderboardMetric: leaderboardMetric,
+    leaderboards,
     metricDefinitionCount,
     pendingApprovals: pendingApprovals,
   };

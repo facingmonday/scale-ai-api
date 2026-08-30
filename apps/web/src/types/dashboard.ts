@@ -14,6 +14,7 @@ export interface LeaderboardMetric {
   key: string;
   label: string;
   format: import("./metric").MetricFormat;
+  aggregation?: import("./metric").MetricAggregation;
 }
 
 export interface LeaderboardEntry {
@@ -23,6 +24,14 @@ export interface LeaderboardEntry {
   profileName: string;
   metricTotal: number;
   studentId?: string;
+  rank?: number;
+  isTied?: boolean;
+}
+
+export interface LeaderboardCategory {
+  metric: LeaderboardMetric;
+  direction: "asc" | "desc";
+  entries: LeaderboardEntry[];
 }
 
 export interface AdminDashboardResponse extends DashboardBase {
@@ -32,6 +41,7 @@ export interface AdminDashboardResponse extends DashboardBase {
   submissionsCompleted: number;
   leaderboardTop10: LeaderboardEntry[];
   leaderboardMetric: LeaderboardMetric | null;
+  leaderboards: LeaderboardCategory[];
   metricDefinitionCount: number;
   pendingApprovals: number;
 }

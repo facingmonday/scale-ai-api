@@ -1,6 +1,25 @@
 const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
 
+const SUPPLY_CHAIN_METRIC_KEYS = [
+  "sales",
+  "revenue",
+  "costs",
+  "waste",
+  "netProfit",
+  "cashBefore",
+  "cashAfter",
+];
+const SUPPLY_CHAIN_LEADERBOARD_KEYS = [
+  "netProfit",
+  "sales",
+  "revenue",
+  "costs",
+  "waste",
+  "cashAfter",
+];
+const ASCENDING_LEADERBOARD_KEYS = new Set(["costs", "waste"]);
+
 /**
  * MetricDefinition - Output definitions for the AI simulation.
  *
@@ -196,16 +215,9 @@ metricDefinitionSchema.statics.selectLeaderboardDefinition = function (
       definition.isActive !== false
   );
   const keys = new Set(numericDefs.map((definition) => definition.key));
-  const supplyChainKeys = [
-    "sales",
-    "revenue",
-    "costs",
-    "waste",
-    "netProfit",
-    "cashBefore",
-    "cashAfter",
-  ];
-  const isSupplyChainLedger = supplyChainKeys.every((key) => keys.has(key));
+  const isSupplyChainLedger = SUPPLY_CHAIN_METRIC_KEYS.every((key) =>
+    keys.has(key)
+  );
 
   if (isSupplyChainLedger) {
     return numericDefs.find((definition) => definition.key === "netProfit");
@@ -217,6 +229,122 @@ metricDefinitionSchema.statics.selectLeaderboardDefinition = function (
     null
   );
 };
+
+/**
+ * Select the metrics displayed by the cumulative instructor leaderboard.
+ * Supply-chain classrooms always use the six canonical categories in product
+ * order. Other classroom types retain their configured leaderboard metrics.
+ */
+metricDefinitionSchema.statics.selectLeaderboardDefinitions = function (
+  definitions
+) {
+  const numericDefs = (Array.isArray(definitions) ? definitions : []).filter(
+    (definition) =>
+      definition &&
+      definition.dataType === "number" &&
+      definition.isActive !== false
+  );
+  const definitionsByKey = new Map(
+    numericDefs.map((definition) => [definition.key, definition])
+  );
+  const isSupplyChainLedger = SUPPLY_CHAIN_METRIC_KEYS.every((key) =>
+    definitionsByKey.has(key)
+  );
+
+  const selected = isSupplyChainLedger
+    ? SUPPLY_CHAIN_LEADERBOARD_KEYS.map((key) => definitionsByKey.get(key))
+    : numericDefs.filter((definition) => definition.displayIn?.leaderboard);
+
+  return selected.filter(Boolean).map((definition) => ({
+    definition,
+    direction: ASCENDING_LEADERBOARD_KEYS.has(definition.key) ? "asc" : "desc",
+  }));
+};
+
+/**
+ * Idempotently enables the canonical six leaderboard metrics for existing
+ * supply-chain classrooms. Only classrooms whose complete active numeric
+ * metric set exactly matches the canonical ledger are eligible.
+ */
+metricDefinitionSchema.statics.repairSupplyChainLeaderboardFlagsForOrganization =
+  async function (organizationId, clerkUserId = "system_startup") {
+    if (!organizationId) throw new Error("organizationId is required");
+
+    const definitions = await this.find({
+      organization: organizationId,
+      isActive: true,
+      dataType: "number",
+    })
+      .select("_id classroomId key displayIn.leaderboard")
+      .lean();
+    const byClassroom = new Map();
+    definitions.forEach((definition) => {
+      const classroomKey = String(definition.classroomId);
+      if (!byClassroom.has(classroomKey)) byClassroom.set(classroomKey, []);
+      byClassroom.get(classroomKey).push(definition);
+    });
+
+    const canonicalKeySet = new Set(SUPPLY_CHAIN_METRIC_KEYS);
+    const classroomIds = [];
+    byClassroom.forEach((classroomDefinitions, classroomId) => {
+      const keys = new Set(classroomDefinitions.map(({ key }) => key));
+      if (
+        keys.size === canonicalKeySet.size &&
+        SUPPLY_CHAIN_METRIC_KEYS.every((key) => keys.has(key))
+      ) {
+        const needsRepair = classroomDefinitions.some((definition) => {
+          const expected = SUPPLY_CHAIN_LEADERBOARD_KEYS.includes(
+            definition.key
+          );
+          return definition.displayIn?.leaderboard !== expected;
+        });
+        if (needsRepair) classroomIds.push(classroomId);
+      }
+    });
+
+    if (classroomIds.length === 0) {
+      return { classroomsRepaired: 0, metricsUpdated: 0 };
+    }
+
+    const leaderboardResult = await this.updateMany(
+      {
+        organization: organizationId,
+        classroomId: { $in: classroomIds },
+        key: { $in: SUPPLY_CHAIN_LEADERBOARD_KEYS },
+        "displayIn.leaderboard": { $ne: true },
+      },
+      {
+        $set: {
+          "displayIn.leaderboard": true,
+          updatedBy: clerkUserId,
+          updatedDate: new Date(),
+        },
+      }
+    );
+    const cashBeforeResult = await this.updateMany(
+      {
+        organization: organizationId,
+        classroomId: { $in: classroomIds },
+        key: "cashBefore",
+        "displayIn.leaderboard": { $ne: false },
+      },
+      {
+        $set: {
+          "displayIn.leaderboard": false,
+          updatedBy: clerkUserId,
+          updatedDate: new Date(),
+        },
+      }
+    );
+
+    const metricsUpdated =
+      (leaderboardResult.modifiedCount || 0) +
+      (cashBeforeResult.modifiedCount || 0);
+    return {
+      classroomsRepaired: classroomIds.length,
+      metricsUpdated,
+    };
+  };
 
 /**
  * Get the set of active metric keys for a classroom.

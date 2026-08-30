@@ -135,6 +135,10 @@ router.post(
  *     responses:
  *       200:
  *         description: Dashboard statistics.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/InstructorDashboard'
  */
 router.get(
   "/:classroomId/dashboard",

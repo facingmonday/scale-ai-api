@@ -27,6 +27,31 @@ test("supply-chain leaderboards use net profit despite legacy flags", () => {
   );
 });
 
+test("supply-chain dashboards select six ordered categories and directions", () => {
+  const definitions = [
+    "sales",
+    "revenue",
+    "costs",
+    "waste",
+    "netProfit",
+    "cashBefore",
+    "cashAfter",
+  ].map((key) => ({ key, label: key, dataType: "number" }));
+
+  const selected = Model.selectLeaderboardDefinitions(definitions);
+  assert.deepEqual(
+    selected.map(({ definition, direction }) => [definition.key, direction]),
+    [
+      ["netProfit", "desc"],
+      ["sales", "desc"],
+      ["revenue", "desc"],
+      ["costs", "asc"],
+      ["waste", "asc"],
+      ["cashAfter", "desc"],
+    ]
+  );
+});
+
 test("other classroom types retain their configured leaderboard metric", () => {
   const definitions = [
     { key: "followers", dataType: "number" },

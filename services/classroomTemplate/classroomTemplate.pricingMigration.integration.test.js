@@ -11,6 +11,7 @@ const ClassroomTemplate = require("./classroomTemplate.model");
 const ProfileType = require("../profileType/profileType.model");
 const Profile = require("../profile/profile.model");
 const VariableValue = require("../variableDefinition/variableValue.model");
+const MetricDefinition = require("../metricDefinition/metricDefinition.model");
 
 before(async () => {
   await setupTestDb();
@@ -198,7 +199,7 @@ test("refreshes the developer-managed global template from source defaults", asy
 
   const template = await ClassroomTemplate.ensureGlobalDefaultTemplate();
 
-  assert.equal(template.version, 2);
+  assert.equal(template.version, 3);
   assert.equal(
     template.payload.storeTypeValuesByStoreTypeKey.fine_dining[
       "avg-selling-price-per-unit"
@@ -210,6 +211,83 @@ test("refreshes the developer-managed global template from source defaults", asy
       "starting-units-refrigerated"
     ],
     60
+  );
+});
+
+test("repairs canonical supply-chain leaderboard flags idempotently", async () => {
+  const organizationId = new mongoose.Types.ObjectId();
+  const classroomId = new mongoose.Types.ObjectId();
+  await MetricDefinition.create(
+    ClassroomTemplate.getPizzaShopMetricDefinitions().map((definition) => ({
+      ...definition,
+      displayIn: {
+        ...definition.displayIn,
+        leaderboard: definition.key === "netProfit",
+      },
+      organization: organizationId,
+      classroomId,
+      createdBy: "test-admin",
+      updatedBy: "test-admin",
+    }))
+  );
+
+  const result =
+    await MetricDefinition.repairSupplyChainLeaderboardFlagsForOrganization(
+      organizationId,
+      "system-test"
+    );
+  assert.deepEqual(result, { classroomsRepaired: 1, metricsUpdated: 5 });
+
+  const enabled = await MetricDefinition.find({
+    organization: organizationId,
+    classroomId,
+    "displayIn.leaderboard": true,
+  })
+    .sort({ sortOrder: 1 })
+    .select("key")
+    .lean();
+  assert.deepEqual(
+    enabled.map(({ key }) => key),
+    ["sales", "revenue", "costs", "waste", "netProfit", "cashAfter"]
+  );
+  assert.deepEqual(
+    await MetricDefinition.repairSupplyChainLeaderboardFlagsForOrganization(
+      organizationId,
+      "system-test"
+    ),
+    { classroomsRepaired: 0, metricsUpdated: 0 }
+  );
+});
+
+test("does not migrate a customized metric set", async () => {
+  const organizationId = new mongoose.Types.ObjectId();
+  const classroomId = new mongoose.Types.ObjectId();
+  const customized = ClassroomTemplate.getPizzaShopMetricDefinitions()
+    .filter(({ key }) => key !== "cashBefore")
+    .map((definition) => ({
+      ...definition,
+      displayIn: { ...definition.displayIn, leaderboard: false },
+      organization: organizationId,
+      classroomId,
+      createdBy: "test-admin",
+      updatedBy: "test-admin",
+    }));
+  await MetricDefinition.create(customized);
+
+  assert.deepEqual(
+    await MetricDefinition.repairSupplyChainLeaderboardFlagsForOrganization(
+      organizationId,
+      "system-test"
+    ),
+    { classroomsRepaired: 0, metricsUpdated: 0 }
+  );
+  assert.equal(
+    await MetricDefinition.countDocuments({
+      organization: organizationId,
+      classroomId,
+      "displayIn.leaderboard": true,
+    }),
+    0
   );
 });
 
