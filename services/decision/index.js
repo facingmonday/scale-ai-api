@@ -49,6 +49,35 @@ router.get(
 
 /**
  * @openapi
+ * /v1/admin/decisions/{decisionId}/recalculate:
+ *   post:
+ *     summary: Recalculate one student's completed challenge result
+ *     description: Queues a direct simulation that replaces the existing ledger entry in place. Requires org:admin role.
+ *     tags:
+ *       - Decisions
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - name: decisionId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       202:
+ *         description: Recalculation queued.
+ *       409:
+ *         description: The result is not eligible or another calculation is active.
+ */
+router.post(
+  "/admin/decisions/:decisionId/recalculate",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.recalculateStudentResult
+);
+
+/**
+ * @openapi
  * /v1/admin/decisions:
  *   post:
  *     summary: Query student decisions

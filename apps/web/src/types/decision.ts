@@ -92,3 +92,14 @@ export interface SubmissionsForScenarioResponse {
     missingCount: number;
   };
 }
+
+export interface StudentResultRecalculationResponse {
+  success: boolean;
+  data: {
+    decisionId: string;
+    jobId: string;
+    ledgerEntryId: string;
+    recalculationRunId: string;
+    status: "pending";
+  };
+}

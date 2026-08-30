@@ -43,6 +43,9 @@ export interface SimulationJob extends BaseSchema {
   startedAt?: Date | null;
   completedAt?: Date | null;
   dryRun: boolean; // Default: false
+  ledgerWriteMode?: "create" | "upsert";
+  recalculationRunId?: string | null;
+  ledgerEntryId?: string | null;
   /** Exact hardened request persisted for OpenAI Batch processing. */
   openaiRequest?: Record<string, unknown> | null;
   /** Prompt messages before platform-policy hardening. */

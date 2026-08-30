@@ -6,6 +6,9 @@ const Challenge = require("../challenge/challenge.model");
 const {
   enqueueSimulationBatchSubmit,
 } = require("../../lib/queues/simulation-batch-worker");
+const {
+  enqueueSimulationJob,
+} = require("../../lib/queues/simulation-worker");
 
 /**
  * Get jobs for a challenge
@@ -141,7 +144,13 @@ exports.retryJob = async function (req, res) {
     const simulationMode = String(process.env.SIMULATION_MODE || "direct");
     const useBatch = simulationMode === "batch";
 
-    if (useBatch) {
+    if (job.ledgerWriteMode === "upsert") {
+      // Single-student recalculations always stay on the direct queue. Sending
+      // one through Batch would also pick up unrelated pending challenge jobs.
+      await enqueueSimulationJob(job._id, {
+        recalculationRunId: job.recalculationRunId,
+      });
+    } else if (useBatch) {
       // Re-submit as a (small) batch: submit all pending jobs for this challenge.
       await enqueueSimulationBatchSubmit({
         challengeId: job.challengeId,

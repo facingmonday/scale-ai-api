@@ -48,14 +48,24 @@ class SimulationWorker {
     const {
       isFinalAttempt = true,
       allowTerminalReconciliation = false,
+      expectedRecalculationRunId = null,
     } = options;
     const job = await SimulationJob.findById(jobId);
     if (!job) throw new Error(`Job not found: ${jobId}`);
+    if (
+      String(job.recalculationRunId || "") !==
+      String(expectedRecalculationRunId || "")
+    ) {
+      throw new Error(`Stale simulation run ignored for job ${jobId}`);
+    }
     if (job.status !== "pending") {
       if (
         allowTerminalReconciliation &&
         ["completed", "failed"].includes(job.status)
       ) {
+        if (job.ledgerWriteMode === "upsert") {
+          return { success: job.status === "completed", reconciled: false };
+        }
         return this.recordLedgerCompletionEvents(job);
       }
       throw new Error(`Job is not pending: ${job.status}`);
@@ -81,8 +91,10 @@ class SimulationWorker {
       }
 
       await job.markCompleted();
-      await this.updateSubmissionStatus(job, "completed");
-      await this.recordLedgerCompletionEvents(job);
+      if (job.ledgerWriteMode !== "upsert") {
+        await this.updateSubmissionStatus(job, "completed");
+        await this.recordLedgerCompletionEvents(job);
+      }
 
       return {
         success: true,
@@ -91,6 +103,16 @@ class SimulationWorker {
       };
     } catch (error) {
       console.error(`Error processing job ${jobId}:`, error);
+      const currentJob = await SimulationJob.findById(jobId)
+        .select("recalculationRunId")
+        .lean();
+      if (
+        !currentJob ||
+        String(currentJob.recalculationRunId || "") !==
+          String(expectedRecalculationRunId || "")
+      ) {
+        throw error;
+      }
       if (job.status === "completed") {
         // The ledger and terminal analysis state are already durable. Let Bull
         // retry only the lifecycle reconciliation path without corrupting the
@@ -99,10 +121,12 @@ class SimulationWorker {
       }
       if (isFinalAttempt) {
         await job.markFailed(error.message);
-        await this.updateSubmissionStatus(job, "failed").catch((err) => {
-          console.error(`Error updating decision status:`, err);
-        });
-        await this.recordLedgerCompletionEvents(job);
+        if (job.ledgerWriteMode !== "upsert") {
+          await this.updateSubmissionStatus(job, "failed").catch((err) => {
+            console.error(`Error updating decision status:`, err);
+          });
+          await this.recordLedgerCompletionEvents(job);
+        }
       } else {
         job.status = "pending";
         job.error = error.message;
@@ -152,16 +176,55 @@ class SimulationWorker {
       );
     }
 
-    const ledgerHistory = await LedgerEntry.getLedgerHistory(
+    let ledgerHistory = await LedgerEntry.getLedgerHistory(
       job.classroomId,
       job.userId,
       job.challengeId
     );
 
-    const priorMetrics = await this.buildPriorMetrics(
-      ledgerHistory,
-      job.classroomId
-    );
+    let priorMetrics;
+    if (job.ledgerWriteMode === "upsert") {
+      const existingEntry = await LedgerEntry.findOne({
+        organization: job.organization,
+        challengeId: job.challengeId,
+        userId: job.userId,
+      });
+      if (!existingEntry) {
+        throw new Error("Existing ledger entry not found for recalculation");
+      }
+
+      const mapToObject = (value) => {
+        if (value instanceof Map) return Object.fromEntries(value);
+        if (value && typeof value === "object") return { ...value };
+        return {};
+      };
+      const savedPriorMetrics = mapToObject(
+        existingEntry.calculationContext?.priorMetrics
+      );
+      const savedHistory = existingEntry.calculationContext?.ledgerHistorySummary;
+
+      if (Object.keys(savedPriorMetrics).length > 0) {
+        priorMetrics = savedPriorMetrics;
+      }
+      if (Array.isArray(savedHistory) && savedHistory.length > 0) {
+        ledgerHistory = savedHistory.map((entry) => ({
+          challengeId: entry.challengeId
+            ? {
+                _id: entry.challengeId,
+                title: entry.challengeTitle || "Initial Setup",
+              }
+            : null,
+          metrics: mapToObject(entry.metrics),
+        }));
+      }
+    }
+
+    if (!priorMetrics) {
+      priorMetrics = await this.buildPriorMetrics(
+        ledgerHistory,
+        job.classroomId
+      );
+    }
 
     return {
       profile,
@@ -285,16 +348,60 @@ class SimulationWorker {
       calculationContext,
     };
 
-    const entry = await LedgerEntry.createLedgerEntry(
-      ledgerInput,
-      organizationId,
-      job.createdBy
-    );
+    let entry;
+    if (job.ledgerWriteMode === "upsert") {
+      const currentJob = await SimulationJob.findOne({
+        _id: job._id,
+        status: "running",
+        ledgerWriteMode: "upsert",
+        recalculationRunId: job.recalculationRunId,
+      })
+        .select("_id")
+        .lean();
+      if (!currentJob) {
+        throw new Error(`Stale recalculation run ignored for job ${job._id}`);
+      }
+
+      entry = await LedgerEntry.findOneAndUpdate(
+        {
+          organization: organizationId,
+          challengeId: job.challengeId,
+          userId: job.userId,
+        },
+        {
+          $set: {
+            profileId: ledgerInput.profileId,
+            classroomId: ledgerInput.classroomId,
+            decisionId: ledgerInput.decisionId,
+            metrics: ledgerInput.metrics,
+            randomEvent: ledgerInput.randomEvent ?? null,
+            summary: ledgerInput.summary,
+            aiMetadata: ledgerInput.aiMetadata,
+            calculationContext: ledgerInput.calculationContext,
+            overridden: false,
+            overriddenBy: null,
+            overriddenAt: null,
+            updatedBy: job.updatedBy || job.createdBy,
+          },
+        },
+        { new: true, runValidators: true }
+      );
+      if (!entry) {
+        throw new Error("Existing ledger entry not found for recalculation");
+      }
+      job.ledgerEntryId = entry._id;
+    } else {
+      entry = await LedgerEntry.createLedgerEntry(
+        ledgerInput,
+        organizationId,
+        job.createdBy
+      );
+    }
 
     try {
       if (job.decisionId) {
         await Decision.updateOne(
-          { _id: job.decisionId },
+          { _id: job.decisionId, organization: organizationId },
           { $set: { ledgerEntryId: entry._id } }
         );
       } else {
@@ -309,6 +416,19 @@ class SimulationWorker {
       }
     } catch (err) {
       console.error("Failed to attach ledger entry to decision:", err);
+    }
+
+    if (job.ledgerWriteMode === "upsert") {
+      const ChallengeModel = require("../../challenge/challenge.model");
+      await ChallengeModel.updateOne(
+        { _id: job.challengeId, organization: organizationId },
+        {
+          $unset: { teacherDebrief: 1 },
+          $set: { updatedBy: job.updatedBy || job.createdBy },
+        }
+      ).catch((err) => {
+        console.error("Failed to clear cached teacher debrief:", err);
+      });
     }
 
     return entry;
@@ -331,7 +451,9 @@ class SimulationWorker {
     const results = [];
     for (const job of jobs) {
       try {
-        const result = await this.processJob(job._id);
+        const result = await this.processJob(job._id, {
+          expectedRecalculationRunId: job.recalculationRunId,
+        });
         results.push(result);
       } catch (error) {
         console.error(`Failed to process job ${job._id}:`, error);
@@ -353,7 +475,9 @@ class SimulationWorker {
     const results = [];
     for (const job of jobs) {
       try {
-        const result = await this.processJob(job._id);
+        const result = await this.processJob(job._id, {
+          expectedRecalculationRunId: job.recalculationRunId,
+        });
         results.push(result);
       } catch (error) {
         console.error(`Failed to process job ${job._id}:`, error);

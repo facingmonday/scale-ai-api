@@ -4,6 +4,8 @@ import { Tooltip } from "primereact/tooltip";
 import { Accordion, AccordionTab } from "primereact/accordion";
 import { DataTable } from "primereact/datatable";
 import { Column } from "primereact/column";
+import { Button } from "primereact/button";
+import { Dialog } from "primereact/dialog";
 import BasicLayout from "../../../components/Layouts/BasicLayout";
 import challengeService from "../../../services/challenge";
 import decisionService from "../../../services/decision";
@@ -17,6 +19,7 @@ import type { Outcome as ScenarioOutcomeModel } from "@/types/outcome";
 import type { SimulationJob } from "@/types/job";
 import { VariablesDisplay, LedgerVisualization } from "@/components";
 import { useAuth } from "@/context/AuthContext";
+import { useGlobalContext } from "@/context/GlobalContext";
 import type { VariableDefinitionWithValue } from "@/types/decision";
 import type { Profile } from "@/types/profile";
 import LoadingOverlay from "../../../components/LoadingOverlay";
@@ -28,11 +31,15 @@ import {
   getChallengePresentationBadgeClass,
   getChallengePresentationStatus,
 } from "@/utils/challengeStatus";
+import { getErrorMessage } from "@/utils";
+
+const getJobId = (job: SimulationJob): string => job._id || job.id || "";
 
 const SubmissionPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { activeClassroom } = useAuth();
+  const globalContext = useGlobalContext();
   const [decision, setSubmission] = useState<Decision | null>(null);
   const [challenge, setScenario] = useState<Challenge | null>(null);
   const [challengeVariableDefinitions, setChallengeVariableDefinitions] =
@@ -41,6 +48,14 @@ const SubmissionPage: React.FC = () => {
     useState<ScenarioOutcomeModel | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isRecalculationDialogOpen, setIsRecalculationDialogOpen] =
+    useState(false);
+  const [isSubmittingRecalculation, setIsSubmittingRecalculation] =
+    useState(false);
+  const [trackedRecalculation, setTrackedRecalculation] = useState<{
+    jobId: string;
+    runId: string;
+  } | null>(null);
 
   const form = useForm<{
     variables: Record<string, unknown>;
@@ -96,18 +111,20 @@ const SubmissionPage: React.FC = () => {
           // Continue even if challenge fetch fails
         }
       }
+      return submissionData;
     } catch (err) {
       console.error("Failed to fetch decision:", err);
       if (!silent) setError("Failed to load decision");
+      return null;
     } finally {
       if (!silent) setIsLoading(false);
     }
   }, [id]);
 
   useEffect(() => {
-    if (id) {
-      void fetchSubmission();
-    }
+    if (!id) return;
+    const timeoutId = window.setTimeout(() => void fetchSubmission(), 0);
+    return () => window.clearTimeout(timeoutId);
   }, [id, fetchSubmission]);
 
   // Transform decision variables into VariableDefinitionWithValue[] format
@@ -130,7 +147,7 @@ const SubmissionPage: React.FC = () => {
           def.defaultValue ??
           (def.dataType === "number" ? 0 : ""),
       })) as VariableDefinitionWithValue[];
-  }, [decision?.variables, activeClassroom]);
+  }, [decision, activeClassroom]);
 
   // Transform challenge variables into VariableDefinitionWithValue[] format
   const scenarioVariablesDisplay = useMemo(() => {
@@ -176,6 +193,16 @@ const SubmissionPage: React.FC = () => {
   const isCalculatingResults =
     challengePresentationStatus === "Calculating Results";
 
+  const activeRecalculationJob = useMemo(
+    () =>
+      jobs.find(
+        (job) =>
+          job.ledgerWriteMode === "upsert" &&
+          (job.status === "pending" || job.status === "running")
+      ) ?? null,
+    [jobs]
+  );
+
   useEffect(() => {
     if (!isCalculatingResults) return;
 
@@ -191,6 +218,50 @@ const SubmissionPage: React.FC = () => {
       window.removeEventListener("focus", refresh);
     };
   }, [fetchSubmission, isCalculatingResults]);
+
+  useEffect(() => {
+    if (!activeRecalculationJob && !trackedRecalculation) return;
+
+    const refresh = async () => {
+      if (document.visibilityState !== "visible") return;
+      const refreshedDecision = await fetchSubmission(true);
+      if (!trackedRecalculation || !refreshedDecision) return;
+
+      const refreshedJobs = (
+        refreshedDecision as Decision & { jobs?: SimulationJob[] }
+      ).jobs ?? [];
+      const trackedJob = refreshedJobs.find(
+        (job) =>
+          getJobId(job) === trackedRecalculation.jobId &&
+          job.recalculationRunId === trackedRecalculation.runId
+      );
+      if (trackedJob?.status === "completed") {
+        globalContext?.showToast?.(
+          "Student result recalculated successfully.",
+          "success"
+        );
+        setTrackedRecalculation(null);
+      } else if (trackedJob?.status === "failed") {
+        globalContext?.showToast?.(
+          trackedJob.error || "Student result recalculation failed.",
+          "error"
+        );
+        setTrackedRecalculation(null);
+      }
+    };
+    const scheduledRefresh = () => void refresh();
+    const intervalId = window.setInterval(scheduledRefresh, 5_000);
+    window.addEventListener("focus", scheduledRefresh);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", scheduledRefresh);
+    };
+  }, [
+    activeRecalculationJob,
+    fetchSubmission,
+    globalContext,
+    trackedRecalculation,
+  ]);
 
   // Use challenge title if available, otherwise fallback
   const displayTitle = useMemo(
@@ -225,9 +296,43 @@ const SubmissionPage: React.FC = () => {
     [decision]
   );
 
-  // Get job ID helper
-  const getJobId = (job: SimulationJob): string => {
-    return job._id || job.id || "";
+  const canRequestRecalculation =
+    !!challenge?.isClosed &&
+    (["processed", "feedbackReleased", "COMPLETED"].includes(
+      challenge?.automationStatus || ""
+    ) || !!challenge?.automatedProcessedAt) &&
+    !!outcome &&
+    decision?.processingStatus === "completed" &&
+    !!decision?.ledgerEntry;
+
+  const handleRecalculateStudentResult = async () => {
+    if (!id || isSubmittingRecalculation || activeRecalculationJob) return;
+
+    setIsSubmittingRecalculation(true);
+    try {
+      const response = await decisionService.recalculateStudentResult(id);
+      setTrackedRecalculation({
+        jobId: response.data.jobId,
+        runId: response.data.recalculationRunId,
+      });
+      setIsRecalculationDialogOpen(false);
+      globalContext?.showToast?.(
+        "Student result recalculation queued.",
+        "success"
+      );
+      await fetchSubmission(true);
+    } catch (recalculationError) {
+      console.error(
+        "Failed to queue student result recalculation:",
+        recalculationError
+      );
+      globalContext?.showToast?.(
+        getErrorMessage(recalculationError),
+        "error"
+      );
+    } finally {
+      setIsSubmittingRecalculation(false);
+    }
   };
 
   // Status badge class mapping
@@ -683,7 +788,109 @@ const SubmissionPage: React.FC = () => {
                 </Accordion>
               </div>
             )}
+
+            <div className="danger-zone-card mt-6">
+              <h2 className="danger-zone-title">Danger Zone</h2>
+              <div className="danger-zone-row">
+                <div>
+                  <h3 className="font-semibold mb-1">
+                    Recalculate student result
+                  </h3>
+                  <p className="text-text-muted text-sm">
+                    Replace this student's existing ledger result using the
+                    current prompts, profile settings, outcome, and original
+                    decision.
+                  </p>
+                  {!canRequestRecalculation && (
+                    <p className="text-red-400 text-sm mt-2">
+                      A closed, completed challenge with an existing outcome
+                      and ledger result is required.
+                    </p>
+                  )}
+                  {activeRecalculationJob && (
+                    <p className="text-text-muted text-sm mt-2">
+                      Recalculation is currently {activeRecalculationJob.status}.
+                    </p>
+                  )}
+                </div>
+                <Button
+                  label="Recalculate student result"
+                  icon="pi pi-replay"
+                  severity="danger"
+                  outlined
+                  className="[&_.p-button-icon]:mr-3 shrink-0"
+                  onClick={() => setIsRecalculationDialogOpen(true)}
+                  disabled={
+                    !canRequestRecalculation ||
+                    !!activeRecalculationJob ||
+                    isSubmittingRecalculation
+                  }
+                />
+              </div>
+            </div>
           </div>
+
+          <Dialog
+            header="Recalculate student result"
+            visible={isRecalculationDialogOpen}
+            onHide={() =>
+              !isSubmittingRecalculation &&
+              setIsRecalculationDialogOpen(false)
+            }
+            style={{ width: "min(42rem, 90vw)" }}
+            pt={{
+              headerTitle: { className: "modal-title" },
+              footer: { className: "modal-footer" },
+            }}
+            footer={
+              <div className="flex gap-2 justify-end">
+                <Button
+                  label="Cancel"
+                  icon="pi pi-times"
+                  text
+                  disabled={isSubmittingRecalculation}
+                  onClick={() => setIsRecalculationDialogOpen(false)}
+                />
+                <Button
+                  label="Recalculate result"
+                  icon="pi pi-replay"
+                  severity="danger"
+                  loading={isSubmittingRecalculation}
+                  onClick={() => void handleRecalculateStudentResult()}
+                />
+              </div>
+            }
+          >
+            <div className="space-y-4 text-text-muted">
+              <p>
+                Recalculate <strong className="text-text-primary">
+                  {user
+                    ? `${user.firstName} ${user.lastName}`
+                    : "this student's"}
+                </strong>{" "}
+                result for <strong className="text-text-primary">
+                  {profile?.shopName || "this profile"}
+                </strong>{" "}
+                in <strong className="text-text-primary">{displayTitle}</strong>?
+              </p>
+              <ul className="list-disc pl-5 space-y-2">
+                <li>The existing result will be overwritten without a backup.</li>
+                <li>
+                  Current system prompts, profile settings, and challenge outcome
+                  will be used with the student's original decision.
+                </li>
+                <li>The student will not receive a notification.</li>
+                <li>
+                  The request will be blocked if this student already has a later
+                  challenge result.
+                </li>
+              </ul>
+              <p className="text-red-400 font-medium">
+                The current result remains visible unless the replacement
+                succeeds.
+              </p>
+            </div>
+          </Dialog>
         </div>
       )}
     </BasicLayout>

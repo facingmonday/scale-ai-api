@@ -1252,7 +1252,7 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
     fine_dining: {
       "capacity-units-refrigerated": 90,
       "starting-units-refrigerated": 60,
-      "goods-per-unit-refrigerated": 1.8,
+      "goods-per-unit-refrigerated": 0.8,
       "avg-unit-cost-refrigerated": 18,
       "holding-cost-per-unit-refrigerated": 1.5,
 
@@ -1322,7 +1322,7 @@ function buildDefaultStoreTypeValuesByStoreTypeKey() {
     upscale_bistro: {
       "capacity-units-refrigerated": 70,
       "starting-units-refrigerated": 45,
-      "goods-per-unit-refrigerated": 2.2,
+      "goods-per-unit-refrigerated": 1.3,
       "avg-unit-cost-refrigerated": 14,
       "holding-cost-per-unit-refrigerated": 1.1,
 

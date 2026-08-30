@@ -6,6 +6,7 @@ const Enrollment = require("../enrollment/enrollment.model");
 const Member = require("../members/member.model");
 const LedgerEntry = require("../ledger/ledger.model");
 const Profile = require("../profile/profile.model");
+const studentResultRecalculationService = require("./lib/studentResultRecalculationService");
 
 // ---- helpers ----
 
@@ -971,7 +972,8 @@ exports.getSubmission = async function (req, res) {
       })
       .populate({
         path: "jobs",
-        select: "_id status error attempts startedAt completedAt dryRun",
+        select:
+          "_id status error attempts startedAt completedAt dryRun ledgerWriteMode recalculationRunId ledgerEntryId",
       })
       .populate({
         path: "ledgerEntryId",
@@ -1089,6 +1091,59 @@ exports.getSubmission = async function (req, res) {
       return res.status(403).json({ error: error.message });
     }
     res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Recalculate one completed student's result without using OpenAI Batch.
+ * POST /v1/admin/decisions/:decisionId/recalculate
+ */
+exports.recalculateStudentResult = async function (req, res) {
+  try {
+    const { decisionId } = req.params;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+
+    if (!mongoose.Types.ObjectId.isValid(decisionId)) {
+      return res.status(400).json({ error: "Invalid decision ID" });
+    }
+
+    const decision = await Decision.findOne({
+      _id: decisionId,
+      organization: organizationId,
+    }).select(
+      "_id classroomId challengeId userId processingStatus ledgerEntryId"
+    );
+    if (!decision) {
+      return res.status(404).json({ error: "Decision not found" });
+    }
+
+    await Classroom.validateAdminAccess(
+      decision.classroomId,
+      clerkUserId,
+      organizationId
+    );
+
+    const result =
+      await studentResultRecalculationService.recalculateStudentResult({
+        decision,
+        organizationId,
+        clerkUserId,
+      });
+
+    return res.status(202).json({ success: true, data: result });
+  } catch (error) {
+    console.error("Error recalculating student result:", error);
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    if (error.message === "Class not found") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    return res.status(500).json({ error: error.message });
   }
 };
 

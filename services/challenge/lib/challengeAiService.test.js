@@ -130,38 +130,43 @@ test("createChallengeFromPrompt persists generated variables and an outcome draf
     Outcome.createOrUpdateOutcome = originals.createOrUpdateOutcome;
   });
 
-  openai.chat.completions.create = async () => ({
-    choices: [
-      {
-        message: {
-          content: JSON.stringify({
-            title: "The Viral Rush",
-            description: "Opening week demand surges after a viral post.",
-            scheduleMentioned: false,
-            publishAt: null,
-            submissionDeadlineAt: null,
-            variables: [
-              {
-                label: "What percentage of engaged people will order?",
-                description: "Estimate how online engagement converts to demand.",
-                dataType: "number",
-                inputType: "knob",
-                options: [],
-                defaultValue: 10,
-                min: 0,
-                max: 30,
-                required: true,
+  let openAiRequest;
+  openai.chat.completions.create = async (request) => {
+    openAiRequest = request;
+    return {
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              title: "The Viral Rush",
+              description: "Opening week demand surges after a viral post.",
+              scheduleMentioned: false,
+              publishAt: null,
+              submissionDeadlineAt: null,
+              variables: [
+                {
+                  label: "What percentage of engaged people will order?",
+                  description:
+                    "Estimate how online engagement converts to demand.",
+                  dataType: "number",
+                  inputType: "knob",
+                  options: [],
+                  defaultValue: 10,
+                  min: 0,
+                  max: 30,
+                  required: true,
+                },
+              ],
+              outcome: {
+                notes: "Twelve percent place an order.",
+                hiddenNotes: "",
               },
-            ],
-            outcome: {
-              notes: "Twelve percent place an order.",
-              hiddenNotes: "",
-            },
-          }),
+            }),
+          },
         },
-      },
-    ],
-  });
+      ],
+    };
+  };
 
   const calls = [];
   Challenge.createScenario = async (...args) => {
@@ -192,6 +197,12 @@ test("createChallengeFromPrompt persists generated variables and an outcome draf
   });
 
   assert.equal(challenge._id, "challenge-id");
+
+  const systemPrompt = openAiRequest.messages[0].content;
+  assert.match(systemPrompt, /shared realized conditions/i);
+  assert.match(systemPrompt, /never determine realized demand/i);
+  assert.match(systemPrompt, /configured profile capacity/i);
+  assert.match(systemPrompt, /Set hiddenNotes to an empty string/i);
 
   const challengeCall = calls.find(([name]) => name === "challenge");
   assert.equal(challengeCall[1], "classroom-id");

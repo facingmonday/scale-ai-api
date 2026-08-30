@@ -199,7 +199,9 @@ class JobService {
     for (const job of pendingJobs) {
       try {
         await ensureQueueReady(queues.simulation, "simulation");
-        await enqueueSimulationJob(job._id);
+        await enqueueSimulationJob(job._id, {
+          recalculationRunId: job.recalculationRunId,
+        });
         enqueued++;
       } catch (err) {
         console.error(`Failed to enqueue pending job ${job._id}:`, err.message);

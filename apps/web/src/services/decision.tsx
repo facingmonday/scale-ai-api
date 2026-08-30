@@ -1,6 +1,7 @@
 import TokenHandler from "./base";
 import { API_HOST, API_VERSION } from "../config";
 import axios from "axios";
+import type { StudentResultRecalculationResponse } from "../types/decision";
 
 async function submit(data: {
   challengeId: string;
@@ -78,6 +79,17 @@ async function getById(decisionId: string, role: "student" | "admin") {
   return response.data;
 }
 
+async function recalculateStudentResult(
+  decisionId: string
+): Promise<StudentResultRecalculationResponse> {
+  const response = await axios.post(
+    `${API_HOST}/${API_VERSION}/admin/decisions/${decisionId}/recalculate`,
+    {},
+    { headers: await TokenHandler.getHeaders() }
+  );
+  return response.data as StudentResultRecalculationResponse;
+}
+
 async function getStudentSubmissions(params?: {
   classroomId?: string;
   challengeId?: string;
@@ -132,7 +144,7 @@ async function search(params: {
   pageSize?: number;
   sortField?: string;
   sortDirection?: "asc" | "desc";
-  filters?: Array<{ field: string; operator: string; value: any }>;
+  filters?: Array<{ field: string; operator: string; value: unknown }>;
   includeJobs?: boolean;
 }) {
   const response = await axios.post(
@@ -152,6 +164,7 @@ const decisionService = {
   getMissingSubmissionsForScenario,
   getAll,
   getById,
+  recalculateStudentResult,
   getStudentSubmissions,
   deleteStudentSubmissions,
   getAllPerStudent,

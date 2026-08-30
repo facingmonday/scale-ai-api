@@ -50,6 +50,17 @@ const simulationJobSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  ledgerWriteMode: {
+    type: String,
+    enum: ["create", "upsert"],
+    default: "create",
+    required: true,
+  },
+  recalculationRunId: {
+    type: String,
+    default: null,
+    index: true,
+  },
   // Prepared OpenAI payload (for Batch processing).
   // Stored as schema-light to allow OpenAI SDK shape changes without migrations.
   openaiRequest: {
@@ -132,6 +143,8 @@ simulationJobSchema.statics.createJob = async function (
     existing.startedAt = null;
     existing.completedAt = null;
     existing.dryRun = input.dryRun || false;
+    existing.ledgerWriteMode = input.ledgerWriteMode || "create";
+    existing.recalculationRunId = input.recalculationRunId || null;
     // Clear any previously-prepared OpenAI/batch state so reruns don't reuse stale payloads.
     existing.openaiRequest = null;
     existing.openaiRequestRawMessages = null;
@@ -145,8 +158,11 @@ simulationJobSchema.statics.createJob = async function (
       submittedAt: null,
       completedAt: null,
     };
-    existing.ledgerEntryId = null;
-    existing.ledgerCompletionTracking = true;
+    existing.ledgerEntryId = input.ledgerEntryId || null;
+    existing.ledgerCompletionTracking =
+      input.ledgerCompletionTracking !== undefined
+        ? !!input.ledgerCompletionTracking
+        : true;
     existing.ledgerCompletionReconciledAt = null;
     // Persist/refresh decision link if provided
     if (input.decisionId) {
@@ -168,7 +184,13 @@ simulationJobSchema.statics.createJob = async function (
     startedAt: null,
     completedAt: null,
     dryRun: input.dryRun || false,
-    ledgerCompletionTracking: true,
+    ledgerWriteMode: input.ledgerWriteMode || "create",
+    recalculationRunId: input.recalculationRunId || null,
+    ledgerEntryId: input.ledgerEntryId || null,
+    ledgerCompletionTracking:
+      input.ledgerCompletionTracking !== undefined
+        ? !!input.ledgerCompletionTracking
+        : true,
     ledgerCompletionReconciledAt: null,
     organization: organizationId,
     createdBy: clerkUserId,
@@ -263,7 +285,7 @@ simulationJobSchema.methods.reset = async function () {
   this.openaiRequestRawMessages = null;
   this.openaiRequestPreparedAt = null;
   this.calculationContextSnapshot = null;
-  this.ledgerCompletionTracking = true;
+  this.ledgerCompletionTracking = this.ledgerWriteMode !== "upsert";
   this.ledgerCompletionReconciledAt = null;
   this.batch = {
     openaiBatchId: null,
@@ -273,7 +295,9 @@ simulationJobSchema.methods.reset = async function () {
     submittedAt: null,
     completedAt: null,
   };
-  this.ledgerEntryId = null;
+  if (this.ledgerWriteMode !== "upsert") {
+    this.ledgerEntryId = null;
+  }
   await this.save();
   return this;
 };

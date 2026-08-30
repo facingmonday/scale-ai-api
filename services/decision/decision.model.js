@@ -675,7 +675,8 @@ submissionSchema.statics.getSubmission = async function (
     userId,
   }).populate({
     path: "jobs",
-    select: "_id status error attempts startedAt completedAt dryRun",
+    select:
+      "_id status error attempts startedAt completedAt dryRun ledgerWriteMode recalculationRunId ledgerEntryId",
   });
   if (!decision) {
     return null;
