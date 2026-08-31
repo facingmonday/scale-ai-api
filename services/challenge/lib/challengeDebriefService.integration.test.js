@@ -14,6 +14,7 @@ const Decision = require("../../decision/decision.model");
 const SimulationJob = require("../../job/job.model");
 const LedgerEntry = require("../../ledger/ledger.model");
 const MetricDefinition = require("../../metricDefinition/metricDefinition.model");
+const ProfileType = require("../../profileType/profileType.model");
 const LedgerCompletionEvent = require("../../job/ledgerCompletionEvent.model");
 const {
   NO_RESULTS_SUMMARY,
@@ -22,6 +23,7 @@ const {
 } = require("./challengeDebriefService");
 
 before(async () => {
+  ProfileType.schema.set("autoIndex", false);
   await setupTestDb();
   await LedgerCompletionEvent.syncIndexes();
 });
@@ -59,10 +61,13 @@ test("stores a hidden no-results placeholder without calling OpenAI", async () =
   assert.equal(result.teacherDebrief.status, "completed");
   assert.equal(result.teacherDebrief.summary, NO_RESULTS_SUMMARY);
   assert.ok(result.teacherDebrief.generatedAt instanceof Date);
-  assert.equal((await Challenge.findById(fixture.challenge._id)).teacherDebrief, undefined);
+  assert.equal(
+    (await Challenge.findById(fixture.challenge._id).lean()).teacherDebrief,
+    undefined,
+  );
   const selected = await Challenge.findById(fixture.challenge._id).select(
     "+teacherDebrief",
-  );
+  ).lean();
   assert.equal(selected.teacherDebrief.summary, NO_RESULTS_SUMMARY);
 });
 
@@ -165,7 +170,7 @@ test("makes one anonymous request per attempt, replaces, and recovers after fail
   );
   const failed = await Challenge.findById(fixture.challenge._id).select(
     "+teacherDebrief",
-  );
+  ).lean();
   assert.equal(failed.teacherDebrief.status, "failed");
   assert.match(failed.teacherDebrief.error, /temporary OpenAI failure/);
   const recovered = await generateChallengeDebrief({
@@ -214,7 +219,7 @@ test("rerun reset removes the debrief and fixed completion event", async () => {
 
   const challenge = await Challenge.findById(fixture.challenge._id).select(
     "+teacherDebrief",
-  );
+  ).lean();
   assert.equal(challenge.teacherDebrief, undefined);
   assert.equal(await LedgerCompletionEvent.countDocuments(), 0);
 });

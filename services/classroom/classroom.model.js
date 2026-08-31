@@ -8,6 +8,9 @@ const Outcome = require("../outcome/outcome.model");
 const Profile = require("../profile/profile.model");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
 const ClassroomTemplate = require("../classroomTemplate/classroomTemplate.model");
+const {
+  serializeStudentLedgerEntry,
+} = require("../ledger/studentResultSerializer");
 
 async function buildLeaderboardCategory({
   classroomId,
@@ -18,14 +21,16 @@ async function buildLeaderboardCategory({
 }) {
   const metricField = `metrics.${definition.key}`;
   const metricExpression = `$${metricField}`;
+  const aggregation =
+    definition.aggregation === "none" ? "last" : definition.aggregation;
   const aggregationExpression =
-    definition.aggregation === "last"
+    aggregation === "last"
       ? { $first: metricExpression }
-      : definition.aggregation === "avg"
+      : aggregation === "avg"
         ? { $avg: metricExpression }
-        : definition.aggregation === "max"
+        : aggregation === "max"
           ? { $max: metricExpression }
-          : definition.aggregation === "min"
+          : aggregation === "min"
             ? { $min: metricExpression }
             : { $sum: metricExpression };
   const sortDirection = direction === "asc" ? 1 : -1;
@@ -40,7 +45,7 @@ async function buildLeaderboardCategory({
     },
   ];
 
-  if (definition.aggregation === "last") {
+  if (aggregation === "last") {
     pipeline.push({ $sort: { createdDate: -1, _id: -1 } });
   }
 
@@ -123,6 +128,9 @@ async function buildLeaderboardCategory({
       label: definition.label,
       format: definition.format,
       aggregation: definition.aggregation,
+      leaderboardSortDirection: direction,
+      isPrimaryLeaderboardMetric:
+        definition.isPrimaryLeaderboardMetric === true,
     },
     direction,
     entries,
@@ -220,6 +228,11 @@ async function buildLeaderboardCategory({
  *         aggregation:
  *           type: string
  *           enum: [sum, avg, last, max, min, none]
+ *         leaderboardSortDirection:
+ *           type: string
+ *           enum: [asc, desc]
+ *         isPrimaryLeaderboardMetric:
+ *           type: boolean
  *     LeaderboardEntry:
  *       type: object
  *       properties:
@@ -259,7 +272,7 @@ async function buildLeaderboardCategory({
  *           nullable: true
  *         leaderboardTop10:
  *           type: array
- *           description: Backward-compatible cumulative Net Profit leaderboard.
+ *           description: Backward-compatible leaderboard for the configured primary metric.
  *           items:
  *             $ref: '#/components/schemas/LeaderboardEntry'
  *         leaderboards:
@@ -279,6 +292,11 @@ const classroomSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true,
+  },
+  isSimulationClassroom: {
+    type: Boolean,
+    default: false,
+    index: true,
   },
   ownership: {
     type: mongoose.Schema.Types.ObjectId,
@@ -488,72 +506,16 @@ classroomSchema.statics.getDashboard = async function (
   );
 
   if (leaderboardDef) {
-    const metricPath = `$metrics.${leaderboardDef.key}`;
-    leaderboardMetric = {
-      key: leaderboardDef.key,
-      label: leaderboardDef.label,
-      format: leaderboardDef.format,
-    };
-
-    leaderboardTop10 = await LedgerEntry.aggregate([
-      {
-        $match: {
-          classroomId: new mongoose.Types.ObjectId(classroomId),
-          organization: new mongoose.Types.ObjectId(organizationId),
-          challengeId: { $ne: null },
-        },
-      },
-      {
-        $group: {
-          _id: "$userId",
-          metricTotal: { $sum: { $ifNull: [metricPath, 0] } },
-          classroomId: { $first: "$classroomId" },
-        },
-      },
-      { $sort: { metricTotal: -1 } },
-      { $limit: 10 },
-      {
-        $lookup: {
-          from: "profiles",
-          let: {
-            userIdField: "$_id",
-            classroomIdField: "$classroomId",
-            organizationField: new mongoose.Types.ObjectId(organizationId),
-          },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ["$userId", "$$userIdField"] },
-                    { $eq: ["$classroomId", "$$classroomIdField"] },
-                    { $eq: ["$organization", "$$organizationField"] },
-                  ],
-                },
-              },
-            },
-            {
-              $project: {
-                shopName: 1,
-                studentId: 1,
-                _id: 1,
-              },
-            },
-          ],
-          as: "profile",
-        },
-      },
-      { $unwind: { path: "$profile", preserveNullAndEmptyArrays: false } },
-      {
-        $project: {
-          userId: "$_id",
-          metricTotal: 1,
-          profileName: "$profile.shopName",
-          profileId: "$profile._id",
-          studentId: "$profile.studentId",
-        },
-      },
-    ]);
+    const primaryCategory = await buildLeaderboardCategory({
+      classroomId,
+      organizationId,
+      definition: leaderboardDef,
+      direction:
+        leaderboardDef.leaderboardSortDirection === "asc" ? "asc" : "desc",
+      limit: 10,
+    });
+    leaderboardMetric = primaryCategory.metric;
+    leaderboardTop10 = primaryCategory.entries;
   }
 
   // Get pending approvals (published challenges with outcomes that are not approved)
@@ -644,6 +606,7 @@ classroomSchema.statics.getStudentDashboard = async function (
   const [
     profile,
     metricDefinitions,
+    variableDefinitions,
     releasedChallenges,
     completedChallengeCount,
   ] = await Promise.all([
@@ -661,6 +624,11 @@ classroomSchema.statics.getStudentDashboard = async function (
     })
       .sort({ sortOrder: 1, label: 1 })
       .lean(),
+    VariableDefinition.find({
+      classroomId,
+      organization: organizationId,
+      isActive: true,
+    }).lean(),
     Challenge.find({
       classroomId,
       organization: organizationId,
@@ -718,15 +686,23 @@ classroomSchema.statics.getStudentDashboard = async function (
       const entry = entriesByChallenge.get(challengeId);
       if (!entry) return null;
 
+      const outcomeNotes = outcomesByChallenge.get(challengeId)?.notes || "";
+      const safeEntry = serializeStudentLedgerEntry(entry, {
+        outcomeNotes,
+        variableDefinitions,
+        metricDefinitions,
+      });
+
       return {
         challengeId,
         title: challenge.title,
         week: challenge.week,
         completedAt: entry.createdDate,
-        metrics: metricsToObject(entry.metrics),
-        summary: entry.summary,
-        randomEvent: entry.randomEvent,
-        outcomeNotes: outcomesByChallenge.get(challengeId)?.notes || "",
+        metrics: safeEntry.metrics,
+        summary: safeEntry.summary,
+        randomEvent: safeEntry.randomEvent,
+        outcomeNotes,
+        resultExplanation: safeEntry.resultExplanation,
       };
     })
     .filter(Boolean);
@@ -760,16 +736,21 @@ classroomSchema.statics.getStudentDashboard = async function (
     let rank = null;
 
     if (leaderboardDefinition) {
-      const rankedEntries = [...classEntries].sort((a, b) => {
-        const aValue = Number(
-          metricsToObject(a.metrics)[leaderboardDefinition.key]
+      const direction =
+        leaderboardDefinition.leaderboardSortDirection === "asc" ? 1 : -1;
+      const rankedEntries = classEntries
+        .map((entry) => ({
+          ...entry,
+          leaderboardValue: Number(
+            metricsToObject(entry.metrics)[leaderboardDefinition.key]
+          ),
+        }))
+        .filter((entry) => Number.isFinite(entry.leaderboardValue))
+        .sort(
+          (a, b) =>
+            (a.leaderboardValue - b.leaderboardValue) * direction ||
+            String(a.userId).localeCompare(String(b.userId))
         );
-        const bValue = Number(
-          metricsToObject(b.metrics)[leaderboardDefinition.key]
-        );
-        return (Number.isFinite(bValue) ? bValue : 0) -
-          (Number.isFinite(aValue) ? aValue : 0);
-      });
       const rankIndex = rankedEntries.findIndex(
         (entry) => entry.userId.toString() === memberId.toString()
       );
@@ -788,6 +769,7 @@ classroomSchema.statics.getStudentDashboard = async function (
             key: leaderboardDefinition.key,
             label: leaderboardDefinition.label,
             format: leaderboardDefinition.format,
+            aggregation: leaderboardDefinition.aggregation,
           }
         : null,
     };

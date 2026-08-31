@@ -10,6 +10,7 @@ export type MetricFormat =
   | "text";
 
 export type MetricAggregation = "sum" | "avg" | "last" | "max" | "min" | "none";
+export type LeaderboardSortDirection = "asc" | "desc";
 
 export interface MetricDisplayIn {
   table: boolean;
@@ -32,6 +33,8 @@ export interface MetricDefinition extends BaseSchema {
   format: MetricFormat;
   aiPromptRule?: string;
   aggregation: MetricAggregation;
+  leaderboardSortDirection: LeaderboardSortDirection;
+  isPrimaryLeaderboardMetric: boolean;
   displayIn: MetricDisplayIn;
   defaultInitialValue?: number | string | boolean | null;
   sortOrder?: number;
@@ -46,6 +49,8 @@ export interface CreateMetricDefinitionRequest {
   format?: MetricFormat;
   aiPromptRule?: string;
   aggregation?: MetricAggregation;
+  leaderboardSortDirection?: LeaderboardSortDirection;
+  isPrimaryLeaderboardMetric?: boolean;
   displayIn?: Partial<MetricDisplayIn>;
   defaultInitialValue?: number | string | boolean | null;
   sortOrder?: number;

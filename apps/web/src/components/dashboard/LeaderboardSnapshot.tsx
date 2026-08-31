@@ -111,7 +111,7 @@ const LeaderboardSnapshot: React.FC<LeaderboardSnapshotProps> = ({
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="!grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {categories.map((category) => {
             const definition = metricDefinitionFor(category);
             const entries =
@@ -141,17 +141,15 @@ const LeaderboardSnapshot: React.FC<LeaderboardSnapshotProps> = ({
                     {entries.map((entry, index) => (
                       <div
                         key={`${category.metric.key}:${entry.userId}`}
-                        className="flex w-full items-center justify-between gap-3"
+                        className="!grid w-full grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2"
                       >
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="w-7 shrink-0 text-text-muted text-sm tabular-nums">
-                            {displayRank(entries, entry, index)}.
-                          </span>
-                          <span className="font-medium truncate">
-                            {entry.profileName}
-                          </span>
-                        </div>
-                        <span className="shrink-0 font-semibold tabular-nums">
+                        <span className="text-text-muted text-sm tabular-nums">
+                          {displayRank(entries, entry, index)}.
+                        </span>
+                        <span className="min-w-0 truncate font-medium">
+                          {entry.profileName}
+                        </span>
+                        <span className="font-semibold tabular-nums text-right">
                           {formatMetricValue(entry.metricTotal, definition)}
                         </span>
                       </div>

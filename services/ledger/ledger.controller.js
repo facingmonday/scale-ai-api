@@ -2,6 +2,12 @@ const LedgerEntry = require("./ledger.model");
 const Classroom = require("../classroom/classroom.model");
 const Challenge = require("../challenge/challenge.model");
 const Member = require("../members/member.model");
+const Outcome = require("../outcome/outcome.model");
+const MetricDefinition = require("../metricDefinition/metricDefinition.model");
+const VariableDefinition = require("../variableDefinition/variableDefinition.model");
+const {
+  serializeStudentLedgerEntry,
+} = require("./studentResultSerializer");
 
 /**
  * Get ledger history for a user
@@ -33,6 +39,11 @@ exports.getLedgerHistory = async function (req, res) {
         m.organizationId?.toString() === req.organization?._id?.toString() &&
         m.role === "org:admin"
     );
+    if (!isOrgAdmin && !isSelf) {
+      return res.status(403).json({
+        error: "Students may only view their own ledger history",
+      });
+    }
     const isStudent = isSelf && !isOrgAdmin;
 
     if (isStudent) {
@@ -44,9 +55,47 @@ exports.getLedgerHistory = async function (req, res) {
           (chal.isClosed && !chal.feedbackReleaseMode);
         return isReleased === true;
       });
+
+      const challengeIds = historyData
+        .map((entry) => entry.challengeId?._id || entry.challengeId)
+        .filter(Boolean);
+      const [outcomes, variableDefinitions, metricDefinitions] =
+        await Promise.all([
+          Outcome.find({
+            challengeId: { $in: challengeIds },
+            organization: req.organization?._id,
+          })
+            .select("challengeId notes")
+            .lean(),
+          VariableDefinition.find({
+            classroomId,
+            organization: req.organization?._id,
+            isActive: true,
+          }).lean(),
+          MetricDefinition.find({
+            classroomId,
+            organization: req.organization?._id,
+            isActive: true,
+          })
+            .sort({ sortOrder: 1, label: 1 })
+            .lean(),
+        ]);
+      const outcomeNotesByChallenge = new Map(
+        outcomes.map((outcome) => [String(outcome.challengeId), outcome.notes || ""]),
+      );
+      historyData = historyData.map((entry) => {
+        const entryChallengeId = entry.challengeId?._id || entry.challengeId;
+        return serializeStudentLedgerEntry(entry, {
+          outcomeNotes: entryChallengeId
+            ? outcomeNotesByChallenge.get(String(entryChallengeId)) || ""
+            : "",
+          variableDefinitions,
+          metricDefinitions,
+        });
+      });
     }
 
-    if (includeCalculationDetails) {
+    if (includeCalculationDetails && !isStudent) {
       const detailsPromises = history.map((entry) =>
         LedgerEntry.getCalculationDetails(entry._id)
       );

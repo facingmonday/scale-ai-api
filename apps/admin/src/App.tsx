@@ -62,6 +62,7 @@ export default function App() {
   // Simulation logs
   const [logs, setLogs] = useState<{ text: string; status: string }[]>([]);
   const [isRunning, setIsRunning] = useState<boolean>(false);
+  const [isCleaningUp, setIsCleaningUp] = useState<boolean>(false);
   const [runResult, setRunResult] = useState<any>(null);
   const terminalEndRef = useRef<HTMLDivElement>(null);
 
@@ -275,13 +276,25 @@ export default function App() {
   }, [logs]);
 
   // Run simulation round via Server-Sent Events (SSE)
-  const handleRunSimulation = () => {
+  const handleRunSimulation = async () => {
     if (isRunning) return;
+    const classroomLabel =
+      classroomMode === "create"
+        ? newClassroomName || "a new simulation classroom"
+        : classrooms.find((classroom) => classroom._id === selectedClassroomId)?.name ||
+          "the selected simulation classroom";
+    if (
+      !window.confirm(
+        `Create a challenge and submit simulation jobs for ${studentCount} simulated students in ${classroomLabel}?`,
+      )
+    ) {
+      return;
+    }
     setIsRunning(true);
     setLogs([]);
     setRunResult(null);
 
-    const queryParams = new URLSearchParams({
+    const payload = {
       adminId: selectedAdminId,
       orgId: selectedOrgId,
       classroomId: selectedClassroomId,
@@ -296,30 +309,104 @@ export default function App() {
       submissionMode,
       missingSubmissionsMode,
       simulationMode,
-    });
-
-    const eventSource = new EventSource(`/api/simulation/run?${queryParams.toString()}`);
-
-    eventSource.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.log) {
-        setLogs((prev) => [...prev, { text: data.log, status: data.status || "running" }]);
-      }
-      if (data.done) {
-        setRunResult({
-          classroomId: data.classroomId,
-          challengeId: data.challengeId,
-        });
-        eventSource.close();
-        setIsRunning(false);
-      }
     };
 
-    eventSource.onerror = (err) => {
-      setLogs((prev) => [...prev, { text: "⚠️ Connection to simulation engine lost or aborted.", status: "failed" }]);
-      eventSource.close();
+    try {
+      const response = await fetch("/api/simulation/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok || !response.body) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Simulation request failed (${response.status})`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+        const events = buffer.split("\n\n");
+        buffer = events.pop() || "";
+        for (const event of events) {
+          const dataLine = event
+            .split("\n")
+            .find((line) => line.startsWith("data: "));
+          if (!dataLine) continue;
+          const data = JSON.parse(dataLine.slice(6));
+          if (data.log) {
+            setLogs((prev) => [
+              ...prev,
+              { text: data.log, status: data.status || "running" },
+            ]);
+          }
+          if (data.done) {
+            setRunResult({
+              classroomId: data.classroomId,
+              challengeId: data.challengeId,
+              jobCount: data.jobCount,
+              status: data.status,
+            });
+          }
+        }
+        if (done) break;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setLogs((prev) => [
+        ...prev,
+        { text: `❌ Simulation request failed: ${message}`, status: "failed" },
+      ]);
+      console.error(error);
+    } finally {
       setIsRunning(false);
-    };
+    }
+  };
+
+  const handleCleanupSimulation = async () => {
+    if (!runResult || isCleaningUp) return;
+    if (
+      !window.confirm(
+        "Permanently delete this simulation classroom, its challenges, jobs, results, profiles, enrollments, and orphaned simulated users?",
+      )
+    ) {
+      return;
+    }
+
+    setIsCleaningUp(true);
+    try {
+      const response = await fetch("/api/simulation/cleanup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          adminId: selectedAdminId,
+          orgId: selectedOrgId,
+          classroomId: runResult.classroomId,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Cleanup failed");
+      setLogs((prev) => [
+        ...prev,
+        {
+          text: `🧹 Simulation data removed (${body.simulationMembersDeleted || 0} simulated users deleted).`,
+          status: "completed",
+        },
+      ]);
+      setRunResult(null);
+      setSelectedClassroomId("");
+      setClassroomMode("create");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setLogs((prev) => [
+        ...prev,
+        { text: `❌ Cleanup failed: ${message}`, status: "failed" },
+      ]);
+    } finally {
+      setIsCleaningUp(false);
+    }
   };
 
   const navItems = [
@@ -522,7 +609,7 @@ export default function App() {
                         value={simulationMode}
                         onChange={(e) => setSimulationMode(e.target.value as "direct" | "batch")}
                       >
-                        <option value="direct">Direct Ledger Generation (synchronous execution)</option>
+                        <option value="direct">Individual Job Queue (requires worker)</option>
                         <option value="batch">Batch Ledger Mode (requires bull worker running)</option>
                       </select>
                     </div>
@@ -648,13 +735,21 @@ export default function App() {
                         <div className="alert-content">
                           <CheckCircle className="h-5 w-5 alert-icon text-brand-teal" />
                           <div className="alert-body">
-                            <h4 className="alert-title">Simulation successfully completed!</h4>
+                            <h4 className="alert-title">Simulation jobs submitted</h4>
                             <p className="alert-message">
-                              The classroom round has been processed and week outcomes are saved to database.
+                              {runResult.jobCount} student jobs were queued. The workers will save outcomes as they complete.
                             </p>
                             <div className="alert-actions mt-2 text-xs">
                               <span className="font-bold">Classroom ID:</span> {runResult.classroomId} | <span className="font-bold">Challenge ID:</span> {runResult.challengeId}
                             </div>
+                            <button
+                              type="button"
+                              className="mt-3 text-xs font-semibold text-red-600 hover:text-red-700 disabled:opacity-50"
+                              disabled={isCleaningUp}
+                              onClick={handleCleanupSimulation}
+                            >
+                              {isCleaningUp ? "Cleaning up…" : "Delete simulation classroom and data"}
+                            </button>
                           </div>
                         </div>
                       </div>

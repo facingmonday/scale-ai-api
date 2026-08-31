@@ -8,8 +8,14 @@ const LedgerEntry = require("../ledger/ledger.model");
 const SimulationWorker = require("../job/lib/simulationWorker");
 const SimulationBatch = require("../job/simulationBatch.model");
 const SimulationJob = require("../job/job.model");
+const MetricDefinition = require("../metricDefinition/metricDefinition.model");
+const VariableDefinition = require("../variableDefinition/variableDefinition.model");
+const {
+  serializeStudentLedgerEntry,
+} = require("../ledger/studentResultSerializer");
 const challengeAiService = require("./lib/challengeAiService");
 const challengeDebriefService = require("./lib/challengeDebriefService");
+const classroomReadinessService = require("../classroom/classroomReadiness.service");
 const {
   enqueueSimulationBatchSubmit,
 } = require("../../lib/queues/simulation-batch-worker");
@@ -29,6 +35,16 @@ const SCHEDULE_FIELDS = [
   "missingSubmissionPolicy",
   "punishAbsentStudents",
 ];
+
+function sendReadinessError(res, error) {
+  if (error?.code !== "CLASSROOM_READINESS_BLOCKED") return false;
+  res.status(409).json({
+    error: error.message,
+    code: error.code,
+    readiness: error.readiness,
+  });
+  return true;
+}
 
 function parseOptionalDate(value, fieldName) {
   if (value === undefined) return undefined;
@@ -732,6 +748,13 @@ exports.previewScenario = async function (req, res) {
       organizationId
     );
 
+    await classroomReadinessService.assertClassroomReady({
+      classroomId: challenge.classroomId,
+      organizationId,
+      challengeId,
+      operation: "preview",
+    });
+
     // Get outcome
     const outcome = await Outcome.getOutcomeByScenario(challengeId);
 
@@ -783,6 +806,7 @@ exports.previewScenario = async function (req, res) {
     });
   } catch (error) {
     console.error("Error previewing challenge:", error);
+    if (sendReadinessError(res, error)) return;
     if (error.message === "Class not found") {
       return res.status(404).json({ error: error.message });
     }
@@ -820,6 +844,13 @@ exports.rerunScenario = async function (req, res) {
       clerkUserId,
       organizationId
     );
+
+    await classroomReadinessService.assertClassroomReady({
+      classroomId: challenge.classroomId,
+      organizationId,
+      challengeId,
+      operation: "rerun",
+    });
 
     // Get outcome
     const outcome = await Outcome.getOutcomeByScenario(challengeId);
@@ -876,6 +907,7 @@ exports.rerunScenario = async function (req, res) {
     });
   } catch (error) {
     console.error("Error rerunning challenge:", error);
+    if (sendReadinessError(res, error)) return;
     if (error.message === "Class not found") {
       return res.status(404).json({ error: error.message });
     }
@@ -913,6 +945,14 @@ exports.cancelBatchAndRerunScenario = async function (req, res) {
       clerkUserId,
       organizationId
     );
+
+    await classroomReadinessService.assertClassroomReady({
+      classroomId: challenge.classroomId,
+      organizationId,
+      challengeId,
+      operation: "rerun",
+      ignoreCheckKeys: ["in_progress_jobs"],
+    });
 
     // Get outcome (required for rerun)
     const outcome = await Outcome.getOutcomeByScenario(challengeId);
@@ -981,6 +1021,7 @@ exports.cancelBatchAndRerunScenario = async function (req, res) {
     });
   } catch (error) {
     console.error("Error in cancel-batch-and-rerun:", error);
+    if (sendReadinessError(res, error)) return;
     if (error.message === "Class not found") {
       return res.status(404).json({ error: error.message });
     }
@@ -1166,6 +1207,23 @@ exports.getStudentScenariosByClassroom = async function (req, res) {
       (challenge) => Challenge.isVisibleToStudents(challenge)
     );
 
+    const studentOrganizationId =
+      req.organization?._id || publishedScenarios[0]?.organization;
+    const [variableDefinitions, metricDefinitions] = await Promise.all([
+      VariableDefinition.find({
+        classroomId,
+        organization: studentOrganizationId,
+        isActive: true,
+      }).lean(),
+      MetricDefinition.find({
+        classroomId,
+        organization: studentOrganizationId,
+        isActive: true,
+      })
+        .sort({ sortOrder: 1, label: 1 })
+        .lean(),
+    ]);
+
     // For each challenge, fetch decision, outcome, and ledger entry
     const scenariosWithData = await Promise.all(
       publishedScenarios.map(async (challenge) => {
@@ -1203,7 +1261,13 @@ exports.getStudentScenariosByClassroom = async function (req, res) {
           ...challenge,
           decision: decision || null,
           outcome: safeOutcome,
-          ledgerEntry: canViewResults ? ledgerEntry : null,
+          ledgerEntry: canViewResults
+            ? serializeStudentLedgerEntry(ledgerEntry, {
+              outcomeNotes: safeOutcome?.notes || "",
+              variableDefinitions,
+              metricDefinitions,
+            })
+            : null,
         };
       })
     );
@@ -1278,6 +1342,22 @@ exports.getScenarioByIdForStudent = async function (req, res) {
           hiddenNotes: undefined,
         }
       : null;
+    const [variableDefinitions, metricDefinitions] = canViewResults
+      ? await Promise.all([
+        VariableDefinition.find({
+          classroomId: challenge.classroomId,
+          organization: challenge.organization,
+          isActive: true,
+        }).lean(),
+        MetricDefinition.find({
+          classroomId: challenge.classroomId,
+          organization: challenge.organization,
+          isActive: true,
+        })
+          .sort({ sortOrder: 1, label: 1 })
+          .lean(),
+      ])
+      : [[], []];
 
     res.json({
       success: true,
@@ -1285,7 +1365,13 @@ exports.getScenarioByIdForStudent = async function (req, res) {
         ...challenge,
         decision: decision || null,
         outcome: safeOutcome,
-        ledgerEntry: canViewResults ? ledgerEntry : null,
+        ledgerEntry: canViewResults
+          ? serializeStudentLedgerEntry(ledgerEntry, {
+            outcomeNotes: safeOutcome?.notes || "",
+            variableDefinitions,
+            metricDefinitions,
+          })
+          : null,
       },
     });
   } catch (error) {

@@ -13,6 +13,7 @@ import {
   sortMetricDefinitions,
 } from "../../utils/formatMetric";
 import { formatProfileType } from "./utils";
+import StudentResultExplanation from "../StudentResultExplanation";
 
 interface StudentDashboardInsightsProps {
   dashboard: StudentDashboardResponse;
@@ -209,7 +210,8 @@ const StudentDashboardInsights: React.FC<StudentDashboardInsightsProps> = ({
             definitions={metricDefinitions}
           />
 
-          {(latestResult.outcomeNotes || latestResult.summary) && (
+          {(latestResult.outcomeNotes ||
+            (latestResult.summary && !latestResult.resultExplanation)) && (
             <div className="mt-5 grid gap-3 lg:grid-cols-2">
               {latestResult.outcomeNotes && (
                 <div className="rounded-xl border border-brand-blue/20 bg-brand-blue/5 p-4">
@@ -222,7 +224,7 @@ const StudentDashboardInsights: React.FC<StudentDashboardInsightsProps> = ({
                   </p>
                 </div>
               )}
-              {latestResult.summary && (
+              {latestResult.summary && !latestResult.resultExplanation && (
                 <div className="rounded-xl border border-ui-border bg-ui-muted/40 p-4">
                   <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
                     <i className="pi pi-sparkles text-brand-teal" aria-hidden />
@@ -236,6 +238,12 @@ const StudentDashboardInsights: React.FC<StudentDashboardInsightsProps> = ({
             </div>
           )}
         </section>
+      )}
+
+      {latestResult?.resultExplanation && (
+        <StudentResultExplanation
+          explanation={latestResult.resultExplanation}
+        />
       )}
 
       {statistics && (

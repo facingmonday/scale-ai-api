@@ -10,6 +10,74 @@ export interface AIMetadata {
   generatedAt: Date;
 }
 
+export type StudentFeedbackImpact =
+  | "positive"
+  | "negative"
+  | "mixed"
+  | "neutral";
+
+export interface StudentFeedbackDriver {
+  title: string;
+  explanation: string;
+  impact: StudentFeedbackImpact;
+  source:
+    | "decision"
+    | "outcome"
+    | "profile"
+    | "prior_result"
+    | "random_event"
+    | "result";
+}
+
+export interface StudentNextAction {
+  title: string;
+  rationale: string;
+}
+
+export interface StudentExplanationValue {
+  key: string;
+  label: string;
+  description?: string;
+  value: unknown;
+  dataType?: string;
+  format?: string | null;
+}
+
+export interface StudentResultExplanation {
+  overview: string;
+  keyDrivers: StudentFeedbackDriver[];
+  nextActions: StudentNextAction[];
+  guidanceStatus: "completed" | "failed" | "unavailable";
+  details: {
+    startingState: StudentExplanationValue[];
+    profileConstraints: StudentExplanationValue[];
+    challengeContext: StudentExplanationValue[];
+    decisions: StudentExplanationValue[];
+    publicOutcome: {
+      notes: string;
+      values: StudentExplanationValue[];
+    };
+    randomEvent?: string | null;
+    finalMetrics: StudentExplanationValue[];
+    deterministicCalculations: Array<{
+      key: string;
+      label: string;
+      expression: string;
+      values: Record<string, number>;
+    }>;
+  };
+  modeledOutcomeNotice: string;
+}
+
+export interface StudentFeedback {
+  status: "completed" | "failed";
+  keyDrivers: StudentFeedbackDriver[];
+  nextActions: StudentNextAction[];
+  generatedAt?: Date | string | null;
+  model?: string | null;
+  error?: string | null;
+}
+
 /**
  * Calculation context for auditability (matches backend API)
  */
@@ -90,7 +158,10 @@ export interface LedgerEntry extends BaseSchema {
   randomEvent?: string | null;
   summary: string;
 
-  aiMetadata: AIMetadata;
+  aiMetadata?: AIMetadata;
+
+  studentFeedback?: StudentFeedback;
+  resultExplanation?: StudentResultExplanation;
 
   overridden: boolean;
   overriddenBy?: string | null;

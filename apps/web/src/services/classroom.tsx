@@ -7,6 +7,10 @@ import type {
 } from "../types/dashboard";
 import type { BillingMode, JoinPolicy } from "../types/licensing";
 import type { ClassroomAutomationSettings } from "../types/classroom";
+import type {
+  ClassroomReadiness,
+  ReadinessOperation,
+} from "../types/readiness";
 
 async function create(data: {
   name: string;
@@ -55,6 +59,26 @@ async function getStudentDashboard(
     },
   );
   return response.data.data;
+}
+
+async function getPreflight(
+  classroomId: string,
+  options: {
+    challengeId?: string | null;
+    operation?: ReadinessOperation;
+  } = {},
+): Promise<ClassroomReadiness> {
+  const response = await axios.get<ClassroomReadiness>(
+    `${API_HOST}/${API_VERSION}/admin/classrooms/${classroomId}/preflight`,
+    {
+      headers: await TokenHandler.getHeaders(),
+      params: {
+        ...(options.challengeId ? { challengeId: options.challengeId } : {}),
+        operation: options.operation || "process",
+      },
+    },
+  );
+  return response.data;
 }
 
 async function inviteStudent(classroomId: string, email: string) {
@@ -142,6 +166,7 @@ const classroomService = {
   create,
   getAdminDashboard,
   getStudentDashboard,
+  getPreflight,
   inviteStudent,
   getAll,
   update,

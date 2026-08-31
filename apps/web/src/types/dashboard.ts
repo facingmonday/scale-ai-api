@@ -1,6 +1,7 @@
 import type { ScenarioWithVariables } from "./challenge";
 import type { Profile } from "./profile";
 import type { MetricDefinition } from "./metric";
+import type { StudentResultExplanation } from "./ledger";
 
 /**
  * Class Dashboard Response
@@ -15,6 +16,8 @@ export interface LeaderboardMetric {
   label: string;
   format: import("./metric").MetricFormat;
   aggregation?: import("./metric").MetricAggregation;
+  leaderboardSortDirection?: import("./metric").LeaderboardSortDirection;
+  isPrimaryLeaderboardMetric?: boolean;
 }
 
 export interface LeaderboardEntry {
@@ -74,6 +77,7 @@ export interface StudentDashboardResult {
   summary: string;
   randomEvent?: string | null;
   outcomeNotes?: string;
+  resultExplanation?: StudentResultExplanation;
 }
 
 export interface StudentClassStatistics {

@@ -613,11 +613,11 @@ test("Classroom Model Integration Tests", async (t) => {
         direction,
       ]),
       [
-        ["netProfit", "desc"],
         ["sales", "desc"],
         ["revenue", "desc"],
         ["costs", "asc"],
         ["waste", "asc"],
+        ["netProfit", "desc"],
         ["cashAfter", "desc"],
       ]
     );
@@ -672,7 +672,120 @@ test("Classroom Model Integration Tests", async (t) => {
         ["Echo", 1400],
       ]
     );
+    assert.equal(dashboard.leaderboardMetric.key, "netProfit");
     assert.equal(dashboard.leaderboardTop10[0].metricTotal, 130);
+  });
+
+  await t.test("getDashboard follows arbitrary metric aggregation configuration", async () => {
+    const orgId = new mongoose.Types.ObjectId();
+    const classDoc = await Classroom.create({
+      name: "Configurable Leaderboards",
+      organization: orgId,
+      ownership: new mongoose.Types.ObjectId(),
+      createdBy: "test",
+      updatedBy: "test",
+    });
+    const profileType = await ProfileType.create({
+      classroomId: classDoc._id,
+      key: "custom",
+      label: "Custom",
+      organization: orgId,
+      createdBy: "test",
+      updatedBy: "test",
+    });
+    const users = [new mongoose.Types.ObjectId(), new mongoose.Types.ObjectId()];
+    await Profile.create(
+      ["Alpha", "Bravo"].map((shopName, index) => ({
+        classroomId: classDoc._id,
+        userId: users[index],
+        studentId: `C-${index + 1}`,
+        shopName,
+        storeDescription: "Custom store",
+        storeLocation: "Campus",
+        profileType: profileType._id,
+        organization: orgId,
+        createdBy: "test",
+        updatedBy: "test",
+      }))
+    );
+    await MetricDefinition.create(
+      [
+        ["qualityAvg", "Average Quality", "avg", "asc", true],
+        ["peakDemand", "Peak Demand", "max", "desc", false],
+        ["lowestDelay", "Lowest Delay", "min", "asc", false],
+        ["latestScore", "Latest Score", "none", "desc", false],
+      ].map(([key, label, aggregation, direction, isPrimary], index) => ({
+        classroomId: classDoc._id,
+        key,
+        label,
+        dataType: "number",
+        format: "count",
+        aggregation,
+        leaderboardSortDirection: direction,
+        isPrimaryLeaderboardMetric: isPrimary,
+        displayIn: { leaderboard: true },
+        sortOrder: (index + 1) * 10,
+        organization: orgId,
+        createdBy: "test",
+        updatedBy: "test",
+      }))
+    );
+    const values = [
+      [
+        { qualityAvg: 80, peakDemand: 10, lowestDelay: 5, latestScore: 100 },
+        { qualityAvg: 60, peakDemand: 30, lowestDelay: 7, latestScore: 50 },
+      ],
+      [
+        { qualityAvg: 90, peakDemand: 20, lowestDelay: 4, latestScore: 40 },
+        { qualityAvg: 80, peakDemand: 25, lowestDelay: 9, latestScore: 60 },
+      ],
+    ];
+    const challengeIds = [
+      new mongoose.Types.ObjectId(),
+      new mongoose.Types.ObjectId(),
+    ];
+    await LedgerEntry.create(
+      users.flatMap((userId, userIndex) =>
+        values[userIndex].map((metrics, challengeIndex) => ({
+          classroomId: classDoc._id,
+          challengeId: challengeIds[challengeIndex],
+          userId,
+          metrics,
+          summary: "Configured result",
+          aiMetadata: {
+            model: "test",
+            runId: `configured-${userIndex}-${challengeIndex}`,
+          },
+          organization: orgId,
+          createdBy: "test",
+          updatedBy: "test",
+          createdDate: new Date(
+            challengeIndex === 0
+              ? "2026-08-01T00:00:00Z"
+              : "2026-08-08T00:00:00Z"
+          ),
+        }))
+      )
+    );
+
+    const dashboard = await Classroom.getDashboard(classDoc._id, orgId);
+    assert.deepEqual(
+      dashboard.leaderboards.map(({ metric, direction, entries }) => [
+        metric.key,
+        metric.aggregation,
+        direction,
+        entries[0].profileName,
+        entries[0].metricTotal,
+      ]),
+      [
+        ["qualityAvg", "avg", "asc", "Alpha", 70],
+        ["peakDemand", "max", "desc", "Alpha", 30],
+        ["lowestDelay", "min", "asc", "Bravo", 4],
+        ["latestScore", "none", "desc", "Bravo", 60],
+      ]
+    );
+    assert.equal(dashboard.leaderboardMetric.key, "qualityAvg");
+    assert.equal(dashboard.leaderboardTop10[0].profileName, "Alpha");
   });
 
   await t.test("getStudentDashboard static (with fix verification)", async () => {
@@ -791,6 +904,8 @@ test("Classroom Model Integration Tests", async (t) => {
       label: "Revenue",
       dataType: "number",
       format: "currency",
+      leaderboardSortDirection: "asc",
+      isPrimaryLeaderboardMetric: true,
       displayIn: {
         table: true,
         kpi: true,
@@ -891,7 +1006,7 @@ test("Classroom Model Integration Tests", async (t) => {
       "Rain reduced foot traffic."
     );
     assert.equal(dashboard.classStatistics.participantCount, 2);
-    assert.equal(dashboard.classStatistics.rank, 2);
+    assert.equal(dashboard.classStatistics.rank, 1);
     assert.equal(dashboard.classStatistics.averages.revenue, 2600);
   });
 

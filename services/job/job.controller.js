@@ -6,6 +6,20 @@ const Challenge = require("../challenge/challenge.model");
 const {
   enqueueSimulationBatchSubmit,
 } = require("../../lib/queues/simulation-batch-worker");
+const {
+  assertClassroomReady,
+  ClassroomReadinessBlockedError,
+} = require("../classroom/classroomReadiness.service");
+
+function sendReadinessError(res, error) {
+  if (!(error instanceof ClassroomReadinessBlockedError)) return false;
+  res.status(error.statusCode).json({
+    error: error.message,
+    code: error.code,
+    readiness: error.readiness,
+  });
+  return true;
+}
 
 /**
  * Get jobs for a challenge
@@ -135,6 +149,14 @@ exports.retryJob = async function (req, res) {
       organizationId
     );
 
+    await assertClassroomReady({
+      classroomId: challenge.classroomId,
+      challengeId: challenge._id,
+      organizationId,
+      operation: "rerun",
+      ignoreCheckKeys: ["in_progress_jobs"],
+    });
+
     // Reset and process job
     await job.reset();
 
@@ -163,6 +185,7 @@ exports.retryJob = async function (req, res) {
     });
   } catch (error) {
     console.error("Error retrying job:", error);
+    if (sendReadinessError(res, error)) return;
     if (error.message === "Class not found") {
       return res.status(404).json({ error: error.message });
     }
@@ -205,6 +228,13 @@ exports.processPendingJobs = async function (req, res) {
 
       const enqueued = [];
       for (const [, j] of byScenario) {
+        await assertClassroomReady({
+          classroomId: j.classroomId,
+          challengeId: j.challengeId,
+          organizationId: j.organization,
+          operation: "process",
+          ignoreCheckKeys: ["in_progress_jobs"],
+        });
         await enqueueSimulationBatchSubmit({
           challengeId: j.challengeId,
           classroomId: j.classroomId,
@@ -215,7 +245,47 @@ exports.processPendingJobs = async function (req, res) {
       }
       results = enqueued.map((x) => ({ success: true, ...x }));
     } else {
-      results = await SimulationWorker.processPendingJobs(limit);
+      const pending = await JobModel.find({ status: "pending" })
+        .sort({ createdDate: 1 })
+        .limit(limit);
+      const readyJobIds = [];
+      const blockedResults = [];
+
+      for (const job of pending) {
+        try {
+          await assertClassroomReady({
+            classroomId: job.classroomId,
+            challengeId: job.challengeId,
+            organizationId: job.organization,
+            operation: "process",
+            ignoreCheckKeys: ["in_progress_jobs"],
+          });
+          readyJobIds.push(job._id);
+        } catch (error) {
+          if (!(error instanceof ClassroomReadinessBlockedError)) throw error;
+          blockedResults.push({
+            success: false,
+            jobId: job._id,
+            code: error.code,
+            error: error.message,
+            readiness: error.readiness,
+          });
+        }
+      }
+
+      const processed = [];
+      for (const jobId of readyJobIds) {
+        try {
+          processed.push(await SimulationWorker.processJob(jobId));
+        } catch (error) {
+          processed.push({
+            success: false,
+            jobId,
+            error: error.message,
+          });
+        }
+      }
+      results = [...processed, ...blockedResults];
     }
 
     res.json({
@@ -225,6 +295,7 @@ exports.processPendingJobs = async function (req, res) {
     });
   } catch (error) {
     console.error("Error processing pending jobs:", error);
+    if (sendReadinessError(res, error)) return;
     res.status(500).json({ error: error.message });
   }
 };

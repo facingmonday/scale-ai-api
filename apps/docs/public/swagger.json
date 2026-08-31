@@ -277,6 +277,73 @@
           }
         }
       },
+      "MetricDefinition": {
+        "type": "object",
+        "properties": {
+          "classroomId": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "dataType": {
+            "type": "string",
+            "enum": [
+              "number",
+              "string",
+              "boolean"
+            ]
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "currency",
+              "count",
+              "units",
+              "percent",
+              "text"
+            ]
+          },
+          "aggregation": {
+            "type": "string",
+            "enum": [
+              "sum",
+              "avg",
+              "last",
+              "max",
+              "min",
+              "none"
+            ]
+          },
+          "displayIn": {
+            "type": "object",
+            "properties": {
+              "leaderboard": {
+                "type": "boolean"
+              }
+            }
+          },
+          "leaderboardSortDirection": {
+            "type": "string",
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          },
+          "isPrimaryLeaderboardMetric": {
+            "type": "boolean"
+          },
+          "sortOrder": {
+            "type": "number"
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        }
+      },
       "Member": {
         "type": "object",
         "required": [
@@ -707,6 +774,16 @@
               "min",
               "none"
             ]
+          },
+          "leaderboardSortDirection": {
+            "type": "string",
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          },
+          "isPrimaryLeaderboardMetric": {
+            "type": "boolean"
           }
         }
       },
@@ -771,7 +848,7 @@
           },
           "leaderboardTop10": {
             "type": "array",
-            "description": "Backward-compatible cumulative Net Profit leaderboard.",
+            "description": "Backward-compatible leaderboard for the configured primary metric.",
             "items": {
               "$ref": "#/components/schemas/LeaderboardEntry"
             }
@@ -4035,6 +4112,54 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/v1/admin/classrooms/{classroomId}/preflight": {
+      "get": {
+        "summary": "Check classroom readiness",
+        "description": "Validate whether a challenge can be previewed, processed, or rerun. Requires org:admin role.",
+        "tags": [
+          "Classrooms"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "classroomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "challengeId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "operation",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "preview",
+                "process",
+                "rerun"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Classroom readiness report."
           }
         }
       }

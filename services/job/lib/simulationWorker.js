@@ -6,6 +6,7 @@ const Decision = require("../../decision/decision.model");
 const LedgerEntry = require("../../ledger/ledger.model");
 const VariableDefinition = require("../../variableDefinition/variableDefinition.model");
 const MetricDefinition = require("../../metricDefinition/metricDefinition.model");
+const classroomReadinessService = require("../../classroom/classroomReadiness.service");
 
 /**
  * Simulation Worker - processes individual simulation jobs and writes
@@ -60,6 +61,16 @@ class SimulationWorker {
       }
       throw new Error(`Job is not pending: ${job.status}`);
     }
+
+    // Processing can be triggered by HTTP endpoints, recovery jobs, or Bull.
+    // Re-check here so every execution path has the same server-side guard.
+    await classroomReadinessService.assertClassroomReady({
+      classroomId: job.classroomId,
+      challengeId: job.challengeId,
+      organizationId: job.organization,
+      operation: job.dryRun ? "preview" : "process",
+      ignoreCheckKeys: ["in_progress_jobs"],
+    });
 
     try {
       await job.markRunning();
@@ -272,6 +283,18 @@ class SimulationWorker {
         : null,
     };
 
+    const studentFeedback = await LedgerEntry.generateStudentFeedback({
+      summary: aiResult.summary,
+      metrics,
+      profileVariables: filtered.profileVariables,
+      decisionVariables: filtered.decisionVariables,
+      outcomeVariables: filtered.outcomeVariables,
+      outcomeNotes: context.outcome?.notes || "",
+      priorMetrics: context.priorMetrics || {},
+      randomEvent: aiResult.randomEvent,
+      metricDefinitions: metricDefs,
+    });
+
     const ledgerInput = {
       profileId,
       classroomId: job.classroomId,
@@ -281,6 +304,7 @@ class SimulationWorker {
       metrics,
       randomEvent: aiResult.randomEvent,
       summary: aiResult.summary,
+      studentFeedback,
       aiMetadata: aiResult.aiMetadata,
       calculationContext,
     };

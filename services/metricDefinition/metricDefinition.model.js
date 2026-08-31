@@ -10,15 +10,45 @@ const SUPPLY_CHAIN_METRIC_KEYS = [
   "cashBefore",
   "cashAfter",
 ];
-const SUPPLY_CHAIN_LEADERBOARD_KEYS = [
-  "netProfit",
-  "sales",
-  "revenue",
-  "costs",
-  "waste",
-  "cashAfter",
-];
-const ASCENDING_LEADERBOARD_KEYS = new Set(["costs", "waste"]);
+const SUPPLY_CHAIN_ASCENDING_KEYS = ["costs", "waste"];
+
+/**
+ * @openapi
+ * components:
+ *   schemas:
+ *     MetricDefinition:
+ *       type: object
+ *       properties:
+ *         classroomId:
+ *           type: string
+ *         key:
+ *           type: string
+ *         label:
+ *           type: string
+ *         dataType:
+ *           type: string
+ *           enum: [number, string, boolean]
+ *         format:
+ *           type: string
+ *           enum: [currency, count, units, percent, text]
+ *         aggregation:
+ *           type: string
+ *           enum: [sum, avg, last, max, min, none]
+ *         displayIn:
+ *           type: object
+ *           properties:
+ *             leaderboard:
+ *               type: boolean
+ *         leaderboardSortDirection:
+ *           type: string
+ *           enum: [asc, desc]
+ *         isPrimaryLeaderboardMetric:
+ *           type: boolean
+ *         sortOrder:
+ *           type: number
+ *         isActive:
+ *           type: boolean
+ */
 
 /**
  * MetricDefinition - Output definitions for the AI simulation.
@@ -74,6 +104,14 @@ const metricDefinitionSchema = new mongoose.Schema({
     enum: ["sum", "avg", "last", "max", "min", "none"],
     default: "last",
   },
+  // Direction used to rank the aggregated value on leaderboards.
+  leaderboardSortDirection: {
+    type: String,
+    enum: ["asc", "desc"],
+    default: "desc",
+  },
+  // The one leaderboard metric used by singular rank/debrief surfaces.
+  isPrimaryLeaderboardMetric: { type: Boolean, default: false },
   // Which UI surfaces should show this metric
   displayIn: {
     table: { type: Boolean, default: true },
@@ -151,6 +189,9 @@ metricDefinitionSchema.statics.createDefinition = async function (
     format: payload.format || "count",
     aiPromptRule: payload.aiPromptRule || "",
     aggregation: payload.aggregation || "last",
+    leaderboardSortDirection:
+      payload.leaderboardSortDirection === "asc" ? "asc" : "desc",
+    isPrimaryLeaderboardMetric: !!payload.isPrimaryLeaderboardMetric,
     displayIn: {
       table: payload.displayIn?.table !== false,
       kpi: !!payload.displayIn?.kpi,
@@ -163,7 +204,7 @@ metricDefinitionSchema.statics.createDefinition = async function (
         ? payload.defaultInitialValue
         : null,
     sortOrder: payload.sortOrder ?? 0,
-    isActive: true,
+    isActive: payload.isActive !== false,
     organization: organizationId,
     createdBy: clerkUserId,
     updatedBy: clerkUserId,
@@ -200,73 +241,120 @@ metricDefinitionSchema.statics.getActive = async function (classroomId) {
   });
 };
 
-/**
- * Select the single metric used to rank results. Supply-chain classrooms use
- * net profit even when legacy definitions still flag revenue and cash balance.
- * Other classroom types retain their configured leaderboard metric.
- */
+function isLeaderboardEligible(definition) {
+  return !!(
+    definition &&
+    definition.dataType === "number" &&
+    definition.isActive !== false &&
+    definition.displayIn?.leaderboard
+  );
+}
+
+function sortLeaderboardDefinitions(definitions) {
+  return [...definitions].sort((a, b) => {
+    const orderDifference = (a.sortOrder || 0) - (b.sortOrder || 0);
+    if (orderDifference !== 0) return orderDifference;
+    return String(a.label || a.key).localeCompare(String(b.label || b.key));
+  });
+}
+
+/** Select the configured primary metric used by singular ranking surfaces. */
 metricDefinitionSchema.statics.selectLeaderboardDefinition = function (
   definitions
 ) {
-  const numericDefs = (Array.isArray(definitions) ? definitions : []).filter(
-    (definition) =>
-      definition &&
-      definition.dataType === "number" &&
-      definition.isActive !== false
+  const eligible = sortLeaderboardDefinitions(
+    (Array.isArray(definitions) ? definitions : []).filter(
+      isLeaderboardEligible
+    )
   );
-  const keys = new Set(numericDefs.map((definition) => definition.key));
-  const isSupplyChainLedger = SUPPLY_CHAIN_METRIC_KEYS.every((key) =>
-    keys.has(key)
-  );
-
-  if (isSupplyChainLedger) {
-    return numericDefs.find((definition) => definition.key === "netProfit");
-  }
-
   return (
-    numericDefs.find((definition) => definition.displayIn?.leaderboard) ||
-    numericDefs[0] ||
+    eligible.find((definition) => definition.isPrimaryLeaderboardMetric) ||
+    eligible[0] ||
     null
   );
 };
 
-/**
- * Select the metrics displayed by the cumulative instructor leaderboard.
- * Supply-chain classrooms always use the six canonical categories in product
- * order. Other classroom types retain their configured leaderboard metrics.
- */
+/** Select every configured leaderboard metric in display order. */
 metricDefinitionSchema.statics.selectLeaderboardDefinitions = function (
   definitions
 ) {
-  const numericDefs = (Array.isArray(definitions) ? definitions : []).filter(
-    (definition) =>
-      definition &&
-      definition.dataType === "number" &&
-      definition.isActive !== false
+  const selected = sortLeaderboardDefinitions(
+    (Array.isArray(definitions) ? definitions : []).filter(
+      isLeaderboardEligible
+    )
   );
-  const definitionsByKey = new Map(
-    numericDefs.map((definition) => [definition.key, definition])
-  );
-  const isSupplyChainLedger = SUPPLY_CHAIN_METRIC_KEYS.every((key) =>
-    definitionsByKey.has(key)
-  );
-
-  const selected = isSupplyChainLedger
-    ? SUPPLY_CHAIN_LEADERBOARD_KEYS.map((key) => definitionsByKey.get(key))
-    : numericDefs.filter((definition) => definition.displayIn?.leaderboard);
-
-  return selected.filter(Boolean).map((definition) => ({
+  return selected.map((definition) => ({
     definition,
-    direction: ASCENDING_LEADERBOARD_KEYS.has(definition.key) ? "asc" : "desc",
+    direction:
+      definition.leaderboardSortDirection === "asc" ? "asc" : "desc",
   }));
 };
 
 /**
- * Idempotently enables the canonical six leaderboard metrics for existing
- * supply-chain classrooms. Only classrooms whose complete active numeric
- * metric set exactly matches the canonical ledger are eligible.
+ * Ensure an enabled classroom has exactly one primary leaderboard metric.
+ * preferredKey is used when an administrator explicitly selects a primary.
  */
-metricDefinitionSchema.statics.repairSupplyChainLeaderboardFlagsForOrganization =
+metricDefinitionSchema.statics.ensurePrimaryLeaderboardMetric = async function (
+  classroomId,
+  organizationId,
+  preferredKey,
+  clerkUserId = "system"
+) {
+  const definitions = await this.find({
+    classroomId,
+    organization: organizationId,
+    isActive: true,
+    dataType: "number",
+    "displayIn.leaderboard": true,
+  }).sort({ sortOrder: 1, label: 1 });
+
+  if (definitions.length === 0) {
+    await this.updateMany(
+      { classroomId, organization: organizationId, isPrimaryLeaderboardMetric: true },
+      {
+        $set: {
+          isPrimaryLeaderboardMetric: false,
+          updatedBy: clerkUserId,
+          updatedDate: new Date(),
+        },
+      }
+    );
+    return null;
+  }
+
+  const target =
+    definitions.find((definition) => definition.key === preferredKey) ||
+    definitions.find((definition) => definition.isPrimaryLeaderboardMetric) ||
+    definitions[0];
+
+  await this.updateMany(
+    {
+      classroomId,
+      organization: organizationId,
+      _id: { $ne: target._id },
+      isPrimaryLeaderboardMetric: true,
+    },
+    {
+      $set: {
+        isPrimaryLeaderboardMetric: false,
+        updatedBy: clerkUserId,
+        updatedDate: new Date(),
+      },
+    }
+  );
+  if (!target.isPrimaryLeaderboardMetric) {
+    target.isPrimaryLeaderboardMetric = true;
+    target.updatedBy = clerkUserId;
+    await target.save();
+  }
+  return target;
+};
+
+/**
+ * Backfill missing leaderboard fields without changing administrator-authored
+ * display flags, aggregation behavior, formats, or existing sort directions.
+ */
+metricDefinitionSchema.statics.backfillLeaderboardConfigurationForOrganization =
   async function (organizationId, clerkUserId = "system_startup") {
     if (!organizationId) throw new Error("organizationId is required");
 
@@ -275,7 +363,9 @@ metricDefinitionSchema.statics.repairSupplyChainLeaderboardFlagsForOrganization 
       isActive: true,
       dataType: "number",
     })
-      .select("_id classroomId key displayIn.leaderboard")
+      .select(
+        "_id classroomId key label dataType isActive sortOrder displayIn leaderboardSortDirection isPrimaryLeaderboardMetric"
+      )
       .lean();
     const byClassroom = new Map();
     definitions.forEach((definition) => {
@@ -284,65 +374,103 @@ metricDefinitionSchema.statics.repairSupplyChainLeaderboardFlagsForOrganization 
       byClassroom.get(classroomKey).push(definition);
     });
 
-    const canonicalKeySet = new Set(SUPPLY_CHAIN_METRIC_KEYS);
-    const classroomIds = [];
+    const canonicalClassroomIds = [];
     byClassroom.forEach((classroomDefinitions, classroomId) => {
       const keys = new Set(classroomDefinitions.map(({ key }) => key));
       if (
-        keys.size === canonicalKeySet.size &&
+        keys.size === SUPPLY_CHAIN_METRIC_KEYS.length &&
         SUPPLY_CHAIN_METRIC_KEYS.every((key) => keys.has(key))
       ) {
-        const needsRepair = classroomDefinitions.some((definition) => {
-          const expected = SUPPLY_CHAIN_LEADERBOARD_KEYS.includes(
-            definition.key
-          );
-          return definition.displayIn?.leaderboard !== expected;
-        });
-        if (needsRepair) classroomIds.push(classroomId);
+        canonicalClassroomIds.push(classroomId);
       }
     });
 
-    if (classroomIds.length === 0) {
-      return { classroomsRepaired: 0, metricsUpdated: 0 };
+    const ascendingResult = await this.updateMany(
+      {
+        organization: organizationId,
+        classroomId: { $in: canonicalClassroomIds },
+        key: { $in: SUPPLY_CHAIN_ASCENDING_KEYS },
+        leaderboardSortDirection: { $exists: false },
+      },
+      {
+        $set: {
+          leaderboardSortDirection: "asc",
+          updatedBy: clerkUserId,
+          updatedDate: new Date(),
+        },
+      }
+    );
+    const defaultsResult = await this.updateMany(
+      {
+        organization: organizationId,
+        leaderboardSortDirection: { $exists: false },
+      },
+      {
+        $set: {
+          leaderboardSortDirection: "desc",
+          updatedBy: clerkUserId,
+          updatedDate: new Date(),
+        },
+      }
+    );
+    const primaryDefaultsResult = await this.updateMany(
+      {
+        organization: organizationId,
+        isPrimaryLeaderboardMetric: { $exists: false },
+      },
+      {
+        $set: {
+          isPrimaryLeaderboardMetric: false,
+          updatedBy: clerkUserId,
+          updatedDate: new Date(),
+        },
+      }
+    );
+
+    let primariesAssigned = 0;
+    for (const [classroomId, classroomDefinitions] of byClassroom) {
+      const eligible = sortLeaderboardDefinitions(
+        classroomDefinitions.filter(isLeaderboardEligible)
+      );
+      const allPrimaries = classroomDefinitions.filter(
+        (definition) => definition.isPrimaryLeaderboardMetric
+      );
+      if (eligible.length === 0) {
+        if (allPrimaries.length > 0) {
+          await this.ensurePrimaryLeaderboardMetric(
+            classroomId,
+            organizationId,
+            undefined,
+            clerkUserId
+          );
+          primariesAssigned += 1;
+        }
+        continue;
+      }
+      const primaries = eligible.filter(
+        (definition) => definition.isPrimaryLeaderboardMetric
+      );
+      if (primaries.length === 1 && allPrimaries.length === 1) continue;
+      const preferredKey =
+        primaries[0]?.key ||
+        (canonicalClassroomIds.includes(classroomId)
+          ? "netProfit"
+          : eligible[0].key);
+      await this.ensurePrimaryLeaderboardMetric(
+        classroomId,
+        organizationId,
+        preferredKey,
+        clerkUserId
+      );
+      primariesAssigned += 1;
     }
 
-    const leaderboardResult = await this.updateMany(
-      {
-        organization: organizationId,
-        classroomId: { $in: classroomIds },
-        key: { $in: SUPPLY_CHAIN_LEADERBOARD_KEYS },
-        "displayIn.leaderboard": { $ne: true },
-      },
-      {
-        $set: {
-          "displayIn.leaderboard": true,
-          updatedBy: clerkUserId,
-          updatedDate: new Date(),
-        },
-      }
-    );
-    const cashBeforeResult = await this.updateMany(
-      {
-        organization: organizationId,
-        classroomId: { $in: classroomIds },
-        key: "cashBefore",
-        "displayIn.leaderboard": { $ne: false },
-      },
-      {
-        $set: {
-          "displayIn.leaderboard": false,
-          updatedBy: clerkUserId,
-          updatedDate: new Date(),
-        },
-      }
-    );
-
-    const metricsUpdated =
-      (leaderboardResult.modifiedCount || 0) +
-      (cashBeforeResult.modifiedCount || 0);
     return {
-      classroomsRepaired: classroomIds.length,
-      metricsUpdated,
+      metricsUpdated:
+        (ascendingResult.modifiedCount || 0) +
+        (defaultsResult.modifiedCount || 0) +
+        (primaryDefaultsResult.modifiedCount || 0),
+      primariesAssigned,
     };
   };
 
@@ -359,12 +487,15 @@ metricDefinitionSchema.statics.getActiveKeys = async function (classroomId) {
  */
 metricDefinitionSchema.statics.getDefinitionByKey = async function (
   classroomId,
-  key
+  key,
+  organizationId
 ) {
   if (!classroomId) {
     throw new Error("classroomId is required");
   }
-  return await this.findOne({ classroomId, key });
+  const query = { classroomId, key };
+  if (organizationId) query.organization = organizationId;
+  return await this.findOne(query);
 };
 
 // Instance methods

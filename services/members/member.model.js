@@ -112,6 +112,11 @@ const memberSchema = new mongoose.Schema(
       unique: true,
       index: true,
     },
+    isSimulationUser: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     firstName: String,
     lastName: String,
     username: String,
@@ -416,6 +421,12 @@ memberSchema.methods.removeOrganizationMembership = function (organization) {
 
 // Methods for fetching email/phone from Clerk
 memberSchema.methods.getContactFromClerk = async function () {
+  if (
+    this.isSimulationUser ||
+    String(this.clerkUserId || "").startsWith("sim_")
+  ) {
+    return { email: "", phone: "" };
+  }
   try {
     const clerkUser = await clerkClient.users.getUser(this.clerkUserId);
 
@@ -441,6 +452,30 @@ memberSchema.methods.getContactFromClerk = async function () {
  * Authentication secrets and private/unsafe metadata are intentionally omitted.
  */
 memberSchema.methods.getProfileFromClerk = async function () {
+  if (
+    this.isSimulationUser ||
+    String(this.clerkUserId || "").startsWith("sim_")
+  ) {
+    const firstName = this.firstName || "";
+    const lastName = this.lastName || "";
+    return {
+      id: this.clerkUserId,
+      firstName,
+      lastName,
+      fullName: [firstName, lastName].filter(Boolean).join(" "),
+      username: this.username || "",
+      imageUrl: this.imageUrl || "",
+      hasImage: this.hasImage || false,
+      email: "",
+      emailAddresses: [],
+      phone: "",
+      phoneNumbers: [],
+      createdAt: this.createdAt || null,
+      updatedAt: this.updatedAt || null,
+      lastSignInAt: null,
+      lastActiveAt: null,
+    };
+  }
   const clerkUser = await clerkClient.users.getUser(this.clerkUserId);
   const emailAddresses = (clerkUser.emailAddresses || []).map((email) => ({
     id: email.id,

@@ -7,6 +7,9 @@ const { v4: uuidv4 } = require("uuid");
 const { round2, roundInt } = require("../../lib/number-utils");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
 const MetricDefinition = require("../metricDefinition/metricDefinition.model");
+const {
+  generateStudentFeedback,
+} = require("./studentFeedback.service");
 const AI_MODEL = process.env.AI_MODEL || "gpt-5-mini-2025-08-07";
 
 function shouldInspectOpenAIRequest(context = {}) {
@@ -249,6 +252,63 @@ const ledgerEntrySchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  studentFeedback: {
+    type: new mongoose.Schema(
+      {
+        status: {
+          type: String,
+          enum: ["completed", "failed"],
+          required: true,
+        },
+        keyDrivers: {
+          type: [
+            new mongoose.Schema(
+              {
+                title: { type: String, required: true },
+                explanation: { type: String, required: true },
+                impact: {
+                  type: String,
+                  enum: ["positive", "negative", "mixed", "neutral"],
+                  default: "neutral",
+                },
+                source: {
+                  type: String,
+                  enum: [
+                    "decision",
+                    "outcome",
+                    "profile",
+                    "prior_result",
+                    "random_event",
+                    "result",
+                  ],
+                  default: "result",
+                },
+              },
+              { _id: false },
+            ),
+          ],
+          default: [],
+        },
+        nextActions: {
+          type: [
+            new mongoose.Schema(
+              {
+                title: { type: String, required: true },
+                rationale: { type: String, required: true },
+              },
+              { _id: false },
+            ),
+          ],
+          default: [],
+        },
+        generatedAt: { type: Date, default: null },
+        model: { type: String, default: null },
+        error: { type: String, default: null },
+      },
+      { _id: false },
+    ),
+    default: undefined,
+  },
   aiMetadata: {
     model: { type: String, required: true },
     runId: { type: String, required: true },
@@ -336,12 +396,21 @@ ledgerEntrySchema.index({ organization: 1, challengeId: 1 });
 ledgerEntrySchema.index({ organization: 1, classroomId: 1, userId: 1 });
 ledgerEntrySchema.index({ decisionId: 1 });
 
+ledgerEntrySchema.statics.shouldSuppressNotifications = function (challenge) {
+  return Boolean(challenge?.suppressNotifications);
+};
+
 // Post-save hook to create notifications when ledger entries are created
 ledgerEntrySchema.post("save", async function (doc) {
   try {
     if (doc._wasNew && doc.challengeId) {
       const Challenge = require("../challenge/challenge.model");
-      const challenge = await Challenge.findById(doc.challengeId).select("feedbackReleaseMode").lean();
+      const challenge = await Challenge.findById(doc.challengeId)
+        .select("feedbackReleaseMode suppressNotifications")
+        .lean();
+      if (doc.constructor.shouldSuppressNotifications(challenge)) {
+        return;
+      }
       if (challenge && (challenge.feedbackReleaseMode === "DELAYED" || challenge.feedbackReleaseMode === "MANUAL")) {
         // Skip notification now; it will be sent in bulk when feedback is released
         return;
@@ -376,6 +445,9 @@ async function createLedgerCreatedNotification(ledgerEntry) {
     console.warn(
       `Challenge not found for ledger ${ledgerEntry._id}, skipping notification`
     );
+    return;
+  }
+  if (ledgerEntry.constructor.shouldSuppressNotifications(challenge)) {
     return;
   }
 
@@ -1032,6 +1104,7 @@ ledgerEntrySchema.statics.buildAISimulationOpenAIRequest = async function (
 };
 
 ledgerEntrySchema.statics.calculateOpeningCash = calculateOpeningCash;
+ledgerEntrySchema.statics.generateStudentFeedback = generateStudentFeedback;
 
 /**
  * Keep every challenge's cash values anchored to the preceding ledger entry.
@@ -1243,6 +1316,7 @@ ledgerEntrySchema.statics.createLedgerEntry = async function (
     metrics,
     randomEvent: input.randomEvent || null,
     summary: input.summary,
+    studentFeedback: input.studentFeedback || undefined,
     aiMetadata: {
       model: input.aiMetadata.model,
       runId: input.aiMetadata.runId,
@@ -1452,6 +1526,8 @@ ledgerEntrySchema.statics.getCalculationDetails = async function (ledgerId) {
       dataType: def.dataType,
       format: def.format,
       aggregation: def.aggregation,
+      leaderboardSortDirection: def.leaderboardSortDirection,
+      isPrimaryLeaderboardMetric: def.isPrimaryLeaderboardMetric,
       displayIn: def.displayIn,
       sortOrder: def.sortOrder,
       isActive: def.isActive,

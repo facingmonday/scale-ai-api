@@ -7,7 +7,8 @@ test("classroomTemplate.model schema has required organization field", () => {
 });
 
 test("pizza-shop templates expose the six cumulative leaderboard metrics", () => {
-  const leaderboardMetrics = Model.getPizzaShopMetricDefinitions()
+  const definitions = Model.getPizzaShopMetricDefinitions();
+  const leaderboardMetrics = definitions
     .filter((definition) => definition.displayIn?.leaderboard)
     .map((definition) => definition.key);
 
@@ -19,6 +20,20 @@ test("pizza-shop templates expose the six cumulative leaderboard metrics", () =>
     "netProfit",
     "cashAfter",
   ]);
+  assert.equal(
+    definitions.find((definition) => definition.isPrimaryLeaderboardMetric)?.key,
+    "netProfit"
+  );
+  assert.equal(
+    definitions.find((definition) => definition.key === "costs")
+      .leaderboardSortDirection,
+    "asc"
+  );
+  assert.equal(
+    definitions.find((definition) => definition.key === "waste")
+      .leaderboardSortDirection,
+    "asc"
+  );
 });
 
 test("pizza-shop templates include production-capacity conversion guardrails", () => {

@@ -38,7 +38,7 @@ import {
   getChallengePresentationStatus,
 } from "@/utils/challengeStatus";
 import LoadingOverlay from "../../../components/LoadingOverlay";
-import Alert from "../../../components/Alert";
+import ClassroomReadinessPanel from "@/components/dashboard/ClassroomReadinessPanel";
 
 const PLAN_LABELS: Record<string, string> = {
   org_seats: "Organization Seats",
@@ -652,25 +652,14 @@ const Dashboard: React.FC = () => {
       <LoadingOverlay loading={isLoadingScenarios || isLoadingDashboard} />
       <div className="page">
         <div className="container">
-          {dashboard && dashboard.metricDefinitionCount === 0 && (
-            <div className="mb-4">
-              <Alert
-                icon="pi pi-exclamation-triangle"
-                title="Metrics need to be configured"
-                message="This classroom has no metrics yet. Add at least one metric so challenge results, comparisons, and the leaderboard can be generated."
-                variant="warning"
-                actions={[
-                  {
-                    label: "Configure Metrics",
-                    onClick: () =>
-                      navigate(
-                        `/classroom/${activeClassroom._id}?tab=definitions`
-                      ),
-                  },
-                ]}
-              />
-            </div>
-          )}
+          <div className="mb-4">
+            <ClassroomReadinessPanel
+              classroomId={activeClassroom._id}
+              challengeId={activeScenarioId}
+              operation="process"
+              refreshKey={`${dashboard?.metricDefinitionCount ?? 0}:${dashboard?.submissionsCompleted ?? 0}`}
+            />
+          </div>
           {(nextScheduledScenario || blockedAutomations.length > 0) && (
             <div className="card mb-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">

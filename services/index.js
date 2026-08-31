@@ -7,6 +7,8 @@
  */
 const express = require("express");
 const router = express.Router();
+const { requireAuth, checkRole } = require("../middleware/auth");
+const classroomController = require("./classroom/classroom.controller");
 
 router.use("/auth", require("./auth"));
 router.use("/members", require("./members"));
@@ -24,6 +26,12 @@ router.use("/licensing", require("./licensing"));
 router.use("/join", require("./join"));
 
 // Classroom routes
+router.get(
+  "/admin/classrooms/:classroomId/preflight",
+  requireAuth(),
+  checkRole("org:admin"),
+  classroomController.getClassroomPreflight,
+);
 router.use("/admin/class", require("./classroom"));
 router.use("/student/class", require("./classroom/student"));
 

@@ -274,13 +274,16 @@ async function main() {
           );
         }
         const leaderboardRepairStats =
-          await MetricDefinition.repairSupplyChainLeaderboardFlagsForOrganization(
+          await MetricDefinition.backfillLeaderboardConfigurationForOrganization(
             org._id,
             systemUserId
           );
-        if (leaderboardRepairStats.classroomsRepaired > 0) {
+        if (
+          leaderboardRepairStats.metricsUpdated > 0 ||
+          leaderboardRepairStats.primariesAssigned > 0
+        ) {
           console.log(
-            `Enabled six-category leaderboards for org ${org._id}:`,
+            `Backfilled leaderboard configuration for org ${org._id}:`,
             leaderboardRepairStats
           );
         }

@@ -1,5 +1,5 @@
 import React from "react";
-import { useFormContext } from "react-hook-form";
+import { useFormContext, useWatch } from "react-hook-form";
 
 export type MetricDefinitionsFormValues = {
   label: string;
@@ -8,6 +8,8 @@ export type MetricDefinitionsFormValues = {
   format: "currency" | "count" | "units" | "percent" | "text";
   aiPromptRule?: string;
   aggregation: "sum" | "avg" | "last" | "max" | "min" | "none";
+  leaderboardSortDirection: "asc" | "desc";
+  isPrimaryLeaderboardMetric: boolean;
   displayIn: {
     table: boolean;
     kpi: boolean;
@@ -25,10 +27,15 @@ type Props = {
 };
 
 const MetricDefinitionsForm: React.FC<Props> = ({ disabled }) => {
-  const { register } = useFormContext<MetricDefinitionsFormValues>();
+  const { register, control } = useFormContext<MetricDefinitionsFormValues>();
+  const dataType = useWatch({ control, name: "dataType" });
+  const showOnLeaderboard = useWatch({
+    control,
+    name: "displayIn.leaderboard",
+  });
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
       <div>
         <label className="label" htmlFor="md-label">
           Label *
@@ -41,21 +48,8 @@ const MetricDefinitionsForm: React.FC<Props> = ({ disabled }) => {
         />
       </div>
 
-      <div>
-        <label className="label" htmlFor="md-description">
-          Description
-        </label>
-        <textarea
-          id="md-description"
-          rows={2}
-          className="input"
-          disabled={disabled}
-          {...register("description")}
-        />
-      </div>
-
-      <div className="flex gap-3">
-        <div className="flex-1">
+      <div className="!grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div>
           <label className="label" htmlFor="md-dataType">
             Data type *
           </label>
@@ -71,7 +65,7 @@ const MetricDefinitionsForm: React.FC<Props> = ({ disabled }) => {
           </select>
         </div>
 
-        <div className="flex-1">
+        <div>
           <label className="label" htmlFor="md-format">
             Format *
           </label>
@@ -89,7 +83,7 @@ const MetricDefinitionsForm: React.FC<Props> = ({ disabled }) => {
           </select>
         </div>
 
-        <div className="flex-1">
+        <div>
           <label className="label" htmlFor="md-aggregation">
             Aggregation *
           </label>
@@ -109,47 +103,127 @@ const MetricDefinitionsForm: React.FC<Props> = ({ disabled }) => {
         </div>
       </div>
 
-      <div>
-        <label className="label" htmlFor="md-aiPromptRule">
-          AI calculation rule
-        </label>
-        <textarea
-          id="md-aiPromptRule"
-          rows={3}
-          className="input"
-          placeholder="e.g. revenue = sales * realizedUnitPrice"
-          disabled={disabled}
-          {...register("aiPromptRule")}
-        />
-        <p className="text-text-muted text-xs mt-1">
-          Instruction sent to the AI when computing this metric. Be specific
-          about constraints and dependencies.
-        </p>
+      <div className="!grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div>
+          <label className="label" htmlFor="md-description">
+            Description
+          </label>
+          <textarea
+            id="md-description"
+            rows={3}
+            className="input h-full max-h-28 min-h-24"
+            disabled={disabled}
+            {...register("description")}
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor="md-aiPromptRule">
+            AI calculation rule
+          </label>
+          <textarea
+            id="md-aiPromptRule"
+            rows={3}
+            className="input max-h-28 min-h-24"
+            placeholder="e.g. revenue = sales * realizedUnitPrice"
+            disabled={disabled}
+            {...register("aiPromptRule")}
+          />
+          <p className="mt-1 text-xs text-text-muted">
+            Sent to the AI when computing this metric.
+          </p>
+        </div>
       </div>
 
-      <div>
-        <span className="label">Display in</span>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mt-1">
-          {(
-            ["table", "kpi", "chart", "leaderboard", "detail"] as const
-          ).map((slot) => (
+      <section className="rounded-lg border border-ui-border bg-ui-surface-muted p-4">
+        <div>
+          <h3 className="text-sm font-semibold text-text-primary">Visibility</h3>
+          <p className="mt-0.5 text-xs text-text-muted">
+            Choose where this metric appears for instructors and students.
+          </p>
+        </div>
+        <div className="!grid grid-cols-2 gap-2 pt-3 sm:grid-cols-4">
+          {(["table", "kpi", "chart", "detail"] as const).map((slot) => (
             <label
               key={slot}
-              className="flex items-center gap-2 text-sm capitalize"
+              className="flex items-center gap-2 rounded-md border border-ui-border bg-ui-surface px-3 py-2 text-sm"
             >
               <input
                 type="checkbox"
                 disabled={disabled}
                 {...register(`displayIn.${slot}` as const)}
               />
-              {slot}
+              {slot === "kpi" ? "KPI" : `${slot[0].toUpperCase()}${slot.slice(1)}`}
             </label>
           ))}
         </div>
-      </div>
 
-      <div className="flex gap-3">
-        <div className="flex-1">
+        <div className="my-4 border-t border-ui-border" />
+
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-text-primary">
+                Leaderboard
+              </h3>
+              <p className="mt-0.5 text-xs text-text-muted">
+                Rank cumulative results using this metric&apos;s aggregation.
+              </p>
+            </div>
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input
+                type="checkbox"
+                disabled={disabled || dataType !== "number"}
+                {...register("displayIn.leaderboard")}
+              />
+              Show on leaderboard
+            </label>
+          </div>
+
+          <div className="!grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="label" htmlFor="md-leaderboard-direction">
+                Ranking
+              </label>
+              <select
+                id="md-leaderboard-direction"
+                className="input"
+                disabled={
+                  disabled || !showOnLeaderboard || dataType !== "number"
+                }
+                {...register("leaderboardSortDirection")}
+              >
+                <option value="desc">Highest value wins</option>
+                <option value="asc">Lowest value wins</option>
+              </select>
+            </div>
+            <label
+              className={`flex items-start gap-3 rounded-md border border-ui-border bg-ui-surface px-3 py-2.5 ${
+                !showOnLeaderboard || dataType !== "number" ? "opacity-60" : ""
+              }`}
+            >
+              <input
+                className="mt-1"
+                type="checkbox"
+                disabled={
+                  disabled || !showOnLeaderboard || dataType !== "number"
+                }
+                {...register("isPrimaryLeaderboardMetric")}
+              />
+              <span>
+                <span className="block text-sm font-medium text-text-primary">
+                  Primary metric
+                </span>
+                <span className="block text-xs text-text-muted">
+                  Used for overall student rank and debriefs.
+                </span>
+              </span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <div className="!grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+        <div>
           <label className="label" htmlFor="md-default">
             Initial value (optional)
           </label>
@@ -162,7 +236,7 @@ const MetricDefinitionsForm: React.FC<Props> = ({ disabled }) => {
           />
         </div>
 
-        <div className="flex-1">
+        <div>
           <label className="label" htmlFor="md-sortOrder">
             Sort order
           </label>
@@ -175,16 +249,17 @@ const MetricDefinitionsForm: React.FC<Props> = ({ disabled }) => {
           />
         </div>
 
-        <div className="flex flex-col justify-end">
-          <label className="label" htmlFor="md-isActive">
+        <div>
+          <span className="label">Status</span>
+          <label className="flex min-h-11 items-center gap-2 rounded-lg border border-ui-border bg-ui-surface px-4 py-2.5 text-sm font-medium">
+            <input
+              id="md-isActive"
+              type="checkbox"
+              disabled={disabled}
+              {...register("isActive")}
+            />
             Active
           </label>
-          <input
-            id="md-isActive"
-            type="checkbox"
-            disabled={disabled}
-            {...register("isActive")}
-          />
         </div>
       </div>
     </div>

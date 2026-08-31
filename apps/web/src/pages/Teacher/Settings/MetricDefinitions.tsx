@@ -51,6 +51,8 @@ const MetricDefinitions: React.FC<Props> = ({ classroomId: classroomIdProp }) =>
   }, [classroomId, showActiveOnly]);
 
   useEffect(() => {
+    // The request synchronizes this screen with the selected classroom.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchDefinitions();
   }, [fetchDefinitions]);
 
@@ -155,6 +157,14 @@ const MetricDefinitions: React.FC<Props> = ({ classroomId: classroomIdProp }) =>
             ).filter((s) => row.displayIn?.[s]);
             return slots.length > 0 ? slots.join(", ") : "—";
           }}
+        />
+        <Column
+          header="Leaderboard"
+          body={(row: MetricDefinition) =>
+            row.displayIn?.leaderboard
+              ? `${row.leaderboardSortDirection === "asc" ? "Ascending" : "Descending"}${row.isPrimaryLeaderboardMetric ? " · Primary" : ""}`
+              : "—"
+          }
         />
         <Column
           field="isActive"

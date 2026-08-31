@@ -149,6 +149,39 @@ router.get(
 
 /**
  * @openapi
+ * /v1/admin/classrooms/{classroomId}/preflight:
+ *   get:
+ *     summary: Check classroom readiness
+ *     description: Validate whether a challenge can be previewed, processed, or rerun. Requires org:admin role.
+ *     tags: [Classrooms]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - name: classroomId
+ *         in: path
+ *         required: true
+ *         schema: { type: string }
+ *       - name: challengeId
+ *         in: query
+ *         schema: { type: string }
+ *       - name: operation
+ *         in: query
+ *         schema:
+ *           type: string
+ *           enum: [preview, process, rerun]
+ *     responses:
+ *       200:
+ *         description: Classroom readiness report.
+ */
+router.get(
+  "/:classroomId/preflight",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.getClassroomPreflight,
+);
+
+/**
+ * @openapi
  * /v1/admin/class/student/{classroomId}/dashboard:
  *   get:
  *     summary: Get student view dashboard (Instructor context)

@@ -11,6 +11,7 @@ export type NotificationType = "email" | "sms" | "push" | "web";
 export type NotificationStatus =
   | "Pending"
   | "Sent"
+  | "Skipped"
   | "Failed"
   | "Read"
   | "Deleted"
@@ -36,6 +37,8 @@ export interface NotificationRecipient {
 export interface NotificationMetadata {
   emailSent: boolean;
   emailQueued: boolean;
+  emailSkipped: boolean;
+  emailSkipReason?: string;
   emailError?: string;
   smsSent: boolean;
   smsQueued: boolean;

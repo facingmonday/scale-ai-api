@@ -1,4 +1,7 @@
 const Classroom = require("./classroom.model");
+const {
+  evaluateClassroomReadiness,
+} = require("./classroomReadiness.service");
 const Member = require("../members/member.model");
 const Enrollment = require("../enrollment/enrollment.model");
 const { sendEmail } = require("../../lib/sendGrid/sendEmail");
@@ -215,6 +218,44 @@ exports.getClassDashboard = async function (req, res) {
       return res.status(403).json({ error: error.message });
     }
     res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Return server-computed readiness for previewing, processing, or rerunning a
+ * challenge. This endpoint is intentionally classroom-scoped so the teacher
+ * dashboard can also report configuration readiness before a challenge exists.
+ */
+exports.getClassroomPreflight = async function (req, res) {
+  try {
+    const { classroomId } = req.params;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+    const challengeId = req.query.challengeId || null;
+    const operation = req.query.operation || "process";
+
+    await Classroom.validateAdminAccess(
+      classroomId,
+      clerkUserId,
+      organizationId,
+    );
+
+    const readiness = await evaluateClassroomReadiness({
+      classroomId,
+      organizationId,
+      challengeId,
+      operation,
+    });
+
+    res.json(readiness);
+  } catch (error) {
+    console.error("Error checking classroom readiness:", error);
+    if (error.message?.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    const statusCode = error.statusCode ||
+      (error.message === "Class not found" ? 404 : 500);
+    res.status(statusCode).json({ error: error.message });
   }
 };
 

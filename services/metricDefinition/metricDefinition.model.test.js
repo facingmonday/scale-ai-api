@@ -6,64 +6,120 @@ test("metricDefinition.model schema has required organization field", () => {
   assert.ok(Model.schema.obj.organization !== undefined || Model.schema.paths.organization);
 });
 
-test("supply-chain leaderboards use net profit despite legacy flags", () => {
+test("selects the explicitly configured primary leaderboard metric", () => {
   const definitions = [
-    "sales",
-    "revenue",
-    "costs",
-    "waste",
-    "netProfit",
-    "cashBefore",
-    "cashAfter",
-  ].map((key) => ({
-    key,
-    dataType: "number",
-    displayIn: { leaderboard: key === "revenue" || key === "cashAfter" },
-  }));
+    {
+      key: "revenue",
+      dataType: "number",
+      isActive: true,
+      displayIn: { leaderboard: true },
+      sortOrder: 10,
+    },
+    {
+      key: "customerWaitTime",
+      dataType: "number",
+      isActive: true,
+      displayIn: { leaderboard: true },
+      isPrimaryLeaderboardMetric: true,
+      sortOrder: 20,
+    },
+  ];
 
   assert.equal(
     Model.selectLeaderboardDefinition(definitions).key,
-    "netProfit"
+    "customerWaitTime"
   );
 });
 
-test("supply-chain dashboards select six ordered categories and directions", () => {
+test("selects arbitrary leaderboard metrics by configuration", () => {
   const definitions = [
-    "sales",
-    "revenue",
-    "costs",
-    "waste",
-    "netProfit",
-    "cashBefore",
-    "cashAfter",
-  ].map((key) => ({ key, label: key, dataType: "number" }));
+    {
+      key: "throughput",
+      label: "Throughput",
+      dataType: "number",
+      isActive: true,
+      displayIn: { leaderboard: true },
+      leaderboardSortDirection: "desc",
+      sortOrder: 20,
+    },
+    {
+      key: "waitTime",
+      label: "Wait Time",
+      dataType: "number",
+      isActive: true,
+      displayIn: { leaderboard: true },
+      leaderboardSortDirection: "asc",
+      sortOrder: 10,
+    },
+    {
+      key: "notes",
+      dataType: "string",
+      isActive: true,
+      displayIn: { leaderboard: true },
+      sortOrder: 1,
+    },
+    {
+      key: "inactiveScore",
+      dataType: "number",
+      isActive: false,
+      displayIn: { leaderboard: true },
+      sortOrder: 2,
+    },
+    {
+      key: "hiddenScore",
+      dataType: "number",
+      isActive: true,
+      displayIn: { leaderboard: false },
+      sortOrder: 3,
+    },
+  ];
 
   const selected = Model.selectLeaderboardDefinitions(definitions);
   assert.deepEqual(
     selected.map(({ definition, direction }) => [definition.key, direction]),
     [
-      ["netProfit", "desc"],
-      ["sales", "desc"],
-      ["revenue", "desc"],
-      ["costs", "asc"],
-      ["waste", "asc"],
-      ["cashAfter", "desc"],
+      ["waitTime", "asc"],
+      ["throughput", "desc"],
     ]
   );
 });
 
-test("other classroom types retain their configured leaderboard metric", () => {
+test("uses the first configured leaderboard metric when no primary is set", () => {
   const definitions = [
-    { key: "followers", dataType: "number" },
+    {
+      key: "followers",
+      label: "Followers",
+      dataType: "number",
+      isActive: true,
+      displayIn: { leaderboard: true },
+      sortOrder: 20,
+    },
     {
       key: "engagementRate",
+      label: "Engagement Rate",
       dataType: "number",
+      isActive: true,
       displayIn: { leaderboard: true },
+      sortOrder: 10,
     },
   ];
 
   assert.equal(
     Model.selectLeaderboardDefinition(definitions).key,
     "engagementRate"
+  );
+});
+
+test("returns no primary when no eligible leaderboard metrics exist", () => {
+  assert.equal(
+    Model.selectLeaderboardDefinition([
+      {
+        key: "revenue",
+        dataType: "number",
+        isActive: true,
+        displayIn: { leaderboard: false },
+      },
+    ]),
+    null
   );
 });
