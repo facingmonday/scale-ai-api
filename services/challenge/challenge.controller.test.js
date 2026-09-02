@@ -18,6 +18,7 @@ const LedgerCompletionEvent = require("../job/ledgerCompletionEvent.model");
 const { queues } = require("../../lib/queues");
 const challengeAiService = require("./lib/challengeAiService");
 const challengeDebriefService = require("./lib/challengeDebriefService");
+const challengePreviewService = require("./lib/challengePreviewService");
 const classroomReadinessService = require("../classroom/classroomReadiness.service");
 
 test("challenge controller exports handlers", () => {
@@ -742,6 +743,127 @@ test("preview returns readiness details without creating result jobs", async (t)
   assert.equal(body.code, "CLASSROOM_READINESS_BLOCKED");
   assert.equal(body.readiness.status, "blocked");
   assert.equal(jobsCreated, 0);
+});
+
+test("preview returns an in-memory targeted response from the preview service", async (t) => {
+  const originals = {
+    getScenarioById: Challenge.getScenarioById,
+    validateAdminAccess: Classroom.validateAdminAccess,
+    assertClassroomReady: classroomReadinessService.assertClassroomReady,
+    runChallengePreview: challengePreviewService.runChallengePreview,
+  };
+  t.after(() => {
+    Challenge.getScenarioById = originals.getScenarioById;
+    Classroom.validateAdminAccess = originals.validateAdminAccess;
+    classroomReadinessService.assertClassroomReady = originals.assertClassroomReady;
+    challengePreviewService.runChallengePreview = originals.runChallengePreview;
+  });
+
+  Challenge.getScenarioById = async () => ({
+    _id: "challenge-id",
+    classroomId: "classroom-id",
+  });
+  Classroom.validateAdminAccess = async () => {};
+  classroomReadinessService.assertClassroomReady = async () => ({
+    status: "ready",
+  });
+  let receivedInput = null;
+  challengePreviewService.runChallengePreview = async (input) => {
+    receivedInput = input;
+    return {
+      status: "partial",
+      profileTypes: [],
+      completedCases: 1,
+      failedCases: 1,
+    };
+  };
+
+  let statusCode = 0;
+  let body;
+  await controller.previewScenario(
+    {
+      params: { challengeId: "challenge-id" },
+      body: {
+        targets: [{ profileTypeId: "type-id", case: "baseline" }],
+      },
+      organization: { _id: "organization-id" },
+      clerkUser: { id: "teacher-id" },
+    },
+    {
+      status(code) {
+        statusCode = code;
+        return this;
+      },
+      json(payload) {
+        body = payload;
+        return this;
+      },
+    },
+  );
+
+  assert.equal(statusCode, 200);
+  assert.equal(body.success, true);
+  assert.equal(body.data.status, "partial");
+  assert.deepEqual(receivedInput, {
+    challengeId: "challenge-id",
+    organizationId: "organization-id",
+    targets: [{ profileTypeId: "type-id", case: "baseline" }],
+  });
+});
+
+test("preview returns 502 when every synthetic case fails", async (t) => {
+  const originals = {
+    getScenarioById: Challenge.getScenarioById,
+    validateAdminAccess: Classroom.validateAdminAccess,
+    assertClassroomReady: classroomReadinessService.assertClassroomReady,
+    runChallengePreview: challengePreviewService.runChallengePreview,
+  };
+  t.after(() => {
+    Challenge.getScenarioById = originals.getScenarioById;
+    Classroom.validateAdminAccess = originals.validateAdminAccess;
+    classroomReadinessService.assertClassroomReady = originals.assertClassroomReady;
+    challengePreviewService.runChallengePreview = originals.runChallengePreview;
+  });
+
+  Challenge.getScenarioById = async () => ({
+    _id: "challenge-id",
+    classroomId: "classroom-id",
+  });
+  Classroom.validateAdminAccess = async () => {};
+  classroomReadinessService.assertClassroomReady = async () => ({
+    status: "ready",
+  });
+  challengePreviewService.runChallengePreview = async () => ({
+    status: "partial",
+    profileTypes: [],
+    completedCases: 0,
+    failedCases: 2,
+  });
+
+  let statusCode = 0;
+  let body;
+  await controller.previewScenario(
+    {
+      params: { challengeId: "challenge-id" },
+      body: {},
+      organization: { _id: "organization-id" },
+      clerkUser: { id: "teacher-id" },
+    },
+    {
+      status(code) {
+        statusCode = code;
+        return this;
+      },
+      json(payload) {
+        body = payload;
+        return this;
+      },
+    },
+  );
+
+  assert.equal(statusCode, 502);
+  assert.equal(body.success, false);
+  assert.equal(body.data.status, "partial");
 });
 
 test("student challenge detail hides results and guidance before manual release", async (t) => {

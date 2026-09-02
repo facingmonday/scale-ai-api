@@ -327,6 +327,39 @@ const Challenge: React.FC = () => {
     }
   });
 
+  const handleBeforePreview = useCallback(async () => {
+    if (!id || !form.formState.isDirty) return;
+    const values = form.getValues();
+    if (!values.title.trim()) {
+      throw new Error("Challenge title is required before previewing.");
+    }
+    const variablesToSave = watchedVariables ?? values.variables ?? {};
+    await challengeService.update(id, {
+      title: values.title.trim(),
+      description: values.description.trim(),
+      imageUrl: values.imageUrl?.trim() || undefined,
+      publishAt: values.publishAt || null,
+      publishMode: values.publishMode || "MANUAL",
+      submissionDeadlineAt: values.submissionDeadlineAt || null,
+      closeSubmissionsAt: values.closeSubmissionsAt || null,
+      processAt: values.processAt || null,
+      feedbackReleaseAt: values.feedbackReleaseAt || null,
+      feedbackReleaseMode: values.feedbackReleaseMode || "IMMEDIATE",
+      allowLateSubmissions: values.allowLateSubmissions,
+      lateSubmissionPolicy: {
+        penaltyPercentPerDay: Number(
+          values.lateSubmissionPolicy?.penaltyPercentPerDay ?? 0,
+        ),
+      },
+      automationMode: values.automationMode || "MANUAL",
+      missingSubmissionPolicy: values.missingSubmissionPolicy || "SKIP",
+      punishAbsentStudents: values.punishAbsentStudents || "none",
+      variables: variablesToSave,
+    });
+    form.reset({ ...values, variables: variablesToSave });
+    await fetchScenario(true);
+  }, [fetchScenario, form, id, watchedVariables]);
+
   const handlePublish = async () => {
     if (!id) return;
     if (isPublishing) return;
@@ -661,6 +694,7 @@ const Challenge: React.FC = () => {
                   challenge={challenge}
                   onExtendDeadline={handleExtendDeadline}
                   onChallengeUpdated={() => fetchScenario(true)}
+                  onBeforePreview={handleBeforePreview}
                 />
               )}
             </div>

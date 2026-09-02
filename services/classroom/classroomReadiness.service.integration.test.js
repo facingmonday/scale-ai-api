@@ -194,10 +194,96 @@ test("warnings are reported but do not block processing", async () => {
     classroomId: fixture.classroom._id,
     challengeId: fixture.challenge._id,
     organizationId: fixture.organizationId,
-    operation: "preview",
+    operation: "process",
   });
 
   assert.equal(readiness.status, "warning");
   assert.equal(readiness.blockers, 0);
   assert.ok(readiness.warnings >= 1);
+});
+
+test("synthetic preview readiness ignores students, submissions, and real ledgers", async () => {
+  const fixture = await createFixture({ withMetric: true });
+  await ProfileType.create({
+    classroomId: fixture.classroom._id,
+    key: "mobile",
+    label: "Mobile",
+    startingBalance: 10000,
+    initialStartupCost: 2000,
+    isActive: true,
+    organization: fixture.organizationId,
+    ...audit,
+  });
+  await Enrollment.create({
+    classroomId: fixture.classroom._id,
+    userId: new mongoose.Types.ObjectId(),
+    role: "member",
+    organization: fixture.organizationId,
+    ...audit,
+  });
+
+  const readiness = await assertClassroomReady({
+    classroomId: fixture.classroom._id,
+    challengeId: fixture.challenge._id,
+    organizationId: fixture.organizationId,
+    operation: "preview",
+  });
+
+  assert.equal(readiness.blockers, 0);
+  assert.equal(
+    readiness.checks.find((item) => item.key === "active_profile_types")?.status,
+    "pass",
+  );
+  assert.equal(
+    readiness.checks.some((item) => item.key === "participant_profiles"),
+    false,
+  );
+  assert.equal(
+    readiness.checks.some((item) => item.key === "week_zero_ledgers"),
+    false,
+  );
+  assert.equal(
+    readiness.checks.some((item) => item.key === "in_progress_jobs"),
+    false,
+  );
+});
+
+test("synthetic preview readiness blocks missing required decision defaults", async () => {
+  const fixture = await createFixture({ withMetric: true });
+  await ProfileType.create({
+    classroomId: fixture.classroom._id,
+    key: "indoor",
+    label: "Indoor",
+    startingBalance: 20000,
+    initialStartupCost: 5000,
+    isActive: true,
+    organization: fixture.organizationId,
+    ...audit,
+  });
+  await VariableDefinition.create({
+    classroomId: fixture.classroom._id,
+    key: "inventoryTarget",
+    label: "Inventory Target",
+    appliesTo: "decision",
+    dataType: "number",
+    inputType: "number",
+    required: true,
+    defaultValue: null,
+    isActive: true,
+    organization: fixture.organizationId,
+    ...audit,
+  });
+
+  const readiness = await evaluateClassroomReadiness({
+    classroomId: fixture.classroom._id,
+    challengeId: fixture.challenge._id,
+    organizationId: fixture.organizationId,
+    operation: "preview",
+  });
+
+  assert.equal(readiness.status, "blocked");
+  assert.equal(
+    readiness.checks.find((item) => item.key === "decision_defaults")?.status,
+    "fail",
+  );
 });
