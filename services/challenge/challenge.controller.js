@@ -5,7 +5,6 @@ const Enrollment = require("../enrollment/enrollment.model");
 const Decision = require("../decision/decision.model");
 const JobService = require("../job/lib/jobService");
 const LedgerEntry = require("../ledger/ledger.model");
-const SimulationWorker = require("../job/lib/simulationWorker");
 const SimulationBatch = require("../job/simulationBatch.model");
 const SimulationJob = require("../job/job.model");
 const MetricDefinition = require("../metricDefinition/metricDefinition.model");
@@ -15,6 +14,7 @@ const {
 } = require("../ledger/studentResultSerializer");
 const challengeAiService = require("./lib/challengeAiService");
 const challengeDebriefService = require("./lib/challengeDebriefService");
+const challengePreviewService = require("./lib/challengePreviewService");
 const classroomReadinessService = require("../classroom/classroomReadiness.service");
 const {
   enqueueSimulationBatchSubmit,
@@ -725,8 +725,8 @@ exports.unpublishScenario = async function (req, res) {
 };
 
 /**
- * Preview AI outcomes (placeholder)
- * POST /api/admin/challenges/:challengeId/preview
+ * Preview synthetic outcomes for every active store type without writing jobs,
+ * decisions, ledger entries, notifications, or feedback.
  */
 exports.previewScenario = async function (req, res) {
   try {
@@ -755,54 +755,22 @@ exports.previewScenario = async function (req, res) {
       operation: "preview",
     });
 
-    // Get outcome
-    const outcome = await Outcome.getOutcomeByScenario(challengeId);
-
-    if (!outcome) {
-      return res.status(400).json({
-        error: "Challenge outcome must be set before previewing",
-      });
-    }
-
-    // Create preview jobs (dryRun = true)
-    const jobs = await JobService.createJobsForScenario(
+    const preview = await challengePreviewService.runChallengePreview({
       challengeId,
-      challenge.classroomId,
-      true, // dryRun
       organizationId,
-      clerkUserId
-    );
+      targets: req.body?.targets,
+    });
 
-    // Process preview jobs synchronously (limited to first 5 for preview)
-    const previewJobs = jobs.slice(0, 5);
-    const previewResults = [];
-
-    for (const job of previewJobs) {
-      try {
-        const result = await SimulationWorker.processJob(job._id);
-        previewResults.push({
-          userId: job.userId,
-          result: result.result,
-        });
-      } catch (error) {
-        console.error(`Error processing preview job ${job._id}:`, error);
-        previewResults.push({
-          userId: job.userId,
-          error: error.message,
-        });
-      }
-    }
-
-    res.json({
-      success: true,
-      message: "Preview completed",
-      data: {
-        challenge: challenge.toObject(),
-        outcome: outcome.toObject(),
-        previewResults,
-        totalJobs: jobs.length,
-        previewedJobs: previewResults.length,
-      },
+    const allCasesFailed = preview.completedCases === 0;
+    res.status(allCasesFailed ? 502 : 200).json({
+      success: !allCasesFailed,
+      message: allCasesFailed
+        ? "Every requested preview case failed"
+        : "Preview completed",
+      ...(allCasesFailed
+        ? { error: "Every requested preview case failed" }
+        : {}),
+      data: preview,
     });
   } catch (error) {
     console.error("Error previewing challenge:", error);
@@ -812,6 +780,13 @@ exports.previewScenario = async function (req, res) {
     }
     if (error.message.includes("Insufficient permissions")) {
       return res.status(403).json({ error: error.message });
+    }
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+        ...(error.code ? { code: error.code } : {}),
+        ...(error.checks ? { checks: error.checks } : {}),
+      });
     }
     res.status(500).json({ error: error.message });
   }

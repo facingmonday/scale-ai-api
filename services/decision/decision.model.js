@@ -1197,6 +1197,48 @@ submissionSchema.statics.forwardPreviousDecisionsForChallenge = async function (
 };
 
 /**
+ * Resolve the same default decision values used for missing submissions
+ * without creating a Decision document.
+ */
+submissionSchema.statics.resolveDefaultVariables = async function (
+  classroomId,
+  challengeId = null,
+) {
+  const options = challengeId ? { challengeId } : {};
+  const variablesWithDefaults = await VariableDefinition.applyDefaults(
+    classroomId,
+    "decision",
+    {},
+    options,
+  );
+  const variables = await VariableDefinition.filterVariablesByActiveDefinitions(
+    classroomId,
+    "decision",
+    variablesWithDefaults,
+    options,
+  );
+  const validation = await VariableDefinition.validateValues(
+    classroomId,
+    "decision",
+    variables,
+    options,
+  );
+
+  if (!validation.isValid) {
+    const error = new Error(
+      `Invalid decision defaults: ${validation.errors
+        .map((item) => item.message)
+        .join(", ")}`,
+    );
+    error.code = "INVALID_DECISION_DEFAULTS";
+    error.details = validation.errors;
+    throw error;
+  }
+
+  return variables;
+};
+
+/**
  * Create decisions for missing students using variable definition defaults.
  */
 submissionSchema.statics.useDefaultsForDecisions = async function ({
@@ -1283,25 +1325,10 @@ submissionSchema.statics.useDefaultsForDecisions = async function ({
         continue;
       }
 
-      const varsWithDefaults = await VariableDefinition.applyDefaults(
+      const varsWithDefaults = await this.resolveDefaultVariables(
         classroomId,
-        "decision",
-        {}
+        challengeId,
       );
-
-      const validation = await VariableDefinition.validateValues(
-        classroomId,
-        "decision",
-        varsWithDefaults
-      );
-
-      if (!validation.isValid) {
-        errors.push({
-          userId: userIdStr,
-          error: `Validation failed: ${validation.errors.map((e) => e.message).join(", ")}`,
-        });
-        continue;
-      }
 
       await this.createSubmission(
         classroomId,

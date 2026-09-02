@@ -11,6 +11,7 @@ const Profile = require("../profile/profile.model");
 const ProfileType = require("../profileType/profileType.model");
 const SimulationJob = require("../job/job.model");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
+const challengePreviewService = require("../challenge/lib/challengePreviewService");
 
 const OPERATIONS = new Set(["preview", "process", "rerun"]);
 const CASH_TOLERANCE = 0.01;
@@ -427,6 +428,142 @@ async function evaluateClassroomReadiness({
     .lean();
   const numericMetrics = metricDefinitions.filter((definition) => definition.dataType === "number");
   const leaderboard = MetricDefinition.selectLeaderboardDefinition(metricDefinitions);
+
+  if (operation === "preview") {
+    const checks = [];
+
+    if (challenge) {
+      const inspection = await challengePreviewService.inspectChallengePreview({
+        challengeId: challenge._id,
+        organizationId,
+        metricDefinitions,
+      });
+      const previewCheckMetadata = {
+        active_numeric_metrics: {
+          title: "Active metrics",
+          action: {
+            label: "Configure Metrics",
+            href: `/classroom/${classroom._id}?tab=definitions`,
+          },
+        },
+        global_outcome: {
+          title: "Global outcome",
+          action: { label: "Configure Outcome", href: `/challenges/${challenge._id}` },
+        },
+        active_profile_types: {
+          title: "Active store types",
+          action: {
+            label: "Configure Store Types",
+            href: `/classroom/${classroom._id}?tab=profileTypes`,
+          },
+        },
+        profile_type_defaults: {
+          title: "Profile defaults",
+          action: {
+            label: "Configure Definitions",
+            href: `/classroom/${classroom._id}?tab=definitions`,
+          },
+        },
+        challenge_defaults: {
+          title: "Challenge inputs",
+          action: { label: "Review Challenge", href: `/challenges/${challenge._id}` },
+        },
+        decision_defaults: {
+          title: "Decision defaults",
+          action: {
+            label: "Configure Definitions",
+            href: `/classroom/${classroom._id}?tab=definitions`,
+          },
+        },
+        synthetic_week_zero: {
+          title: "Synthetic Week 0",
+          action: {
+            label: "Configure Metrics",
+            href: `/classroom/${classroom._id}?tab=definitions`,
+          },
+        },
+      };
+      for (const previewCheck of inspection.checks) {
+        const metadata = previewCheckMetadata[previewCheck.key] || {};
+        checks.push(
+          check({
+            key: previewCheck.key,
+            severity: "blocker",
+            passed: previewCheck.passed,
+            title: metadata.title || previewCheck.key,
+            message: previewCheck.message,
+            action: previewCheck.passed ? null : metadata.action,
+            details: previewCheck.details || null,
+          }),
+        );
+      }
+    } else {
+      checks.push(
+        check({
+          key: "active_numeric_metrics",
+          severity: "blocker",
+          passed: numericMetrics.length > 0,
+          title: "Active metrics",
+          message: numericMetrics.length > 0
+            ? `${numericMetrics.length} active numeric metric${numericMetrics.length === 1 ? " is" : "s are"} configured.`
+            : "This classroom has no active numeric metrics for simulation results.",
+          action: numericMetrics.length > 0
+            ? null
+            : {
+              label: "Configure Metrics",
+              href: `/classroom/${classroom._id}?tab=definitions`,
+            },
+        }),
+      );
+      checks.push(
+        skippedCheck({
+          key: "global_outcome",
+          severity: "blocker",
+          title: "Global outcome",
+          message: "Select a challenge to validate its synthetic preview.",
+        }),
+      );
+    }
+
+    checks.push(
+      check({
+        key: "leaderboard_metric",
+        severity: "warning",
+        passed: !!leaderboard,
+        title: "Leaderboard metric",
+        message: leaderboard
+          ? `${leaderboard.label || leaderboard.key} is configured as the primary leaderboard metric.`
+          : "No primary leaderboard metric is configured; preview metrics can still be generated.",
+        action: leaderboard
+          ? null
+          : {
+            label: "Configure Metrics",
+            href: `/classroom/${classroom._id}?tab=definitions`,
+          },
+      }),
+    );
+
+    const ignored = new Set(ignoreCheckKeys);
+    const effectiveChecks = checks.map((item) =>
+      ignored.has(item.key) && item.status === "fail"
+        ? {
+          ...item,
+          status: "skipped",
+          message: `${item.message} This check is handled by the requested operation.`,
+        }
+        : item,
+    );
+    const summary = summarizeChecks(effectiveChecks);
+    return {
+      ...summary,
+      classroomId: String(classroom._id),
+      challengeId: challenge ? String(challenge._id) : null,
+      operation,
+      checkedAt: new Date().toISOString(),
+      checks: effectiveChecks,
+    };
+  }
+
   const participants = await getChallengeParticipants(challenge);
 
   const [outcomeCheck, profileCheck, ledgerChecks, enrollments, inProgressJobs] =

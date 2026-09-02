@@ -7,4 +7,5 @@ export interface Outcome extends BaseSchema {
   challengeId: string; // Challenge ObjectId reference (unique)
   notes: string;
   hiddenNotes: string;
+  variables?: Record<string, unknown>;
 }

@@ -260,17 +260,6 @@ storeSchema.statics.seedInitialLedgerEntry = async function (
     isActive: true,
   }).lean();
 
-  const metrics = {};
-  for (const def of metricDefs) {
-    if (def.defaultInitialValue === undefined || def.defaultInitialValue === null) {
-      if (def.dataType === "number") metrics[def.key] = 0;
-      else if (def.dataType === "boolean") metrics[def.key] = false;
-      else metrics[def.key] = "";
-    } else {
-      metrics[def.key] = def.defaultInitialValue;
-    }
-  }
-
   let profileType = profileTypeInput;
   if (!profileType) {
     const profile = await this.findById(profileId)
@@ -280,15 +269,7 @@ storeSchema.statics.seedInitialLedgerEntry = async function (
     profileType = profile?.profileType || null;
   }
 
-  const openingCash = LedgerEntry.calculateOpeningCash(profileType);
-  if (openingCash !== null) {
-    if (Object.prototype.hasOwnProperty.call(metrics, "cashBefore")) {
-      metrics.cashBefore = openingCash;
-    }
-    if (Object.prototype.hasOwnProperty.call(metrics, "cashAfter")) {
-      metrics.cashAfter = openingCash;
-    }
-  }
+  const metrics = LedgerEntry.buildInitialMetrics(metricDefs, profileType);
 
   await LedgerEntry.createLedgerEntry(
     {

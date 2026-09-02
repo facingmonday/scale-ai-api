@@ -5,6 +5,10 @@ import type {
   CreateScenarioRequest,
   CreateScenarioWithAIRequest,
 } from "../types/requests";
+import type {
+  ChallengePreviewResponse,
+  ChallengePreviewTarget,
+} from "../types/challenge";
 
 type UpdateScenarioRequest = Partial<CreateScenarioRequest> & {
   isClosed?: boolean;
@@ -66,15 +70,18 @@ async function unpublish(challengeId: string) {
   return response.data;
 }
 
-async function preview(challengeId: string) {
+async function preview(
+  challengeId: string,
+  targets?: ChallengePreviewTarget[],
+): Promise<ChallengePreviewResponse> {
   const response = await axios.post(
     `${API_HOST}/${API_VERSION}/admin/challenges/${challengeId}/preview`,
-    {},
+    targets ? { targets } : {},
     {
       headers: await TokenHandler.getHeaders(),
     }
   );
-  return response.data;
+  return (response.data?.data ?? response.data) as ChallengePreviewResponse;
 }
 
 async function approve(challengeId: string) {
