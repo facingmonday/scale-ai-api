@@ -207,6 +207,10 @@ const scenarioSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  calculationCancelledAt: {
+    type: Date,
+    default: null,
+  },
   teacherDebrief: {
     type: new mongoose.Schema(
       {
