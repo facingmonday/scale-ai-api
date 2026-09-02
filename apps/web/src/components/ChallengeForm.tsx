@@ -57,14 +57,29 @@ const ChallengeForm: React.FC<ScenarioFormProps> = ({
     }
   };
   const handleSubmissionDeadlineChange = (deadline: string) => {
+    const previousDeadline = values.submissionDeadlineAt;
     onChange("submissionDeadlineAt", deadline);
 
     if (!deadline) return;
-    if (!values.closeSubmissionsAt) {
+    const shouldMoveLock =
+      !values.closeSubmissionsAt || values.closeSubmissionsAt === previousDeadline;
+    if (shouldMoveLock) {
       onChange("closeSubmissionsAt", deadline);
     }
-    if (!values.processAt) {
-      onChange("processAt", deadline);
+    const effectiveLock = shouldMoveLock ? deadline : values.closeSubmissionsAt;
+    if (
+      !values.processAt ||
+      values.processAt === previousDeadline ||
+      (!!effectiveLock && values.processAt < effectiveLock)
+    ) {
+      onChange("processAt", effectiveLock || deadline);
+    }
+  };
+
+  const handleCloseSubmissionsChange = (closeAt: string) => {
+    onChange("closeSubmissionsAt", closeAt);
+    if (closeAt && (!values.processAt || values.processAt < closeAt)) {
+      onChange("processAt", closeAt);
     }
   };
 
@@ -211,7 +226,7 @@ const ChallengeForm: React.FC<ScenarioFormProps> = ({
                       type="datetime-local"
                       className="input"
                       value={values.closeSubmissionsAt || ""}
-                      onChange={(event) => onChange("closeSubmissionsAt", event.target.value)}
+                      onChange={(event) => handleCloseSubmissionsChange(event.target.value)}
                       disabled={disabled}
                     />
                   </label>
@@ -223,6 +238,7 @@ const ChallengeForm: React.FC<ScenarioFormProps> = ({
                       className="input"
                       value={values.processAt || ""}
                       onChange={(event) => onChange("processAt", event.target.value)}
+                      min={values.closeSubmissionsAt || undefined}
                       disabled={disabled}
                     />
                   </label>
