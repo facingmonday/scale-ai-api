@@ -4,8 +4,21 @@ const Classroom = require("../classroom/classroom.model");
 const Decision = require("../decision/decision.model");
 const LedgerEntry = require("../ledger/ledger.model");
 const {
+  assertClassroomReady,
+} = require("../classroom/classroomReadiness.service");
+const {
   enqueueOutcomeProcessing,
 } = require("../../lib/queues/outcome-processing-worker");
+
+function sendReadinessError(res, error) {
+  if (error?.code !== "CLASSROOM_READINESS_BLOCKED") return false;
+  res.status(409).json({
+    error: error.message,
+    code: error.code,
+    readiness: error.readiness,
+  });
+  return true;
+}
 /**
  * Set challenge outcome
  * POST /api/admin/challenges/:challengeId/outcome
@@ -60,6 +73,13 @@ exports.setScenarioOutcome = async function (req, res) {
       challenge.classroomId
     );
 
+    await assertClassroomReady({
+      classroomId: challenge.classroomId,
+      organizationId,
+      challengeId,
+      operation: "process",
+    });
+
     // Enqueue background processing so the API request stays fast and stable.
     const queuedJob = await enqueueOutcomeProcessing({
       challengeId,
@@ -78,6 +98,7 @@ exports.setScenarioOutcome = async function (req, res) {
     });
   } catch (error) {
     console.error("Error setting challenge outcome:", error);
+    if (sendReadinessError(res, error)) return;
     if (error.message === "Class not found") {
       return res.status(404).json({ error: error.message });
     }
@@ -194,6 +215,13 @@ exports.approveScenarioOutcome = async function (req, res) {
       });
     }
 
+    await assertClassroomReady({
+      classroomId: challenge.classroomId,
+      organizationId,
+      challengeId,
+      operation: "process",
+    });
+
     outcome.approved = true;
     outcome.updatedBy = clerkUserId;
     await outcome.save();
@@ -214,6 +242,7 @@ exports.approveScenarioOutcome = async function (req, res) {
     });
   } catch (error) {
     console.error("Error approving challenge outcome:", error);
+    if (sendReadinessError(res, error)) return;
     if (error.message === "Class not found") {
       return res.status(404).json({ error: error.message });
     }

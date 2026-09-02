@@ -14,6 +14,7 @@ import {
   getMetricValue,
   sortMetricDefinitions,
 } from "../utils/formatMetric";
+import StudentResultExplanation from "./StudentResultExplanation";
 
 interface LedgerVisualizationProps {
   ledger: LedgerEntry | null;
@@ -95,7 +96,11 @@ const LedgerVisualization: React.FC<LedgerVisualizationProps> = ({
     <div className="flex flex-col gap-6">
       <MetricsKpiRow entry={ledger} definitions={defs} />
 
-      {ledger.summary && !isEditing && (
+      {!isAdmin && ledger.resultExplanation && (
+        <StudentResultExplanation explanation={ledger.resultExplanation} />
+      )}
+
+      {ledger.summary && !isEditing && (isAdmin || !ledger.resultExplanation) && (
         <div className="card">
           <h3 className="heading-md mb-2">Summary</h3>
           <p className="text-text-secondary whitespace-pre-wrap">
@@ -104,7 +109,7 @@ const LedgerVisualization: React.FC<LedgerVisualizationProps> = ({
         </div>
       )}
 
-      {ledger.randomEvent && !isEditing && (
+      {ledger.randomEvent && !isEditing && (isAdmin || !ledger.resultExplanation) && (
         <div className="card">
           <h3 className="heading-md mb-2">Random Event</h3>
           <p className="text-text-secondary">{ledger.randomEvent}</p>

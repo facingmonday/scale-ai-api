@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Dialog } from "primereact/dialog";
 import { Button } from "primereact/button";
-import { FormProvider, useForm } from "react-hook-form";
+import { FormProvider, useForm, useWatch } from "react-hook-form";
 import slugify from "slugify";
 import metricDefinitionsService from "../../services/metricDefinition";
 import type { MetricDefinition } from "../../types/metric";
@@ -24,6 +24,9 @@ function toDefaults(def?: MetricDefinition): MetricDefinitionsFormValues {
     format: def?.format ?? "count",
     aiPromptRule: def?.aiPromptRule ?? "",
     aggregation: def?.aggregation ?? "last",
+    leaderboardSortDirection: def?.leaderboardSortDirection ?? "desc",
+    isPrimaryLeaderboardMetric:
+      def?.isPrimaryLeaderboardMetric ?? false,
     displayIn: {
       table: def?.displayIn?.table ?? true,
       kpi: def?.displayIn?.kpi ?? false,
@@ -82,10 +85,12 @@ const MetricDefinitionsAddButton: React.FC<Props> = ({
   useEffect(() => {
     if (!visible) return;
     form.reset(defaults);
+    // Clear stale submission feedback whenever the dialog is reopened.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setError(null);
   }, [visible, defaults, form]);
 
-  const labelValue = form.watch("label");
+  const labelValue = useWatch({ control: form.control, name: "label" });
   const isValidCreateKey = useMemo(() => {
     const slug = slugify(labelValue || "", { lower: true, strict: true });
     return slug.length > 0;
@@ -116,7 +121,16 @@ const MetricDefinitionsAddButton: React.FC<Props> = ({
         format: values.format,
         aiPromptRule: values.aiPromptRule?.trim() || "",
         aggregation: values.aggregation,
-        displayIn: values.displayIn,
+        leaderboardSortDirection: values.leaderboardSortDirection,
+        isPrimaryLeaderboardMetric:
+          values.dataType === "number" && values.displayIn.leaderboard
+            ? values.isPrimaryLeaderboardMetric
+            : false,
+        displayIn: {
+          ...values.displayIn,
+          leaderboard:
+            values.dataType === "number" && values.displayIn.leaderboard,
+        },
         defaultInitialValue: parseInitialValue(
           values.dataType,
           values.defaultInitialValueText
@@ -174,6 +188,7 @@ const MetricDefinitionsAddButton: React.FC<Props> = ({
           icon="pi pi-pencil"
           className="p-button-rounded p-button-text"
           onClick={() => setVisible(true)}
+          aria-label={`Edit ${metricDefinition?.label || "metric"}`}
         />
       )}
 
@@ -187,7 +202,7 @@ const MetricDefinitionsAddButton: React.FC<Props> = ({
         className="modal w-full max-w-3xl"
         maskClassName="modal-mask"
         headerClassName="modal-header"
-        contentClassName="modal-content"
+        contentClassName="modal-content max-h-[calc(100vh-11rem)] overflow-y-auto"
         pt={{
           headerTitle: { className: "modal-title" },
           footer: { className: "modal-footer" },
@@ -195,6 +210,7 @@ const MetricDefinitionsAddButton: React.FC<Props> = ({
         footer={
           <div className="flex gap-2 justify-end">
             <button
+              type="button"
               className="btn-outline"
               onClick={handleHide}
               disabled={isSubmitting}
@@ -202,6 +218,7 @@ const MetricDefinitionsAddButton: React.FC<Props> = ({
               Cancel
             </button>
             <button
+              type="button"
               className="btn-teal"
               onClick={() => void submit()}
               disabled={!canSubmit}

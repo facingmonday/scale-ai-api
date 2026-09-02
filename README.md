@@ -70,8 +70,8 @@ The application consists of six deployable or development components inside the 
 2. **API Service** ([apps/api/](file:///Users/jasonprice/Apps/scale-ai-api/apps/api)) - Express/Node REST API service. It handles requests, interacts with MongoDB, and enqueues jobs to Redis.
 3. **Webhooks Service** ([apps/webhooks/](file:///Users/jasonprice/Apps/scale-ai-api/apps/webhooks)) - Specialized webhook receiver handling external triggers (such as Clerk and Stripe webhooks).
 4. **Workers Service** ([apps/workers/](file:///Users/jasonprice/Apps/scale-ai-api/apps/workers)) - Background queue worker service (Bull/Redis) processing simulations, batches, and emails, and managing cron jobs. Mounts the Bull Board UI at `/admin/queues`.
-5. **Email Preview** ([apps/email-preview/](file:///Users/jasonprice/Apps/scale-ai-api/apps/email-preview)) - Developer-only web tool to preview React-rendered email templates with custom JSON fixtures and live-reloading.
-6. **Simulation CLI** ([apps/sim-cli/](file:///Users/jasonprice/Apps/scale-ai-api/apps/sim-cli)) - Developer command-line tool for local database seeding, generating simulated student users, and executing batch simulation tests using LLMs.
+5. **Admin Developer App** ([apps/admin/](file:///Users/jasonprice/Apps/scale-ai-api/apps/admin)) - Local-only simulation runner and React Email preview tool.
+6. **Docs App** ([apps/docs/](file:///Users/jasonprice/Apps/scale-ai-api/apps/docs)) - VitePress API and developer documentation.
 
 Backend services share the same Node codebase and are deployed separately. The web app is a self-contained Vite project with its own `package.json` (not an npm workspace).
 
@@ -84,8 +84,8 @@ scale-ai-api/
 │   ├── api/               # Main API server
 │   ├── webhooks/          # Webhook handlers
 │   ├── workers/           # Background workers
-│   ├── email-preview/     # Email template preview
-│   └── sim-cli/           # Simulation CLI (dev tool)
+│   ├── admin/             # Local simulation runner and email preview
+│   └── docs/              # VitePress documentation
 ├── services/              # Business logic services
 │   ├── auth/
 │   ├── challenge/         # Challenge creation and execution
@@ -1931,27 +1931,31 @@ Templates are rendered server-side using `@react-email/render`:
 
 #### Previewing Templates
 
-Fixtures for email preview are in `apps/email-preview/fixtures/`. Run `npm run email:preview` to preview templates locally.
+Fixtures for email preview are in `apps/admin/fixtures/`. Run `npm run email:preview` to start the local admin preview server.
 
-## Seed Demo Data
+## Simulation Runner
 
-If your database already has **at least one org admin** (a `Member` with Clerk org role `org:admin`), you can generate a large demo dataset for load-testing:
+The former `sim:cli` is now the local Admin Developer App. Start it with
+`npm run dev:admin` and open `http://localhost:5174`.
 
-- **6 classrooms**
-- **6 completed challenges per classroom**
-- **100 students per classroom**, each with a profile (various profile types)
-- Variable definitions (profile/challenge/decision)
-- Decisions + completed simulation jobs + ledger entries
+The runner is intentionally restricted:
 
-Run:
+- It refuses `NODE_ENV=production`.
+- It accepts only localhost requests and binds its API server to `127.0.0.1`.
+- It refuses remote MongoDB hosts unless
+  `SIMULATION_RUNNER_ALLOW_REMOTE_DATABASE=true` is explicitly set for an
+  isolated, non-production test database.
+- It creates local MongoDB simulation identities and never creates Clerk users.
+- It only lists and reuses classrooms marked as simulation classrooms.
+- It refuses a simulation classroom if any enrolled student is not marked as a
+  simulation user.
+- It caps runs at 100 simulated students and suppresses all challenge/result
+  notifications for simulation runs.
+- Completed runs can be cleaned up from the runner; cleanup refuses to proceed
+  while simulation jobs are pending or running.
 
-`npm run seed:demo`
-
-Options:
-
-- `npm run seed:demo -- --dry-run`
-- `npm run seed:demo -- --admin=<clerkUserId>`
-- `npm run seed:demo -- --force`
+Both individual and batch modes require the workers service. A successful
+runner response means the jobs were submitted; results finish asynchronously.
 
 ## Auto-Generate Decisions on Challenge Publish (LLM)
 

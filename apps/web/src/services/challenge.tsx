@@ -110,6 +110,18 @@ async function cancelBatchAndRerun(challengeId: string) {
   return response.data;
 }
 
+async function stopCalculationAndReopen(
+  challengeId: string,
+  schedule: { closeSubmissionsAt: string; processAt: string },
+) {
+  const response = await axios.post(
+    `${API_HOST}/${API_VERSION}/admin/challenges/${challengeId}/stop-calculation-and-reopen`,
+    schedule,
+    { headers: await TokenHandler.getHeaders() },
+  );
+  return response.data;
+}
+
 async function generateDebrief(challengeId: string) {
   const response = await axios.post(
     `${API_HOST}/${API_VERSION}/admin/challenges/${challengeId}/debrief`,
@@ -239,6 +251,7 @@ const challengeService = {
   approve,
   rerun,
   cancelBatchAndRerun,
+  stopCalculationAndReopen,
   generateDebrief,
   releaseFeedback,
   getCurrent,

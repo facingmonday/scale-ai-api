@@ -10,9 +10,15 @@ const Outcome = require("../outcome/outcome.model");
 const LedgerEntry = require("../ledger/ledger.model");
 const JobService = require("../job/lib/jobService");
 const SimulationJob = require("../job/job.model");
+const Enrollment = require("../enrollment/enrollment.model");
+const Decision = require("../decision/decision.model");
 const AutomationTask = require("../ai/automationTask.model");
+const SimulationBatch = require("../job/simulationBatch.model");
+const LedgerCompletionEvent = require("../job/ledgerCompletionEvent.model");
+const { queues } = require("../../lib/queues");
 const challengeAiService = require("./lib/challengeAiService");
 const challengeDebriefService = require("./lib/challengeDebriefService");
+const classroomReadinessService = require("../classroom/classroomReadiness.service");
 
 test("challenge controller exports handlers", () => {
   assert.equal(typeof controller.getScenarios, "function");
@@ -333,6 +339,264 @@ test("updateScenario locks opening fields after publication", async (t) => {
   assert.match(body.error, /Unpublish the challenge first/);
 });
 
+test("updateScenario rejects calculation before the submissions lock", async (t) => {
+  const originals = {
+    findOne: Challenge.findOne,
+    validateAdminAccess: Classroom.validateAdminAccess,
+  };
+  t.after(() => {
+    Challenge.findOne = originals.findOne;
+    Classroom.validateAdminAccess = originals.validateAdminAccess;
+  });
+  Challenge.findOne = async () => ({
+    _id: "challenge-id",
+    classroomId: "classroom-id",
+    isPublished: true,
+    isClosed: false,
+    publishMode: "MANUAL",
+    publishAt: null,
+    submissionDeadlineAt: new Date("2026-09-02T23:59:00.000Z"),
+    closeSubmissionsAt: new Date("2026-09-02T23:59:00.000Z"),
+    processAt: new Date("2026-09-03T00:05:00.000Z"),
+    automationMode: "FULL",
+    canEdit: () => true,
+  });
+  Classroom.validateAdminAccess = async () => {};
+
+  let statusCode = 200;
+  let body;
+  await controller.updateScenario(
+    {
+      params: { challengeId: "challenge-id" },
+      body: { processAt: "2026-09-02T06:00:00.000Z" },
+      organization: { _id: "organization-id" },
+      clerkUser: { id: "teacher-id" },
+    },
+    {
+      status(code) {
+        statusCode = code;
+        return this;
+      },
+      json(payload) {
+        body = payload;
+        return this;
+      },
+    }
+  );
+
+  assert.equal(statusCode, 400);
+  assert.match(body.error, /processAt must be at or after closeSubmissionsAt/);
+});
+
+test("stopCalculationAndReopenScenario requires calculation at or after lock", async () => {
+  let statusCode = 200;
+  let body;
+  await controller.stopCalculationAndReopenScenario(
+    {
+      params: { challengeId: "challenge-id" },
+      body: {
+        closeSubmissionsAt: "2099-09-02T23:59:00.000Z",
+        processAt: "2099-09-02T06:00:00.000Z",
+      },
+      organization: { _id: "organization-id" },
+      clerkUser: { id: "teacher-id" },
+    },
+    {
+      status(code) {
+        statusCode = code;
+        return this;
+      },
+      json(payload) {
+        body = payload;
+        return this;
+      },
+    }
+  );
+
+  assert.equal(statusCode, 400);
+  assert.match(body.error, /processAt must be at or after closeSubmissionsAt/);
+});
+
+test("stopCalculationAndReopenScenario cancels artifacts and reopens the challenge", async (t) => {
+  const originals = {
+    findOne: Challenge.findOne,
+    validateAdminAccess: Classroom.validateAdminAccess,
+    jobExists: SimulationJob.exists,
+    cancelJobsForScenario: JobService.cancelJobsForScenario,
+    invalidateJobsForScenario: JobService.invalidateJobsForScenario,
+    cancelBatch: SimulationBatch.cancelInProgressBatchForScenario,
+    findBatches: SimulationBatch.find,
+    deleteLedgers: LedgerEntry.deleteMany,
+    findEvents: LedgerCompletionEvent.find,
+    deleteEvents: LedgerCompletionEvent.deleteMany,
+    updateDecisions: Decision.updateMany,
+    resetDebrief: challengeDebriefService.resetChallengeDebriefForRerun,
+    outcomeGetJobs: queues.outcomeProcessing.getJobs,
+    batchGetJobs: queues.simulationBatch.getJobs,
+    automationGetJobs: queues.automationTask.getJobs,
+  };
+  t.after(() => {
+    Challenge.findOne = originals.findOne;
+    Classroom.validateAdminAccess = originals.validateAdminAccess;
+    SimulationJob.exists = originals.jobExists;
+    JobService.cancelJobsForScenario = originals.cancelJobsForScenario;
+    JobService.invalidateJobsForScenario = originals.invalidateJobsForScenario;
+    SimulationBatch.cancelInProgressBatchForScenario = originals.cancelBatch;
+    SimulationBatch.find = originals.findBatches;
+    LedgerEntry.deleteMany = originals.deleteLedgers;
+    LedgerCompletionEvent.find = originals.findEvents;
+    LedgerCompletionEvent.deleteMany = originals.deleteEvents;
+    Decision.updateMany = originals.updateDecisions;
+    challengeDebriefService.resetChallengeDebriefForRerun = originals.resetDebrief;
+    queues.outcomeProcessing.getJobs = originals.outcomeGetJobs;
+    queues.simulationBatch.getJobs = originals.batchGetJobs;
+    queues.automationTask.getJobs = originals.automationGetJobs;
+  });
+
+  const challenge = {
+    _id: "challenge-id",
+    classroomId: "classroom-id",
+    isPublished: true,
+    isClosed: true,
+    isLockedForStudents: true,
+    isFeedbackReleased: false,
+    automationStatus: "processing",
+    async save() {},
+  };
+  Challenge.findOne = async () => challenge;
+  Classroom.validateAdminAccess = async () => {};
+  SimulationJob.exists = async () => false;
+  JobService.cancelJobsForScenario = async () => ({ total: 2, removed: 1, active: 1 });
+  SimulationBatch.cancelInProgressBatchForScenario = async () => ({ cancelled: true });
+  SimulationBatch.find = () => ({
+    select: () => ({ lean: async () => [] }),
+  });
+  LedgerCompletionEvent.find = () => ({
+    select: () => ({ lean: async () => [] }),
+  });
+  queues.outcomeProcessing.getJobs = async () => [];
+  queues.simulationBatch.getJobs = async () => [];
+  queues.automationTask.getJobs = async () => [];
+  LedgerEntry.deleteMany = async () => ({ deletedCount: 2 });
+  LedgerCompletionEvent.deleteMany = async () => ({ deletedCount: 1 });
+  Decision.updateMany = async () => ({ modifiedCount: 2 });
+  challengeDebriefService.resetChallengeDebriefForRerun = async () => {};
+
+  let body;
+  await controller.stopCalculationAndReopenScenario(
+    {
+      params: { challengeId: "challenge-id" },
+      body: {
+        closeSubmissionsAt: "2099-09-02T23:59:00.000Z",
+        processAt: "2099-09-03T00:05:00.000Z",
+      },
+      organization: { _id: "organization-id" },
+      clerkUser: { id: "teacher-id" },
+    },
+    {
+      status() {
+        return this;
+      },
+      json(payload) {
+        body = payload;
+        return this;
+      },
+    }
+  );
+
+  assert.equal(body.success, true);
+  assert.equal(challenge.isClosed, false);
+  assert.equal(challenge.isLockedForStudents, false);
+  assert.equal(challenge.automationStatus, "acceptingSubmissions");
+  assert.ok(challenge.calculationCancelledAt instanceof Date);
+  assert.equal(body.data.ledgerEntriesRemoved, 2);
+  assert.equal(body.data.decisionsReset, 2);
+  assert.equal(body.data.calculationWasActive, true);
+});
+
+test("stopCalculationAndReopenScenario resets completed results without queue cancellation", async (t) => {
+  const originals = {
+    findOne: Challenge.findOne,
+    validateAdminAccess: Classroom.validateAdminAccess,
+    jobExists: SimulationJob.exists,
+    cancelJobsForScenario: JobService.cancelJobsForScenario,
+    invalidateJobsForScenario: JobService.invalidateJobsForScenario,
+    findEvents: LedgerCompletionEvent.find,
+    deleteLedgers: LedgerEntry.deleteMany,
+    deleteEvents: LedgerCompletionEvent.deleteMany,
+    updateDecisions: Decision.updateMany,
+    resetDebrief: challengeDebriefService.resetChallengeDebriefForRerun,
+    automationGetJobs: queues.automationTask.getJobs,
+  };
+  t.after(() => {
+    Challenge.findOne = originals.findOne;
+    Classroom.validateAdminAccess = originals.validateAdminAccess;
+    SimulationJob.exists = originals.jobExists;
+    JobService.cancelJobsForScenario = originals.cancelJobsForScenario;
+    JobService.invalidateJobsForScenario = originals.invalidateJobsForScenario;
+    LedgerCompletionEvent.find = originals.findEvents;
+    LedgerEntry.deleteMany = originals.deleteLedgers;
+    LedgerCompletionEvent.deleteMany = originals.deleteEvents;
+    Decision.updateMany = originals.updateDecisions;
+    challengeDebriefService.resetChallengeDebriefForRerun = originals.resetDebrief;
+    queues.automationTask.getJobs = originals.automationGetJobs;
+  });
+
+  const challenge = {
+    _id: "challenge-id",
+    classroomId: "classroom-id",
+    isPublished: true,
+    isClosed: true,
+    automationStatus: "processed",
+    async save() {},
+  };
+  Challenge.findOne = async () => challenge;
+  Classroom.validateAdminAccess = async () => {};
+  SimulationJob.exists = async () => false;
+  let cancelCalled = false;
+  JobService.cancelJobsForScenario = async () => {
+    cancelCalled = true;
+  };
+  JobService.invalidateJobsForScenario = async () => ({ total: 2, removed: 0, active: 0 });
+  LedgerCompletionEvent.find = () => ({
+    select: () => ({ lean: async () => [] }),
+  });
+  queues.automationTask.getJobs = async () => [];
+  LedgerEntry.deleteMany = async () => ({ deletedCount: 2 });
+  LedgerCompletionEvent.deleteMany = async () => ({ deletedCount: 1 });
+  Decision.updateMany = async () => ({ modifiedCount: 2 });
+  challengeDebriefService.resetChallengeDebriefForRerun = async () => {};
+
+  let body;
+  await controller.stopCalculationAndReopenScenario(
+    {
+      params: { challengeId: "challenge-id" },
+      body: {
+        closeSubmissionsAt: "2099-09-02T23:59:00.000Z",
+        processAt: "2099-09-03T00:05:00.000Z",
+      },
+      organization: { _id: "organization-id" },
+      clerkUser: { id: "teacher-id" },
+    },
+    {
+      status() {
+        return this;
+      },
+      json(payload) {
+        body = payload;
+        return this;
+      },
+    }
+  );
+
+  assert.equal(cancelCalled, false);
+  assert.equal(body.success, true);
+  assert.equal(body.data.calculationWasActive, false);
+  assert.match(body.message, /Results reset/);
+  assert.equal(challenge.isClosed, false);
+  assert.equal(challenge.isLockedForStudents, false);
+});
+
 test("updateScenario derives publish mode for an older payload", async (t) => {
   const originals = {
     findOne: Challenge.findOne,
@@ -420,6 +684,128 @@ test("student challenge detail returns 404 before the scheduled start", async (t
 
   assert.equal(statusCode, 404);
   assert.deepEqual(body, { error: "Challenge not found" });
+});
+
+test("preview returns readiness details without creating result jobs", async (t) => {
+  const originals = {
+    getScenarioById: Challenge.getScenarioById,
+    validateAdminAccess: Classroom.validateAdminAccess,
+    createJobsForScenario: JobService.createJobsForScenario,
+    assertClassroomReady: classroomReadinessService.assertClassroomReady,
+  };
+  t.after(() => {
+    Challenge.getScenarioById = originals.getScenarioById;
+    Classroom.validateAdminAccess = originals.validateAdminAccess;
+    JobService.createJobsForScenario = originals.createJobsForScenario;
+    classroomReadinessService.assertClassroomReady = originals.assertClassroomReady;
+  });
+
+  Challenge.getScenarioById = async () => ({
+    _id: "challenge-id",
+    classroomId: "classroom-id",
+  });
+  Classroom.validateAdminAccess = async () => {};
+  let jobsCreated = 0;
+  JobService.createJobsForScenario = async () => {
+    jobsCreated += 1;
+    return [];
+  };
+  classroomReadinessService.assertClassroomReady = async () => {
+    const error = new Error("Classroom readiness checks blocked result processing");
+    error.code = "CLASSROOM_READINESS_BLOCKED";
+    error.statusCode = 409;
+    error.readiness = { status: "blocked", blockers: 1, checks: [] };
+    throw error;
+  };
+
+  let statusCode = 200;
+  let body;
+  await controller.previewScenario(
+    {
+      params: { challengeId: "challenge-id" },
+      organization: { _id: "organization-id" },
+      clerkUser: { id: "teacher-id" },
+    },
+    {
+      status(code) {
+        statusCode = code;
+        return this;
+      },
+      json(payload) {
+        body = payload;
+        return this;
+      },
+    },
+  );
+
+  assert.equal(statusCode, 409);
+  assert.equal(body.code, "CLASSROOM_READINESS_BLOCKED");
+  assert.equal(body.readiness.status, "blocked");
+  assert.equal(jobsCreated, 0);
+});
+
+test("student challenge detail hides results and guidance before manual release", async (t) => {
+  const originals = {
+    getScenarioById: Challenge.getScenarioById,
+    isUserEnrolled: Enrollment.isUserEnrolled,
+    getSubmission: Decision.getSubmission,
+    getOutcomeByScenario: Outcome.getOutcomeByScenario,
+    getLedgerEntry: LedgerEntry.getLedgerEntry,
+  };
+  t.after(() => {
+    Challenge.getScenarioById = originals.getScenarioById;
+    Enrollment.isUserEnrolled = originals.isUserEnrolled;
+    Decision.getSubmission = originals.getSubmission;
+    Outcome.getOutcomeByScenario = originals.getOutcomeByScenario;
+    LedgerEntry.getLedgerEntry = originals.getLedgerEntry;
+  });
+
+  Challenge.getScenarioById = async () => ({
+    _id: "challenge-id",
+    classroomId: "classroom-id",
+    organization: "organization-id",
+    isPublished: true,
+    isClosed: true,
+    feedbackReleaseMode: "MANUAL",
+    isFeedbackReleased: false,
+  });
+  Enrollment.isUserEnrolled = async () => true;
+  Decision.getSubmission = async () => ({ processingStatus: "completed" });
+  Outcome.getOutcomeByScenario = async () => ({
+    notes: "public outcome",
+    hiddenNotes: "teacher-only",
+    toObject() {
+      return { notes: this.notes, hiddenNotes: this.hiddenNotes };
+    },
+  });
+  LedgerEntry.getLedgerEntry = async () => ({
+    summary: "valid result",
+    studentFeedback: {
+      status: "completed",
+      nextActions: [
+        { title: "Hidden action", rationale: "Not released yet." },
+      ],
+    },
+  });
+
+  let body;
+  await controller.getScenarioByIdForStudent(
+    { params: { id: "challenge-id" }, user: { _id: "student-id" } },
+    {
+      status() {
+        return this;
+      },
+      json(payload) {
+        body = payload;
+        return this;
+      },
+    },
+  );
+
+  assert.equal(body.data.outcome, null);
+  assert.equal(body.data.ledgerEntry, null);
+  assert.equal(JSON.stringify(body).includes("Hidden action"), false);
+  assert.equal(JSON.stringify(body).includes("teacher-only"), false);
 });
 
 test("admin challenge detail explicitly includes the teacher debrief", async (t) => {
@@ -598,6 +984,7 @@ test("cancelBatchAndRerunScenario closes and reconciles a recovered challenge", 
     createJobsForScenario: JobService.createJobsForScenario,
     resetChallengeDebriefForRerun:
       challengeDebriefService.resetChallengeDebriefForRerun,
+    assertClassroomReady: classroomReadinessService.assertClassroomReady,
   };
   t.after(() => {
     if (originalSimulationMode === undefined) delete process.env.SIMULATION_MODE;
@@ -611,6 +998,8 @@ test("cancelBatchAndRerunScenario closes and reconciles a recovered challenge", 
     JobService.createJobsForScenario = originals.createJobsForScenario;
     challengeDebriefService.resetChallengeDebriefForRerun =
       originals.resetChallengeDebriefForRerun;
+    classroomReadinessService.assertClassroomReady =
+      originals.assertClassroomReady;
   });
 
   process.env.SIMULATION_MODE = "direct";
@@ -637,6 +1026,9 @@ test("cancelBatchAndRerunScenario closes and reconciles a recovered challenge", 
     return challenge;
   };
   Classroom.validateAdminAccess = async () => calls.push(["validate"]);
+  classroomReadinessService.assertClassroomReady = async () => ({
+    status: "ready",
+  });
   Outcome.getOutcomeByScenario = async () => ({ _id: "outcome-id" });
   JobService.resetJobsForScenario = async () => calls.push(["reset"]);
   LedgerEntry.deleteLedgerEntriesForScenario = async () =>

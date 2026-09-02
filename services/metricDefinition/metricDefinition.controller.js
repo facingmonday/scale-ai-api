@@ -17,6 +17,8 @@ exports.createMetricDefinition = async function (req, res) {
       format,
       aiPromptRule,
       aggregation,
+      leaderboardSortDirection,
+      isPrimaryLeaderboardMetric,
       displayIn,
       defaultInitialValue,
       sortOrder,
@@ -58,18 +60,33 @@ exports.createMetricDefinition = async function (req, res) {
         format,
         aiPromptRule,
         aggregation,
+        leaderboardSortDirection,
+        isPrimaryLeaderboardMetric,
         displayIn,
         defaultInitialValue,
         sortOrder,
+        isActive: req.body.isActive,
       },
       organizationId,
       clerkUserId
     );
 
+    await MetricDefinition.ensurePrimaryLeaderboardMetric(
+      classroomId,
+      organizationId,
+      isPrimaryLeaderboardMetric ? key : undefined,
+      clerkUserId
+    );
+    const savedDefinition = await MetricDefinition.getDefinitionByKey(
+      classroomId,
+      key,
+      organizationId
+    );
+
     res.status(201).json({
       success: true,
       message: "Metric definition created successfully",
-      data: definition,
+      data: savedDefinition || definition,
     });
   } catch (error) {
     console.error("Error creating metric definition:", error);
@@ -114,7 +131,8 @@ exports.updateMetricDefinition = async function (req, res) {
 
     const definition = await MetricDefinition.getDefinitionByKey(
       classroomId,
-      key
+      key,
+      organizationId
     );
 
     if (!definition) {
@@ -134,6 +152,8 @@ exports.updateMetricDefinition = async function (req, res) {
       "format",
       "aiPromptRule",
       "aggregation",
+      "leaderboardSortDirection",
+      "isPrimaryLeaderboardMetric",
       "displayIn",
       "defaultInitialValue",
       "sortOrder",
@@ -148,11 +168,22 @@ exports.updateMetricDefinition = async function (req, res) {
 
     definition.updatedBy = clerkUserId;
     await definition.save();
+    await MetricDefinition.ensurePrimaryLeaderboardMetric(
+      classroomId,
+      organizationId,
+      req.body.isPrimaryLeaderboardMetric === true ? key : undefined,
+      clerkUserId
+    );
+    const savedDefinition = await MetricDefinition.getDefinitionByKey(
+      classroomId,
+      key,
+      organizationId
+    );
 
     res.json({
       success: true,
       message: "Metric definition updated successfully",
-      data: definition,
+      data: savedDefinition || definition,
     });
   } catch (error) {
     console.error("Error updating metric definition:", error);
@@ -248,7 +279,8 @@ exports.deleteMetricDefinition = async function (req, res) {
 
     const definition = await MetricDefinition.getDefinitionByKey(
       classroomId,
-      key
+      key,
+      organizationId
     );
 
     if (!definition) {
@@ -256,6 +288,12 @@ exports.deleteMetricDefinition = async function (req, res) {
     }
 
     await definition.softDelete();
+    await MetricDefinition.ensurePrimaryLeaderboardMetric(
+      classroomId,
+      organizationId,
+      undefined,
+      clerkUserId
+    );
 
     res.json({
       success: true,

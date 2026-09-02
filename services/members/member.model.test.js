@@ -14,6 +14,25 @@ test("maskEmail masks local part", () => {
   assert.equal(Member.maskEmail("student@example.com"), "s****@example.com");
 });
 
+test("simulation members never resolve contact details through Clerk", async () => {
+  const member = new Member({
+    clerkUserId: "sim_test_s001",
+    isSimulationUser: true,
+    firstName: "Sim",
+    lastName: "Student",
+    createdAt: new Date(),
+  });
+
+  assert.deepEqual(await member.getContactFromClerk(), {
+    email: "",
+    phone: "",
+  });
+  const profile = await member.getProfileFromClerk();
+  assert.equal(profile.id, "sim_test_s001");
+  assert.equal(profile.email, "");
+  assert.deepEqual(profile.emailAddresses, []);
+});
+
 test("formatMemberResponse prefers canonical Clerk identity fields", async () => {
   const member = {
     _id: "member_123",

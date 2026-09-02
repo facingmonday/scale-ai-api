@@ -244,6 +244,14 @@ router.post(
   controller.cancelBatchAndRerunScenario
 );
 
+/** Stop an in-progress calculation, discard its results, and reopen submissions. */
+router.post(
+  "/admin/challenges/:challengeId/stop-calculation-and-reopen",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.stopCalculationAndReopenScenario
+);
+
 /**
  * @openapi
  * /v1/admin/challenges/{challengeId}/release-feedback:

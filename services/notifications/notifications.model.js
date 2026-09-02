@@ -32,12 +32,22 @@ const NotificationSchema = new mongoose.Schema(
     modelData: { type: Object, required: false }, // New field to profile IDs for template population
     status: {
       type: String,
-      enum: ["Pending", "Sent", "Failed", "Read", "Deleted", "Unread"],
+      enum: [
+        "Pending",
+        "Sent",
+        "Skipped",
+        "Failed",
+        "Read",
+        "Deleted",
+        "Unread",
+      ],
       default: "Pending",
     },
     metadata: {
       emailSent: { type: Boolean, default: false },
       emailQueued: { type: Boolean, default: false },
+      emailSkipped: { type: Boolean, default: false },
+      emailSkipReason: { type: String },
       emailError: { type: String },
       smsSent: { type: Boolean, default: false },
       smsQueued: { type: Boolean, default: false },
@@ -111,6 +121,15 @@ NotificationSchema.statics.getReceiver = async function (
       const member = await Member.findById(memberId);
 
       if (!member) {
+        return null;
+      }
+
+      // Simulation identities intentionally do not exist in Clerk and must
+      // never resolve into an outbound notification recipient.
+      if (
+        member.isSimulationUser ||
+        String(member.clerkUserId || "").startsWith("sim_")
+      ) {
         return null;
       }
 
@@ -243,6 +262,13 @@ NotificationSchema.statics.sendEmailNotification = async function (
     if (
       notification.metadata?.emailSent ||
       notification.metadata?.emailQueued
+    ) {
+      return true;
+    }
+
+    if (
+      notification.metadata?.emailSkipped &&
+      process.env.SEND_EMAIL !== "true"
     ) {
       return true;
     }

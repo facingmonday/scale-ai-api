@@ -11,6 +11,22 @@ export type StoreTypeKey = string;
 
 export interface TeacherDebrief {
   summary?: string;
+  strongerPatterns?: string[];
+  weakerPatterns?: string[];
+  expectedVariation?: string[];
+  suspiciousAnomalies?: string[];
+  commonMistakes?: string[];
+  discussionQuestions?: string[];
+  suggestedInterventions?: string[];
+  profileTypeSummaries?: Array<{
+    key: string;
+    label: string;
+    participantCount: number;
+    summary: string;
+    strengths: string[];
+    risks: string[];
+    recommendedFocus: string[];
+  }>;
   status: "pending" | "processing" | "completed" | "failed";
   generatedAt?: string | null;
   attempts?: number;

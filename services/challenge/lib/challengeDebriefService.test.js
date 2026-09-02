@@ -6,6 +6,7 @@ process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || "test-key";
 const {
   buildAnonymousAggregateFromRows,
   buildOpenAIRequest,
+  normalizeDebrief,
 } = require("./challengeDebriefService");
 
 test("builds only anonymous cohort summaries and selects the leaderboard metric", () => {
@@ -29,12 +30,18 @@ test("builds only anonymous cohort summaries and selects the leaderboard metric"
       },
     ],
     metricDefinitions: [
-      { key: "profit", label: "Profit", dataType: "number" },
+      {
+        key: "profit",
+        label: "Profit",
+        dataType: "number",
+        displayIn: { leaderboard: true },
+      },
       {
         key: "satisfaction",
         label: "Satisfaction",
         dataType: "number",
         displayIn: { leaderboard: true },
+        isPrimaryLeaderboardMetric: true,
       },
     ],
     variableDefinitions: [
@@ -80,7 +87,7 @@ test("builds only anonymous cohort summaries and selects the leaderboard metric"
   }
 });
 
-test("falls back to the first numeric metric", () => {
+test("omits the performance metric when no leaderboard metric is configured", () => {
   const aggregate = buildAnonymousAggregateFromRows({
     rows: [{ metrics: { revenue: 12 }, decisionVariables: {}, challengeVariables: {} }],
     metricDefinitions: [
@@ -90,5 +97,85 @@ test("falls back to the first numeric metric", () => {
     variableDefinitions: [],
   });
 
-  assert.equal(aggregate.performanceMetric.key, "revenue");
+  assert.equal(aggregate.performanceMetric, null);
+});
+
+test("normalizes every structured section and adds one card per profile type", () => {
+  const aggregate = {
+    performanceMetric: { key: "profit", label: "Profit" },
+    profileTypeGroups: [
+      {
+        profileTypeKey: "urban",
+        profileType: "Urban Store",
+        count: 2,
+        metrics: { profit: { label: "Profit", average: 15, min: 10, max: 20 } },
+      },
+      {
+        profileTypeKey: "rural",
+        profileType: "Rural Store",
+        count: 1,
+        metrics: { profit: { label: "Profit", average: 8, min: 8, max: 8 } },
+      },
+    ],
+  };
+
+  const debrief = normalizeDebrief(
+    {
+      summary: "The cohort adapted well.",
+      strongerPatterns: ["Matched supply to demand."],
+      weakerPatterns: ["Held excess inventory."],
+      expectedVariation: ["Store capacity varied."],
+      suspiciousAnomalies: ["One result needs review."],
+      commonMistakes: ["Over-ordering."],
+      discussionQuestions: ["What tradeoff drove your choice?"],
+      suggestedInterventions: ["Model a cash-flow check."],
+      profileTypeSummaries: [
+        {
+          key: "urban",
+          label: "wrong label is replaced",
+          participantCount: 999,
+          summary: "Urban stores were resilient.",
+          strengths: ["Demand response"],
+          risks: ["High fixed cost"],
+          recommendedFocus: ["Inventory timing"],
+        },
+      ],
+    },
+    aggregate,
+  );
+
+  assert.equal(debrief.profileTypeSummaries.length, 2);
+  assert.deepEqual(
+    debrief.profileTypeSummaries.map((item) => [item.key, item.label, item.participantCount]),
+    [
+      ["urban", "Urban Store", 2],
+      ["rural", "Rural Store", 1],
+    ],
+  );
+  assert.equal(debrief.profileTypeSummaries[1].summary.includes("1 result"), true);
+  assert.equal(debrief.discussionQuestions.length, 1);
+});
+
+test("includes configured profile types even when they have no results", () => {
+  const aggregate = buildAnonymousAggregateFromRows({
+    rows: [],
+    metricDefinitions: [],
+    variableDefinitions: [],
+    profileTypes: [
+      { key: "campus", label: "Campus Store" },
+      { key: "downtown", label: "Downtown Store" },
+    ],
+  });
+
+  assert.deepEqual(
+    aggregate.profileTypeGroups.map((group) => [
+      group.profileTypeKey,
+      group.profileType,
+      group.count,
+    ]),
+    [
+      ["campus", "Campus Store", 0],
+      ["downtown", "Downtown Store", 0],
+    ],
+  );
 });

@@ -7,7 +7,16 @@ const MetricDefinition = require("../metricDefinition/metricDefinition.model");
 const { STORE_TYPE_PRESETS } = require("../profile/profileTypePresets");
 const defaultTemplatesData = require("./defaultTemplatesData");
 
-const SUPPLY_CHAIN_TEMPLATE_VERSION = 2;
+const SUPPLY_CHAIN_TEMPLATE_VERSION = 4;
+const SUPPLY_CHAIN_METRIC_KEYS = [
+  "sales",
+  "revenue",
+  "costs",
+  "waste",
+  "netProfit",
+  "cashBefore",
+  "cashAfter",
+];
 const LEGACY_UNIFORM_SELLING_PRICE = 16;
 const SELLING_PRICE_VARIABLE_KEYS = [
   "avg-selling-price-per-unit",
@@ -15,6 +24,56 @@ const SELLING_PRICE_VARIABLE_KEYS = [
   "avgSellingPricePerUnit",
   "averageSellingPricePerUnit",
 ];
+
+function backfillTemplateLeaderboardConfiguration(metricDefinitions) {
+  if (!Array.isArray(metricDefinitions)) {
+    return { changed: false, definitions: metricDefinitions };
+  }
+  const keys = new Set(metricDefinitions.map((definition) => definition?.key));
+  const isCanonicalSupplyChain =
+    keys.size === SUPPLY_CHAIN_METRIC_KEYS.length &&
+    SUPPLY_CHAIN_METRIC_KEYS.every((key) => keys.has(key));
+  const eligible = metricDefinitions
+    .filter(
+      (definition) =>
+        definition?.dataType === "number" &&
+        definition.isActive !== false &&
+        definition.displayIn?.leaderboard
+    )
+    .sort((a, b) => {
+      const orderDifference = (a.sortOrder || 0) - (b.sortOrder || 0);
+      return (
+        orderDifference ||
+        String(a.label || a.key).localeCompare(String(b.label || b.key))
+      );
+    });
+  const hasPrimary = eligible.some(
+    (definition) => definition.isPrimaryLeaderboardMetric === true
+  );
+  const primaryKey = hasPrimary
+    ? null
+    : isCanonicalSupplyChain && keys.has("netProfit")
+      ? "netProfit"
+      : eligible[0]?.key;
+
+  let changed = false;
+  const definitions = metricDefinitions.map((definition) => {
+    const updates = {};
+    if (definition.leaderboardSortDirection === undefined) {
+      updates.leaderboardSortDirection =
+        isCanonicalSupplyChain && ["costs", "waste"].includes(definition.key)
+          ? "asc"
+          : "desc";
+    }
+    if (definition.isPrimaryLeaderboardMetric === undefined) {
+      updates.isPrimaryLeaderboardMetric = definition.key === primaryKey;
+    }
+    if (Object.keys(updates).length === 0) return definition;
+    changed = true;
+    return { ...definition, ...updates };
+  });
+  return { changed, definitions };
+}
 /**
  * @openapi
  * components:
@@ -944,9 +1003,11 @@ classroomTemplateSchema.statics.getPizzaShopMetricDefinitions = function () {
       dataType: "number",
       format: "count",
       aggregation: "sum",
+      leaderboardSortDirection: "desc",
+      isPrimaryLeaderboardMetric: false,
       aiPromptRule:
         "Whole-number units of finished goods sold this period, bounded by demand and inventory available for sale.",
-      displayIn: { table: true, kpi: true, chart: true, leaderboard: false, detail: true },
+      displayIn: { table: true, kpi: true, chart: true, leaderboard: true, detail: true },
       sortOrder: 10,
     },
     {
@@ -956,9 +1017,11 @@ classroomTemplateSchema.statics.getPizzaShopMetricDefinitions = function () {
       dataType: "number",
       format: "currency",
       aggregation: "sum",
+      leaderboardSortDirection: "desc",
+      isPrimaryLeaderboardMetric: false,
       aiPromptRule:
         "revenue = sales * realizedUnitPrice, rounded to cents. realizedUnitPrice = avgSellingPricePerUnit * (pricing-multiplier from decisions, default 1).",
-      displayIn: { table: true, kpi: true, chart: true, leaderboard: false, detail: true },
+      displayIn: { table: true, kpi: true, chart: true, leaderboard: true, detail: true },
       sortOrder: 20,
     },
     {
@@ -968,9 +1031,11 @@ classroomTemplateSchema.statics.getPizzaShopMetricDefinitions = function () {
       dataType: "number",
       format: "currency",
       aggregation: "sum",
+      leaderboardSortDirection: "asc",
+      isPrimaryLeaderboardMetric: false,
       aiPromptRule:
         "Total of ingredient, labor, logistics, holding, overflow, waste-disposal and other costs (see COST GUARDRAILS).",
-      displayIn: { table: true, kpi: true, chart: true, leaderboard: false, detail: true },
+      displayIn: { table: true, kpi: true, chart: true, leaderboard: true, detail: true },
       sortOrder: 30,
     },
     {
@@ -980,9 +1045,11 @@ classroomTemplateSchema.statics.getPizzaShopMetricDefinitions = function () {
       dataType: "number",
       format: "currency",
       aggregation: "sum",
+      leaderboardSortDirection: "asc",
+      isPrimaryLeaderboardMetric: false,
       aiPromptRule:
         "Cost of inventory wasted this period (wasteUnits × unit cost across buckets).",
-      displayIn: { table: true, kpi: false, chart: true, leaderboard: false, detail: true },
+      displayIn: { table: true, kpi: false, chart: true, leaderboard: true, detail: true },
       sortOrder: 40,
     },
     {
@@ -992,6 +1059,8 @@ classroomTemplateSchema.statics.getPizzaShopMetricDefinitions = function () {
       dataType: "number",
       format: "currency",
       aggregation: "sum",
+      leaderboardSortDirection: "desc",
+      isPrimaryLeaderboardMetric: true,
       aiPromptRule:
         "netProfit = revenue - costs, rounded to cents. Must equal cashAfter - cashBefore.",
       displayIn: { table: true, kpi: true, chart: true, leaderboard: true, detail: true },
@@ -1004,6 +1073,8 @@ classroomTemplateSchema.statics.getPizzaShopMetricDefinitions = function () {
       dataType: "number",
       format: "currency",
       aggregation: "last",
+      leaderboardSortDirection: "desc",
+      isPrimaryLeaderboardMetric: false,
       aiPromptRule:
         "Carry-forward: this MUST equal prior_ledger_entry.cashAfter. Week 0 already reflects startingBalance - initialStartupCost; never deduct startup cost again in challenge costs.",
       displayIn: { table: false, kpi: false, chart: false, leaderboard: false, detail: true },
@@ -1016,9 +1087,11 @@ classroomTemplateSchema.statics.getPizzaShopMetricDefinitions = function () {
       dataType: "number",
       format: "currency",
       aggregation: "last",
+      leaderboardSortDirection: "desc",
+      isPrimaryLeaderboardMetric: false,
       aiPromptRule:
         "cashAfter = cashBefore + netProfit, rounded to cents.",
-      displayIn: { table: true, kpi: true, chart: true, leaderboard: false, detail: true },
+      displayIn: { table: true, kpi: true, chart: true, leaderboard: true, detail: true },
       sortOrder: 70,
     },
   ];
@@ -1036,6 +1109,8 @@ classroomTemplateSchema.statics.getMarketing101MetricDefinitions = function () {
       dataType: "number",
       format: "count",
       aggregation: "last",
+      leaderboardSortDirection: "desc",
+      isPrimaryLeaderboardMetric: true,
       aiPromptRule:
         "Carry-forward integer count. Increase based on engagement, ad spend, and outcome conditions. Decrease modestly only under negative outcomes.",
       displayIn: { table: true, kpi: true, chart: true, leaderboard: true, detail: true },
@@ -1508,9 +1583,9 @@ classroomTemplateSchema.statics.ensureGlobalDefaultTemplate =
         );
       }
 
-      if (!Array.isArray(payload.metricDefinitions)) {
-        payload.metricDefinitions = this.getPizzaShopMetricDefinitions();
-      }
+      // This global template is developer-managed; keep its canonical metrics
+      // synchronized with source just like the built-in profile defaults.
+      payload.metricDefinitions = this.getPizzaShopMetricDefinitions();
 
       existing.payload = payload;
       existing.version = Math.max(
@@ -2090,11 +2165,25 @@ classroomTemplateSchema.statics.ensureGlobalCourseTemplate = async function (tem
       dataType: "number",
       format,
       aggregation,
+      leaderboardSortDirection:
+        isObject && metricInput.leaderboardSortDirection === "asc"
+          ? "asc"
+          : "desc",
+      isPrimaryLeaderboardMetric:
+        isObject && metricInput.isPrimaryLeaderboardMetric === true,
       aiPromptRule,
       displayIn,
       sortOrder: (index + 1) * 10,
     };
   });
+  if (!metricDefinitions.some((definition) => definition.isPrimaryLeaderboardMetric)) {
+    const firstLeaderboardMetric = metricDefinitions.find(
+      (definition) => definition.displayIn?.leaderboard
+    );
+    if (firstLeaderboardMetric) {
+      firstLeaderboardMetric.isPrimaryLeaderboardMetric = true;
+    }
+  }
 
   const { decision: decisionVars, outcome: outcomeVars } = getVariablesForTemplate(key);
 
@@ -2242,6 +2331,14 @@ classroomTemplateSchema.statics.copyGlobalToOrganization = async function (
       ) {
         payload.metricDefinitions = globalTemplate.payload?.metricDefinitions || [];
         hasChanges = true;
+      } else {
+        const patchedMetrics = backfillTemplateLeaderboardConfiguration(
+          payload.metricDefinitions
+        );
+        if (patchedMetrics.changed) {
+          payload.metricDefinitions = patchedMetrics.definitions;
+          hasChanges = true;
+        }
       }
 
       // Backfill profileTypes financial fields (startingBalance, initialStartupCost) if missing
@@ -2711,6 +2808,7 @@ classroomTemplateSchema.methods.applyToClassroom = async function ({
       (
         await MetricDefinition.find({
           classroomId,
+          organization: organizationId,
         }).select("key")
       ).map((d) => d.key)
     );
@@ -2732,6 +2830,10 @@ classroomTemplateSchema.methods.applyToClassroom = async function ({
           format: md.format || "count",
           aiPromptRule: md.aiPromptRule || "",
           aggregation: md.aggregation || "last",
+          leaderboardSortDirection:
+            md.leaderboardSortDirection === "asc" ? "asc" : "desc",
+          isPrimaryLeaderboardMetric:
+            md.isPrimaryLeaderboardMetric === true,
           displayIn: md.displayIn || {
             table: true,
             kpi: false,
@@ -2753,6 +2855,15 @@ classroomTemplateSchema.methods.applyToClassroom = async function ({
       }
     }
   }
+
+  await MetricDefinition.ensurePrimaryLeaderboardMetric(
+    classroomId,
+    organizationId,
+    metricDefsPayload.find(
+      (definition) => definition?.isPrimaryLeaderboardMetric === true
+    )?.key,
+    clerkUserId
+  );
 
   return stats;
 };

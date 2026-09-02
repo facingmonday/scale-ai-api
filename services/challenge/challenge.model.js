@@ -112,6 +112,10 @@ const scenarioSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  suppressNotifications: {
+    type: Boolean,
+    default: false,
+  },
   isClosed: {
     type: Boolean,
     default: false,
@@ -203,10 +207,38 @@ const scenarioSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  calculationCancelledAt: {
+    type: Date,
+    default: null,
+  },
   teacherDebrief: {
     type: new mongoose.Schema(
       {
         summary: { type: String, default: "" },
+        strongerPatterns: { type: [String], default: [] },
+        weakerPatterns: { type: [String], default: [] },
+        expectedVariation: { type: [String], default: [] },
+        suspiciousAnomalies: { type: [String], default: [] },
+        commonMistakes: { type: [String], default: [] },
+        discussionQuestions: { type: [String], default: [] },
+        suggestedInterventions: { type: [String], default: [] },
+        profileTypeSummaries: {
+          type: [
+            new mongoose.Schema(
+              {
+                key: { type: String, default: "" },
+                label: { type: String, required: true },
+                participantCount: { type: Number, default: 0, min: 0 },
+                summary: { type: String, default: "" },
+                strengths: { type: [String], default: [] },
+                risks: { type: [String], default: [] },
+                recommendedFocus: { type: [String], default: [] },
+              },
+              { _id: false },
+            ),
+          ],
+          default: [],
+        },
         status: {
           type: String,
           enum: ["pending", "processing", "completed", "failed"],
@@ -1134,11 +1166,17 @@ scenarioSchema.statics.getStoreTypeStats = async function (
     });
 
     if (leaderboardDef) {
-      const sorted = [...stats.decisions].sort(
-        (a, b) =>
-          (b.ledger.metrics?.[leaderboardDef.key] ?? 0) -
-          (a.ledger.metrics?.[leaderboardDef.key] ?? 0)
-      );
+      const direction =
+        leaderboardDef.leaderboardSortDirection === "asc" ? 1 : -1;
+      const sorted = [...stats.decisions].sort((a, b) => {
+        const aValue = Number(a.ledger.metrics?.[leaderboardDef.key]);
+        const bValue = Number(b.ledger.metrics?.[leaderboardDef.key]);
+        return (
+          ((Number.isFinite(aValue) ? aValue : 0) -
+            (Number.isFinite(bValue) ? bValue : 0)) *
+          direction
+        );
+      });
 
       stats.winners = sorted.slice(0, 3).map((sub) => ({
         userId: sub.userId,

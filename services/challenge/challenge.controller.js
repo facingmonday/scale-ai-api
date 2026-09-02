@@ -8,11 +8,19 @@ const LedgerEntry = require("../ledger/ledger.model");
 const SimulationWorker = require("../job/lib/simulationWorker");
 const SimulationBatch = require("../job/simulationBatch.model");
 const SimulationJob = require("../job/job.model");
+const LedgerCompletionEvent = require("../job/ledgerCompletionEvent.model");
+const MetricDefinition = require("../metricDefinition/metricDefinition.model");
+const VariableDefinition = require("../variableDefinition/variableDefinition.model");
+const {
+  serializeStudentLedgerEntry,
+} = require("../ledger/studentResultSerializer");
 const challengeAiService = require("./lib/challengeAiService");
 const challengeDebriefService = require("./lib/challengeDebriefService");
+const classroomReadinessService = require("../classroom/classroomReadiness.service");
 const {
   enqueueSimulationBatchSubmit,
 } = require("../../lib/queues/simulation-batch-worker");
+const { queues, ensureQueueReady } = require("../../lib/queues");
 
 
 const SCHEDULE_FIELDS = [
@@ -29,6 +37,16 @@ const SCHEDULE_FIELDS = [
   "missingSubmissionPolicy",
   "punishAbsentStudents",
 ];
+
+function sendReadinessError(res, error) {
+  if (error?.code !== "CLASSROOM_READINESS_BLOCKED") return false;
+  res.status(409).json({
+    error: error.message,
+    code: error.code,
+    readiness: error.readiness,
+  });
+  return true;
+}
 
 function parseOptionalDate(value, fieldName) {
   if (value === undefined) return undefined;
@@ -101,6 +119,12 @@ function normalizeScheduleInput(body) {
     schedule.submissionDeadlineAt !== undefined
       ? schedule.submissionDeadlineAt
       : body.submissionDeadlineAt;
+  const closeSubmissionsAt =
+    schedule.closeSubmissionsAt !== undefined
+      ? schedule.closeSubmissionsAt
+      : body.closeSubmissionsAt;
+  const processAt =
+    schedule.processAt !== undefined ? schedule.processAt : body.processAt;
 
   if (
     publishAt &&
@@ -108,6 +132,18 @@ function normalizeScheduleInput(body) {
     new Date(submissionDeadlineAt).getTime() < new Date(publishAt).getTime()
   ) {
     const error = new Error("submissionDeadlineAt must be at or after publishAt");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (
+    closeSubmissionsAt &&
+    processAt &&
+    new Date(processAt).getTime() < new Date(closeSubmissionsAt).getTime()
+  ) {
+    const error = new Error(
+      "processAt must be at or after closeSubmissionsAt"
+    );
     error.statusCode = 400;
     throw error;
   }
@@ -428,6 +464,14 @@ exports.updateScenario = async function (req, res) {
         req.body.submissionDeadlineAt !== undefined
           ? req.body.submissionDeadlineAt
           : challenge.submissionDeadlineAt,
+      closeSubmissionsAt:
+        req.body.closeSubmissionsAt !== undefined
+          ? req.body.closeSubmissionsAt
+          : challenge.closeSubmissionsAt,
+      processAt:
+        req.body.processAt !== undefined
+          ? req.body.processAt
+          : challenge.processAt,
     });
     const currentPublishMode = Challenge.getPublishMode(challenge);
     const effectivePublishMode =
@@ -732,6 +776,13 @@ exports.previewScenario = async function (req, res) {
       organizationId
     );
 
+    await classroomReadinessService.assertClassroomReady({
+      classroomId: challenge.classroomId,
+      organizationId,
+      challengeId,
+      operation: "preview",
+    });
+
     // Get outcome
     const outcome = await Outcome.getOutcomeByScenario(challengeId);
 
@@ -783,6 +834,7 @@ exports.previewScenario = async function (req, res) {
     });
   } catch (error) {
     console.error("Error previewing challenge:", error);
+    if (sendReadinessError(res, error)) return;
     if (error.message === "Class not found") {
       return res.status(404).json({ error: error.message });
     }
@@ -820,6 +872,13 @@ exports.rerunScenario = async function (req, res) {
       clerkUserId,
       organizationId
     );
+
+    await classroomReadinessService.assertClassroomReady({
+      classroomId: challenge.classroomId,
+      organizationId,
+      challengeId,
+      operation: "rerun",
+    });
 
     // Get outcome
     const outcome = await Outcome.getOutcomeByScenario(challengeId);
@@ -876,6 +935,7 @@ exports.rerunScenario = async function (req, res) {
     });
   } catch (error) {
     console.error("Error rerunning challenge:", error);
+    if (sendReadinessError(res, error)) return;
     if (error.message === "Class not found") {
       return res.status(404).json({ error: error.message });
     }
@@ -913,6 +973,14 @@ exports.cancelBatchAndRerunScenario = async function (req, res) {
       clerkUserId,
       organizationId
     );
+
+    await classroomReadinessService.assertClassroomReady({
+      classroomId: challenge.classroomId,
+      organizationId,
+      challengeId,
+      operation: "rerun",
+      ignoreCheckKeys: ["in_progress_jobs"],
+    });
 
     // Get outcome (required for rerun)
     const outcome = await Outcome.getOutcomeByScenario(challengeId);
@@ -981,10 +1049,216 @@ exports.cancelBatchAndRerunScenario = async function (req, res) {
     });
   } catch (error) {
     console.error("Error in cancel-batch-and-rerun:", error);
+    if (sendReadinessError(res, error)) return;
     if (error.message === "Class not found") {
       return res.status(404).json({ error: error.message });
     }
     if (error.message.includes("Insufficient permissions")) {
+      return res.status(403).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+};
+
+async function removeChallengeQueueJobs(queue, predicate) {
+  await ensureQueueReady(queue, "challenge recovery");
+  const jobs = await queue.getJobs([
+    "waiting",
+    "active",
+    "delayed",
+    "paused",
+    "failed",
+  ]);
+  let removed = 0;
+  let active = 0;
+  for (const job of jobs) {
+    if (!predicate(job)) continue;
+    const state = await job.getState();
+    if (state === "active") {
+      active += 1;
+      await job.discard();
+      continue;
+    }
+    await job.remove();
+    removed += 1;
+  }
+  return { removed, active };
+}
+
+/**
+ * Stop calculation work for one challenge, discard premature results, reset
+ * decisions, and reopen submissions with a corrected future schedule.
+ * POST /api/admin/challenges/:challengeId/stop-calculation-and-reopen
+ */
+exports.stopCalculationAndReopenScenario = async function (req, res) {
+  try {
+    const { challengeId } = req.params;
+    const organizationId = req.organization._id;
+    const clerkUserId = req.clerkUser.id;
+    const closeSubmissionsAt = parseOptionalDate(
+      req.body.closeSubmissionsAt,
+      "closeSubmissionsAt"
+    );
+    const processAt = parseOptionalDate(req.body.processAt, "processAt");
+
+    if (!closeSubmissionsAt || !processAt) {
+      return res.status(400).json({
+        error: "closeSubmissionsAt and processAt are required",
+      });
+    }
+    if (closeSubmissionsAt.getTime() <= Date.now()) {
+      return res.status(400).json({
+        error: "closeSubmissionsAt must be in the future when reopening",
+      });
+    }
+    if (processAt.getTime() < closeSubmissionsAt.getTime()) {
+      return res.status(400).json({
+        error: "processAt must be at or after closeSubmissionsAt",
+      });
+    }
+
+    const challenge = await Challenge.findOne({
+      _id: challengeId,
+      organization: organizationId,
+    });
+    if (!challenge) {
+      return res.status(404).json({ error: "Challenge not found" });
+    }
+
+    await Classroom.validateAdminAccess(
+      challenge.classroomId,
+      clerkUserId,
+      organizationId
+    );
+
+    const activeAutomationStatuses = new Set([
+      "queuedforprocessing",
+      "processing",
+    ]);
+    const hasNonTerminalJobs = await SimulationJob.exists({
+      challengeId,
+      organization: organizationId,
+      status: { $in: ["pending", "running"] },
+    });
+    const calculationWasActive =
+      activeAutomationStatuses.has(
+        String(challenge.automationStatus || "").toLowerCase()
+      ) ||
+      !!hasNonTerminalJobs;
+
+    // Persist the cancellation tombstone first. If any cleanup step fails, the
+    // challenge stays locked and visibly blocked instead of reopening while
+    // stale workers are still active.
+    challenge.calculationCancelledAt = new Date();
+    challenge.automationStatus = "BLOCKED";
+    challenge.automationError = "Stopping calculation and removing results";
+    challenge.automationLastCheckedAt = new Date();
+    challenge.updatedBy = clerkUserId;
+    await challenge.save();
+
+    const jobCancellation = calculationWasActive
+      ? await JobService.cancelJobsForScenario(challengeId, organizationId)
+      : await JobService.invalidateJobsForScenario(challengeId, organizationId);
+    const batchCancellation = calculationWasActive
+      ? await SimulationBatch.cancelInProgressBatchForScenario(challengeId)
+      : { cancelled: false };
+
+    let outcomeQueue = { removed: 0, active: 0 };
+    let batchQueue = { removed: 0, active: 0 };
+    if (calculationWasActive) {
+      outcomeQueue = await removeChallengeQueueJobs(
+        queues.outcomeProcessing,
+        (job) => String(job.data?.challengeId || "") === String(challengeId)
+      );
+      const batchIds = await SimulationBatch.find({
+        challengeId,
+        organization: organizationId,
+      })
+        .select("_id")
+        .lean();
+      const batchIdSet = new Set(batchIds.map((batch) => String(batch._id)));
+      batchQueue = await removeChallengeQueueJobs(
+        queues.simulationBatch,
+        (job) =>
+          String(job.data?.challengeId || "") === String(challengeId) ||
+          batchIdSet.has(String(job.data?.simulationBatchId || ""))
+      );
+    }
+    const completionEvents = await LedgerCompletionEvent.find({
+      challengeId,
+      organization: organizationId,
+    })
+      .select("_id")
+      .lean();
+    const completionEventIdSet = new Set(
+      completionEvents.map((event) => String(event._id))
+    );
+    const completionQueue = await removeChallengeQueueJobs(
+      queues.automationTask,
+      (job) => completionEventIdSet.has(String(job.data?.eventId || ""))
+    );
+
+    const [ledgerCleanup, completionCleanup, decisionReset] = await Promise.all([
+      LedgerEntry.deleteMany({ challengeId, organization: organizationId }),
+      LedgerCompletionEvent.deleteMany({
+        challengeId,
+        organization: organizationId,
+      }),
+      Decision.updateMany(
+        { challengeId, organization: organizationId },
+        {
+          $set: {
+            processingStatus: "pending",
+            ledgerEntryId: null,
+            jobs: [],
+          },
+        }
+      ),
+      challengeDebriefService.resetChallengeDebriefForRerun({
+        challengeId,
+        organizationId,
+      }),
+    ]);
+
+    challenge.isClosed = false;
+    challenge.isLockedForStudents = false;
+    challenge.isFeedbackReleased = false;
+    challenge.automatedProcessedAt = null;
+    challenge.closeSubmissionsAt = closeSubmissionsAt;
+    challenge.processAt = processAt;
+    challenge.automationStatus = challenge.isPublished
+      ? "acceptingSubmissions"
+      : "UNSCHEDULED";
+    challenge.automationError = null;
+    challenge.automationLastCheckedAt = new Date();
+    await challenge.save();
+
+    res.json({
+      success: true,
+      message: calculationWasActive
+        ? "Calculation stopped and challenge reopened."
+        : "Results reset and challenge reopened.",
+      data: {
+        challenge,
+        calculationWasActive,
+        cancelledBatch: batchCancellation.cancelled,
+        jobs: jobCancellation,
+        queues: {
+          outcome: outcomeQueue,
+          batch: batchQueue,
+          completion: completionQueue,
+        },
+        ledgerEntriesRemoved: ledgerCleanup.deletedCount || 0,
+        completionEventsRemoved: completionCleanup.deletedCount || 0,
+        decisionsReset: decisionReset.modifiedCount || 0,
+      },
+    });
+  } catch (error) {
+    console.error("Error stopping calculation and reopening challenge:", error);
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
+    if (error.message?.includes("Insufficient permissions")) {
       return res.status(403).json({ error: error.message });
     }
     res.status(500).json({ error: error.message });
@@ -1166,6 +1440,23 @@ exports.getStudentScenariosByClassroom = async function (req, res) {
       (challenge) => Challenge.isVisibleToStudents(challenge)
     );
 
+    const studentOrganizationId =
+      req.organization?._id || publishedScenarios[0]?.organization;
+    const [variableDefinitions, metricDefinitions] = await Promise.all([
+      VariableDefinition.find({
+        classroomId,
+        organization: studentOrganizationId,
+        isActive: true,
+      }).lean(),
+      MetricDefinition.find({
+        classroomId,
+        organization: studentOrganizationId,
+        isActive: true,
+      })
+        .sort({ sortOrder: 1, label: 1 })
+        .lean(),
+    ]);
+
     // For each challenge, fetch decision, outcome, and ledger entry
     const scenariosWithData = await Promise.all(
       publishedScenarios.map(async (challenge) => {
@@ -1203,7 +1494,13 @@ exports.getStudentScenariosByClassroom = async function (req, res) {
           ...challenge,
           decision: decision || null,
           outcome: safeOutcome,
-          ledgerEntry: canViewResults ? ledgerEntry : null,
+          ledgerEntry: canViewResults
+            ? serializeStudentLedgerEntry(ledgerEntry, {
+              outcomeNotes: safeOutcome?.notes || "",
+              variableDefinitions,
+              metricDefinitions,
+            })
+            : null,
         };
       })
     );
@@ -1278,6 +1575,22 @@ exports.getScenarioByIdForStudent = async function (req, res) {
           hiddenNotes: undefined,
         }
       : null;
+    const [variableDefinitions, metricDefinitions] = canViewResults
+      ? await Promise.all([
+        VariableDefinition.find({
+          classroomId: challenge.classroomId,
+          organization: challenge.organization,
+          isActive: true,
+        }).lean(),
+        MetricDefinition.find({
+          classroomId: challenge.classroomId,
+          organization: challenge.organization,
+          isActive: true,
+        })
+          .sort({ sortOrder: 1, label: 1 })
+          .lean(),
+      ])
+      : [[], []];
 
     res.json({
       success: true,
@@ -1285,7 +1598,13 @@ exports.getScenarioByIdForStudent = async function (req, res) {
         ...challenge,
         decision: decision || null,
         outcome: safeOutcome,
-        ledgerEntry: canViewResults ? ledgerEntry : null,
+        ledgerEntry: canViewResults
+          ? serializeStudentLedgerEntry(ledgerEntry, {
+            outcomeNotes: safeOutcome?.notes || "",
+            variableDefinitions,
+            metricDefinitions,
+          })
+          : null,
       },
     });
   } catch (error) {

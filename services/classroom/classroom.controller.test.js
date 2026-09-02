@@ -7,4 +7,5 @@ test("classroom controller exports handlers", () => {
   assert.equal(typeof controller.createClass, "function");
   assert.equal(typeof controller.getAllClassrooms, "function");
   assert.equal(typeof controller.deleteClass, "function");
+  assert.equal(typeof controller.getClassroomPreflight, "function");
 });

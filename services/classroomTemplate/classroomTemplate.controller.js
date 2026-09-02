@@ -114,6 +114,8 @@ async function buildTemplatePayloadFromClassroom({
       format: md.format,
       aiPromptRule: md.aiPromptRule || "",
       aggregation: md.aggregation,
+      leaderboardSortDirection: md.leaderboardSortDirection,
+      isPrimaryLeaderboardMetric: md.isPrimaryLeaderboardMetric,
       displayIn: md.displayIn,
       defaultInitialValue: md.defaultInitialValue,
       sortOrder: md.sortOrder || 0,

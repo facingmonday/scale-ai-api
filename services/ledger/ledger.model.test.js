@@ -11,9 +11,22 @@ test("ledger model exports AI simulation helpers", () => {
   assert.equal(typeof LedgerEntry.inspectOpenAIRequest, "function");
   assert.equal(typeof LedgerEntry.inspectOpenAIResponse, "function");
   assert.equal(typeof LedgerEntry.calculateOpeningCash, "function");
+  assert.equal(typeof LedgerEntry.generateStudentFeedback, "function");
   assert.equal(typeof LedgerEntry.enforceCashContinuity, "function");
   assert.equal(typeof LedgerEntry.normalizeAndValidateAISimulationResult, "function");
   assert.equal(typeof LedgerEntry.runAISimulation, "function");
+});
+
+test("simulation challenges suppress result notifications", () => {
+  assert.equal(
+    LedgerEntry.shouldSuppressNotifications({ suppressNotifications: true }),
+    true,
+  );
+  assert.equal(
+    LedgerEntry.shouldSuppressNotifications({ suppressNotifications: false }),
+    false,
+  );
+  assert.equal(LedgerEntry.shouldSuppressNotifications(null), false);
 });
 
 test("ledger entries flatten metric maps when serialized", () => {

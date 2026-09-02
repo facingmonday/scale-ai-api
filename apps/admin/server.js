@@ -1,5 +1,4 @@
 const express = require("express");
-const cors = require("cors");
 const path = require("path");
 const fs = require("fs");
 const mongoose = require("mongoose");
@@ -31,14 +30,30 @@ const LedgerEntry = require("../../services/ledger/ledger.model");
 const Decision = require("../../services/decision/decision.model");
 const VariableDefinition = require("../../services/variableDefinition/variableDefinition.model");
 const JobService = require("../../services/job/lib/jobService");
+const SimulationJob = require("../../services/job/job.model");
 const { enqueueSimulationBatchSubmit } = require("../../lib/queues/simulation-batch-worker");
 const openai = require("../../lib/openai");
+const {
+  assertLocalRequest,
+  assertSafeSimulationEnvironment,
+  assertSimulationRoster,
+  parseStudentCount,
+} = require("./simulation-safety");
+
+assertSafeSimulationEnvironment();
 
 const app = express();
 const PORT = process.env.PORT_ADMIN || 4001;
 
-app.use(cors());
 app.use(express.json());
+app.use("/api", (req, res, next) => {
+  try {
+    assertLocalRequest(req);
+    next();
+  } catch (error) {
+    res.status(403).json({ error: error.message });
+  }
+});
 
 // Helper methods from sim-cli
 function toSafeSlugPart(value) {
@@ -159,6 +174,7 @@ async function createLocalOnlyStudents({ organizationDoc, count, seedPrefix }) {
     const now = new Date();
     toCreate.push({
       clerkUserId,
+      isSimulationUser: true,
       firstName: "Sim",
       lastName: `Student ${i + 1}`,
       username: clerkUserId,
@@ -488,7 +504,11 @@ app.get("/api/classrooms", async (req, res) => {
     if (!orgId) return res.status(400).json({ error: "orgId is required" });
 
     await connectMongo();
-    const classrooms = await Classroom.find({ organization: orgId, isActive: true })
+    const classrooms = await Classroom.find({
+      organization: orgId,
+      isActive: true,
+      isSimulationClassroom: true,
+    })
       .select("_id name description createdDate")
       .sort({ createdDate: -1 })
       .lean();
@@ -533,7 +553,7 @@ app.post("/api/emails/render/:slug", async (req, res) => {
 });
 
 // Real-time Simulation Engine Event Stream (SSE)
-app.get("/api/simulation/run", async (req, res) => {
+app.post("/api/simulation/run", async (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -558,7 +578,7 @@ app.get("/api/simulation/run", async (req, res) => {
       submissionMode,
       missingSubmissionsMode,
       simulationMode,
-    } = req.query;
+    } = req.body || {};
 
     if (!adminId || !orgId) {
       throw new Error("adminId and orgId are required parameters");
@@ -575,12 +595,24 @@ app.get("/api/simulation/run", async (req, res) => {
     // Fetch Organization
     const organizationDoc = await Organization.findById(orgId).lean();
     if (!organizationDoc) throw new Error("Organization not found");
+    const canAdministerOrganization = (actingAdmin.organizationMemberships || []).some(
+      (membership) =>
+        membership?.role === "org:admin" &&
+        String(membership.organizationId) === String(organizationDoc._id),
+    );
+    if (!canAdministerOrganization) {
+      throw new Error("Selected administrator does not administer this organization");
+    }
     sendLog(`Organization: ${organizationDoc.name} (${organizationDoc._id})`);
 
     // Create or select classroom
     let classroom;
     if (classroomMode === "existing" && classroomId) {
-      classroom = await Classroom.findOne({ _id: classroomId, organization: organizationDoc._id });
+      classroom = await Classroom.findOne({
+        _id: classroomId,
+        organization: organizationDoc._id,
+        isSimulationClassroom: true,
+      });
       if (!classroom) throw new Error("Selected classroom not found");
       sendLog(`Using existing classroom: ${classroom.name}`);
     } else {
@@ -590,6 +622,7 @@ app.get("/api/simulation/run", async (req, res) => {
         name,
         description: `Console simulation round run on ${new Date().toLocaleDateString()}`,
         isActive: true,
+        isSimulationClassroom: true,
         ownership: actingAdmin._id,
         organization: organizationDoc._id,
         createdBy: actingAdmin.clerkUserId,
@@ -617,7 +650,7 @@ app.get("/api/simulation/run", async (req, res) => {
     const existingEnrollments = await Enrollment.findByClassAndRole(classroom._id, "member").select("userId").lean();
     const existingStudentUserIds = (existingEnrollments || []).map((e) => e.userId).filter(Boolean);
     const shouldCreateStudents = existingStudentUserIds.length === 0;
-    const finalStudentCount = parseInt(studentCount, 10) || 10;
+    const finalStudentCount = parseStudentCount(studentCount);
 
     let students = [];
     if (shouldCreateStudents) {
@@ -634,7 +667,10 @@ app.get("/api/simulation/run", async (req, res) => {
         await Enrollment.enrollUser(classroom._id, s._id, "member", organizationDoc._id, actingAdmin.clerkUserId);
       }
     } else {
-      students = await Member.find({ _id: { $in: existingStudentUserIds } }).select("_id clerkUserId firstName lastName username").lean();
+      students = await Member.find({ _id: { $in: existingStudentUserIds } })
+        .select("_id clerkUserId isSimulationUser firstName lastName username")
+        .lean();
+      assertSimulationRoster(students, finalStudentCount);
       sendLog(`Found ${students.length} existing students enrolled in classroom.`);
     }
 
@@ -703,7 +739,14 @@ app.get("/api/simulation/run", async (req, res) => {
     sendLog("Publishing challenge scenario...");
     await Challenge.updateOne(
       { _id: challengeId, organization: organizationDoc._id },
-      { $set: { isPublished: true, updatedBy: actingAdmin.clerkUserId, updatedDate: new Date() } }
+      {
+        $set: {
+          isPublished: true,
+          suppressNotifications: true,
+          updatedBy: actingAdmin.clerkUserId,
+          updatedDate: new Date(),
+        },
+      }
     );
     const scenarioDoc = await Challenge.findById(challengeId);
 
@@ -772,12 +815,90 @@ app.get("/api/simulation/run", async (req, res) => {
     sendLog("Closing challenge and generating ledger entries...");
     await scenarioDoc.close(actingAdmin.clerkUserId);
 
-    sendLog("🎉 Simulation run completed successfully!", "completed");
-    res.write(`data: ${JSON.stringify({ done: true, classroomId: classroom._id, challengeId: scenarioDoc._id })}\n\n`);
+    sendLog(
+      `✅ Simulation jobs submitted (${jobsCreated.length} students). Results will complete in the worker.`,
+      "completed",
+    );
+    res.write(`data: ${JSON.stringify({ done: true, status: "submitted", jobCount: jobsCreated.length, classroomId: classroom._id, challengeId: scenarioDoc._id })}\n\n`);
     res.end();
   } catch (err) {
     sendLog(`❌ Execution failed: ${err.message}`, "failed");
     res.end();
+  }
+});
+
+app.post("/api/simulation/cleanup", async (req, res) => {
+  try {
+    const { adminId, orgId, classroomId } = req.body || {};
+    if (!adminId || !orgId || !classroomId) {
+      return res.status(400).json({
+        error: "adminId, orgId, and classroomId are required",
+      });
+    }
+
+    await connectMongo();
+    const [actingAdmin, organizationDoc, classroom] = await Promise.all([
+      Member.findById(adminId).lean(),
+      Organization.findById(orgId).lean(),
+      Classroom.findOne({
+        _id: classroomId,
+        organization: orgId,
+        isSimulationClassroom: true,
+      }).lean(),
+    ]);
+    if (!actingAdmin || !organizationDoc || !classroom) {
+      return res.status(404).json({ error: "Simulation classroom not found" });
+    }
+    const canAdministerOrganization = (actingAdmin.organizationMemberships || []).some(
+      (membership) =>
+        membership?.role === "org:admin" &&
+        String(membership.organizationId) === String(organizationDoc._id),
+    );
+    if (!canAdministerOrganization) {
+      return res.status(403).json({
+        error: "Selected administrator does not administer this organization",
+      });
+    }
+
+    const activeJobs = await SimulationJob.countDocuments({
+      classroomId,
+      status: { $in: ["pending", "running"] },
+    });
+    if (activeJobs > 0) {
+      return res.status(409).json({
+        error: `Cannot clean up while ${activeJobs} simulation jobs are still active`,
+      });
+    }
+
+    const enrollments = await Enrollment.findByClassAndRole(classroomId, "member")
+      .select("userId")
+      .lean();
+    const studentIds = enrollments.map((enrollment) => enrollment.userId).filter(Boolean);
+    const students = await Member.find({ _id: { $in: studentIds } })
+      .select("_id clerkUserId isSimulationUser")
+      .lean();
+    assertSimulationRoster(students, studentIds.length);
+
+    const stats = await Classroom.deleteClassroom(classroomId, orgId);
+    const stillEnrolledIds = await Enrollment.distinct("userId", {
+      userId: { $in: studentIds },
+    });
+    const stillEnrolledSet = new Set(stillEnrolledIds.map(String));
+    const orphanedSimulationUserIds = students
+      .filter((student) => !stillEnrolledSet.has(String(student._id)))
+      .filter((student) => student.isSimulationUser)
+      .map((student) => student._id);
+    const memberResult = await Member.deleteMany({
+      _id: { $in: orphanedSimulationUserIds },
+      isSimulationUser: true,
+    });
+
+    res.json({
+      ...stats,
+      simulationMembersDeleted: memberResult.deletedCount || 0,
+    });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
   }
 });
 
@@ -790,6 +911,6 @@ if (fs.existsSync(distPath)) {
   });
 }
 
-app.listen(PORT, () => {
-  console.log(`🚀 Admin server running at http://localhost:${PORT}`);
+app.listen(PORT, "127.0.0.1", () => {
+  console.log(`🚀 Admin server running at http://127.0.0.1:${PORT}`);
 });

@@ -6,6 +6,7 @@ const Decision = require("../../decision/decision.model");
 const LedgerEntry = require("../../ledger/ledger.model");
 const VariableDefinition = require("../../variableDefinition/variableDefinition.model");
 const MetricDefinition = require("../../metricDefinition/metricDefinition.model");
+const classroomReadinessService = require("../../classroom/classroomReadiness.service");
 
 /**
  * Simulation Worker - processes individual simulation jobs and writes
@@ -51,6 +52,9 @@ class SimulationWorker {
     } = options;
     const job = await SimulationJob.findById(jobId);
     if (!job) throw new Error(`Job not found: ${jobId}`);
+    if (job.status === "cancelled") {
+      return { success: true, cancelled: true, job: job.toObject() };
+    }
     if (job.status !== "pending") {
       if (
         allowTerminalReconciliation &&
@@ -61,13 +65,32 @@ class SimulationWorker {
       throw new Error(`Job is not pending: ${job.status}`);
     }
 
+    // Processing can be triggered by HTTP endpoints, recovery jobs, or Bull.
+    // Re-check here so every execution path has the same server-side guard.
+    await classroomReadinessService.assertClassroomReady({
+      classroomId: job.classroomId,
+      challengeId: job.challengeId,
+      organizationId: job.organization,
+      operation: job.dryRun ? "preview" : "process",
+      ignoreCheckKeys: ["in_progress_jobs"],
+    });
+
     try {
       await job.markRunning();
       const context = await this.fetchJobContext(job);
       const aiResult = await LedgerEntry.runAISimulation(context);
 
+      const stillActive = await SimulationJob.exists({
+        _id: job._id,
+        status: "running",
+      });
+      if (!stillActive) {
+        return { success: true, cancelled: true, jobId: String(job._id) };
+      }
+
+      let writtenEntry = null;
       if (!job.dryRun) {
-        await this.writeLedgerEntry(job, aiResult, context);
+        writtenEntry = await this.writeLedgerEntry(job, aiResult, context);
       } else {
         const logSafeResult = { ...aiResult };
         if (logSafeResult.aiMetadata) {
@@ -80,7 +103,23 @@ class SimulationWorker {
         console.log(`Dry run: ${JSON.stringify(logSafeResult, null, 2)}`);
       }
 
-      await job.markCompleted();
+      const completedJob = await SimulationJob.findOneAndUpdate(
+        { _id: job._id, status: "running" },
+        { $set: { status: "completed", completedAt: new Date(), error: null } },
+        { new: true }
+      );
+      if (!completedJob) {
+        if (writtenEntry?._id) {
+          await LedgerEntry.deleteOne({ _id: writtenEntry._id });
+          await Decision.updateOne(
+            { _id: job.decisionId },
+            { $set: { ledgerEntryId: null, processingStatus: "pending" } }
+          );
+        }
+        return { success: true, cancelled: true, jobId: String(job._id) };
+      }
+      job.status = completedJob.status;
+      job.completedAt = completedJob.completedAt;
       await this.updateSubmissionStatus(job, "completed");
       await this.recordLedgerCompletionEvents(job);
 
@@ -91,6 +130,13 @@ class SimulationWorker {
       };
     } catch (error) {
       console.error(`Error processing job ${jobId}:`, error);
+      const wasCancelled = await SimulationJob.exists({
+        _id: job._id,
+        status: "cancelled",
+      });
+      if (wasCancelled) {
+        return { success: true, cancelled: true, jobId: String(job._id) };
+      }
       if (job.status === "completed") {
         // The ledger and terminal analysis state are already durable. Let Bull
         // retry only the lifecycle reconciliation path without corrupting the
@@ -272,6 +318,18 @@ class SimulationWorker {
         : null,
     };
 
+    const studentFeedback = await LedgerEntry.generateStudentFeedback({
+      summary: aiResult.summary,
+      metrics,
+      profileVariables: filtered.profileVariables,
+      decisionVariables: filtered.decisionVariables,
+      outcomeVariables: filtered.outcomeVariables,
+      outcomeNotes: context.outcome?.notes || "",
+      priorMetrics: context.priorMetrics || {},
+      randomEvent: aiResult.randomEvent,
+      metricDefinitions: metricDefs,
+    });
+
     const ledgerInput = {
       profileId,
       classroomId: job.classroomId,
@@ -281,6 +339,7 @@ class SimulationWorker {
       metrics,
       randomEvent: aiResult.randomEvent,
       summary: aiResult.summary,
+      studentFeedback,
       aiMetadata: aiResult.aiMetadata,
       calculationContext,
     };

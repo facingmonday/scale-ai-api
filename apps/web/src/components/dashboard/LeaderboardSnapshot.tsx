@@ -1,14 +1,37 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import classroomService from "../../services/classroom";
 import { formatMetricValue } from "../../utils/formatMetric";
 import type { MetricDefinition } from "../../types/metric";
-import type { ClassDashboard } from "../../types/dashboard";
+import type {
+  ClassDashboard,
+  LeaderboardCategory,
+  LeaderboardEntry,
+} from "../../types/dashboard";
 
 interface LeaderboardSnapshotProps {
   challengeId?: string | null;
   variant?: "student" | "teacher";
   dashboard?: ClassDashboard | null;
+}
+
+function metricDefinitionFor(category: LeaderboardCategory): MetricDefinition {
+  return {
+    key: category.metric.key,
+    label: category.metric.label,
+    format: category.metric.format,
+    aggregation: category.metric.aggregation ?? "sum",
+    dataType: "number",
+  } as MetricDefinition;
+}
+
+function displayRank(entries: LeaderboardEntry[], entry: LeaderboardEntry, index: number) {
+  const rank = entry.rank ?? index + 1;
+  const isTie = entry.isTied || entries.some(
+    (candidate, candidateIndex) =>
+      candidateIndex !== index && candidate.metricTotal === entry.metricTotal
+  );
+  return isTie ? `T-${rank}` : String(rank);
 }
 
 const LeaderboardSnapshot: React.FC<LeaderboardSnapshotProps> = ({
@@ -17,123 +40,128 @@ const LeaderboardSnapshot: React.FC<LeaderboardSnapshotProps> = ({
   dashboard: dashboardProp,
 }) => {
   const { activeClassroom } = useAuth();
-  const [dashboard, setDashboard] = useState<ClassDashboard | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
+  const [fetchedDashboard, setFetchedDashboard] =
+    useState<ClassDashboard | null>(null);
+  const [isFetching, setIsFetching] = useState(true);
   const classroomId = activeClassroom?._id ?? null;
+  const dashboard =
+    dashboardProp !== undefined ? dashboardProp : fetchedDashboard;
+  const isLoading =
+    dashboardProp === undefined && Boolean(classroomId) && isFetching;
 
   useEffect(() => {
-    if (dashboardProp !== undefined) {
-      setDashboard(dashboardProp ?? null);
-      setIsLoading(false);
-      return;
-    }
-
-    if (!classroomId) {
-      setDashboard(null);
-      setIsLoading(false);
-      return;
-    }
+    if (dashboardProp !== undefined || !classroomId) return;
 
     const fetchData = async () => {
-      setIsLoading(true);
+      setIsFetching(true);
       try {
-        // Fetch dashboard for top 3
-        try {
-          const data = await classroomService.getAdminDashboard(classroomId);
-          setDashboard(data);
-        } catch {
-          setDashboard(null);
-        }
+        setFetchedDashboard(
+          await classroomService.getAdminDashboard(classroomId)
+        );
       } catch (err) {
         console.error("Failed to fetch leaderboard:", err);
+        setFetchedDashboard(null);
       } finally {
-        setIsLoading(false);
+        setIsFetching(false);
       }
     };
 
     void fetchData();
   }, [classroomId, challengeId, variant, dashboardProp]);
 
-  const leaderboard = React.useMemo(() => {
-    const metric = dashboard?.leaderboardMetric ?? null;
-    return {
-      metric,
-      metricLabel: metric ? metric.label : "Leaderboard",
-      classAverage: null as number | null,
-      rows: (dashboard?.leaderboardTop10 || []).map((r) => ({
-        userId: r.userId,
-        displayName: r.profileName,
-        value: r.metricTotal,
-      })),
-    };
-  }, [dashboard?.leaderboardTop10, dashboard?.leaderboardMetric]);
-
-  const fakeDef: MetricDefinition | null = leaderboard.metric
-    ? ({
-        key: leaderboard.metric.key,
-        label: leaderboard.metric.label,
-        format: leaderboard.metric.format,
-        dataType: "number",
-      } as MetricDefinition)
-    : null;
+  const categories = useMemo<LeaderboardCategory[]>(() => {
+    if (dashboard?.leaderboards?.length) return dashboard.leaderboards;
+    if (!dashboard?.leaderboardMetric) return [];
+    return [
+      {
+        metric: dashboard.leaderboardMetric,
+        direction: "desc",
+        entries: (dashboard.leaderboardTop10 || []).map((entry, index) => ({
+          ...entry,
+          rank: index + 1,
+        })),
+      },
+    ];
+  }, [dashboard]);
 
   return (
-    <div className="w-full">
-      <div className="flex items-center justify-between gap-3 mb-3">
-        <h2 className="heading-md">Leaderboard</h2>
-        <span className="text-text-muted text-sm">
-          {leaderboard.metricLabel}
-        </span>
+    <section className="w-full" aria-labelledby="leaderboard-heading">
+      <div className="mb-4">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <h2 id="leaderboard-heading" className="heading-lg">
+            Leaderboard
+          </h2>
+          <span className="text-text-muted text-sm">Cumulative performance</span>
+        </div>
+        <p className="text-text-muted text-sm mt-1">
+          Rankings include all challenge results for this classroom.
+        </p>
       </div>
 
       {isLoading ? (
-        <p className="text-text-muted text-sm">Loading leaderboard…</p>
-      ) : leaderboard.rows.length === 0 ? (
-        <p className="text-text-muted text-sm">
-          {variant === "student"
-            ? "Leaderboard will appear when your class starts posting results."
-            : "No leaderboard data yet for this week."}
-        </p>
+        <div className="card">
+          <p className="text-text-muted text-sm">Loading leaderboards…</p>
+        </div>
+      ) : categories.length === 0 ? (
+        <div className="card">
+          <p className="text-text-muted text-sm">
+            {variant === "student"
+              ? "Leaderboards will appear when your class starts posting results."
+              : "No leaderboard data is configured for this classroom."}
+          </p>
+        </div>
       ) : (
-        <>
-          <div className="gap-2">
-            {leaderboard.rows.map((row, idx) => (
-              <div
-                key={row.userId}
-                className="flex w-full items-center justify-between gap-3"
-              >
-                <div className="min-w-0">
-                  <div className="font-medium truncate">
-                    {idx + 1}. {row.displayName}
+        <div className="!grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {categories.map((category) => {
+            const definition = metricDefinitionFor(category);
+            const entries =
+              variant === "student"
+                ? category.entries.slice(0, 3)
+                : category.entries.slice(0, 5);
+            return (
+              <article key={category.metric.key} className="card min-w-0">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="min-w-0">
+                    <h3 className="heading-md truncate">{category.metric.label}</h3>
+                    <p className="text-text-muted text-xs mt-1">
+                      {category.direction === "asc" ? "Lowest wins" : "Highest wins"}
+                    </p>
                   </div>
+                  <span className="shrink-0 rounded-full bg-ui-muted px-2 py-1 text-text-muted text-xs">
+                    Cumulative
+                  </span>
                 </div>
-                <div className="font-semibold tabular-nums">
-                  {fakeDef
-                    ? formatMetricValue(Number(row.value), fakeDef)
-                    : Number(row.value).toLocaleString()}
-                </div>
-              </div>
-            ))}
-          </div>
-          {variant === "student" && (
-            <div className="student-dashboard-footnote mt-2">
-              Top 3 shown. Your full rank will appear when available.
-            </div>
-          )}
-          {typeof leaderboard.classAverage === "number" && fakeDef && (
-            <div className="mt-4 rounded-md border border-ui-border bg-ui-muted px-3 py-2 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-text-secondary">Class average</span>
-                <span className="font-medium">
-                  {formatMetricValue(leaderboard.classAverage, fakeDef)}
-                </span>
-              </div>
-            </div>
-          )}
-        </>
+
+                {entries.length === 0 ? (
+                  <p className="text-text-muted text-sm py-4">
+                    No {category.metric.label.toLowerCase()} data yet.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {entries.map((entry, index) => (
+                      <div
+                        key={`${category.metric.key}:${entry.userId}`}
+                        className="!grid w-full grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2"
+                      >
+                        <span className="text-text-muted text-sm tabular-nums">
+                          {displayRank(entries, entry, index)}.
+                        </span>
+                        <span className="min-w-0 truncate font-medium">
+                          {entry.profileName}
+                        </span>
+                        <span className="font-semibold tabular-nums text-right">
+                          {formatMetricValue(entry.metricTotal, definition)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </div>
       )}
-    </div>
+    </section>
   );
 };
 

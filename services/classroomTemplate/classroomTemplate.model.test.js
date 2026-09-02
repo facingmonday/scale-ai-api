@@ -6,12 +6,34 @@ test("classroomTemplate.model schema has required organization field", () => {
   assert.ok(Model.schema.obj.organization !== undefined || Model.schema.paths.organization);
 });
 
-test("pizza-shop templates expose net profit as the sole leaderboard metric", () => {
-  const leaderboardMetrics = Model.getPizzaShopMetricDefinitions()
+test("pizza-shop templates expose the six cumulative leaderboard metrics", () => {
+  const definitions = Model.getPizzaShopMetricDefinitions();
+  const leaderboardMetrics = definitions
     .filter((definition) => definition.displayIn?.leaderboard)
     .map((definition) => definition.key);
 
-  assert.deepEqual(leaderboardMetrics, ["netProfit"]);
+  assert.deepEqual(leaderboardMetrics, [
+    "sales",
+    "revenue",
+    "costs",
+    "waste",
+    "netProfit",
+    "cashAfter",
+  ]);
+  assert.equal(
+    definitions.find((definition) => definition.isPrimaryLeaderboardMetric)?.key,
+    "netProfit"
+  );
+  assert.equal(
+    definitions.find((definition) => definition.key === "costs")
+      .leaderboardSortDirection,
+    "asc"
+  );
+  assert.equal(
+    definitions.find((definition) => definition.key === "waste")
+      .leaderboardSortDirection,
+    "asc"
+  );
 });
 
 test("pizza-shop templates include production-capacity conversion guardrails", () => {

@@ -59,6 +59,20 @@ test("new challenge automation fields are validated successfully", async () => {
   assert.equal(challenge.lateSubmissionPolicy.penaltyPercentPerDay, 5);
 });
 
+test("simulation challenges can persist notification suppression", async () => {
+  const challenge = new Challenge({
+    classroomId: "507f1f77bcf86cd799439011",
+    title: "Simulation-only challenge",
+    suppressNotifications: true,
+    organization: "507f1f77bcf86cd799439012",
+    createdBy: "test",
+    updatedBy: "test",
+  });
+
+  await challenge.validate();
+  assert.equal(challenge.suppressNotifications, true);
+});
+
 test("all lifecycle automation statuses validate successfully", async () => {
   const lifecycleStatuses = [
     "SCHEDULED",
@@ -343,6 +357,8 @@ const leaderboardMetricDefinitions = [
     dataType: "number",
     isActive: true,
     displayIn: { leaderboard: true },
+    leaderboardSortDirection: "desc",
+    isPrimaryLeaderboardMetric: true,
   },
 ];
 
@@ -390,5 +406,28 @@ test("lowest performers exclude every top performer in a small class", async () 
   assert.deepEqual(
     winners.filter((decisionId) => losers.includes(decisionId)),
     []
+  );
+});
+
+test("ascending primary metrics treat the lowest values as winners", async () => {
+  const submissions = [30, 10, 20, 50, 40].map((revenue, index) =>
+    createLeaderboardSubmission(`decision-${index + 1}`, revenue)
+  );
+  const definitions = [
+    {
+      ...leaderboardMetricDefinitions[0],
+      leaderboardSortDirection: "asc",
+    },
+  ];
+
+  const stats = await Challenge.getStoreTypeStats(submissions, definitions);
+
+  assert.deepEqual(
+    stats.restaurant.winners.map((entry) => entry.decisionId),
+    ["decision-2", "decision-3", "decision-1"]
+  );
+  assert.deepEqual(
+    stats.restaurant.losers.map((entry) => entry.decisionId),
+    ["decision-4", "decision-5"]
   );
 });
