@@ -239,20 +239,6 @@ const TeacherCurrentScenarioCard: React.FC<TeacherCurrentScenarioCardProps> = ({
     }
   };
 
-  const handlePreview = async () => {
-    if (!activeScenarioId) return;
-    try {
-      global?.showToast("Starting preview…", "loading");
-      await challengeService.preview(activeScenarioId);
-      global?.showToast("Preview started", "success");
-      await fetchScenarioJobs();
-    } catch (err) {
-      console.error("Preview failed:", err);
-      const errorMessage = getErrorMessage(err);
-      global?.showToast(errorMessage, "error");
-    }
-  };
-
   const handleApproveOutcomes = async () => {
     if (!activeScenarioId) return;
     try {
@@ -396,14 +382,6 @@ const TeacherCurrentScenarioCard: React.FC<TeacherCurrentScenarioCardProps> = ({
                   {outcome
                     ? "Edit global outcome"
                     : "Enter global outcome"}
-                </button>
-                <button
-                  type="button"
-                  className="btn-outline"
-                  onClick={() => void handlePreview()}
-                  disabled={!outcome || jobCounts.inProgress > 0}
-                >
-                  Preview results
                 </button>
                 <button
                   type="button"

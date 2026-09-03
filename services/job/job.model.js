@@ -29,7 +29,7 @@ const simulationJobSchema = new mongoose.Schema({
   dispatchReserved: { type: Boolean, default: false },
   status: {
     type: String,
-    enum: ["pending", "running", "completed", "failed"],
+    enum: ["pending", "running", "completed", "failed", "cancelled"],
     default: "pending",
     required: true,
   },
@@ -269,6 +269,18 @@ simulationJobSchema.methods.markFailed = async function (errorMessage) {
   this.status = "failed";
   this.completedAt = new Date();
   this.error = errorMessage;
+  await this.save();
+  return this;
+};
+
+/**
+ * Mark a job as cancelled so an active worker can cooperatively stop before
+ * persisting results.
+ */
+simulationJobSchema.methods.markCancelled = async function (reason) {
+  this.status = "cancelled";
+  this.completedAt = new Date();
+  this.error = reason || "Cancelled by instructor";
   await this.save();
   return this;
 };

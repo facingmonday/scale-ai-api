@@ -167,8 +167,8 @@ router.post(
  * @openapi
  * /v1/admin/challenges/{challengeId}/preview:
  *   post:
- *     summary: Preview challenge
- *     description: Simulates scenario locally without changing live variables. Requires org:admin role.
+ *     summary: Preview challenge outcomes by store type
+ *     description: Runs fresh, synthetic Week 0 simulations in memory for active store types without creating decisions, jobs, ledgers, notifications, or student feedback. Requires org:admin role.
  *     tags:
  *       - Challenges
  *     security:
@@ -179,9 +179,34 @@ router.post(
  *         required: true
  *         schema:
  *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               targets:
+ *                 type: array
+ *                 description: Optional failed cases to retry. Omit to run every applicable case for every active store type.
+ *                 items:
+ *                   type: object
+ *                   required: [profileTypeId, case]
+ *                   properties:
+ *                     profileTypeId:
+ *                       type: string
+ *                     case:
+ *                       type: string
+ *                       enum: [baseline, absence_penalty]
  *     responses:
  *       200:
- *         description: Preview simulation outputs.
+ *         description: Complete or partial synthetic preview results.
+ *       400:
+ *         description: Invalid retry target.
+ *       409:
+ *         description: Synthetic preview readiness checks failed.
+ *       502:
+ *         description: Every requested simulation case failed.
  */
 router.post(
   "/admin/challenges/:challengeId/preview",
@@ -242,6 +267,14 @@ router.post(
   requireAuth(),
   checkRole("org:admin"),
   controller.cancelBatchAndRerunScenario,
+);
+
+/** Stop an in-progress calculation, discard its results, and reopen submissions. */
+router.post(
+  "/admin/challenges/:challengeId/stop-calculation-and-reopen",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.stopCalculationAndReopenScenario
 );
 
 /**

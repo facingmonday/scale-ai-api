@@ -50,6 +50,9 @@ class SimulationWorker {
       options;
     const job = await SimulationJob.findById(jobId);
     if (!job) throw new Error(`Job not found: ${jobId}`);
+    if (job.status === "cancelled") {
+      return { success: true, cancelled: true, job: job.toObject() };
+    }
     if (job.status !== "pending") {
       if (
         allowTerminalReconciliation &&
@@ -105,8 +108,17 @@ class SimulationWorker {
       const context = await this.fetchJobContext(job);
       const aiResult = await LedgerEntry.runAISimulation(context);
 
+      const stillActive = await SimulationJob.exists({
+        _id: job._id,
+        status: "running",
+      });
+      if (!stillActive) {
+        return { success: true, cancelled: true, jobId: String(job._id) };
+      }
+
+      let writtenEntry = null;
       if (!job.dryRun) {
-        await this.writeLedgerEntry(job, aiResult, context);
+        writtenEntry = await this.writeLedgerEntry(job, aiResult, context);
       } else {
         const logSafeResult = { ...aiResult };
         if (logSafeResult.aiMetadata) {
@@ -119,7 +131,23 @@ class SimulationWorker {
         console.log(`Dry run: ${JSON.stringify(logSafeResult, null, 2)}`);
       }
 
-      await job.markCompleted();
+      const completedJob = await SimulationJob.findOneAndUpdate(
+        { _id: job._id, status: "running" },
+        { $set: { status: "completed", completedAt: new Date(), error: null } },
+        { new: true }
+      );
+      if (!completedJob) {
+        if (writtenEntry?._id) {
+          await LedgerEntry.deleteOne({ _id: writtenEntry._id });
+          await Decision.updateOne(
+            { _id: job.decisionId },
+            { $set: { ledgerEntryId: null, processingStatus: "pending" } }
+          );
+        }
+        return { success: true, cancelled: true, jobId: String(job._id) };
+      }
+      job.status = completedJob.status;
+      job.completedAt = completedJob.completedAt;
       await this.updateSubmissionStatus(job, "completed");
       await this.recordLedgerCompletionEvents(job);
 
@@ -130,6 +158,13 @@ class SimulationWorker {
       };
     } catch (error) {
       console.error(`Error processing job ${jobId}:`, error);
+      const wasCancelled = await SimulationJob.exists({
+        _id: job._id,
+        status: "cancelled",
+      });
+      if (wasCancelled) {
+        return { success: true, cancelled: true, jobId: String(job._id) };
+      }
       if (job.status === "completed") {
         // The ledger and terminal analysis state are already durable. Let Bull
         // retry only the lifecycle reconciliation path without corrupting the

@@ -202,6 +202,84 @@ class JobService {
       },
     );
   }
+
+  /**
+   * Cancel Mongo-backed jobs and remove any non-active Bull jobs for a challenge.
+   * Active workers observe the cancelled state before persisting results.
+   */
+  static async cancelJobsForScenario(challengeId, organizationId = null) {
+    const query = { challengeId };
+    if (organizationId) query.organization = organizationId;
+    const jobs = await SimulationJob.find(query).select(
+      "_id status processingRunId",
+    );
+    const jobIds = jobs.map((job) => String(job._id));
+
+    await SimulationJob.updateMany(
+      {
+        ...query,
+        status: { $in: ["pending", "running", "failed", "completed"] },
+      },
+      {
+        $set: {
+          status: "cancelled",
+          completedAt: new Date(),
+          error: "Cancelled by instructor while reopening challenge",
+          dispatchReserved: false,
+          ledgerCompletionTracking: false,
+          ledgerCompletionReconciledAt: null,
+        },
+      }
+    );
+
+    await ensureQueueReady(queues.simulation, "simulation");
+    let removed = 0;
+    let active = 0;
+    for (const job of jobs) {
+      const queueIds = [
+        `simulation:${job._id}:${job.processingRunId || "legacy"}`,
+        `simulation:${job._id}`,
+      ];
+      for (const queueId of queueIds) {
+        const queuedJob = await queues.simulation.getJob(queueId);
+        if (!queuedJob) continue;
+        const state = await queuedJob.getState();
+        if (state === "active") {
+          active += 1;
+          await queuedJob.discard();
+          continue;
+        }
+        await queuedJob.remove();
+        removed += 1;
+      }
+    }
+
+    return { total: jobIds.length, removed, active };
+  }
+
+  /**
+   * Invalidate terminal calculation records without touching Bull queues.
+   * Used when a finished challenge's results are discarded and reopened.
+   */
+  static async invalidateJobsForScenario(challengeId, organizationId = null) {
+    const query = { challengeId };
+    if (organizationId) query.organization = organizationId;
+    const result = await SimulationJob.updateMany(
+      query,
+      {
+        $set: {
+          status: "cancelled",
+          completedAt: new Date(),
+          error: "Results invalidated by instructor while reopening challenge",
+          dispatchReserved: false,
+          ledgerCompletionTracking: false,
+          ledgerCompletionReconciledAt: null,
+          ledgerEntryId: null,
+        },
+      }
+    );
+    return { total: result.modifiedCount || 0, removed: 0, active: 0 };
+  }
 }
 
 module.exports = JobService;

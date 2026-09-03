@@ -29,6 +29,7 @@ import ChallengeForm, {
 import ScenarioDeleteAction from "@/components/ChallengeDeleteAction";
 import ScenarioResetSubmissionsAction from "@/components/ChallengeResetDecisionsAction";
 import ScenarioCancelBatchAndReRun from "@/components/ChallengeCancelBatchAndReRun";
+import ChallengeStopCalculationAndReopen from "@/components/ChallengeStopCalculationAndReopen";
 import ScenarioRemoveOutcomeAction from "@/components/ChallengeRemoveOutcomeAction";
 import ScenarioStoreTypeSummary from "@/components/ChallengeProfileTypeSummary";
 import MissingScenarioSubmissionsList from "@/components/MissingChallengeDecisionsList";
@@ -264,6 +265,16 @@ const Challenge: React.FC = () => {
   const watchedFormValues = form.watch();
   const watchedVariables = watchedFormValues.variables;
   const lifecycleStatus = getChallengeLifecycleStatus(challenge);
+  const recoveryAvailable = [
+    "queuedforprocessing",
+    "processing",
+    "processed",
+    "feedbackreleased",
+    "failed",
+  ].includes(String(challenge?.automationStatus || "").toLowerCase()) || !!challenge?.isClosed;
+  const calculationActive = ["queuedforprocessing", "processing"].includes(
+    String(challenge?.automationStatus || "").toLowerCase(),
+  );
 
   const handleFormFieldChange = <K extends keyof ScenarioFormValues>(
     field: K,
@@ -315,6 +326,39 @@ const Challenge: React.FC = () => {
       globalContext?.showToast?.(errorMessage, "error");
     }
   });
+
+  const handleBeforePreview = useCallback(async () => {
+    if (!id || !form.formState.isDirty) return;
+    const values = form.getValues();
+    if (!values.title.trim()) {
+      throw new Error("Challenge title is required before previewing.");
+    }
+    const variablesToSave = watchedVariables ?? values.variables ?? {};
+    await challengeService.update(id, {
+      title: values.title.trim(),
+      description: values.description.trim(),
+      imageUrl: values.imageUrl?.trim() || undefined,
+      publishAt: values.publishAt || null,
+      publishMode: values.publishMode || "MANUAL",
+      submissionDeadlineAt: values.submissionDeadlineAt || null,
+      closeSubmissionsAt: values.closeSubmissionsAt || null,
+      processAt: values.processAt || null,
+      feedbackReleaseAt: values.feedbackReleaseAt || null,
+      feedbackReleaseMode: values.feedbackReleaseMode || "IMMEDIATE",
+      allowLateSubmissions: values.allowLateSubmissions,
+      lateSubmissionPolicy: {
+        penaltyPercentPerDay: Number(
+          values.lateSubmissionPolicy?.penaltyPercentPerDay ?? 0,
+        ),
+      },
+      automationMode: values.automationMode || "MANUAL",
+      missingSubmissionPolicy: values.missingSubmissionPolicy || "SKIP",
+      punishAbsentStudents: values.punishAbsentStudents || "none",
+      variables: variablesToSave,
+    });
+    form.reset({ ...values, variables: variablesToSave });
+    await fetchScenario(true);
+  }, [fetchScenario, form, id, watchedVariables]);
 
   const handlePublish = async () => {
     if (!id) return;
@@ -656,6 +700,7 @@ const Challenge: React.FC = () => {
                   challenge={challenge}
                   onExtendDeadline={handleExtendDeadline}
                   onChallengeUpdated={() => fetchScenario(true)}
+                  onBeforePreview={handleBeforePreview}
                 />
               )}
             </div>
@@ -781,6 +826,20 @@ const Challenge: React.FC = () => {
               <div className="flex flex-col gap-4">
                 {id && (
                   <>
+                    {recoveryAvailable && (
+                      <ChallengeStopCalculationAndReopen
+                        challengeId={id}
+                        challengeName={
+                          challenge.title ||
+                          (challenge as { name?: string }).name ||
+                          undefined
+                        }
+                        closeSubmissionsAt={watchedFormValues.closeSubmissionsAt}
+                        processAt={watchedFormValues.processAt}
+                        calculationActive={calculationActive}
+                        onSuccess={() => void fetchScenario()}
+                      />
+                    )}
                     <ScenarioResetSubmissionsAction
                       challengeId={id}
                       scenarioName={

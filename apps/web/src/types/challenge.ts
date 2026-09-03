@@ -9,6 +9,78 @@ import type { Profile } from "./profile";
  */
 export type StoreTypeKey = string;
 
+export type ChallengePreviewCaseKind = "baseline" | "absence_penalty";
+
+export interface ChallengePreviewTarget {
+  profileTypeId: string;
+  case: ChallengePreviewCaseKind;
+}
+
+export interface ChallengePreviewValue {
+  key: string;
+  label: string;
+  description?: string;
+  value: unknown;
+  dataType?: string;
+  format?: string | null;
+}
+
+export interface ChallengePreviewCase {
+  profileTypeId: string;
+  case: ChallengePreviewCaseKind;
+  status: "completed" | "failed";
+  inputs: {
+    startingPosition: ChallengePreviewValue[];
+    profile: ChallengePreviewValue[];
+    challenge: ChallengePreviewValue[];
+    decisions: ChallengePreviewValue[];
+    outcome: ChallengePreviewValue[];
+    outcomeNotes: string;
+  };
+  result?: {
+    metrics: Record<string, unknown>;
+    summary: string;
+  };
+  error?: {
+    code: string;
+    message: string;
+    retryable: boolean;
+  };
+}
+
+export interface ChallengePreviewResponse {
+  status: "completed" | "partial";
+  generatedAt: string;
+  durationMs: number;
+  assumptions: {
+    priorState: "week_zero_defaults";
+    freshRun: boolean;
+    writesResults: boolean;
+    punishmentLevel: "low" | "medium" | "high" | null;
+  };
+  metricDefinitions: Array<{
+    key: string;
+    label: string;
+    description?: string;
+    dataType: "number" | "string" | "boolean";
+    format: "currency" | "count" | "units" | "percent" | "text";
+    displayIn?: Record<string, boolean>;
+    sortOrder?: number;
+    isActive?: boolean;
+  }>;
+  profileTypes: Array<{
+    profileType: {
+      id: string;
+      key: string;
+      label: string;
+      description: string;
+    };
+    cases: ChallengePreviewCase[];
+  }>;
+  completedCases: number;
+  failedCases: number;
+}
+
 export interface TeacherDebrief {
   summary?: string;
   strongerPatterns?: string[];
