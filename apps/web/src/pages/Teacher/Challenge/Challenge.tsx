@@ -1,3 +1,4 @@
+import ChallengeProcessingSettings from "../../../components/ChallengeProcessingSettings";
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import BasicLayout from "../../../components/Layouts/BasicLayout";
@@ -57,9 +58,11 @@ const Challenge: React.FC = () => {
     Record<string, string>
   >({});
 
-  const form = useForm<ScenarioFormValues & {
-    variables: Record<string, unknown>;
-  }>({
+  const form = useForm<
+    ScenarioFormValues & {
+      variables: Record<string, unknown>;
+    }
+  >({
     defaultValues: {
       title: "",
       description: "",
@@ -122,10 +125,7 @@ const Challenge: React.FC = () => {
           (def) =>
             def.isActive ||
             (!def.challengeId &&
-              Object.prototype.hasOwnProperty.call(
-                scenarioVariables,
-                def.key,
-              )),
+              Object.prototype.hasOwnProperty.call(scenarioVariables, def.key)),
         );
         const variablesWithValues: VariableDefinitionWithValue[] =
           scenarioDefsForForm.map((def) => ({
@@ -621,6 +621,12 @@ const Challenge: React.FC = () => {
               )}
             </FormProvider>
 
+            <ChallengeProcessingSettings
+              key={`${challenge._id}:${challenge.simulationMode}:${challenge.simulationConcurrency}`}
+              challenge={challenge}
+              onSaved={() => void fetchScenario()}
+            />
+
             {challenge.isPublished &&
               lifecycleStatus !== "Scheduled" &&
               activeClassroom?._id &&
@@ -786,6 +792,11 @@ const Challenge: React.FC = () => {
                     />
                     <ScenarioCancelBatchAndReRun
                       challengeId={id}
+                      processingSettings={{
+                        simulationMode: challenge.simulationMode || "batch",
+                        simulationConcurrency:
+                          challenge.simulationConcurrency || 5,
+                      }}
                       scenarioName={
                         challenge.title ||
                         (challenge as { name?: string }).name ||

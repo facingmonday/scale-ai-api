@@ -34,11 +34,7 @@ export interface TeacherDebrief {
 }
 
 export type ChallengeLifecycleStatus =
-  | "Draft"
-  | "Scheduled"
-  | "Open"
-  | "Locked"
-  | "Closed";
+  "Draft" | "Scheduled" | "Open" | "Locked" | "Closed";
 
 /**
  * Challenge model
@@ -49,6 +45,14 @@ export interface Challenge extends BaseSchema {
   title: string;
   description: string;
   imageUrl?: string;
+  simulationMode?: "direct" | "batch";
+  simulationConcurrency?: number;
+  processingRun?: {
+    id?: string;
+    mode?: "direct" | "batch";
+    concurrency?: number;
+    preparing?: boolean;
+  };
   isPublished: boolean;
   isClosed: boolean;
   isLockedForStudents?: boolean;

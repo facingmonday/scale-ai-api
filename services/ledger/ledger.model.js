@@ -400,6 +400,12 @@ ledgerEntrySchema.statics.shouldSuppressNotifications = function (challenge) {
   return Boolean(challenge?.suppressNotifications);
 };
 
+// Preserve creation state because Mongoose clears isNew before post-save hooks run.
+ledgerEntrySchema.pre("save", function (next) {
+  this._wasNew = this.isNew;
+  next();
+});
+
 // Post-save hook to create notifications when ledger entries are created
 ledgerEntrySchema.post("save", async function (doc) {
   try {

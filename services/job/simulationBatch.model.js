@@ -14,6 +14,7 @@ const simulationBatchSchema = new mongoose.Schema({
     required: true,
     index: true,
   },
+  processingRunId: { type: String, default: null },
   status: {
     type: String,
     enum: [
@@ -79,12 +80,13 @@ const simulationBatchSchema = new mongoose.Schema({
 }).add(baseSchema);
 
 simulationBatchSchema.index({ challengeId: 1, createdDate: -1 });
+simulationBatchSchema.index({ challengeId: 1, processingRunId: 1, status: 1 });
 simulationBatchSchema.index({ openaiBatchId: 1, status: 1 });
 
 simulationBatchSchema.statics.createBatch = async function (
   input,
   organizationId,
-  clerkUserId
+  clerkUserId,
 ) {
   const batch = new this({
     classroomId: input.classroomId,
@@ -110,7 +112,7 @@ simulationBatchSchema.methods.markSubmitted = async function (data = {}) {
 };
 
 simulationBatchSchema.methods.updateFromOpenAIStatus = async function (
-  openaiBatch
+  openaiBatch,
 ) {
   // openaiBatch.status is expected to be one of validating/in_progress/finalizing/completed/failed/expired/cancelled
   if (openaiBatch?.status) {
@@ -148,11 +150,19 @@ simulationBatchSchema.methods.markCancelled = async function (reason) {
 };
 
 simulationBatchSchema.statics.findInProgressByScenario = async function (
-  challengeId
+  challengeId,
 ) {
   return this.findOne({
     challengeId,
-    status: { $in: ["validating", "in_progress", "finalizing"] },
+    status: {
+      $in: [
+        "submitted",
+        "validating",
+        "in_progress",
+        "finalizing",
+        "cancelling",
+      ],
+    },
   }).sort({ createdDate: -1 });
 };
 
@@ -164,30 +174,31 @@ simulationBatchSchema.statics.findInProgressByScenario = async function (
  * @param {string} challengeId - Challenge ID
  * @returns {Promise<{ cancelled: boolean, openaiBatchId?: string }>}
  */
-simulationBatchSchema.statics.cancelInProgressBatchForScenario = async function (
-  challengeId
-) {
-  const openai = require("../../lib/openai");
-  const batch = await this.findInProgressByScenario(challengeId);
-  if (!batch || !batch.openaiBatchId) {
-    return { cancelled: false };
-  }
+simulationBatchSchema.statics.cancelInProgressBatchForScenario =
+  async function (challengeId) {
+    const openai = require("../../lib/openai");
+    const batch = await this.findInProgressByScenario(challengeId);
+    if (!batch || !batch.openaiBatchId) {
+      return { cancelled: false };
+    }
 
-  try {
-    await openai.batches.cancel(batch.openaiBatchId);
-  } catch (err) {
-    console.warn(
-      `OpenAI batch cancel failed for ${batch.openaiBatchId}:`,
-      err.message
-    );
-  }
+    try {
+      await openai.batches.cancel(batch.openaiBatchId);
+    } catch (err) {
+      console.warn(
+        `OpenAI batch cancel failed for ${batch.openaiBatchId}:`,
+        err.message,
+      );
+    }
 
-  await batch.markCancelled("Cancelled by admin via cancel-batch-and-rerun");
+    await batch.markCancelled("Cancelled by admin via cancel-batch-and-rerun");
 
-  return { cancelled: true, openaiBatchId: batch.openaiBatchId };
-};
+    return { cancelled: true, openaiBatchId: batch.openaiBatchId };
+  };
 
-const SimulationBatch = mongoose.model("SimulationBatch", simulationBatchSchema);
+const SimulationBatch = mongoose.model(
+  "SimulationBatch",
+  simulationBatchSchema,
+);
 
 module.exports = SimulationBatch;
-

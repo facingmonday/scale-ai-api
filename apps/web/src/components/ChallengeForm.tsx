@@ -1,8 +1,11 @@
 import React from "react";
+import ChallengeProcessingFields from "./ChallengeProcessingFields";
 import Image from "./AIComponents/Image/Image";
 import AITextField from "./AIComponents/AITextField";
 
 export type ScenarioFormValues = {
+  simulationMode?: "direct" | "batch";
+  simulationConcurrency?: number;
   title: string;
   description: string;
   imageUrl?: string;
@@ -31,6 +34,7 @@ interface ScenarioFormProps {
   disabled?: boolean;
   openingLocked?: boolean;
   automationError?: string | null;
+  showProcessingSettings?: boolean;
 }
 
 const ChallengeForm: React.FC<ScenarioFormProps> = ({
@@ -39,6 +43,7 @@ const ChallengeForm: React.FC<ScenarioFormProps> = ({
   disabled = false,
   openingLocked = false,
   automationError,
+  showProcessingSettings = false,
 }) => {
   const isFullAutomation = (values.automationMode || "FULL") === "FULL";
 
@@ -109,11 +114,35 @@ const ChallengeForm: React.FC<ScenarioFormProps> = ({
             />
           </div>
 
-          <div id="challenge-opening" className="rounded-lg border border-ui-border bg-ui-surface-muted p-4">
+          {showProcessingSettings && (
+            <section className="rounded-lg border border-ui-border bg-ui-surface-muted p-4">
+              <h2 className="heading-sm mb-3">Result processing</h2>
+              <ChallengeProcessingFields
+                values={{
+                  simulationMode: values.simulationMode || "direct",
+                  simulationConcurrency: values.simulationConcurrency ?? 5,
+                }}
+                onChange={(settings) => {
+                  onChange("simulationMode", settings.simulationMode);
+                  onChange(
+                    "simulationConcurrency",
+                    settings.simulationConcurrency,
+                  );
+                }}
+                disabled={disabled}
+              />
+            </section>
+          )}
+
+          <div
+            id="challenge-opening"
+            className="rounded-lg border border-ui-border bg-ui-surface-muted p-4"
+          >
             <div className="mb-3">
               <h2 className="heading-sm">Challenge opening</h2>
               <p className="text-sm text-text-muted">
-                Choose whether you will publish this challenge or have it open at a scheduled time.
+                Choose whether you will publish this challenge or have it open
+                at a scheduled time.
               </p>
             </div>
 
@@ -148,7 +177,9 @@ const ChallengeForm: React.FC<ScenarioFormProps> = ({
                     type="datetime-local"
                     className="input"
                     value={values.publishAt || ""}
-                    onChange={(event) => onChange("publishAt", event.target.value)}
+                    onChange={(event) =>
+                      onChange("publishAt", event.target.value)
+                    }
                     disabled={disabled || openingLocked}
                     required
                   />
@@ -170,7 +201,8 @@ const ChallengeForm: React.FC<ScenarioFormProps> = ({
             <div className="mb-3">
               <h2 className="heading-sm">After opening</h2>
               <p className="text-sm text-text-muted">
-                Choose who controls deadlines, result processing, and feedback release.
+                Choose who controls deadlines, result processing, and feedback
+                release.
               </p>
             </div>
 
@@ -198,7 +230,9 @@ const ChallengeForm: React.FC<ScenarioFormProps> = ({
                   type="datetime-local"
                   className="input"
                   value={values.submissionDeadlineAt || ""}
-                  onChange={(event) => handleSubmissionDeadlineChange(event.target.value)}
+                  onChange={(event) =>
+                    handleSubmissionDeadlineChange(event.target.value)
+                  }
                   disabled={disabled}
                 />
               </label>
@@ -211,7 +245,9 @@ const ChallengeForm: React.FC<ScenarioFormProps> = ({
                       type="datetime-local"
                       className="input"
                       value={values.closeSubmissionsAt || ""}
-                      onChange={(event) => onChange("closeSubmissionsAt", event.target.value)}
+                      onChange={(event) =>
+                        onChange("closeSubmissionsAt", event.target.value)
+                      }
                       disabled={disabled}
                     />
                   </label>
@@ -222,7 +258,9 @@ const ChallengeForm: React.FC<ScenarioFormProps> = ({
                       type="datetime-local"
                       className="input"
                       value={values.processAt || ""}
-                      onChange={(event) => onChange("processAt", event.target.value)}
+                      onChange={(event) =>
+                        onChange("processAt", event.target.value)
+                      }
                       disabled={disabled}
                     />
                   </label>
@@ -257,7 +295,9 @@ const ChallengeForm: React.FC<ScenarioFormProps> = ({
                     type="datetime-local"
                     className="input"
                     value={values.feedbackReleaseAt || ""}
-                    onChange={(event) => onChange("feedbackReleaseAt", event.target.value)}
+                    onChange={(event) =>
+                      onChange("feedbackReleaseAt", event.target.value)
+                    }
                     disabled={disabled}
                   />
                 </label>
@@ -269,7 +309,10 @@ const ChallengeForm: React.FC<ScenarioFormProps> = ({
                   className="input"
                   value={values.allowLateSubmissions ? "true" : "false"}
                   onChange={(event) =>
-                    onChange("allowLateSubmissions", event.target.value === "true")
+                    onChange(
+                      "allowLateSubmissions",
+                      event.target.value === "true",
+                    )
                   }
                   disabled={disabled}
                 >
@@ -286,7 +329,9 @@ const ChallengeForm: React.FC<ScenarioFormProps> = ({
                     min="0"
                     max="100"
                     className="input"
-                    value={values.lateSubmissionPolicy?.penaltyPercentPerDay ?? 0}
+                    value={
+                      values.lateSubmissionPolicy?.penaltyPercentPerDay ?? 0
+                    }
                     onChange={(event) =>
                       onChange("lateSubmissionPolicy", {
                         penaltyPercentPerDay: Number(event.target.value),
@@ -305,7 +350,8 @@ const ChallengeForm: React.FC<ScenarioFormProps> = ({
                   onChange={(event) =>
                     onChange(
                       "missingSubmissionPolicy",
-                      event.target.value as "FORWARD_PREVIOUS" | "USE_DEFAULTS" | "SKIP",
+                      event.target.value as
+                        "FORWARD_PREVIOUS" | "USE_DEFAULTS" | "SKIP",
                     )
                   }
                   disabled={disabled}
@@ -318,14 +364,17 @@ const ChallengeForm: React.FC<ScenarioFormProps> = ({
 
               {(values.missingSubmissionPolicy || "SKIP") !== "SKIP" && (
                 <label className="flex flex-col gap-2 md:col-span-2">
-                  <span className="label">Punishment for missing decisions</span>
+                  <span className="label">
+                    Punishment for missing decisions
+                  </span>
                   <select
                     className="input"
                     value={values.punishAbsentStudents || "none"}
                     onChange={(event) =>
                       onChange(
                         "punishAbsentStudents",
-                        event.target.value as "high" | "medium" | "low" | "none",
+                        event.target.value as
+                          "high" | "medium" | "low" | "none",
                       )
                     }
                     disabled={disabled}

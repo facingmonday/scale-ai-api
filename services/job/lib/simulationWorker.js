@@ -16,10 +16,10 @@ class SimulationWorker {
   static async buildPriorMetrics(ledgerHistory, classroomId) {
     const history = Array.isArray(ledgerHistory) ? ledgerHistory : [];
     const priorChallengeEntries = history.filter(
-      (entry) => entry?.challengeId !== null && entry?.challengeId !== undefined
+      (entry) =>
+        entry?.challengeId !== null && entry?.challengeId !== undefined,
     );
-    const sourceEntry =
-      priorChallengeEntries.at(-1) || history.at(-1) || null;
+    const sourceEntry = priorChallengeEntries.at(-1) || history.at(-1) || null;
     let priorMetrics = {};
 
     if (sourceEntry) {
@@ -46,10 +46,8 @@ class SimulationWorker {
   }
 
   static async processJob(jobId, options = {}) {
-    const {
-      isFinalAttempt = true,
-      allowTerminalReconciliation = false,
-    } = options;
+    const { isFinalAttempt = true, allowTerminalReconciliation = false } =
+      options;
     const job = await SimulationJob.findById(jobId);
     if (!job) throw new Error(`Job not found: ${jobId}`);
     if (job.status !== "pending") {
@@ -74,6 +72,36 @@ class SimulationWorker {
 
     try {
       await job.markRunning();
+      // A worker can die after saving the ledger but before completing the job.
+      // Reconcile that durable result instead of recalculating or emailing twice.
+      if (job.processingRunId && !job.dryRun) {
+        const existing = await LedgerEntry.findOne({
+          challengeId: job.challengeId,
+          userId: job.userId,
+          decisionId: job.decisionId,
+          organization: job.organization,
+        });
+        if (existing) {
+          job.ledgerEntryId = existing._id;
+          await job.markCompleted();
+          await Decision.updateOne(
+            { _id: job.decisionId },
+            {
+              $set: {
+                ledgerEntryId: existing._id,
+                processingStatus: "completed",
+              },
+            },
+          );
+          await this.recordLedgerCompletionEvents(job);
+          return {
+            success: true,
+            recovered: true,
+            job: job.toObject(),
+            result: null,
+          };
+        }
+      }
       const context = await this.fetchJobContext(job);
       const aiResult = await LedgerEntry.runAISimulation(context);
 
@@ -132,11 +160,11 @@ class SimulationWorker {
   static async fetchJobContext(job) {
     const profile = await Profile.getStoreForSimulation(
       job.classroomId,
-      job.userId
+      job.userId,
     );
     if (!profile) {
       throw new Error(
-        `Profile not found for user ${job.userId} in class ${job.classroomId}`
+        `Profile not found for user ${job.userId} in class ${job.classroomId}`,
       );
     }
 
@@ -147,31 +175,29 @@ class SimulationWorker {
 
     const outcome = await Outcome.getOutcomeByScenario(job.challengeId);
     if (!outcome) {
-      throw new Error(
-        `Outcome not found for challenge ${job.challengeId}`
-      );
+      throw new Error(`Outcome not found for challenge ${job.challengeId}`);
     }
 
     const decision = await Decision.getSubmission(
       job.classroomId,
       job.challengeId,
-      job.userId
+      job.userId,
     );
     if (!decision) {
       throw new Error(
-        `Decision not found for user ${job.userId} and challenge ${job.challengeId}`
+        `Decision not found for user ${job.userId} and challenge ${job.challengeId}`,
       );
     }
 
     const ledgerHistory = await LedgerEntry.getLedgerHistory(
       job.classroomId,
       job.userId,
-      job.challengeId
+      job.challengeId,
     );
 
     const priorMetrics = await this.buildPriorMetrics(
       ledgerHistory,
-      job.classroomId
+      job.classroomId,
     );
 
     return {
@@ -193,7 +219,7 @@ class SimulationWorker {
     const metricDefs = await MetricDefinition.getActive(job.classroomId);
     const metrics = LedgerEntry.extractMetricsFromAIResult(
       aiResult,
-      metricDefs
+      metricDefs,
     );
 
     // Collect variable maps from context, then filter by active definitions.
@@ -226,7 +252,8 @@ class SimulationWorker {
       }
     }
 
-    const profileId = context.profile?.profileId || context.profile?.profileId || null;
+    const profileId =
+      context.profile?.profileId || context.profile?.profileId || null;
 
     const challengeVariables = {
       ...(context.challenge?.variables &&
@@ -242,7 +269,8 @@ class SimulationWorker {
         : {};
 
     const outcomeVariables =
-      context.outcome?.variables && typeof context.outcome.variables === "object"
+      context.outcome?.variables &&
+      typeof context.outcome.variables === "object"
         ? { ...context.outcome.variables }
         : {};
 
@@ -255,7 +283,7 @@ class SimulationWorker {
             decisionVariables,
             outcomeVariables,
           },
-          { challengeId: job.challengeId }
+          { challengeId: job.challengeId },
         )
       : {
           profileVariables,
@@ -312,14 +340,14 @@ class SimulationWorker {
     const entry = await LedgerEntry.createLedgerEntry(
       ledgerInput,
       organizationId,
-      job.createdBy
+      job.createdBy,
     );
 
     try {
       if (job.decisionId) {
         await Decision.updateOne(
           { _id: job.decisionId },
-          { $set: { ledgerEntryId: entry._id } }
+          { $set: { ledgerEntryId: entry._id } },
         );
       } else {
         await Decision.updateOne(
@@ -328,7 +356,7 @@ class SimulationWorker {
             challengeId: job.challengeId,
             userId: job.userId,
           },
-          { $set: { ledgerEntryId: entry._id } }
+          { $set: { ledgerEntryId: entry._id } },
         );
       }
     } catch (err) {
@@ -353,47 +381,42 @@ class SimulationWorker {
   static async processPendingJobs(limit = 10) {
     const jobs = await SimulationJob.getPendingJobs(limit);
     const results = [];
-    for (const job of jobs) {
-      try {
-        const result = await this.processJob(job._id);
-        results.push(result);
-      } catch (error) {
-        console.error(`Failed to process job ${job._id}:`, error);
-        results.push({
-          success: false,
-          jobId: job._id,
-          error: error.message,
-        });
-      }
+    for (const id of new Set(
+      jobs.filter((job) => !job.dryRun).map((job) => String(job.challengeId)),
+    )) {
+      await require("./challengeProcessing").enqueuePending(id);
+      results.push({ success: true, challengeId: id, queued: true });
     }
     return results;
   }
 
   static async processPendingJobsForScenario(challengeId) {
-    const jobs = await SimulationJob.find({
-      challengeId,
-      status: "pending",
-    }).sort({ createdDate: 1 });
-    const results = [];
-    for (const job of jobs) {
-      try {
-        const result = await this.processJob(job._id);
-        results.push(result);
-      } catch (error) {
-        console.error(`Failed to process job ${job._id}:`, error);
-        results.push({
-          success: false,
-          jobId: job._id,
-          error: error.message,
-        });
-      }
-    }
-    return results;
+    await require("./challengeProcessing").enqueuePending(challengeId);
+    return [{ success: true, challengeId, queued: true }];
   }
 
   static async recordLedgerCompletionEvents(job) {
     const LedgerCompletionEvent = require("../ledgerCompletionEvent.model");
-    return LedgerCompletionEvent.recordReadyEventsForJob(job._id);
+    const result = await LedgerCompletionEvent.recordReadyEventsForJob(job._id);
+    if (
+      job.status === "failed" &&
+      !(await SimulationJob.exists({
+        challengeId: job.challengeId,
+        status: { $in: ["pending", "running"] },
+      }))
+    ) {
+      await Challenge.updateOne(
+        { _id: job.challengeId },
+        {
+          $set: {
+            automationStatus: "FAILED",
+            automationError:
+              "Some student calculations failed. Retry the failed jobs or rerun the challenge.",
+          },
+        },
+      );
+    }
+    return result;
   }
 }
 

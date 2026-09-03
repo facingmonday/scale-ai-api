@@ -71,7 +71,7 @@ test("releaseFeedbackScenario cannot release or notify twice", async (t) => {
         body = payload;
         return this;
       },
-    }
+    },
   );
 
   assert.equal(statusCode, 400);
@@ -127,7 +127,7 @@ test("publishScenario keeps a future full-automation challenge scheduled", async
       organization: { _id: "organization-id" },
       clerkUser: { id: "teacher-id" },
     },
-    res
+    res,
   );
 
   assert.equal(statusCode, 200);
@@ -181,7 +181,7 @@ test("publishScenario permits scheduled opening with manual result automation", 
       organization: { _id: "organization-id" },
       clerkUser: { id: "teacher-id" },
     },
-    res
+    res,
   );
 
   assert.equal(statusCode, 200);
@@ -230,7 +230,7 @@ test("createScenario derives scheduled opening for an older payload", async (t) 
       organization: { _id: "organization-id" },
       clerkUser: { id: "teacher-id" },
     },
-    res
+    res,
   );
 
   assert.equal(statusCode, 201);
@@ -281,7 +281,7 @@ test("updateScenario rejects scheduled opening without a start", async (t) => {
       organization: { _id: "organization-id" },
       clerkUser: { id: "teacher-id" },
     },
-    res
+    res,
   );
 
   assert.equal(statusCode, 400);
@@ -329,7 +329,7 @@ test("updateScenario locks opening fields after publication", async (t) => {
       organization: { _id: "organization-id" },
       clerkUser: { id: "teacher-id" },
     },
-    res
+    res,
   );
 
   assert.equal(statusCode, 400);
@@ -383,7 +383,7 @@ test("updateScenario derives publish mode for an older payload", async (t) => {
       organization: { _id: "organization-id" },
       clerkUser: { id: "teacher-id" },
     },
-    res
+    res,
   );
 
   assert.equal(statusCode, 200);
@@ -418,7 +418,7 @@ test("student challenge detail returns 404 before the scheduled start", async (t
 
   await controller.getScenarioByIdForStudent(
     { params: { id: "challenge-id" }, user: { _id: "student-id" } },
-    res
+    res,
   );
 
   assert.equal(statusCode, 404);
@@ -436,7 +436,8 @@ test("preview returns readiness details without creating result jobs", async (t)
     Challenge.getScenarioById = originals.getScenarioById;
     Classroom.validateAdminAccess = originals.validateAdminAccess;
     JobService.createJobsForScenario = originals.createJobsForScenario;
-    classroomReadinessService.assertClassroomReady = originals.assertClassroomReady;
+    classroomReadinessService.assertClassroomReady =
+      originals.assertClassroomReady;
   });
 
   Challenge.getScenarioById = async () => ({
@@ -450,7 +451,9 @@ test("preview returns readiness details without creating result jobs", async (t)
     return [];
   };
   classroomReadinessService.assertClassroomReady = async () => {
-    const error = new Error("Classroom readiness checks blocked result processing");
+    const error = new Error(
+      "Classroom readiness checks blocked result processing",
+    );
     error.code = "CLASSROOM_READINESS_BLOCKED";
     error.statusCode = 409;
     error.readiness = { status: "blocked", blockers: 1, checks: [] };
@@ -521,9 +524,7 @@ test("student challenge detail hides results and guidance before manual release"
     summary: "valid result",
     studentFeedback: {
       status: "completed",
-      nextActions: [
-        { title: "Hidden action", rationale: "Not released yet." },
-      ],
+      nextActions: [{ title: "Hidden action", rationale: "Not released yet." }],
     },
   });
 
@@ -712,111 +713,64 @@ test("createScenarioWithAI validates access and returns the generated challenge"
   ]);
 });
 
-test("cancelBatchAndRerunScenario closes and reconciles a recovered challenge", async (t) => {
-  const originalSimulationMode = process.env.SIMULATION_MODE;
-  const originals = {
-    findOne: Challenge.findOne,
-    validateAdminAccess: Classroom.validateAdminAccess,
-    getOutcomeByScenario: Outcome.getOutcomeByScenario,
-    resetJobsForScenario: JobService.resetJobsForScenario,
-    deleteLedgerEntriesForScenario: LedgerEntry.deleteLedgerEntriesForScenario,
-    createJobsForScenario: JobService.createJobsForScenario,
-    resetChallengeDebriefForRerun:
-      challengeDebriefService.resetChallengeDebriefForRerun,
-    assertClassroomReady: classroomReadinessService.assertClassroomReady,
-  };
-  t.after(() => {
-    if (originalSimulationMode === undefined) delete process.env.SIMULATION_MODE;
-    else process.env.SIMULATION_MODE = originalSimulationMode;
-    Challenge.findOne = originals.findOne;
-    Classroom.validateAdminAccess = originals.validateAdminAccess;
-    Outcome.getOutcomeByScenario = originals.getOutcomeByScenario;
-    JobService.resetJobsForScenario = originals.resetJobsForScenario;
-    LedgerEntry.deleteLedgerEntriesForScenario =
-      originals.deleteLedgerEntriesForScenario;
-    JobService.createJobsForScenario = originals.createJobsForScenario;
-    challengeDebriefService.resetChallengeDebriefForRerun =
-      originals.resetChallengeDebriefForRerun;
-    classroomReadinessService.assertClassroomReady =
-      originals.assertClassroomReady;
-  });
-
-  process.env.SIMULATION_MODE = "direct";
-  const calls = [];
+test("cancelBatchAndRerunScenario validates access then delegates recovery to challenge processing", async (t) => {
+  const processing = require("../job/lib/challengeProcessing");
+  const Batch = require("../job/simulationBatch.model");
   const challenge = {
     _id: "challenge-id",
     classroomId: "classroom-id",
     isClosed: false,
     automationStatus: "FAILED",
-    automationError: "old failure",
-    async beginResultCalculation(clerkUserId) {
-      calls.push(["begin-result-calculation", clerkUserId]);
-      this.isClosed = true;
-      this.automationStatus = "processing";
-      this.automationError = null;
-    },
   };
-
-  Challenge.findOne = async (query) => {
-    assert.deepEqual(query, {
-      _id: "challenge-id",
-      organization: "organization-id",
+  const calls = [];
+  t.mock.method(Challenge, "findOne", async () => challenge);
+  t.mock.method(Classroom, "validateAdminAccess", async () =>
+    calls.push("authorize"),
+  );
+  t.mock.method(classroomReadinessService, "assertClassroomReady", async () =>
+    calls.push("ready"),
+  );
+  t.mock.method(Outcome, "getOutcomeByScenario", async () => ({
+    _id: "outcome-id",
+  }));
+  t.mock.method(Batch, "findInProgressByScenario", async () => ({
+    openaiBatchId: "old-batch",
+  }));
+  t.mock.method(processing, "startChallenge", async (input) => {
+    assert.deepEqual(input, {
+      challengeId: "challenge-id",
+      organizationId: "organization-id",
+      clerkUserId: "clerk-user-id",
+      rerun: true,
+      cancelBatch: true,
+      replacementSettings: undefined,
     });
-    return challenge;
-  };
-  Classroom.validateAdminAccess = async () => calls.push(["validate"]);
-  classroomReadinessService.assertClassroomReady = async () => ({
-    status: "ready",
-  });
-  Outcome.getOutcomeByScenario = async () => ({ _id: "outcome-id" });
-  JobService.resetJobsForScenario = async () => calls.push(["reset"]);
-  LedgerEntry.deleteLedgerEntriesForScenario = async () =>
-    calls.push(["delete-ledgers"]);
-  JobService.createJobsForScenario = async (...args) => {
-    calls.push(["create-jobs", args[5]]);
+    calls.push("start");
+    challenge.isClosed = true;
+    challenge.automationStatus = "processing";
     return [{ _id: "job-id" }];
-  };
-  challengeDebriefService.resetChallengeDebriefForRerun = async (args) => {
-    calls.push(["reset-debrief", args]);
-  };
-
-  let responseStatus = 200;
-  let responseBody;
-  const req = {
-    params: { challengeId: "challenge-id" },
-    organization: { _id: "organization-id" },
-    clerkUser: { id: "clerk-user-id" },
-  };
+  });
+  let response;
   const res = {
-    status(status) {
-      responseStatus = status;
+    status(code) {
+      assert.equal(code, 200);
       return this;
     },
     json(body) {
-      responseBody = body;
+      response = body;
       return this;
     },
   };
-
-  await controller.cancelBatchAndRerunScenario(req, res);
-
-  assert.equal(responseStatus, 200);
-  assert.equal(responseBody.success, true);
-  assert.equal(responseBody.data.jobsCreated, 1);
-  assert.equal(responseBody.data.challenge, challenge);
-  assert.equal(challenge.isClosed, true);
-  assert.equal(challenge.automationStatus, "processing");
-  assert.equal(challenge.automationError, null);
-  assert.deepEqual(calls.at(-1), [
-    "begin-result-calculation",
-    "clerk-user-id",
-  ]);
-  assert.deepEqual(calls.find(([name]) => name === "create-jobs"), [
-    "create-jobs",
-    { enqueue: true },
-  ]);
-  assert.deepEqual(calls.find(([name]) => name === "reset-debrief"), [
-    "reset-debrief",
-    { challengeId: "challenge-id", organizationId: "organization-id" },
-  ]);
+  await controller.cancelBatchAndRerunScenario(
+    {
+      params: { challengeId: "challenge-id" },
+      organization: { _id: "organization-id" },
+      clerkUser: { id: "clerk-user-id" },
+    },
+    res,
+  );
+  assert.deepEqual(calls, ["authorize", "ready", "start"]);
+  assert.equal(response.data.jobsCreated, 1);
+  assert.equal(response.data.batchCancelled, true);
+  assert.equal(response.data.challenge.automationStatus, "processing");
 });

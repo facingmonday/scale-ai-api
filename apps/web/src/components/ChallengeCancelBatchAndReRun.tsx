@@ -5,12 +5,16 @@ import challengeService from "@/services/challenge";
 import { useGlobalContext } from "@/context/GlobalContext";
 import { getErrorMessage } from "@/utils";
 import axios from "axios";
+import ChallengeProcessingFields, {
+  type ProcessingSettings,
+} from "./ChallengeProcessingFields";
 
 type Props = {
   challengeId: string;
   scenarioName?: string;
   disabled?: boolean;
   onSuccess?: () => void | Promise<void>;
+  processingSettings: ProcessingSettings;
 };
 
 function getCancelBatchAndRerunErrorMessage(error: unknown): string {
@@ -42,18 +46,26 @@ const ScenarioCancelBatchAndReRun: React.FC<Props> = ({
   scenarioName,
   disabled = false,
   onSuccess,
+  processingSettings,
 }) => {
   const globalContext = useGlobalContext();
   const [isOpen, setIsOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [settings, setSettings] = useState(processingSettings);
 
   const handleCancelBatchAndRerun = async () => {
     if (!challengeId || isProcessing) return;
 
     setIsProcessing(true);
     try {
-      globalContext?.showToast?.("Cancelling batch and rerunning...", "loading");
-      const result = await challengeService.cancelBatchAndRerun(challengeId);
+      globalContext?.showToast?.(
+        "Cancelling batch and rerunning...",
+        "loading",
+      );
+      const result = await challengeService.cancelBatchAndRerun(
+        challengeId,
+        settings,
+      );
 
       const data = (result as { data?: { jobsCreated?: number } })?.data;
       const jobsCreated = data?.jobsCreated;
@@ -89,7 +101,10 @@ const ScenarioCancelBatchAndReRun: React.FC<Props> = ({
         <Button
           label="Cancel Batch and Rerun"
           icon="pi pi-replay"
-          onClick={() => setIsOpen(true)}
+          onClick={() => {
+            setSettings(processingSettings);
+            setIsOpen(true);
+          }}
           severity="danger"
           outlined
           className="[&_.p-button-icon]:mr-3"
@@ -127,9 +142,22 @@ const ScenarioCancelBatchAndReRun: React.FC<Props> = ({
       >
         <div className="flex flex-col gap-4">
           <p className="text-text-muted">
-            This will cancel any in-progress batch, reset all student results for{" "}
-            <strong>{scenarioName || "this challenge"}</strong>, and rerun the
-            simulation. Students will see new results when processing completes.
+            This will cancel any in-progress batch, reset all student results
+            for <strong>{scenarioName || "this challenge"}</strong>, and rerun
+            the simulation. Students will see new results according to the
+            challenge's feedback release mode.
+          </p>
+          <div className="rounded-lg border border-ui-border bg-ui-surface-muted p-4">
+            <h3 className="font-medium mb-3">Rerun processing</h3>
+            <ChallengeProcessingFields
+              values={settings}
+              onChange={setSettings}
+              disabled={isProcessing}
+            />
+          </div>
+          <p className="text-text-muted">
+            Feedback release mode still controls when results are visible and
+            emails are queued.
           </p>
           <p className="text-text-muted font-medium">Continue?</p>
         </div>

@@ -887,6 +887,20 @@
           "isClosed": {
             "type": "boolean"
           },
+          "simulationMode": {
+            "type": "string",
+            "enum": [
+              "direct",
+              "batch"
+            ],
+            "description": "New challenges default to direct; legacy challenges retain batch."
+          },
+          "simulationConcurrency": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "default": 5
+          },
           "publishAt": {
             "type": "string",
             "format": "date-time"
@@ -3087,7 +3101,7 @@
     "/v1/admin/job/process-pending": {
       "post": {
         "summary": "Process pending jobs",
-        "description": "Manually trigger processing for all pending background jobs. Requires org:admin role.",
+        "description": "Queue pending background jobs using each challenge’s processing settings. The response acknowledges queued work; poll job status for completion. Requires org:admin role.",
         "tags": [
           "Jobs"
         ],
@@ -4740,6 +4754,67 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/v1/admin/challenges/{challengeId}/processing-settings": {
+      "patch": {
+        "summary": "Update result processing settings between calculation runs",
+        "tags": [
+          "Challenges"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "challengeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "simulationMode": {
+                    "type": "string",
+                    "enum": [
+                      "direct",
+                      "batch"
+                    ]
+                  },
+                  "simulationConcurrency": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated challenge"
+          },
+          "400": {
+            "description": "Invalid settings"
+          },
+          "403": {
+            "description": "Classroom administrator access required"
+          },
+          "409": {
+            "description": "Calculation is queued or active"
           }
         }
       }
