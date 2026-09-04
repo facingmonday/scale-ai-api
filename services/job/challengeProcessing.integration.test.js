@@ -266,6 +266,23 @@ test("restart recovery restores a durable reservation whose queue record was los
   await settled(challenge._id);
 });
 
+test("stopping a calculation cancels database jobs and removes queued work", async () => {
+  const JobService = require("./lib/jobService");
+  const { challenge, jobs, organization } = await fixture(1);
+  await processing.dispatchChallenge(challenge._id);
+  assert.ok(await queues.simulation.getJob(processing.queueId(jobs[0])));
+
+  const result = await JobService.cancelJobsForScenario(
+    challenge._id,
+    organization,
+  );
+
+  assert.equal(result.total, 1);
+  assert.equal(result.removed, 1);
+  assert.equal((await Job.findById(jobs[0]._id)).status, "cancelled");
+  assert.equal(await queues.simulation.getJob(processing.queueId(jobs[0])), null);
+});
+
 test("settings are authorized, locked during processing, and editable after completion", async (t) => {
   const { challenge, jobs, organization } = await fixture(1);
   const original = Classroom.validateAdminAccess;

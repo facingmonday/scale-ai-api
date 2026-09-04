@@ -94,7 +94,7 @@ export default function StudentResultExplanation({ explanation }: Props) {
           <ol className="mt-3 space-y-3">
             {explanation.nextActions.map((action, index) => (
               <li key={`${action.title}-${index}`} className="flex gap-3">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-teal text-xs font-bold text-white">
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-teal text-xs font-bold text-white">
                   {index + 1}
                 </span>
                 <div>
