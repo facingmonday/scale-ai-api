@@ -19,6 +19,7 @@ import type { ClassroomReadiness } from "@/types/readiness";
 import { InputTextarea } from "primereact/inputtextarea";
 import VariablesForm from "./VariablesForm";
 import ChallengePreviewDialog from "./ChallengePreviewDialog";
+import { getChallengeResultState } from "@/utils/challengeStatus";
 
 export type ScenarioOutcomeProps = {
   challengeId: string | null | undefined;
@@ -390,15 +391,25 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
     return !challenge;
   }, [challenge]);
 
+  const resultState = getChallengeResultState(challenge);
+  const resultIsFinal =
+    resultState === "awaitingFeedback" || resultState === "released";
+  const regularActionsHidden =
+    resultState === "calculating" || resultIsFinal;
+
   const showReleaseFeedback = useMemo(() => {
     if (!isAdmin || !challenge) return false;
     return (
-      !!challenge.isClosed &&
-      !challenge.isFeedbackReleased &&
-      locallyReleasedChallengeId !== challengeId &&
-      challenge.automationStatus === "processed"
+      resultState === "awaitingFeedback" &&
+      locallyReleasedChallengeId !== challengeId
     );
-  }, [isAdmin, challenge, locallyReleasedChallengeId, challengeId]);
+  }, [
+    isAdmin,
+    challenge,
+    resultState,
+    locallyReleasedChallengeId,
+    challengeId,
+  ]);
 
   const handleReleaseFeedback = useCallback(async () => {
     if (!challengeId) return;
@@ -427,7 +438,7 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
     if (!isAdmin) return null;
     if (isLoading) return null;
 
-    const outcomeAction = !outcome ? (
+    const outcomeAction = regularActionsHidden ? null : !outcome ? (
       <button
         type="button"
         className={`btn-teal ${addOutcomeDisabled ? "disabled:opacity-50" : ""
@@ -450,7 +461,7 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
 
     return (
       <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
-        {onExtendDeadline ? (
+        {onExtendDeadline && !regularActionsHidden ? (
           <button
             type="button"
             className="btn-outline"
@@ -469,7 +480,7 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
             Release Feedback
           </button>
         ) : null}
-        {outcome && !isEditing ? (
+        {outcome && !isEditing && !regularActionsHidden ? (
           <button
             type="button"
             className="btn-teal"
@@ -543,7 +554,7 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
         </div>
       )}
 
-      {!isLoading && isEditing && (
+      {!isLoading && isEditing && !regularActionsHidden && (
         <div className="mt-5">
           <div className="space-y-4">
             <div>

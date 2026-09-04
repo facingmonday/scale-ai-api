@@ -16,10 +16,21 @@ export interface ChallengeLifecycleInput {
   isClosed?: boolean;
   lifecycleStatus?: ChallengeLifecycleStatus;
   automationStatus?: string;
+  automatedProcessedAt?: string | Date | null;
+  isFeedbackReleased?: boolean;
+  processingRun?: {
+    preparing?: boolean;
+  };
   automationMode?: string;
   publishMode?: "MANUAL" | "SCHEDULED";
   publishAt?: string | Date | null;
 }
+
+export type ChallengeResultState =
+  | "idle"
+  | "calculating"
+  | "awaitingFeedback"
+  | "released";
 
 export interface ChallengePresentationOptions {
   audience?: "teacher" | "student";
@@ -38,6 +49,39 @@ const COMPLETED_AUTOMATION_STATUSES = new Set([
   "processed",
   "feedbackreleased",
 ]);
+
+export function getChallengeResultState(
+  challenge: ChallengeLifecycleInput | null | undefined,
+): ChallengeResultState {
+  if (!challenge) return "idle";
+
+  const automationStatus = String(
+    challenge.automationStatus || "",
+  ).toLowerCase();
+
+  if (
+    challenge.isFeedbackReleased ||
+    automationStatus === "feedbackreleased"
+  ) {
+    return "released";
+  }
+
+  if (
+    challenge.processingRun?.preparing ||
+    CALCULATING_AUTOMATION_STATUSES.has(automationStatus)
+  ) {
+    return "calculating";
+  }
+
+  if (
+    COMPLETED_AUTOMATION_STATUSES.has(automationStatus) ||
+    !!challenge.automatedProcessedAt
+  ) {
+    return "awaitingFeedback";
+  }
+
+  return "idle";
+}
 
 export function getChallengeLifecycleStatus(
   challenge: ChallengeLifecycleInput | null | undefined,

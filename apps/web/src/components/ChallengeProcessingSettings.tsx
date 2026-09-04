@@ -5,6 +5,7 @@ import ChallengeProcessingFields, {
 import type { Challenge } from "../types/challenge";
 import challengeService from "../services/challenge";
 import { getErrorMessage } from "../utils";
+import { getChallengeResultState } from "../utils/challengeStatus";
 
 export default function ChallengeProcessingSettings({
   challenge,
@@ -13,6 +14,7 @@ export default function ChallengeProcessingSettings({
   challenge: Challenge;
   onSaved: () => void;
 }) {
+  const resultState = getChallengeResultState(challenge);
   const [values, setValues] = useState<ProcessingSettings>({
     simulationMode: challenge.simulationMode || "batch",
     simulationConcurrency: challenge.simulationConcurrency || 5,
@@ -20,11 +22,7 @@ export default function ChallengeProcessingSettings({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const active =
-    !!challenge.processingRun?.preparing ||
-    ["queuedForProcessing", "processing", "PROCESSING"].includes(
-      challenge.automationStatus || "",
-    );
+  const active = resultState === "calculating";
   const changed =
     values.simulationMode !== (challenge.simulationMode || "batch") ||
     values.simulationConcurrency !== (challenge.simulationConcurrency || 5);
@@ -47,6 +45,11 @@ export default function ChallengeProcessingSettings({
       setSaving(false);
     }
   };
+
+  if (resultState === "awaitingFeedback" || resultState === "released") {
+    return null;
+  }
+
   return (
     <section className="card mb-4" aria-label="Result processing">
       <h2 className="heading-sm mb-3">Result processing</h2>
