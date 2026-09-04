@@ -317,6 +317,43 @@ test("settings are authorized, locked during processing, and editable after comp
   );
 });
 
+test("a superseded batch does not lock settings after a challenge is reopened", async (t) => {
+  const Batch = require("./simulationBatch.model");
+  const { challenge, organization } = await fixture(0);
+  const original = Classroom.validateAdminAccess;
+  t.after(() => {
+    Classroom.validateAdminAccess = original;
+  });
+  Classroom.validateAdminAccess = async () => {};
+
+  await Batch.create({
+    classroomId: challenge.classroomId,
+    challengeId: challenge._id,
+    organization,
+    processingRunId: challenge.processingRun.id,
+    status: "created",
+    createdBy: "admin",
+    updatedBy: "admin",
+  });
+  await Challenge.updateOne(
+    { _id: challenge._id },
+    {
+      $unset: { processingRun: 1 },
+      $set: { automationStatus: "acceptingSubmissions", isClosed: false },
+    },
+  );
+
+  const updated = await processing.updateSettings(
+    challenge._id,
+    organization,
+    "admin",
+    { simulationMode: "direct", simulationConcurrency: 5 },
+  );
+
+  assert.equal(updated.simulationMode, "direct");
+  assert.equal(updated.simulationConcurrency, 5);
+});
+
 test("run creation is resumable and a completed challenge can switch to batch before rerunning", async (t) => {
   const Decision = require("../decision/decision.model");
   const Completion = require("./ledgerCompletionEvent.model");

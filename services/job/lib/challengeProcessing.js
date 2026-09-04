@@ -61,6 +61,7 @@ async function withChallengeLock(challengeId, action, { waitMs = 0 } = {}) {
 
 async function hasActiveWork(challenge) {
   const Batch = require("../simulationBatch.model");
+  const processingRunId = challenge.processingRun?.id || null;
   return (
     challenge.processingRun?.preparing ||
     challenge.automationStatus === "queuedForProcessing" ||
@@ -76,6 +77,10 @@ async function hasActiveWork(challenge) {
     })) ||
     (await Batch.exists({
       challengeId: challenge._id,
+      // A cancelled/reopened challenge clears processingRun. Do not let a
+      // superseded batch from the previous run permanently lock settings.
+      // Legacy runs without an id still match null/missing processingRunId.
+      processingRunId,
       status: {
         $in: [
           "created",
@@ -303,6 +308,7 @@ async function startChallenge({
             throw busy();
           await require("../simulationBatch.model").cancelInProgressBatchForScenario(
             challengeId,
+            organizationId,
           );
           if (replacementSettings && Object.keys(replacementSettings).length) {
             const settings = validateProcessingSettings(replacementSettings, {

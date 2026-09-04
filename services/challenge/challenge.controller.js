@@ -1101,7 +1101,10 @@ exports.stopCalculationAndReopenScenario = async function (req, res) {
       ? await JobService.cancelJobsForScenario(challengeId, organizationId)
       : await JobService.invalidateJobsForScenario(challengeId, organizationId);
     const batchCancellation = calculationWasActive
-      ? await SimulationBatch.cancelInProgressBatchForScenario(challengeId)
+      ? await SimulationBatch.cancelInProgressBatchForScenario(
+          challengeId,
+          organizationId
+        )
       : { cancelled: false };
 
     let outcomeQueue = { removed: 0, active: 0 };
