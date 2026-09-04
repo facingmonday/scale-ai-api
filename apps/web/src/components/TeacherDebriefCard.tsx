@@ -78,7 +78,7 @@ const TeacherDebriefCard = ({
             </p>
           </div>
 
-          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          <div className="mt-4 !grid gap-3 lg:grid-cols-3">
             <DebriefList
               title="Patterns associated with stronger results"
               items={debrief?.strongerPatterns}
@@ -127,7 +127,7 @@ const TeacherDebriefCard = ({
                   Anonymized patterns and teaching opportunities for each store type.
                 </p>
               </div>
-              <div className="grid gap-3 lg:grid-cols-3">
+              <div className="!grid gap-3 lg:grid-cols-3">
                 {debrief?.profileTypeSummaries?.map((profileType) => (
                   <article
                     key={profileType.key || profileType.label}
