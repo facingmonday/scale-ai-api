@@ -1,3 +1,4 @@
+import ChallengeProcessingSettings from "../../../components/ChallengeProcessingSettings";
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import BasicLayout from "../../../components/Layouts/BasicLayout";
@@ -58,9 +59,11 @@ const Challenge: React.FC = () => {
     Record<string, string>
   >({});
 
-  const form = useForm<ScenarioFormValues & {
-    variables: Record<string, unknown>;
-  }>({
+  const form = useForm<
+    ScenarioFormValues & {
+      variables: Record<string, unknown>;
+    }
+  >({
     defaultValues: {
       title: "",
       description: "",
@@ -123,10 +126,7 @@ const Challenge: React.FC = () => {
           (def) =>
             def.isActive ||
             (!def.challengeId &&
-              Object.prototype.hasOwnProperty.call(
-                scenarioVariables,
-                def.key,
-              )),
+              Object.prototype.hasOwnProperty.call(scenarioVariables, def.key)),
         );
         const variablesWithValues: VariableDefinitionWithValue[] =
           scenarioDefsForForm.map((def) => ({
@@ -326,6 +326,39 @@ const Challenge: React.FC = () => {
       globalContext?.showToast?.(errorMessage, "error");
     }
   });
+
+  const handleBeforePreview = useCallback(async () => {
+    if (!id || !form.formState.isDirty) return;
+    const values = form.getValues();
+    if (!values.title.trim()) {
+      throw new Error("Challenge title is required before previewing.");
+    }
+    const variablesToSave = watchedVariables ?? values.variables ?? {};
+    await challengeService.update(id, {
+      title: values.title.trim(),
+      description: values.description.trim(),
+      imageUrl: values.imageUrl?.trim() || undefined,
+      publishAt: values.publishAt || null,
+      publishMode: values.publishMode || "MANUAL",
+      submissionDeadlineAt: values.submissionDeadlineAt || null,
+      closeSubmissionsAt: values.closeSubmissionsAt || null,
+      processAt: values.processAt || null,
+      feedbackReleaseAt: values.feedbackReleaseAt || null,
+      feedbackReleaseMode: values.feedbackReleaseMode || "IMMEDIATE",
+      allowLateSubmissions: values.allowLateSubmissions,
+      lateSubmissionPolicy: {
+        penaltyPercentPerDay: Number(
+          values.lateSubmissionPolicy?.penaltyPercentPerDay ?? 0,
+        ),
+      },
+      automationMode: values.automationMode || "MANUAL",
+      missingSubmissionPolicy: values.missingSubmissionPolicy || "SKIP",
+      punishAbsentStudents: values.punishAbsentStudents || "none",
+      variables: variablesToSave,
+    });
+    form.reset({ ...values, variables: variablesToSave });
+    await fetchScenario(true);
+  }, [fetchScenario, form, id, watchedVariables]);
 
   const handlePublish = async () => {
     if (!id) return;
@@ -632,6 +665,12 @@ const Challenge: React.FC = () => {
               )}
             </FormProvider>
 
+            <ChallengeProcessingSettings
+              key={`${challenge._id}:${challenge.simulationMode}:${challenge.simulationConcurrency}`}
+              challenge={challenge}
+              onSaved={() => void fetchScenario()}
+            />
+
             {challenge.isPublished &&
               lifecycleStatus !== "Scheduled" &&
               activeClassroom?._id &&
@@ -661,6 +700,7 @@ const Challenge: React.FC = () => {
                   challenge={challenge}
                   onExtendDeadline={handleExtendDeadline}
                   onChallengeUpdated={() => fetchScenario(true)}
+                  onBeforePreview={handleBeforePreview}
                 />
               )}
             </div>
@@ -811,6 +851,11 @@ const Challenge: React.FC = () => {
                     />
                     <ScenarioCancelBatchAndReRun
                       challengeId={id}
+                      processingSettings={{
+                        simulationMode: challenge.simulationMode || "batch",
+                        simulationConcurrency:
+                          challenge.simulationConcurrency || 5,
+                      }}
                       scenarioName={
                         challenge.title ||
                         (challenge as { name?: string }).name ||

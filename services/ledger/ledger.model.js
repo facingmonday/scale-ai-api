@@ -148,6 +148,37 @@ function calculateOpeningCash(profile) {
   return round2(startingBalance - initialStartupCost);
 }
 
+function buildInitialMetrics(metricDefinitions, profile) {
+  const metrics = {};
+
+  for (const definition of Array.isArray(metricDefinitions)
+    ? metricDefinitions
+    : []) {
+    if (
+      definition.defaultInitialValue === undefined ||
+      definition.defaultInitialValue === null
+    ) {
+      if (definition.dataType === "number") metrics[definition.key] = 0;
+      else if (definition.dataType === "boolean") metrics[definition.key] = false;
+      else metrics[definition.key] = "";
+    } else {
+      metrics[definition.key] = definition.defaultInitialValue;
+    }
+  }
+
+  const openingCash = calculateOpeningCash(profile);
+  if (openingCash !== null) {
+    if (Object.prototype.hasOwnProperty.call(metrics, "cashBefore")) {
+      metrics.cashBefore = openingCash;
+    }
+    if (Object.prototype.hasOwnProperty.call(metrics, "cashAfter")) {
+      metrics.cashAfter = openingCash;
+    }
+  }
+
+  return metrics;
+}
+
 /**
  * LedgerEntry - The chronological record of a student's simulated results.
  *
@@ -399,6 +430,12 @@ ledgerEntrySchema.index({ decisionId: 1 });
 ledgerEntrySchema.statics.shouldSuppressNotifications = function (challenge) {
   return Boolean(challenge?.suppressNotifications);
 };
+
+// Preserve creation state because Mongoose clears isNew before post-save hooks run.
+ledgerEntrySchema.pre("save", function (next) {
+  this._wasNew = this.isNew;
+  next();
+});
 
 // Post-save hook to create notifications when ledger entries are created
 ledgerEntrySchema.post("save", async function (doc) {
@@ -1104,6 +1141,7 @@ ledgerEntrySchema.statics.buildAISimulationOpenAIRequest = async function (
 };
 
 ledgerEntrySchema.statics.calculateOpeningCash = calculateOpeningCash;
+ledgerEntrySchema.statics.buildInitialMetrics = buildInitialMetrics;
 ledgerEntrySchema.statics.generateStudentFeedback = generateStudentFeedback;
 
 /**

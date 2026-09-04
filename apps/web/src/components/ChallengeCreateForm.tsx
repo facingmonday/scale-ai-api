@@ -18,6 +18,8 @@ const ScenarioCreateForm: React.FC<ScenarioCreateFormProps> = ({
   onSuccess,
 }) => {
   const [values, setValues] = useState<ScenarioFormValues>({
+    simulationMode: "direct",
+    simulationConcurrency: 5,
     title: "",
     description: "",
     imageUrl: "",
@@ -37,10 +39,19 @@ const ScenarioCreateForm: React.FC<ScenarioCreateFormProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isValid = useMemo(() => values.title.trim().length > 0, [values.title]);
+  const isValid = useMemo(
+    () =>
+      values.title.trim().length > 0 &&
+      Number.isInteger(values.simulationConcurrency) &&
+      (values.simulationConcurrency ?? 0) >= 1 &&
+      (values.simulationConcurrency ?? 0) <= 20,
+    [values.title, values.simulationConcurrency],
+  );
 
   const reset = () => {
     setValues({
+      simulationMode: "direct",
+      simulationConcurrency: 5,
       title: "",
       description: "",
       imageUrl: "",
@@ -75,6 +86,8 @@ const ScenarioCreateForm: React.FC<ScenarioCreateFormProps> = ({
     try {
       const payload = await challengeService.create({
         classroomId,
+        simulationMode: values.simulationMode || "direct",
+        simulationConcurrency: values.simulationConcurrency ?? 5,
         title: values.title.trim(),
         description: values.description.trim() || undefined,
         imageUrl: values.imageUrl?.trim() || undefined,
@@ -151,6 +164,7 @@ const ScenarioCreateForm: React.FC<ScenarioCreateFormProps> = ({
       <div className="flex flex-col gap-4">
         {error && <p className="text-red-400 text-sm">{error}</p>}
         <ChallengeForm
+          showProcessingSettings
           values={values}
           onChange={(field, value) =>
             setValues((current) => ({ ...current, [field]: value }))

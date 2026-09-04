@@ -887,6 +887,20 @@
           "isClosed": {
             "type": "boolean"
           },
+          "simulationMode": {
+            "type": "string",
+            "enum": [
+              "direct",
+              "batch"
+            ],
+            "description": "New challenges default to direct; legacy challenges retain batch."
+          },
+          "simulationConcurrency": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "default": 5
+          },
           "publishAt": {
             "type": "string",
             "format": "date-time"
@@ -3087,7 +3101,7 @@
     "/v1/admin/job/process-pending": {
       "post": {
         "summary": "Process pending jobs",
-        "description": "Manually trigger processing for all pending background jobs. Requires org:admin role.",
+        "description": "Queue pending background jobs using each challenge’s processing settings. The response acknowledges queued work; poll job status for completion. Requires org:admin role.",
         "tags": [
           "Jobs"
         ],
@@ -4539,8 +4553,8 @@
     },
     "/v1/admin/challenges/{challengeId}/preview": {
       "post": {
-        "summary": "Preview challenge",
-        "description": "Simulates scenario locally without changing live variables. Requires org:admin role.",
+        "summary": "Preview challenge outcomes by store type",
+        "description": "Runs fresh, synthetic Week 0 simulations in memory for active store types without creating decisions, jobs, ledgers, notifications, or student feedback. Requires org:admin role.",
         "tags": [
           "Challenges"
         ],
@@ -4559,9 +4573,53 @@
             }
           }
         ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "targets": {
+                    "type": "array",
+                    "description": "Optional failed cases to retry. Omit to run every applicable case for every active store type.",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "profileTypeId",
+                        "case"
+                      ],
+                      "properties": {
+                        "profileTypeId": {
+                          "type": "string"
+                        },
+                        "case": {
+                          "type": "string",
+                          "enum": [
+                            "baseline",
+                            "absence_penalty"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
-            "description": "Preview simulation outputs."
+            "description": "Complete or partial synthetic preview results."
+          },
+          "400": {
+            "description": "Invalid retry target."
+          },
+          "409": {
+            "description": "Synthetic preview readiness checks failed."
+          },
+          "502": {
+            "description": "Every requested simulation case failed."
           }
         }
       }
@@ -4740,6 +4798,67 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/v1/admin/challenges/{challengeId}/processing-settings": {
+      "patch": {
+        "summary": "Update result processing settings between calculation runs",
+        "tags": [
+          "Challenges"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "challengeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "simulationMode": {
+                    "type": "string",
+                    "enum": [
+                      "direct",
+                      "batch"
+                    ]
+                  },
+                  "simulationConcurrency": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated challenge"
+          },
+          "400": {
+            "description": "Invalid settings"
+          },
+          "403": {
+            "description": "Classroom administrator access required"
+          },
+          "409": {
+            "description": "Calculation is queued or active"
           }
         }
       }

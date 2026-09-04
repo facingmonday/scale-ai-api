@@ -5,7 +5,6 @@ const Enrollment = require("../enrollment/enrollment.model");
 const Decision = require("../decision/decision.model");
 const JobService = require("../job/lib/jobService");
 const LedgerEntry = require("../ledger/ledger.model");
-const SimulationWorker = require("../job/lib/simulationWorker");
 const SimulationBatch = require("../job/simulationBatch.model");
 const SimulationJob = require("../job/job.model");
 const LedgerCompletionEvent = require("../job/ledgerCompletionEvent.model");
@@ -16,12 +15,9 @@ const {
 } = require("../ledger/studentResultSerializer");
 const challengeAiService = require("./lib/challengeAiService");
 const challengeDebriefService = require("./lib/challengeDebriefService");
+const challengePreviewService = require("./lib/challengePreviewService");
 const classroomReadinessService = require("../classroom/classroomReadiness.service");
-const {
-  enqueueSimulationBatchSubmit,
-} = require("../../lib/queues/simulation-batch-worker");
 const { queues, ensureQueueReady } = require("../../lib/queues");
-
 
 const SCHEDULE_FIELDS = [
   "publishAt",
@@ -76,13 +72,13 @@ function normalizeScheduleInput(body) {
   if (body.submissionDeadlineAt !== undefined) {
     schedule.submissionDeadlineAt = parseOptionalDate(
       body.submissionDeadlineAt,
-      "submissionDeadlineAt"
+      "submissionDeadlineAt",
     );
   }
   if (body.closeSubmissionsAt !== undefined) {
     schedule.closeSubmissionsAt = parseOptionalDate(
       body.closeSubmissionsAt,
-      "closeSubmissionsAt"
+      "closeSubmissionsAt",
     );
   }
   if (body.processAt !== undefined) {
@@ -91,7 +87,7 @@ function normalizeScheduleInput(body) {
   if (body.feedbackReleaseAt !== undefined) {
     schedule.feedbackReleaseAt = parseOptionalDate(
       body.feedbackReleaseAt,
-      "feedbackReleaseAt"
+      "feedbackReleaseAt",
     );
   }
   if (body.feedbackReleaseMode !== undefined) {
@@ -131,7 +127,9 @@ function normalizeScheduleInput(body) {
     submissionDeadlineAt &&
     new Date(submissionDeadlineAt).getTime() < new Date(publishAt).getTime()
   ) {
-    const error = new Error("submissionDeadlineAt must be at or after publishAt");
+    const error = new Error(
+      "submissionDeadlineAt must be at or after publishAt",
+    );
     error.statusCode = 400;
     throw error;
   }
@@ -167,10 +165,14 @@ function sameInstant(left, right) {
 
 function nextAutomationStatus(challenge, scheduleUpdates = {}) {
   if (challenge.isClosed) {
-    return challenge.feedbackReleaseMode === "IMMEDIATE" ? "feedbackReleased" : "processed";
+    return challenge.feedbackReleaseMode === "IMMEDIATE"
+      ? "feedbackReleased"
+      : "processed";
   }
   if (challenge.isPublished) {
-    return challenge.isLockedForStudents ? "submissionsClosed" : "acceptingSubmissions";
+    return challenge.isLockedForStudents
+      ? "submissionsClosed"
+      : "acceptingSubmissions";
   }
 
   const publishMode =
@@ -181,9 +183,7 @@ function nextAutomationStatus(challenge, scheduleUpdates = {}) {
     scheduleUpdates.publishAt !== undefined
       ? scheduleUpdates.publishAt
       : challenge.publishAt;
-  return publishMode === "SCHEDULED" && publishAt
-    ? "SCHEDULED"
-    : "UNSCHEDULED";
+  return publishMode === "SCHEDULED" && publishAt ? "SCHEDULED" : "UNSCHEDULED";
 }
 
 function isChallengeCalculationComplete(challenge) {
@@ -284,7 +284,7 @@ exports.createScenario = async function (req, res) {
     await Classroom.validateAdminAccess(
       classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     const createAutomationMode = scheduleInput.automationMode || "FULL";
@@ -311,13 +311,16 @@ exports.createScenario = async function (req, res) {
         variables,
         imageUrl,
         ...scheduleInput,
+        ...require("./lib/processingSettings").validateProcessingSettings(
+          req.body,
+        ),
         publishMode: createPublishMode,
         automationMode: createAutomationMode,
         automationStatus:
           createPublishMode === "SCHEDULED" ? "SCHEDULED" : "UNSCHEDULED",
       },
       organizationId,
-      clerkUserId
+      clerkUserId,
     );
 
     // Trigger challenge created tasks asynchronously (do not block the response)
@@ -445,7 +448,7 @@ exports.updateScenario = async function (req, res) {
     await Classroom.validateAdminAccess(
       challenge.classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     // Check if can be edited
@@ -459,7 +462,9 @@ exports.updateScenario = async function (req, res) {
     const scheduleInput = normalizeScheduleInput({
       ...req.body,
       publishAt:
-        req.body.publishAt !== undefined ? req.body.publishAt : challenge.publishAt,
+        req.body.publishAt !== undefined
+          ? req.body.publishAt
+          : challenge.publishAt,
       submissionDeadlineAt:
         req.body.submissionDeadlineAt !== undefined
           ? req.body.submissionDeadlineAt
@@ -481,7 +486,7 @@ exports.updateScenario = async function (req, res) {
           ? scheduleInput.publishAt
             ? "SCHEDULED"
             : "MANUAL"
-        : currentPublishMode;
+          : currentPublishMode;
     const effectiveAutomationMode =
       scheduleInput.automationMode !== undefined
         ? scheduleInput.automationMode
@@ -530,7 +535,10 @@ exports.updateScenario = async function (req, res) {
     }
 
     if (SCHEDULE_FIELDS.some((field) => req.body[field] !== undefined)) {
-      challenge.automationStatus = nextAutomationStatus(challenge, scheduleInput);
+      challenge.automationStatus = nextAutomationStatus(
+        challenge,
+        scheduleInput,
+      );
       challenge.automationError = null;
     }
 
@@ -539,7 +547,7 @@ exports.updateScenario = async function (req, res) {
       await challenge.updateVariables(
         req.body.variables,
         organizationId,
-        clerkUserId
+        clerkUserId,
       );
     }
 
@@ -599,7 +607,7 @@ exports.publishScenario = async function (req, res) {
     await Classroom.validateAdminAccess(
       challenge.classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     // Pre-publish validation: Check if challenge can be published
@@ -623,7 +631,7 @@ exports.publishScenario = async function (req, res) {
     // Future challenges may be scheduled while another challenge is active.
     if (opensImmediately) {
       const activeScenario = await Challenge.getActiveScenario(
-        challenge.classroomId
+        challenge.classroomId,
       );
       if (
         activeScenario &&
@@ -643,7 +651,7 @@ exports.publishScenario = async function (req, res) {
     // Auto-generate decisions for all enrolled students (optional)
     let autoSubmissionResult = null;
     const autoEnabled = String(
-      process.env.AUTO_GENERATE_SUBMISSIONS_ON_PUBLISH ?? "false"
+      process.env.AUTO_GENERATE_SUBMISSIONS_ON_PUBLISH ?? "false",
     ).toLowerCase();
     if (opensImmediately && autoEnabled === "true") {
       try {
@@ -715,7 +723,7 @@ exports.unpublishScenario = async function (req, res) {
     await Classroom.validateAdminAccess(
       challenge.classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     // Check if challenge is published
@@ -753,8 +761,8 @@ exports.unpublishScenario = async function (req, res) {
 };
 
 /**
- * Preview AI outcomes (placeholder)
- * POST /api/admin/challenges/:challengeId/preview
+ * Preview synthetic outcomes for every active store type without writing jobs,
+ * decisions, ledger entries, notifications, or feedback.
  */
 exports.previewScenario = async function (req, res) {
   try {
@@ -763,7 +771,10 @@ exports.previewScenario = async function (req, res) {
     const clerkUserId = req.clerkUser.id;
 
     // Find challenge
-    const challenge = await Challenge.getScenarioById(challengeId, organizationId);
+    const challenge = await Challenge.getScenarioById(
+      challengeId,
+      organizationId,
+    );
 
     if (!challenge) {
       return res.status(404).json({ error: "Challenge not found" });
@@ -773,7 +784,7 @@ exports.previewScenario = async function (req, res) {
     await Classroom.validateAdminAccess(
       challenge.classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     await classroomReadinessService.assertClassroomReady({
@@ -783,63 +794,40 @@ exports.previewScenario = async function (req, res) {
       operation: "preview",
     });
 
-    // Get outcome
-    const outcome = await Outcome.getOutcomeByScenario(challengeId);
-
-    if (!outcome) {
-      return res.status(400).json({
-        error: "Challenge outcome must be set before previewing",
-      });
-    }
-
-    // Create preview jobs (dryRun = true)
-    const jobs = await JobService.createJobsForScenario(
+    const preview = await challengePreviewService.runChallengePreview({
       challengeId,
-      challenge.classroomId,
-      true, // dryRun
       organizationId,
-      clerkUserId
-    );
+      targets: req.body?.targets,
+    });
 
-    // Process preview jobs synchronously (limited to first 5 for preview)
-    const previewJobs = jobs.slice(0, 5);
-    const previewResults = [];
-
-    for (const job of previewJobs) {
-      try {
-        const result = await SimulationWorker.processJob(job._id);
-        previewResults.push({
-          userId: job.userId,
-          result: result.result,
-        });
-      } catch (error) {
-        console.error(`Error processing preview job ${job._id}:`, error);
-        previewResults.push({
-          userId: job.userId,
-          error: error.message,
-        });
-      }
-    }
-
-    res.json({
-      success: true,
-      message: "Preview completed",
-      data: {
-        challenge: challenge.toObject(),
-        outcome: outcome.toObject(),
-        previewResults,
-        totalJobs: jobs.length,
-        previewedJobs: previewResults.length,
-      },
+    const allCasesFailed = preview.completedCases === 0;
+    res.status(allCasesFailed ? 502 : 200).json({
+      success: !allCasesFailed,
+      message: allCasesFailed
+        ? "Every requested preview case failed"
+        : "Preview completed",
+      ...(allCasesFailed
+        ? { error: "Every requested preview case failed" }
+        : {}),
+      data: preview,
     });
   } catch (error) {
     console.error("Error previewing challenge:", error);
     if (sendReadinessError(res, error)) return;
+    if (error.statusCode)
+      return res.status(error.statusCode).json({ error: error.message });
     if (error.message === "Class not found") {
       return res.status(404).json({ error: error.message });
     }
     if (error.message.includes("Insufficient permissions")) {
       return res.status(403).json({ error: error.message });
+    }
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+        ...(error.code ? { code: error.code } : {}),
+        ...(error.checks ? { checks: error.checks } : {}),
+      });
     }
     res.status(500).json({ error: error.message });
   }
@@ -870,7 +858,7 @@ exports.rerunScenario = async function (req, res) {
     await Classroom.validateAdminAccess(
       challenge.classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     await classroomReadinessService.assertClassroomReady({
@@ -889,53 +877,32 @@ exports.rerunScenario = async function (req, res) {
       });
     }
 
-    await challengeDebriefService.resetChallengeDebriefForRerun({
-      challengeId,
-      organizationId,
-    });
-    await challenge.beginResultCalculation(clerkUserId);
-
-    // 1. Delete existing ledger entries for this challenge
-    await LedgerEntry.deleteLedgerEntriesForScenario(challengeId);
-
-    // 2. Reset all jobs for this challenge
-    await JobService.resetJobsForScenario(challengeId);
-
-    // 3. Recreate jobs for all decisions
-    // Jobs are automatically enqueued to Bull queue by createJobsForScenario -> createJob
-    // The Bull queue worker will process them asynchronously
-    const simulationMode = String(process.env.SIMULATION_MODE || "direct");
-    const useBatch = simulationMode === "batch";
-    const jobs = await JobService.createJobsForScenario(
-      challengeId,
-      challenge.classroomId,
-      false, // dryRun = false
-      organizationId,
-      clerkUserId,
-      { enqueue: !useBatch }
-    );
-
-    if (useBatch) {
-      await enqueueSimulationBatchSubmit({
+    const jobs = await require("../job/lib/challengeProcessing").startChallenge(
+      {
         challengeId,
-        classroomId: challenge.classroomId,
         organizationId,
         clerkUserId,
-      });
-    }
+        rerun: true,
+      },
+    );
 
     res.json({
       success: true,
       message:
         "Challenge rerun initiated. Jobs created and queued for processing.",
       data: {
-        challenge,
+        challenge: await Challenge.findOne({
+          _id: challengeId,
+          organization: organizationId,
+        }),
         jobsCreated: jobs.length,
       },
     });
   } catch (error) {
     console.error("Error rerunning challenge:", error);
     if (sendReadinessError(res, error)) return;
+    if (error.statusCode)
+      return res.status(error.statusCode).json({ error: error.message });
     if (error.message === "Class not found") {
       return res.status(404).json({ error: error.message });
     }
@@ -971,7 +938,7 @@ exports.cancelBatchAndRerunScenario = async function (req, res) {
     await Classroom.validateAdminAccess(
       challenge.classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     await classroomReadinessService.assertClassroomReady({
@@ -991,51 +958,20 @@ exports.cancelBatchAndRerunScenario = async function (req, res) {
       });
     }
 
-    await challengeDebriefService.resetChallengeDebriefForRerun({
-      challengeId,
-      organizationId,
-    });
-
-    // 1. Cancel any in-progress OpenAI batch (batch mode only)
-    let batchCancelled = false;
-    let openaiBatchId = null;
-    const simulationMode = String(process.env.SIMULATION_MODE || "direct");
-    if (simulationMode === "batch") {
-      const cancelResult =
-        await SimulationBatch.cancelInProgressBatchForScenario(challengeId);
-      batchCancelled = cancelResult.cancelled;
-      openaiBatchId = cancelResult.openaiBatchId || null;
-    }
-
-    // 2. Reset all jobs for this challenge
-    await JobService.resetJobsForScenario(challengeId);
-
-    // 3. Delete existing ledger entries
-    await LedgerEntry.deleteLedgerEntriesForScenario(challengeId);
-
-    // 4. Recreate jobs and enqueue
-    const useBatch = simulationMode === "batch";
-    const jobs = await JobService.createJobsForScenario(
-      challengeId,
-      challenge.classroomId,
-      false, // dryRun = false
-      organizationId,
-      clerkUserId,
-      { enqueue: !useBatch }
-    );
-
-    if (useBatch) {
-      await enqueueSimulationBatchSubmit({
+    const previousBatch =
+      await SimulationBatch.findInProgressByScenario(challengeId);
+    const jobs = await require("../job/lib/challengeProcessing").startChallenge(
+      {
         challengeId,
-        classroomId: challenge.classroomId,
         organizationId,
         clerkUserId,
-      });
-    }
-
-    // A rerun returns the challenge to the calculating state until all new
-    // simulation jobs are terminal.
-    await challenge.beginResultCalculation(clerkUserId);
+        rerun: true,
+        cancelBatch: true,
+        replacementSettings: req.body,
+      },
+    );
+    const batchCancelled = !!previousBatch;
+    const openaiBatchId = previousBatch?.openaiBatchId || null;
 
     res.json({
       success: true,
@@ -1044,12 +980,17 @@ exports.cancelBatchAndRerunScenario = async function (req, res) {
         batchCancelled,
         openaiBatchId,
         jobsCreated: jobs.length,
-        challenge,
+        challenge: await Challenge.findOne({
+          _id: challengeId,
+          organization: organizationId,
+        }),
       },
     });
   } catch (error) {
     console.error("Error in cancel-batch-and-rerun:", error);
     if (sendReadinessError(res, error)) return;
+    if (error.statusCode)
+      return res.status(error.statusCode).json({ error: error.message });
     if (error.message === "Class not found") {
       return res.status(404).json({ error: error.message });
     }
@@ -1160,7 +1101,10 @@ exports.stopCalculationAndReopenScenario = async function (req, res) {
       ? await JobService.cancelJobsForScenario(challengeId, organizationId)
       : await JobService.invalidateJobsForScenario(challengeId, organizationId);
     const batchCancellation = calculationWasActive
-      ? await SimulationBatch.cancelInProgressBatchForScenario(challengeId)
+      ? await SimulationBatch.cancelInProgressBatchForScenario(
+          challengeId,
+          organizationId
+        )
       : { cancelled: false };
 
     let outcomeQueue = { removed: 0, active: 0 };
@@ -1224,6 +1168,7 @@ exports.stopCalculationAndReopenScenario = async function (req, res) {
     challenge.isLockedForStudents = false;
     challenge.isFeedbackReleased = false;
     challenge.automatedProcessedAt = null;
+    challenge.processingRun = undefined;
     challenge.closeSubmissionsAt = closeSubmissionsAt;
     challenge.processAt = processAt;
     challenge.automationStatus = challenge.isPublished
@@ -1306,7 +1251,7 @@ exports.getCurrentScenario = async function (req, res) {
     const decision = await Decision.getSubmission(
       classroomId,
       challenge._id,
-      member._id
+      member._id,
     );
 
     const submissionStatus = decision
@@ -1367,7 +1312,7 @@ exports.getCurrentScenarioForAdmin = async function (req, res) {
     await Classroom.validateAdminAccess(
       classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     // Get active challenge
@@ -1436,8 +1381,8 @@ exports.getStudentScenariosByClassroom = async function (req, res) {
     });
 
     // Filter to challenges whose published start is available to students.
-    const publishedScenarios = challenges.filter(
-      (challenge) => Challenge.isVisibleToStudents(challenge)
+    const publishedScenarios = challenges.filter((challenge) =>
+      Challenge.isVisibleToStudents(challenge),
     );
 
     const studentOrganizationId =
@@ -1464,18 +1409,16 @@ exports.getStudentScenariosByClassroom = async function (req, res) {
         const decision = await Decision.getSubmission(
           classroomId,
           challenge._id,
-          member._id
+          member._id,
         );
 
         // Get challenge outcome
-        const outcome = await Outcome.getOutcomeByScenario(
-          challenge._id
-        );
+        const outcome = await Outcome.getOutcomeByScenario(challenge._id);
 
         // Get ledger entry for this challenge and member
         const ledgerEntry = await LedgerEntry.getLedgerEntry(
           challenge._id,
-          member._id
+          member._id,
         );
 
         const canViewResults = canStudentViewResults(
@@ -1483,12 +1426,13 @@ exports.getStudentScenariosByClassroom = async function (req, res) {
           decision,
           ledgerEntry,
         );
-        const safeOutcome = outcome && canViewResults
-          ? {
-              ...outcome.toObject(),
-              hiddenNotes: undefined,
-            }
-          : null;
+        const safeOutcome =
+          outcome && canViewResults
+            ? {
+                ...outcome.toObject(),
+                hiddenNotes: undefined,
+              }
+            : null;
 
         return {
           ...challenge,
@@ -1496,13 +1440,13 @@ exports.getStudentScenariosByClassroom = async function (req, res) {
           outcome: safeOutcome,
           ledgerEntry: canViewResults
             ? serializeStudentLedgerEntry(ledgerEntry, {
-              outcomeNotes: safeOutcome?.notes || "",
-              variableDefinitions,
-              metricDefinitions,
-            })
+                outcomeNotes: safeOutcome?.notes || "",
+                variableDefinitions,
+                metricDefinitions,
+              })
             : null,
         };
-      })
+      }),
     );
 
     res.json({
@@ -1542,7 +1486,7 @@ exports.getScenarioByIdForStudent = async function (req, res) {
     // Verify enrollment
     const isEnrolled = await Enrollment.isUserEnrolled(
       challenge.classroomId,
-      member._id
+      member._id,
     );
     if (!isEnrolled) {
       return res.status(403).json({ error: "Not enrolled in this class" });
@@ -1552,7 +1496,7 @@ exports.getScenarioByIdForStudent = async function (req, res) {
     const decision = await Decision.getSubmission(
       challenge.classroomId,
       challenge._id,
-      member._id
+      member._id,
     );
 
     // Get challenge outcome
@@ -1561,7 +1505,7 @@ exports.getScenarioByIdForStudent = async function (req, res) {
     // Get ledger entry for this challenge and member
     const ledgerEntry = await LedgerEntry.getLedgerEntry(
       challenge._id,
-      member._id
+      member._id,
     );
 
     const canViewResults = canStudentViewResults(
@@ -1569,27 +1513,28 @@ exports.getScenarioByIdForStudent = async function (req, res) {
       decision,
       ledgerEntry,
     );
-    const safeOutcome = outcome && canViewResults
-      ? {
-          ...outcome.toObject(),
-          hiddenNotes: undefined,
-        }
-      : null;
+    const safeOutcome =
+      outcome && canViewResults
+        ? {
+            ...outcome.toObject(),
+            hiddenNotes: undefined,
+          }
+        : null;
     const [variableDefinitions, metricDefinitions] = canViewResults
       ? await Promise.all([
-        VariableDefinition.find({
-          classroomId: challenge.classroomId,
-          organization: challenge.organization,
-          isActive: true,
-        }).lean(),
-        MetricDefinition.find({
-          classroomId: challenge.classroomId,
-          organization: challenge.organization,
-          isActive: true,
-        })
-          .sort({ sortOrder: 1, label: 1 })
-          .lean(),
-      ])
+          VariableDefinition.find({
+            classroomId: challenge.classroomId,
+            organization: challenge.organization,
+            isActive: true,
+          }).lean(),
+          MetricDefinition.find({
+            classroomId: challenge.classroomId,
+            organization: challenge.organization,
+            isActive: true,
+          })
+            .sort({ sortOrder: 1, label: 1 })
+            .lean(),
+        ])
       : [[], []];
 
     res.json({
@@ -1600,10 +1545,10 @@ exports.getScenarioByIdForStudent = async function (req, res) {
         outcome: safeOutcome,
         ledgerEntry: canViewResults
           ? serializeStudentLedgerEntry(ledgerEntry, {
-            outcomeNotes: safeOutcome?.notes || "",
-            variableDefinitions,
-            metricDefinitions,
-          })
+              outcomeNotes: safeOutcome?.notes || "",
+              variableDefinitions,
+              metricDefinitions,
+            })
           : null,
       },
     });
@@ -1636,7 +1581,7 @@ exports.deleteScenario = async function (req, res) {
     await Classroom.validateAdminAccess(
       challenge.classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     // Delete challenge and all related data (cascade delete)
@@ -1671,26 +1616,30 @@ exports.exportScenario = async function (req, res) {
     const organizationId = req.organization._id;
     const clerkUserId = req.clerkUser.id;
 
-    const challenge = await Challenge.getScenarioById(challengeId, organizationId);
-    if (!challenge) return res.status(404).json({ error: "Challenge not found" });
+    const challenge = await Challenge.getScenarioById(
+      challengeId,
+      organizationId,
+    );
+    if (!challenge)
+      return res.status(404).json({ error: "Challenge not found" });
 
     await Classroom.validateAdminAccess(
       challenge.classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     // ✅ generate CSV content (string or Buffer)
     const result = await Challenge.processScenarioExport(
       challengeId,
-      organizationId
+      organizationId,
     );
 
     // Tell browser to download it
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="${result.fileName}"`
+      `attachment; filename="${result.fileName}"`,
     );
     // optional: helps with proxies/buffers
     res.setHeader("Content-Length", Buffer.byteLength(result.csv, "utf8"));
@@ -1779,7 +1728,7 @@ exports.releaseFeedbackScenario = async function (req, res) {
     await Classroom.validateAdminAccess(
       challenge.classroomId,
       clerkUserId,
-      organizationId
+      organizationId,
     );
 
     if (challenge.isFeedbackReleased) {
@@ -1813,7 +1762,7 @@ exports.releaseFeedbackScenario = async function (req, res) {
           automationLastCheckedAt: new Date(),
         },
       },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     );
 
     if (!releasedChallenge) {
@@ -1839,5 +1788,27 @@ exports.releaseFeedbackScenario = async function (req, res) {
       return res.status(403).json({ error: error.message });
     }
     res.status(500).json({ error: error.message });
+  }
+};
+
+exports.updateProcessingSettings = async function (req, res) {
+  try {
+    const challenge =
+      await require("../job/lib/challengeProcessing").updateSettings(
+        req.params.challengeId,
+        req.organization._id,
+        req.clerkUser.id,
+        req.body,
+      );
+    res.json({ success: true, data: challenge });
+  } catch (error) {
+    const status =
+      error.statusCode ||
+      (error.message.includes("Insufficient permissions")
+        ? 403
+        : error.name === "CastError"
+          ? 400
+          : 500);
+    res.status(status).json({ error: error.message });
   }
 };

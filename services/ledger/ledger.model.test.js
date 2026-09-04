@@ -11,10 +11,32 @@ test("ledger model exports AI simulation helpers", () => {
   assert.equal(typeof LedgerEntry.inspectOpenAIRequest, "function");
   assert.equal(typeof LedgerEntry.inspectOpenAIResponse, "function");
   assert.equal(typeof LedgerEntry.calculateOpeningCash, "function");
+  assert.equal(typeof LedgerEntry.buildInitialMetrics, "function");
   assert.equal(typeof LedgerEntry.generateStudentFeedback, "function");
   assert.equal(typeof LedgerEntry.enforceCashContinuity, "function");
   assert.equal(typeof LedgerEntry.normalizeAndValidateAISimulationResult, "function");
   assert.equal(typeof LedgerEntry.runAISimulation, "function");
+});
+
+test("buildInitialMetrics mirrors Week 0 defaults and opening cash", () => {
+  const metrics = LedgerEntry.buildInitialMetrics(
+    [
+      { key: "cashBefore", dataType: "number", defaultInitialValue: 999 },
+      { key: "cashAfter", dataType: "number", defaultInitialValue: 999 },
+      { key: "orders", dataType: "number", defaultInitialValue: null },
+      { key: "open", dataType: "boolean", defaultInitialValue: null },
+      { key: "note", dataType: "string", defaultInitialValue: null },
+    ],
+    { startingBalance: 50000, initialStartupCost: 45000 },
+  );
+
+  assert.deepEqual(metrics, {
+    cashBefore: 5000,
+    cashAfter: 5000,
+    orders: 0,
+    open: false,
+    note: "",
+  });
 });
 
 test("simulation challenges suppress result notifications", () => {

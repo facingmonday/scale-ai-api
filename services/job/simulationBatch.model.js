@@ -14,6 +14,7 @@ const simulationBatchSchema = new mongoose.Schema({
     required: true,
     index: true,
   },
+  processingRunId: { type: String, default: null },
   status: {
     type: String,
     enum: [
@@ -79,12 +80,13 @@ const simulationBatchSchema = new mongoose.Schema({
 }).add(baseSchema);
 
 simulationBatchSchema.index({ challengeId: 1, createdDate: -1 });
+simulationBatchSchema.index({ challengeId: 1, processingRunId: 1, status: 1 });
 simulationBatchSchema.index({ openaiBatchId: 1, status: 1 });
 
 simulationBatchSchema.statics.createBatch = async function (
   input,
   organizationId,
-  clerkUserId
+  clerkUserId,
 ) {
   const batch = new this({
     classroomId: input.classroomId,
@@ -110,7 +112,7 @@ simulationBatchSchema.methods.markSubmitted = async function (data = {}) {
 };
 
 simulationBatchSchema.methods.updateFromOpenAIStatus = async function (
-  openaiBatch
+  openaiBatch,
 ) {
   // openaiBatch.status is expected to be one of validating/in_progress/finalizing/completed/failed/expired/cancelled
   if (openaiBatch?.status) {
@@ -148,46 +150,83 @@ simulationBatchSchema.methods.markCancelled = async function (reason) {
 };
 
 simulationBatchSchema.statics.findInProgressByScenario = async function (
-  challengeId
+  challengeId,
 ) {
   return this.findOne({
     challengeId,
-    status: { $in: ["validating", "in_progress", "finalizing"] },
+    status: {
+      $in: [
+        "submitted",
+        "validating",
+        "in_progress",
+        "finalizing",
+        "cancelling",
+      ],
+    },
   }).sort({ createdDate: -1 });
 };
 
 /**
- * Cancel any in-progress OpenAI batch for a challenge.
- * Finds the most recent batch in validating/in_progress/finalizing,
- * calls OpenAI batches.cancel, and marks the batch as cancelled locally.
+ * Cancel every non-terminal OpenAI batch for a challenge.
+ * Provider-backed batches are cancelled remotely when possible. Locally
+ * created batches without a provider id are still marked cancelled so they
+ * cannot leave result-processing settings locked forever.
  *
  * @param {string} challengeId - Challenge ID
- * @returns {Promise<{ cancelled: boolean, openaiBatchId?: string }>}
+ * @param {string} [organizationId] - Optional tenant scope
+ * @returns {Promise<{ cancelled: boolean, count?: number, openaiBatchId?: string, openaiBatchIds?: string[] }>}
  */
-simulationBatchSchema.statics.cancelInProgressBatchForScenario = async function (
-  challengeId
-) {
-  const openai = require("../../lib/openai");
-  const batch = await this.findInProgressByScenario(challengeId);
-  if (!batch || !batch.openaiBatchId) {
-    return { cancelled: false };
-  }
+simulationBatchSchema.statics.cancelInProgressBatchForScenario =
+  async function (challengeId, organizationId = null) {
+    const openai = require("../../lib/openai");
+    const query = {
+      challengeId,
+      status: {
+        $in: [
+          "created",
+          "submitted",
+          "validating",
+          "in_progress",
+          "finalizing",
+          "cancelling",
+        ],
+      },
+    };
+    if (organizationId) query.organization = organizationId;
+    const batches = await this.find(query).sort({ createdDate: -1 });
+    if (!batches.length) {
+      return { cancelled: false };
+    }
 
-  try {
-    await openai.batches.cancel(batch.openaiBatchId);
-  } catch (err) {
-    console.warn(
-      `OpenAI batch cancel failed for ${batch.openaiBatchId}:`,
-      err.message
-    );
-  }
+    const openaiBatchIds = [];
+    for (const batch of batches) {
+      if (batch.openaiBatchId) {
+        openaiBatchIds.push(batch.openaiBatchId);
+        try {
+          await openai.batches.cancel(batch.openaiBatchId);
+        } catch (err) {
+          console.warn(
+            `OpenAI batch cancel failed for ${batch.openaiBatchId}:`,
+            err.message,
+          );
+        }
+      }
+      await batch.markCancelled(
+        "Cancelled by admin while replacing calculation",
+      );
+    }
 
-  await batch.markCancelled("Cancelled by admin via cancel-batch-and-rerun");
+    return {
+      cancelled: true,
+      count: batches.length,
+      openaiBatchId: openaiBatchIds[0],
+      openaiBatchIds,
+    };
+  };
 
-  return { cancelled: true, openaiBatchId: batch.openaiBatchId };
-};
-
-const SimulationBatch = mongoose.model("SimulationBatch", simulationBatchSchema);
+const SimulationBatch = mongoose.model(
+  "SimulationBatch",
+  simulationBatchSchema,
+);
 
 module.exports = SimulationBatch;
-

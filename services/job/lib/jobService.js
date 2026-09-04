@@ -1,5 +1,4 @@
 const SimulationJob = require("../job.model");
-const { queues, ensureQueueReady } = require("../../../lib/queues");
 
 /**
  * Job Service
@@ -33,7 +32,7 @@ class JobService {
         decisionId,
       },
       organizationId,
-      clerkUserId
+      clerkUserId,
     );
 
     // Link job to decision if decision exists
@@ -42,18 +41,22 @@ class JobService {
       if (decisionId) {
         // Avoid fetching the decision: link job via atomic update.
         const r1 = await Decision.updateOne(
-          { _id: decisionId, processingStatus: "pending" },
+          { _id: decisionId },
           {
-            $set: { processingStatus: "processing" },
+            $set: {
+              processingStatus: ["completed", "failed"].includes(job.status)
+                ? job.status
+                : "processing",
+            },
             $addToSet: { jobs: job._id },
-          }
+          },
         );
 
         // If not pending (or not found), still ensure job is recorded.
         if (!r1 || r1.matchedCount === 0) {
           await Decision.updateOne(
             { _id: decisionId },
-            { $addToSet: { jobs: job._id } }
+            { $addToSet: { jobs: job._id } },
           );
         }
       } else {
@@ -72,28 +75,8 @@ class JobService {
       // Don't throw - job creation should still succeed even if linking fails
     }
 
-    if (enqueue) {
-      // Enqueue for Bull processing (one-at-a-time processor handles ordering)
-      // Always enqueue, even if job already existed (it may have been reset)
-      try {
-        await ensureQueueReady(queues.simulation, "simulation");
-        await queues.simulation.add(
-          { jobId: job._id },
-          {
-            // Deduplicate Bull jobs per SimulationJob to avoid accidental queue storms
-            // (e.g., challenge outcome processing retries, admin double-submits, etc.).
-            jobId: `simulation:${String(job._id)}`,
-            attempts: 3,
-            backoff: { type: "exponential", delay: 1000 },
-            removeOnComplete: true,
-            removeOnFail: false,
-          }
-        );
-      } catch (err) {
-        console.error("Failed to enqueue simulation job:", err.message);
-        // Surface the error so the caller knows the job was not enqueued
-        throw err;
-      }
+    if (enqueue && !input.dryRun) {
+      await require("./challengeProcessing").enqueuePending(input.challengeId);
     }
 
     return job;
@@ -114,7 +97,7 @@ class JobService {
     dryRun = false,
     organizationId,
     clerkUserId,
-    options = {}
+    options = {},
   ) {
     const Decision = require("../../decision/decision.model");
 
@@ -139,11 +122,17 @@ class JobService {
         decisionId: decision._id,
         organizationId,
         clerkUserId,
-        enqueue,
+        enqueue: false,
+        processingRunId: options.processingRunId,
+        simulationMode: options.simulationMode,
+        simulationConcurrency: options.simulationConcurrency,
+        preserveExisting: options.preserveExisting,
       });
       jobs.push(job);
     }
 
+    if (enqueue && !dryRun)
+      await require("./challengeProcessing").enqueuePending(challengeId);
     return jobs;
   }
 
@@ -181,39 +170,15 @@ class JobService {
    * @returns {Promise<Object>} Result with enqueued count
    */
   static async enqueuePendingJobs(challengeId = null) {
-    const { queues, ensureQueueReady } = require("../../../lib/queues");
-    const {
-      enqueueSimulationJob,
-    } = require("../../../lib/queues/simulation-worker");
-
-    const query = { status: "pending" };
-    if (challengeId) {
-      query.challengeId = challengeId;
-    }
-
-    const pendingJobs = await SimulationJob.find(query);
-    let enqueued = 0;
-    let failed = 0;
-    const errors = [];
-
-    for (const job of pendingJobs) {
-      try {
-        await ensureQueueReady(queues.simulation, "simulation");
-        await enqueueSimulationJob(job._id);
-        enqueued++;
-      } catch (err) {
-        console.error(`Failed to enqueue pending job ${job._id}:`, err.message);
-        failed++;
-        errors.push({ jobId: job._id, error: err.message });
-      }
-    }
-
-    return {
-      total: pendingJobs.length,
-      enqueued,
-      failed,
-      errors: errors.length > 0 ? errors : undefined,
-    };
+    const ids = challengeId
+      ? [challengeId]
+      : await SimulationJob.distinct("challengeId", {
+          status: "pending",
+          dryRun: false,
+        });
+    for (const id of ids)
+      await require("./challengeProcessing").enqueuePending(id);
+    return { total: ids.length, enqueued: ids.length, failed: 0 };
   }
 
   /**
@@ -234,7 +199,7 @@ class JobService {
           ledgerCompletionTracking: true,
           ledgerCompletionReconciledAt: null,
         },
-      }
+      },
     );
   }
 
@@ -245,7 +210,9 @@ class JobService {
   static async cancelJobsForScenario(challengeId, organizationId = null) {
     const query = { challengeId };
     if (organizationId) query.organization = organizationId;
-    const jobs = await SimulationJob.find(query).select("_id status");
+    const jobs = await SimulationJob.find(query).select(
+      "_id status processingRunId",
+    );
     const jobIds = jobs.map((job) => String(job._id));
 
     await SimulationJob.updateMany(
@@ -258,6 +225,7 @@ class JobService {
           status: "cancelled",
           completedAt: new Date(),
           error: "Cancelled by instructor while reopening challenge",
+          dispatchReserved: false,
           ledgerCompletionTracking: false,
           ledgerCompletionReconciledAt: null,
         },
@@ -267,17 +235,23 @@ class JobService {
     await ensureQueueReady(queues.simulation, "simulation");
     let removed = 0;
     let active = 0;
-    for (const jobId of jobIds) {
-      const queuedJob = await queues.simulation.getJob(`simulation:${jobId}`);
-      if (!queuedJob) continue;
-      const state = await queuedJob.getState();
-      if (state === "active") {
-        active += 1;
-        await queuedJob.discard();
-        continue;
+    for (const job of jobs) {
+      const queueIds = [
+        `simulation:${job._id}:${job.processingRunId || "legacy"}`,
+        `simulation:${job._id}`,
+      ];
+      for (const queueId of queueIds) {
+        const queuedJob = await queues.simulation.getJob(queueId);
+        if (!queuedJob) continue;
+        const state = await queuedJob.getState();
+        if (state === "active") {
+          active += 1;
+          await queuedJob.discard();
+          continue;
+        }
+        await queuedJob.remove();
+        removed += 1;
       }
-      await queuedJob.remove();
-      removed += 1;
     }
 
     return { total: jobIds.length, removed, active };
@@ -297,6 +271,7 @@ class JobService {
           status: "cancelled",
           completedAt: new Date(),
           error: "Results invalidated by instructor while reopening challenge",
+          dispatchReserved: false,
           ledgerCompletionTracking: false,
           ledgerCompletionReconciledAt: null,
           ledgerEntryId: null,

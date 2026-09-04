@@ -39,7 +39,7 @@ router.post(
   "/admin/challenges",
   requireAuth(),
   checkRole("org:admin"),
-  controller.createScenario
+  controller.createScenario,
 );
 
 /**
@@ -106,7 +106,7 @@ router.put(
   "/admin/challenges/:challengeId",
   requireAuth(),
   checkRole("org:admin"),
-  controller.updateScenario
+  controller.updateScenario,
 );
 
 /**
@@ -133,7 +133,7 @@ router.post(
   "/admin/challenges/:challengeId/publish",
   requireAuth(),
   checkRole("org:admin"),
-  controller.publishScenario
+  controller.publishScenario,
 );
 
 /**
@@ -160,15 +160,15 @@ router.post(
   "/admin/challenges/:challengeId/unpublish",
   requireAuth(),
   checkRole("org:admin"),
-  controller.unpublishScenario
+  controller.unpublishScenario,
 );
 
 /**
  * @openapi
  * /v1/admin/challenges/{challengeId}/preview:
  *   post:
- *     summary: Preview challenge
- *     description: Simulates scenario locally without changing live variables. Requires org:admin role.
+ *     summary: Preview challenge outcomes by store type
+ *     description: Runs fresh, synthetic Week 0 simulations in memory for active store types without creating decisions, jobs, ledgers, notifications, or student feedback. Requires org:admin role.
  *     tags:
  *       - Challenges
  *     security:
@@ -179,15 +179,40 @@ router.post(
  *         required: true
  *         schema:
  *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               targets:
+ *                 type: array
+ *                 description: Optional failed cases to retry. Omit to run every applicable case for every active store type.
+ *                 items:
+ *                   type: object
+ *                   required: [profileTypeId, case]
+ *                   properties:
+ *                     profileTypeId:
+ *                       type: string
+ *                     case:
+ *                       type: string
+ *                       enum: [baseline, absence_penalty]
  *     responses:
  *       200:
- *         description: Preview simulation outputs.
+ *         description: Complete or partial synthetic preview results.
+ *       400:
+ *         description: Invalid retry target.
+ *       409:
+ *         description: Synthetic preview readiness checks failed.
+ *       502:
+ *         description: Every requested simulation case failed.
  */
 router.post(
   "/admin/challenges/:challengeId/preview",
   requireAuth(),
   checkRole("org:admin"),
-  controller.previewScenario
+  controller.previewScenario,
 );
 
 /**
@@ -214,7 +239,7 @@ router.post(
   "/admin/challenges/:challengeId/rerun",
   requireAuth(),
   checkRole("org:admin"),
-  controller.rerunScenario
+  controller.rerunScenario,
 );
 
 /**
@@ -241,7 +266,7 @@ router.post(
   "/admin/challenges/:challengeId/cancel-batch-and-rerun",
   requireAuth(),
   checkRole("org:admin"),
-  controller.cancelBatchAndRerunScenario
+  controller.cancelBatchAndRerunScenario,
 );
 
 /** Stop an in-progress calculation, discard its results, and reopen submissions. */
@@ -276,7 +301,7 @@ router.post(
   "/admin/challenges/:challengeId/release-feedback",
   requireAuth(),
   checkRole("org:admin"),
-  controller.releaseFeedbackScenario
+  controller.releaseFeedbackScenario,
 );
 
 /** Generate or regenerate the teacher-only challenge debrief. */
@@ -311,7 +336,7 @@ router.post(
   "/admin/challenges/:challengeId/export",
   requireAuth(),
   checkRole("org:admin"),
-  controller.exportScenario
+  controller.exportScenario,
 );
 
 /**
@@ -338,7 +363,7 @@ router.get(
   "/admin/challenges",
   requireAuth(),
   checkRole("org:admin"),
-  controller.getScenarios
+  controller.getScenarios,
 );
 
 /**
@@ -363,7 +388,7 @@ router.get(
   "/admin/challenges/current",
   requireAuth(),
   checkRole("org:admin"),
-  controller.getCurrentScenarioForAdmin
+  controller.getCurrentScenarioForAdmin,
 );
 
 /** Get challenge by id - must come after specific routes */
@@ -395,7 +420,7 @@ router.get(
   "/admin/challenges/:id",
   requireAuth(),
   checkRole("org:admin"),
-  controller.getScenarioById
+  controller.getScenarioById,
 );
 
 /**
@@ -422,7 +447,41 @@ router.delete(
   "/admin/challenges/:challengeId",
   requireAuth(),
   checkRole("org:admin"),
-  controller.deleteScenario
+  controller.deleteScenario,
+);
+
+/**
+ * @openapi
+ * /v1/admin/challenges/{challengeId}/processing-settings:
+ *   patch:
+ *     summary: Update result processing settings between calculation runs
+ *     tags: [Challenges]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: challengeId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               simulationMode: { type: string, enum: [direct, batch] }
+ *               simulationConcurrency: { type: integer, minimum: 1, maximum: 20 }
+ *     responses:
+ *       200: { description: Updated challenge }
+ *       400: { description: Invalid settings }
+ *       403: { description: Classroom administrator access required }
+ *       409: { description: Calculation is queued or active }
+ */
+router.patch(
+  "/admin/challenges/:challengeId/processing-settings",
+  requireAuth(),
+  checkRole("org:admin"),
+  controller.updateProcessingSettings,
 );
 
 // Student routes - require authenticated member
@@ -448,7 +507,7 @@ router.delete(
 router.get(
   "/student/challenges/current",
   requireMemberAuth(),
-  controller.getCurrentScenario
+  controller.getCurrentScenario,
 );
 
 /**
@@ -478,7 +537,7 @@ router.get(
 router.get(
   "/student/challenges/:id",
   requireMemberAuth(),
-  controller.getScenarioByIdForStudent
+  controller.getScenarioByIdForStudent,
 );
 
 /**
@@ -504,7 +563,7 @@ router.get(
 router.get(
   "/student/challenges",
   requireMemberAuth(),
-  controller.getStudentScenariosByClassroom
+  controller.getStudentScenariosByClassroom,
 );
 
 module.exports = router;

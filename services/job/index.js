@@ -1,6 +1,6 @@
 /**
  * Job Service Routes
- * 
+ *
  * Provides endpoints for managing background jobs (simulation processing, etc.).
  * All routes require org:admin role.
  * Mounted at: /v1/admin/job
@@ -9,10 +9,7 @@ const express = require("express");
 const controller = require("./job.controller");
 const router = express.Router();
 
-const {
-  requireAuth,
-  checkRole,
-} = require("../../middleware/auth");
+const { requireAuth, checkRole } = require("../../middleware/auth");
 
 // All routes require org:admin role
 router.use(requireAuth(), checkRole("org:admin"));
@@ -92,7 +89,7 @@ router.post("/:jobId/retry", controller.retryJob);
  * /v1/admin/job/process-pending:
  *   post:
  *     summary: Process pending jobs
- *     description: Manually trigger processing for all pending background jobs. Requires org:admin role.
+ *     description: Queue pending background jobs using each challenge’s processing settings. The response acknowledges queued work; poll job status for completion. Requires org:admin role.
  *     tags:
  *       - Jobs
  *     security:
@@ -104,4 +101,3 @@ router.post("/:jobId/retry", controller.retryJob);
 router.post("/process-pending", controller.processPendingJobs);
 
 module.exports = router;
-

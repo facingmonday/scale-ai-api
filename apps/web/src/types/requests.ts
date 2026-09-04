@@ -43,6 +43,8 @@ export interface CreateVariableDefinitionRequest {
  * Create Challenge Request
  */
 export interface CreateScenarioRequest {
+  simulationMode?: "direct" | "batch";
+  simulationConcurrency?: number;
   classroomId: string;
   title: string;
   description?: string;

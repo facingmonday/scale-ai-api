@@ -27,6 +27,15 @@ const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
  *           type: boolean
  *         isClosed:
  *           type: boolean
+ *         simulationMode:
+ *           type: string
+ *           enum: [direct, batch]
+ *           description: New challenges default to direct; legacy challenges retain batch.
+ *         simulationConcurrency:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 20
+ *           default: 5
  *         publishAt:
  *           type: string
  *           format: date-time
@@ -111,6 +120,27 @@ const scenarioSchema = new mongoose.Schema({
   isPublished: {
     type: Boolean,
     default: false,
+  },
+  simulationMode: {
+    type: String,
+    enum: ["direct", "batch"],
+    default: function () {
+      return this.isNew ? "direct" : "batch";
+    },
+  },
+  simulationConcurrency: {
+    type: Number,
+    default: 5,
+    min: 1,
+    max: 20,
+    validate: Number.isInteger,
+  },
+  processingRun: {
+    id: String,
+    mode: { type: String, enum: ["direct", "batch"] },
+    concurrency: Number,
+    preparing: { type: Boolean, default: false },
+    resetPending: { type: Boolean, default: false },
   },
   suppressNotifications: {
     type: Boolean,
@@ -296,7 +326,10 @@ function serializeChallenge(doc, ret) {
 }
 
 scenarioSchema.set("toJSON", { virtuals: true, transform: serializeChallenge });
-scenarioSchema.set("toObject", { virtuals: true, transform: serializeChallenge });
+scenarioSchema.set("toObject", {
+  virtuals: true,
+  transform: serializeChallenge,
+});
 
 /**
  * Determine whether a challenge's configured start instant has arrived.
@@ -320,7 +353,7 @@ scenarioSchema.statics.hasStarted = function (challenge, now = new Date()) {
  */
 scenarioSchema.statics.isVisibleToStudents = function (
   challenge,
-  now = new Date()
+  now = new Date(),
 ) {
   return !!challenge?.isPublished && this.hasStarted(challenge, now);
 };
@@ -346,7 +379,7 @@ scenarioSchema.statics.getPublishMode = function (challenge) {
  */
 scenarioSchema.statics.getLifecycleStatus = function (
   challenge,
-  now = new Date()
+  now = new Date(),
 ) {
   if (!challenge) return "Draft";
   if (challenge.isClosed) return "Closed";
@@ -401,16 +434,15 @@ scenarioSchema.statics.getNextWeekNumber = async function (classroomId) {
 scenarioSchema.statics.validateScenarioVariables = async function (
   classroomId,
   variables,
-  challengeId = null
+  challengeId = null,
 ) {
   return await VariableDefinition.validateValues(
     classroomId,
     "challenge",
     variables,
-    { challengeId }
+    { challengeId },
   );
 };
-
 
 /**
  * Create a challenge
@@ -424,7 +456,7 @@ scenarioSchema.statics.createScenario = async function (
   classroomId,
   scenarioData,
   organizationId,
-  clerkUserId
+  clerkUserId,
 ) {
   // Get next week number
   const week = await this.getNextWeekNumber(classroomId);
@@ -445,6 +477,8 @@ scenarioSchema.statics.createScenario = async function (
     automationStatus,
     missingSubmissionPolicy,
     punishAbsentStudents,
+    simulationMode,
+    simulationConcurrency,
     ...scenarioFields
   } = scenarioData;
 
@@ -476,18 +510,20 @@ scenarioSchema.statics.createScenario = async function (
       (resolvedPublishMode === "SCHEDULED" ? "SCHEDULED" : "UNSCHEDULED"),
     missingSubmissionPolicy: missingSubmissionPolicy || "SKIP",
     punishAbsentStudents: punishAbsentStudents || "none",
+    simulationMode: simulationMode || "direct",
+    simulationConcurrency: simulationConcurrency ?? 5,
   };
 
   // Validate variables if provided
   if (variables && Object.keys(variables).length > 0) {
     const validation = await this.validateScenarioVariables(
       classroomId,
-      variables
+      variables,
     );
 
     if (!validation.isValid) {
       throw new Error(
-        `Invalid challenge variables: ${validation.errors.map((e) => e.message).join(", ")}`
+        `Invalid challenge variables: ${validation.errors.map((e) => e.message).join(", ")}`,
       );
     }
 
@@ -495,7 +531,7 @@ scenarioSchema.statics.createScenario = async function (
     const variablesWithDefaults = await VariableDefinition.applyDefaults(
       classroomId,
       "challenge",
-      variables
+      variables,
     );
 
     // Create challenge document
@@ -593,7 +629,7 @@ scenarioSchema.statics.getActiveScenario = async function (classroomId) {
  */
 scenarioSchema.statics.getScenariosByClass = async function (
   classroomId,
-  options = {}
+  options = {},
 ) {
   const query = { classroomId };
   if (!options.includeClosed) {
@@ -664,18 +700,18 @@ scenarioSchema.methods.getVariables = async function () {
 scenarioSchema.methods.updateVariables = async function (
   variables,
   organizationId,
-  clerkUserId
+  clerkUserId,
 ) {
   // Validate variables
   const validation = await this.constructor.validateScenarioVariables(
     this.classroomId,
     variables,
-    this._id
+    this._id,
   );
 
   if (!validation.isValid) {
     throw new Error(
-      `Invalid challenge variables: ${validation.errors.map((e) => e.message).join(", ")}`
+      `Invalid challenge variables: ${validation.errors.map((e) => e.message).join(", ")}`,
     );
   }
 
@@ -684,7 +720,7 @@ scenarioSchema.methods.updateVariables = async function (
     this.classroomId,
     "challenge",
     variables,
-    { challengeId: this._id }
+    { challengeId: this._id },
   );
 
   // Update or create variable values
@@ -697,7 +733,7 @@ scenarioSchema.methods.updateVariables = async function (
       key,
       value,
       organizationId,
-      clerkUserId
+      clerkUserId,
     );
   }
 
@@ -747,7 +783,7 @@ scenarioSchema.methods.publish = async function (clerkUserId) {
 
   // Check if there's already an active published challenge
   const activeScenario = await this.constructor.getActiveScenario(
-    this.classroomId
+    this.classroomId,
   );
   if (activeScenario && activeScenario._id.toString() !== this._id.toString()) {
     throw new Error("Another challenge is already published and active");
@@ -803,7 +839,9 @@ scenarioSchema.methods.beginResultCalculation = async function (clerkUserId) {
  * @param {string} clerkUserId - Clerk user ID for updatedBy
  * @returns {Promise<Object>} Updated challenge
  */
-scenarioSchema.methods.completeResultCalculation = async function (clerkUserId) {
+scenarioSchema.methods.completeResultCalculation = async function (
+  clerkUserId,
+) {
   const completedAt = this.automatedProcessedAt || new Date();
   this.isClosed = true;
   this.isLockedForStudents = true;
@@ -839,7 +877,9 @@ scenarioSchema.methods.open = async function (clerkUserId) {
   this.isClosed = false;
   this.isLockedForStudents = false;
   this.isFeedbackReleased = false;
-  this.automationStatus = this.isPublished ? "acceptingSubmissions" : "UNSCHEDULED";
+  this.automationStatus = this.isPublished
+    ? "acceptingSubmissions"
+    : "UNSCHEDULED";
   this.automatedProcessedAt = null;
   this.automationError = null;
   this.updatedBy = clerkUserId;
@@ -868,7 +908,7 @@ scenarioSchema.methods.canPublish = async function () {
 
   // Check if another challenge is active
   const activeScenario = await this.constructor.getActiveScenario(
-    this.classroomId
+    this.classroomId,
   );
   return (
     !activeScenario || activeScenario._id.toString() === this._id.toString()
@@ -957,7 +997,7 @@ async function queueScenarioPublishedEmails(challenge) {
   // records (which would otherwise enqueue email jobs via Notification post-save hook).
   if (process.env.SEND_EMAIL !== "true") {
     console.log(
-      "SEND_EMAIL is not set to 'true'; skipping challenge published notification creation"
+      "SEND_EMAIL is not set to 'true'; skipping challenge published notification creation",
     );
     return;
   }
@@ -979,7 +1019,7 @@ async function queueScenarioPublishedEmails(challenge) {
   // Get all enrolled students (members only) - explicitly exclude admins
   const memberEnrollments = await Enrollment.findByClassAndRole(
     classroomId,
-    "member"
+    "member",
   );
 
   if (memberEnrollments.length === 0) {
@@ -998,7 +1038,7 @@ async function queueScenarioPublishedEmails(challenge) {
   if (!clerkUserId && challenge._id) {
     const ScenarioModel = require("./challenge.model");
     const scenarioDoc = await ScenarioModel.findById(challenge._id).select(
-      "updatedBy createdBy"
+      "updatedBy createdBy",
     );
     if (scenarioDoc) {
       clerkUserId = scenarioDoc.updatedBy || scenarioDoc.createdBy;
@@ -1009,7 +1049,7 @@ async function queueScenarioPublishedEmails(challenge) {
   if (!clerkUserId) {
     clerkUserId = "system";
     console.warn(
-      "No clerkUserId found on challenge, using 'system' for notification createdBy/updatedBy"
+      "No clerkUserId found on challenge, using 'system' for notification createdBy/updatedBy",
     );
   }
 
@@ -1048,27 +1088,27 @@ async function queueScenarioPublishedEmails(challenge) {
       } catch (error) {
         console.error(
           `Error creating notification for enrollment ${enrollment._id}:`,
-          error.message
+          error.message,
         );
         throw error;
       }
-    })
+    }),
   );
 
   const successful = notifications.filter(
-    (n) => n.status === "fulfilled"
+    (n) => n.status === "fulfilled",
   ).length;
   const failed = notifications.filter((n) => n.status === "rejected").length;
 
   if (successful > 0) {
     console.log(
-      `Created ${successful} notification(s) for challenge publication: ${challenge._id}`
+      `Created ${successful} notification(s) for challenge publication: ${challenge._id}`,
     );
   }
 
   if (failed > 0) {
     console.error(
-      `Failed to create ${failed} notification(s) for challenge: ${challenge._id}`
+      `Failed to create ${failed} notification(s) for challenge: ${challenge._id}`,
     );
   }
 }
@@ -1081,11 +1121,11 @@ async function queueScenarioPublishedEmails(challenge) {
  */
 scenarioSchema.statics.getStoreTypeStats = async function (
   submissionsWithStores,
-  metricDefinitions = []
+  metricDefinitions = [],
 ) {
   const MetricDefinition = require("../metricDefinition/metricDefinition.model");
   const numericDefs = (metricDefinitions || []).filter(
-    (md) => md && md.dataType === "number" && md.isActive !== false
+    (md) => md && md.dataType === "number" && md.isActive !== false,
   );
   const leaderboardDef =
     MetricDefinition.selectLeaderboardDefinition(numericDefs);
@@ -1136,7 +1176,8 @@ scenarioSchema.statics.getStoreTypeStats = async function (
     const decisionMetrics = {};
     numericDefs.forEach((md) => {
       const raw = ledgerMetrics[md.key];
-      decisionMetrics[md.key] = typeof raw === "number" ? raw : Number(raw) || 0;
+      decisionMetrics[md.key] =
+        typeof raw === "number" ? raw : Number(raw) || 0;
     });
 
     stats.decisions.push({
@@ -1161,8 +1202,7 @@ scenarioSchema.statics.getStoreTypeStats = async function (
     const count = stats.count;
 
     numericDefs.forEach((md) => {
-      stats.averages[md.key] =
-        count > 0 ? stats.totals[md.key] / count : 0;
+      stats.averages[md.key] = count > 0 ? stats.totals[md.key] / count : 0;
     });
 
     if (leaderboardDef) {
@@ -1188,13 +1228,11 @@ scenarioSchema.statics.getStoreTypeStats = async function (
       }));
 
       const winnerDecisionIds = new Set(
-        stats.winners.map((winner) => winner.decisionId.toString())
+        stats.winners.map((winner) => winner.decisionId.toString()),
       );
 
       stats.losers = sorted
-        .filter(
-          (sub) => !winnerDecisionIds.has(sub.decisionId.toString())
-        )
+        .filter((sub) => !winnerDecisionIds.has(sub.decisionId.toString()))
         .slice(-3)
         .reverse()
         .map((sub) => ({
@@ -1244,12 +1282,12 @@ scenarioSchema.statics.getSubmittedCount = async function (challengeId) {
  */
 scenarioSchema.statics.getMissingCount = async function (
   classroomId,
-  challengeId
+  challengeId,
 ) {
   const Decision = require("../decision/decision.model");
   const missingUserIds = await Decision.getMissingSubmissions(
     classroomId,
-    challengeId
+    challengeId,
   );
   return missingUserIds.length;
 };
@@ -1262,7 +1300,7 @@ scenarioSchema.statics.getMissingCount = async function (
  */
 scenarioSchema.statics.getMissingSubmissions = async function (
   classroomId,
-  challengeId
+  challengeId,
 ) {
   const Decision = require("../decision/decision.model");
   const Member = require("../members/member.model");
@@ -1270,7 +1308,7 @@ scenarioSchema.statics.getMissingSubmissions = async function (
 
   const missingUserIds = await Decision.getMissingSubmissions(
     classroomId,
-    challengeId
+    challengeId,
   );
 
   // Get user details for missing decisions
@@ -1358,17 +1396,13 @@ scenarioSchema.statics.getStatsForScenario = async function (challengeId) {
     .sort({ sortOrder: 1, label: 1 })
     .lean();
 
-  const [
-    storeTypeStats,
-    totalEnrolled,
-    submittedCount,
-    missingCount,
-  ] = await Promise.all([
-    this.getStoreTypeStats(submissionsWithStores, metricDefinitions),
-    this.getTotalEnrolled(challenge.classroomId),
-    this.getSubmittedCount(challengeId),
-    this.getMissingCount(challenge.classroomId, challengeId),
-  ]);
+  const [storeTypeStats, totalEnrolled, submittedCount, missingCount] =
+    await Promise.all([
+      this.getStoreTypeStats(submissionsWithStores, metricDefinitions),
+      this.getTotalEnrolled(challenge.classroomId),
+      this.getSubmittedCount(challengeId),
+      this.getMissingCount(challenge.classroomId, challengeId),
+    ]);
 
   return {
     metricDefinitions,
@@ -1411,9 +1445,7 @@ scenarioSchema.statics.deleteScenario = async function (challengeId) {
   await SimulationJob.deleteMany({ challengeId });
 
   // 4. Get all decision IDs before deleting (needed for variable value cleanup)
-  const decisions = await Decision.find({ challengeId })
-    .select("_id")
-    .lean();
+  const decisions = await Decision.find({ challengeId }).select("_id").lean();
   const submissionIds = decisions.map((s) => s._id);
 
   // 5. Delete decisions (these reference challengeId)
@@ -1459,7 +1491,7 @@ scenarioSchema.statics.deleteScenario = async function (challengeId) {
 
 scenarioSchema.statics.processScenarioExport = async function (
   challengeId,
-  organizationId
+  organizationId,
 ) {
   const Decision = require("../decision/decision.model");
   const LedgerEntry = require("../ledger/ledger.model");
@@ -1508,7 +1540,7 @@ scenarioSchema.statics.processScenarioExport = async function (
         .lean()
     : [];
   const storeByUserId = new Map(
-    (profiles || []).map((st) => [st.userId.toString(), st])
+    (profiles || []).map((st) => [st.userId.toString(), st]),
   );
 
   // Flatten data for CSV
@@ -1527,7 +1559,9 @@ scenarioSchema.statics.processScenarioExport = async function (
         : "",
       submissionProcessingStatus: submissionObj.processingStatus || "pending",
       submissionGenerationMethod:
-        submissionObj.generation?.method || submissionObj.generationMethod || "MANUAL",
+        submissionObj.generation?.method ||
+        submissionObj.generationMethod ||
+        "MANUAL",
 
       userId: userId || "",
       studentFirstName: submissionObj.userId?.firstName || "",
@@ -1558,8 +1592,8 @@ scenarioSchema.statics.processScenarioExport = async function (
         raw === undefined || raw === null
           ? ""
           : typeof raw === "object"
-          ? JSON.stringify(raw)
-          : raw;
+            ? JSON.stringify(raw)
+            : raw;
     }
 
     if (ledger) {
@@ -1651,13 +1685,15 @@ scenarioSchema.statics.publishDueScenarios = async function (now) {
 
   for (const challenge of dueScenarios) {
     try {
-      const activeScenario = await this.getActiveScenario(challenge.classroomId);
+      const activeScenario = await this.getActiveScenario(
+        challenge.classroomId,
+      );
       if (
         activeScenario &&
         activeScenario._id.toString() !== challenge._id.toString()
       ) {
         await challenge.markAutomationBlocked(
-          `Another challenge is already active: ${activeScenario.title}`
+          `Another challenge is already active: ${activeScenario.title}`,
         );
         results.push({
           challengeId: challenge._id,
@@ -1741,14 +1777,24 @@ scenarioSchema.statics.closeDueSubmissions = async function (now) {
  */
 scenarioSchema.statics.processDueOutcomes = async function (now) {
   const Outcome = require("../outcome/outcome.model");
-  const { enqueueOutcomeProcessing } = require("../../lib/queues/outcome-processing-worker");
+  const {
+    enqueueOutcomeProcessing,
+  } = require("../../lib/queues/outcome-processing-worker");
 
   const dueScenarios = await this.find({
     automationMode: "FULL",
     isPublished: true,
     isClosed: false,
     processAt: { $ne: null, $lte: now },
-    automationStatus: { $nin: ["queuedForProcessing", "processing", "processed", "feedbackReleased", "FAILED"] },
+    automationStatus: {
+      $nin: [
+        "queuedForProcessing",
+        "processing",
+        "processed",
+        "feedbackReleased",
+        "FAILED",
+      ],
+    },
   }).sort({ processAt: 1, week: 1 });
 
   const results = [];
@@ -1758,7 +1804,7 @@ scenarioSchema.statics.processDueOutcomes = async function (now) {
       const outcome = await Outcome.getOutcomeByScenario(challenge._id);
       if (!outcome) {
         await challenge.markAutomationBlocked(
-          "A hidden outcome must be saved before automated processing can run"
+          "A hidden outcome must be saved before automated processing can run",
         );
         results.push({
           challengeId: challenge._id,
@@ -1869,7 +1915,9 @@ scenarioSchema.statics.releaseDelayedFeedback = async function (now) {
  * @param {Date|string} [options.now] - Override reference time (defaults to now)
  * @returns {Promise<Object>} Summary of lifecycle actions taken
  */
-scenarioSchema.statics.runScenarioLifecycleCheck = async function (options = {}) {
+scenarioSchema.statics.runScenarioLifecycleCheck = async function (
+  options = {},
+) {
   const now = options.now ? new Date(options.now) : new Date();
   const published = await this.publishDueScenarios(now);
   const locked = await this.closeDueSubmissions(now);
@@ -1882,12 +1930,19 @@ scenarioSchema.statics.runScenarioLifecycleCheck = async function (options = {})
     locked,
     processed,
     released,
-    publishedCount: published.filter((result) => result.status === "published").length,
+    publishedCount: published.filter((result) => result.status === "published")
+      .length,
     lockedCount: locked.filter((result) => result.status === "locked").length,
-    queuedCount: processed.filter((result) => result.status === "queued").length,
-    releasedCount: released.filter((result) => result.status === "released").length,
-    blockedCount: [...published, ...processed].filter((result) => result.status === "blocked").length,
-    failedCount: [...published, ...locked, ...processed, ...released].filter((result) => result.status === "failed").length,
+    queuedCount: processed.filter((result) => result.status === "queued")
+      .length,
+    releasedCount: released.filter((result) => result.status === "released")
+      .length,
+    blockedCount: [...published, ...processed].filter(
+      (result) => result.status === "blocked",
+    ).length,
+    failedCount: [...published, ...locked, ...processed, ...released].filter(
+      (result) => result.status === "failed",
+    ).length,
   };
 };
 

@@ -797,7 +797,7 @@ Get all variable definitions for profiles in a classroom.
 **Step 1: Fetch Profile Types**
 
 ```javascript
-GET /v1/admin/profile-types;
+GET / v1 / admin / profile - types;
 // Returns list of all profile types with their variables
 ```
 
@@ -956,14 +956,14 @@ DELETE /v1/admin/variables/:key?classroomId={classroomId}
 ```javascript
 // 1. Fetch profile types (for dropdown)
 const profileTypes = await fetch(
-  `/v1/student/profile-types?classroomId=${classroomId}`
+  `/v1/student/profile-types?classroomId=${classroomId}`,
 );
 // Returns: [{ _id: "...", key: "food_truck", label: "Food Truck", variables: {...} }]
 // Note: Only returns active profile types
 
 // 2. Fetch variable definitions (for form structure)
 const definitions = await fetch(
-  `/v1/admin/variables?classroomId=${classroomId}&appliesTo=profile`
+  `/v1/admin/variables?classroomId=${classroomId}&appliesTo=profile`,
 );
 // Returns: [{ key: "startingBalance", label: "Starting Balance", dataType: "number", ... }]
 
@@ -1551,7 +1551,7 @@ Jobs are processed by the **Workers Service** using Bull queue with the followin
 
 **Queue Configuration:**
 
-- **Concurrency**: Controlled by `SIMULATION_CONCURRENCY` (default: `2`). Increase gradually.
+- **Result processing**: Configure Individual or Batch on each challenge. Individual mode defaults to five students at a time (range 1–20). Settings are locked during a calculation run. Legacy challenges retain Batch; environment variables no longer select the mode or concurrency.
 - **Optional rate limiting**: You can enable a Bull limiter for simulation jobs with:
   - `SIMULATION_RATE_LIMIT_MAX` (e.g. `10`)
   - `SIMULATION_RATE_LIMIT_DURATION_MS` (e.g. `60000` for per-minute)

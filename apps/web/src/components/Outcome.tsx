@@ -1,13 +1,24 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { FormProvider, useForm, useWatch } from "react-hook-form";
 import outcomeService from "@/services/outcome";
 import challengeService from "@/services/challenge";
+import classroomService from "@/services/classroom";
 import type { Outcome as ScenarioOutcomeModel } from "@/types/outcome";
 import { useAuth } from "@/context/AuthContext";
 import { useGlobalContext } from "@/context/GlobalContext";
 import { getErrorMessage } from "@/utils";
 import AITextField from "./AIComponents/AITextField";
 import type { Challenge } from "@/types/challenge";
+import type {
+  ChallengePreviewResponse,
+  ChallengePreviewTarget,
+} from "@/types/challenge";
+import type { VariableDefinition } from "@/types/variableDefinition";
+import type { VariableDefinitionWithValue } from "@/types/decision";
+import type { ClassroomReadiness } from "@/types/readiness";
 import { InputTextarea } from "primereact/inputtextarea";
+import VariablesForm from "./VariablesForm";
+import ChallengePreviewDialog from "./ChallengePreviewDialog";
 
 export type ScenarioOutcomeProps = {
   challengeId: string | null | undefined;
@@ -21,6 +32,57 @@ export type ScenarioOutcomeProps = {
   challenge?: Challenge;
   onExtendDeadline?: () => void;
   onChallengeUpdated?: () => void | Promise<void>;
+  onBeforePreview?: () => void | Promise<void>;
+};
+
+const getErrorResponseData = (error: unknown): Record<string, unknown> | null => {
+  if (!error || typeof error !== "object" || !("response" in error)) return null;
+  const response = (error as { response?: { data?: unknown } }).response;
+  return response?.data && typeof response.data === "object"
+    ? (response.data as Record<string, unknown>)
+    : null;
+};
+
+const mergePreviewResult = (
+  current: ChallengePreviewResponse | null,
+  incoming: ChallengePreviewResponse,
+): ChallengePreviewResponse => {
+  if (!current) return incoming;
+  const mergedProfileTypes = [...current.profileTypes];
+
+  for (const nextProfileType of incoming.profileTypes) {
+    const profileIndex = mergedProfileTypes.findIndex(
+      (item) => item.profileType.id === nextProfileType.profileType.id,
+    );
+    if (profileIndex < 0) {
+      mergedProfileTypes.push(nextProfileType);
+      continue;
+    }
+    const cases = [...mergedProfileTypes[profileIndex].cases];
+    for (const nextCase of nextProfileType.cases) {
+      const caseIndex = cases.findIndex((item) => item.case === nextCase.case);
+      if (caseIndex < 0) cases.push(nextCase);
+      else cases[caseIndex] = nextCase;
+    }
+    mergedProfileTypes[profileIndex] = {
+      ...nextProfileType,
+      cases,
+    };
+  }
+
+  const allCases = mergedProfileTypes.flatMap((item) => item.cases);
+  const completedCases = allCases.filter(
+    (item) => item.status === "completed",
+  ).length;
+  const failedCases = allCases.length - completedCases;
+  return {
+    ...current,
+    ...incoming,
+    status: failedCases > 0 ? "partial" : "completed",
+    profileTypes: mergedProfileTypes,
+    completedCases,
+    failedCases,
+  };
 };
 
 const Outcome: React.FC<ScenarioOutcomeProps> = ({
@@ -31,8 +93,9 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
   onChange,
   onExtendDeadline,
   onChallengeUpdated,
+  onBeforePreview,
 }) => {
-  const { userRole } = useAuth();
+  const { userRole, activeClassroom } = useAuth();
   const global = useGlobalContext();
 
   const effectiveRole = userRole ?? "org:member";
@@ -49,6 +112,59 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
   >(null);
   const [notesDraft, setNotesDraft] = useState("");
   const [hiddenNotesDraft, setHiddenNotesDraft] = useState("");
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [previewResult, setPreviewResult] =
+    useState<ChallengePreviewResponse | null>(null);
+  const [previewReadiness, setPreviewReadiness] =
+    useState<ClassroomReadiness | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  const outcomeDefinitions = useMemo<VariableDefinition[]>(
+    () =>
+      ((activeClassroom?.variableDefinitions?.outcome as
+        | VariableDefinition[]
+        | undefined) ?? []).filter((definition) => definition.isActive),
+    [activeClassroom?.variableDefinitions],
+  );
+  const defaultOutcomeVariables = useMemo(
+    () =>
+      outcomeDefinitions.reduce<Record<string, unknown>>(
+        (values, definition) => {
+          if (
+            definition.defaultValue !== null &&
+            definition.defaultValue !== undefined
+          ) {
+            values[definition.key] = definition.defaultValue;
+          }
+          return values;
+        },
+        {},
+      ),
+    [outcomeDefinitions],
+  );
+  const outcomeForm = useForm<{
+    outcomeVariables: Record<string, unknown>;
+  }>({
+    defaultValues: { outcomeVariables: defaultOutcomeVariables },
+  });
+  const watchedOutcomeVariables =
+    useWatch({
+      control: outcomeForm.control,
+      name: "outcomeVariables",
+    }) ?? {};
+  const outcomeVariablesForDisplay: VariableDefinitionWithValue[] =
+    outcomeDefinitions.map((definition) => ({
+      ...definition,
+      value:
+        watchedOutcomeVariables[definition.key] ??
+        definition.defaultValue ??
+        (definition.dataType === "number"
+          ? 0
+          : definition.dataType === "boolean"
+            ? false
+            : ""),
+    }));
 
   const canEdit = useMemo(() => {
     if (!isAdmin) return false;
@@ -82,9 +198,16 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
       if (next) {
         setNotesDraft(next.notes || "");
         setHiddenNotesDraft(next.hiddenNotes || "");
+        outcomeForm.reset({
+          outcomeVariables: {
+            ...defaultOutcomeVariables,
+            ...(next.variables ?? {}),
+          },
+        });
       } else {
         setNotesDraft("");
         setHiddenNotesDraft("");
+        outcomeForm.reset({ outcomeVariables: defaultOutcomeVariables });
       }
     } catch (err) {
       // Common: 404 when no outcome exists (or not yet approved for students)
@@ -92,6 +215,7 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
       onChange?.(null);
       setNotesDraft("");
       setHiddenNotesDraft("");
+      outcomeForm.reset({ outcomeVariables: defaultOutcomeVariables });
 
       // Only log error if it's an admin view (students commonly "don't have it yet")
       if (isAdmin) {
@@ -100,9 +224,16 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [challengeId, isAdmin, onChange]);
+  }, [
+    challengeId,
+    defaultOutcomeVariables,
+    isAdmin,
+    onChange,
+    outcomeForm,
+  ]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchOutcome();
   }, [fetchOutcome]);
 
@@ -114,6 +245,28 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
     [notesDraft, hiddenNotesDraft],
   );
 
+  const persistOutcomeDraft = useCallback(
+    async (refresh = true) => {
+      if (!challengeId || !isAdmin) return;
+      await outcomeService.saveOutcomeDraft(challengeId, buildPayload());
+      if (outcomeDefinitions.length > 0) {
+        await outcomeService.updateVariables(
+          challengeId,
+          outcomeForm.getValues("outcomeVariables") ?? {},
+        );
+      }
+      if (refresh) await fetchOutcome();
+    },
+    [
+      buildPayload,
+      challengeId,
+      fetchOutcome,
+      isAdmin,
+      outcomeDefinitions.length,
+      outcomeForm,
+    ],
+  );
+
   const handleSaveDraft = useCallback(async () => {
     if (!challengeId) return;
     if (!isAdmin) return;
@@ -121,10 +274,9 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
     setIsSaving(true);
     try {
       global?.showToast("Saving outcome draft...", "loading");
-      await outcomeService.saveOutcomeDraft(challengeId, buildPayload());
+      await persistOutcomeDraft();
       global?.showToast("Outcome draft saved", "success");
       setIsEditing(false);
-      await fetchOutcome();
     } catch (err) {
       console.error("Failed to save challenge outcome draft:", err);
       const errorMessage = getErrorMessage(err);
@@ -132,7 +284,7 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [challengeId, isAdmin, buildPayload, fetchOutcome, global]);
+  }, [challengeId, isAdmin, persistOutcomeDraft, global]);
 
   const handleProcessNow = useCallback(async () => {
     if (!challengeId) return;
@@ -141,6 +293,7 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
     setIsSaving(true);
     try {
       global?.showToast("Processing outcome...", "loading");
+      await persistOutcomeDraft(false);
       await outcomeService.setOutcome(challengeId, buildPayload());
       global?.showToast("Outcome processing queued", "success");
       setIsEditing(false);
@@ -152,7 +305,86 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [challengeId, isAdmin, buildPayload, fetchOutcome, global]);
+  }, [
+    challengeId,
+    isAdmin,
+    persistOutcomeDraft,
+    buildPayload,
+    fetchOutcome,
+    global,
+  ]);
+
+  const runPreview = async (targets?: ChallengePreviewTarget[]) => {
+    if (!challengeId || !isAdmin || !activeClassroom?._id) return;
+    const isRetry = !!targets;
+    setIsPreviewOpen(true);
+    setPreviewError(null);
+    if (!isRetry) {
+      setIsPreviewing(true);
+      setPreviewResult(null);
+      setPreviewReadiness(null);
+    }
+
+    try {
+      if (!isRetry) {
+        global?.showToast("Saving preview inputs...", "loading");
+        await onBeforePreview?.();
+        if (isEditing || !outcome) {
+          await persistOutcomeDraft();
+          setIsEditing(false);
+        }
+      }
+
+      const readiness = await classroomService.getPreflight(
+        activeClassroom._id,
+        { challengeId, operation: "preview" },
+      );
+      setPreviewReadiness(readiness);
+      if (readiness.status === "blocked") {
+        const message = "Resolve the readiness checks before previewing.";
+        setPreviewError(message);
+        global?.showToast(message, "error");
+        return;
+      }
+
+      if (!isRetry) {
+        global?.showToast("Running preview...", "loading");
+      }
+      const nextResult = await challengeService.preview(challengeId, targets);
+      setPreviewResult((current) =>
+        isRetry ? mergePreviewResult(current, nextResult) : nextResult,
+      );
+      global?.showToast(
+        nextResult.status === "partial"
+          ? "Preview completed with some failed cases"
+          : "Preview ready",
+        "success",
+      );
+    } catch (err) {
+      console.error("Challenge preview failed:", err);
+      const responseData = getErrorResponseData(err);
+      const readiness = responseData?.readiness;
+      if (readiness && typeof readiness === "object") {
+        setPreviewReadiness(readiness as ClassroomReadiness);
+      }
+      const failedPreview = responseData?.data;
+      if (failedPreview && typeof failedPreview === "object") {
+        setPreviewResult((current) =>
+          isRetry
+            ? mergePreviewResult(
+                current,
+                failedPreview as unknown as ChallengePreviewResponse,
+              )
+            : (failedPreview as unknown as ChallengePreviewResponse),
+        );
+      }
+      const message = getErrorMessage(err);
+      setPreviewError(message);
+      global?.showToast(message, "error");
+    } finally {
+      if (!isRetry) setIsPreviewing(false);
+    }
+  };
 
   const addOutcomeDisabled = useMemo(() => {
     return !challenge;
@@ -191,7 +423,7 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
     }
   }, [challengeId, global, onChallengeUpdated]);
 
-  const headerAction = useMemo(() => {
+  const headerAction = (() => {
     if (!isAdmin) return null;
     if (isLoading) return null;
 
@@ -237,23 +469,24 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
             Release Feedback
           </button>
         ) : null}
+        {outcome && !isEditing ? (
+          <button
+            type="button"
+            className="btn-teal"
+            onClick={() => void runPreview()}
+            disabled={isPreviewing}
+          >
+            {isPreviewing ? "Previewing..." : "Preview results"}
+          </button>
+        ) : null}
         {outcomeAction}
       </div>
     );
-  }, [
-    isAdmin,
-    isLoading,
-    outcome,
-    canEdit,
-    addOutcomeDisabled,
-    onExtendDeadline,
-    showReleaseFeedback,
-    handleReleaseFeedback,
-    isReleasingFeedback,
-  ]);
+  })();
 
   return (
-    <div className={className ? `card ${className}` : "card"}>
+    <>
+      <div className={className ? `card ${className}` : "card"}>
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <h2 className="heading-md">{title}</h2>
@@ -291,6 +524,20 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
                   </div>
                 </div>
               )}
+              {outcomeVariablesForDisplay.length > 0 ? (
+                <div className="mt-4 border-t border-card-border pt-4">
+                  <FormProvider {...outcomeForm}>
+                    <VariablesForm
+                      title="Outcome variables"
+                      description="Saved realized values used by the simulation."
+                      namePrefix="outcomeVariables"
+                      defaultAppliesTo="outcome"
+                      variables={outcomeVariablesForDisplay}
+                      readOnly
+                    />
+                  </FormProvider>
+                </div>
+              ) : null}
             </>
           )}
         </div>
@@ -334,6 +581,21 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
               </p>
             </div>
 
+            <div className="border-t border-card-border pt-4">
+              <FormProvider {...outcomeForm}>
+                <VariablesForm
+                  title="Outcome variables"
+                  description="Realized values that drive this challenge simulation."
+                  namePrefix="outcomeVariables"
+                  defaultAppliesTo="outcome"
+                  variables={outcomeVariablesForDisplay}
+                  readOnly={!isAdmin || isSaving}
+                  showAddButton={isAdmin && !isSaving}
+                  onSave={() => void fetchOutcome()}
+                />
+              </FormProvider>
+            </div>
+
           </div>
 
           <div className="mt-4 flex items-center justify-end gap-3">
@@ -344,6 +606,12 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
                 setIsEditing(false);
                 setNotesDraft(outcome?.notes || "");
                 setHiddenNotesDraft(outcome?.hiddenNotes || "");
+                outcomeForm.reset({
+                  outcomeVariables: {
+                    ...defaultOutcomeVariables,
+                    ...(outcome?.variables ?? {}),
+                  },
+                });
               }}
               disabled={isSaving}
             >
@@ -359,6 +627,14 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
             </button>
             <button
               type="button"
+              className="btn-outline"
+              onClick={() => void runPreview()}
+              disabled={!isAdmin || isSaving || isPreviewing}
+            >
+              {isPreviewing ? "Previewing..." : "Save & preview"}
+            </button>
+            <button
+              type="button"
               className="btn-teal"
               onClick={() => void handleProcessNow()}
               disabled={!isAdmin || isSaving}
@@ -368,7 +644,19 @@ const Outcome: React.FC<ScenarioOutcomeProps> = ({
           </div>
         </div>
       )}
-    </div>
+      </div>
+      <ChallengePreviewDialog
+        visible={isPreviewOpen}
+        loading={isPreviewing}
+        result={previewResult}
+        readiness={previewReadiness}
+        error={previewError}
+        onHide={() => setIsPreviewOpen(false)}
+        onRetry={async (target) => {
+          await runPreview([target]);
+        }}
+      />
+    </>
   );
 };
 

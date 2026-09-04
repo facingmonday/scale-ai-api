@@ -23,6 +23,10 @@ const simulationJobSchema = new mongoose.Schema({
     ref: "Member",
     required: true,
   },
+  processingRunId: { type: String, default: null },
+  simulationMode: { type: String, enum: ["direct", "batch"] },
+  simulationConcurrency: { type: Number, min: 1, max: 20 },
+  dispatchReserved: { type: Boolean, default: false },
   status: {
     type: String,
     enum: ["pending", "running", "completed", "failed", "cancelled"],
@@ -99,6 +103,13 @@ const simulationJobSchema = new mongoose.Schema({
 simulationJobSchema.index({ challengeId: 1, userId: 1 }, { unique: true });
 simulationJobSchema.index({ status: 1 });
 simulationJobSchema.index({ challengeId: 1, status: 1 });
+simulationJobSchema.index({
+  challengeId: 1,
+  processingRunId: 1,
+  status: 1,
+  dispatchReserved: 1,
+  createdDate: 1,
+});
 simulationJobSchema.index({ classroomId: 1, userId: 1 });
 simulationJobSchema.index({ organization: 1, challengeId: 1 });
 simulationJobSchema.index({ decisionId: 1 });
@@ -116,7 +127,7 @@ simulationJobSchema.index({ "batch.openaiBatchId": 1, status: 1 });
 simulationJobSchema.statics.createJob = async function (
   input,
   organizationId,
-  clerkUserId
+  clerkUserId,
 ) {
   // Check if job already exists
   const existing = await this.findOne({
@@ -126,6 +137,15 @@ simulationJobSchema.statics.createJob = async function (
 
   if (existing) {
     // Reset existing job if it exists
+    if (
+      input.preserveExisting &&
+      existing.processingRunId === input.processingRunId
+    )
+      return existing;
+    existing.processingRunId = input.processingRunId || null;
+    existing.simulationMode = input.simulationMode;
+    existing.simulationConcurrency = input.simulationConcurrency;
+    existing.dispatchReserved = false;
     existing.status = "pending";
     existing.attempts = 0;
     existing.error = null;
@@ -158,6 +178,10 @@ simulationJobSchema.statics.createJob = async function (
   }
 
   const job = new this({
+    processingRunId: input.processingRunId || null,
+    simulationMode: input.simulationMode,
+    simulationConcurrency: input.simulationConcurrency,
+    dispatchReserved: false,
     classroomId: input.classroomId,
     challengeId: input.challengeId,
     decisionId: input.decisionId || null,

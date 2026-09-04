@@ -93,9 +93,10 @@ ledgerCompletionEventSchema.statics.evaluateChallenge = async function (
   const LedgerEntry = require("../ledger/ledger.model");
 
   const challenge = await Challenge.findById(challengeId)
-    .select("organization")
+    .select("organization processingRun")
     .lean();
   if (!challenge) throw new Error(`Challenge not found: ${challengeId}`);
+  if (challenge.processingRun?.preparing) return { ready: false, reason: "run-preparing" };
   const scopedQuery = {
     challengeId,
     organization: challenge.organization,
