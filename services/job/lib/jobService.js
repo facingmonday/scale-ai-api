@@ -1,4 +1,5 @@
 const SimulationJob = require("../job.model");
+const { queues, ensureQueueReady } = require("../../../lib/queues");
 
 /**
  * Job Service
