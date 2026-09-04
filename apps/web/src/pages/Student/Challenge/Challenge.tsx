@@ -77,6 +77,7 @@ const ScenarioPage: React.FC = () => {
     async (
       classroomOverride?: typeof activeClassroom,
       silent = false,
+      preserveUnsavedValues = false,
     ) => {
       if (!id) return;
 
@@ -215,13 +216,19 @@ const ScenarioPage: React.FC = () => {
             acc[variable.key] = variable.value;
             return acc;
           }, {} as Record<string, unknown>);
-        // Use reset (not setValue) so defaultValues are updated and isDirty clears
-        form.reset({
-          variables: variablesRecord,
-          challengeVariableAnswers: challengeVariableAnswersRecord,
-        });
-        // Explicitly trigger validation to update isValid state
-        await form.trigger();
+        // Background refreshes should update challenge status and definitions
+        // without replacing a student's in-progress answers. If the challenge
+        // became read-only while the page was blurred, the server remains
+        // authoritative and the form should show the submitted/default values.
+        if (!preserveUnsavedValues || isReadOnlyView) {
+          // Use reset (not setValue) so defaultValues are updated and isDirty clears
+          form.reset({
+            variables: variablesRecord,
+            challengeVariableAnswers: challengeVariableAnswersRecord,
+          });
+          // Explicitly trigger validation to update isValid state
+          await form.trigger();
+        }
       } catch (err) {
         console.error("Failed to fetch challenge:", err);
         if (!silent) setError("Failed to load challenge");
@@ -322,8 +329,9 @@ const ScenarioPage: React.FC = () => {
     const handleFocus = async () => {
       if (!id) return;
       // Capture before any async work - refetchMe can trigger re-renders that affect formState reads
+      const preserveUnsavedValues = hasUnsavedChangesRef.current;
       await refetchMe();
-      await fetchScenario(undefined, true);
+      await fetchScenario(undefined, true, preserveUnsavedValues);
     };
 
     window.addEventListener("focus", handleFocus);
