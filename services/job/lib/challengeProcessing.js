@@ -248,6 +248,34 @@ async function dispatchChallenge(challengeId) {
   });
 }
 
+async function enqueueReplacementJob(jobId) {
+  const job = await SimulationJob.findById(jobId);
+  if (!job || job.purpose !== "replacement") {
+    throw Object.assign(new Error("Replacement job not found"), {
+      statusCode: 404,
+    });
+  }
+  return withChallengeLock(job.challengeId, async () => {
+    const current = await SimulationJob.findById(jobId);
+    if (!current || current.purpose !== "replacement") return 0;
+    if (!["pending", "running"].includes(current.status)) return 0;
+    const queued = await queues.simulation.getJob(queueId(current));
+    if (
+      queued &&
+      ["active", "waiting", "delayed", "paused"].includes(
+        await queued.getState(),
+      )
+    ) {
+      return 0;
+    }
+    if (queued) await queued.remove();
+    current.dispatchReserved = true;
+    await current.save();
+    await addReservedJob(current);
+    return 1;
+  });
+}
+
 async function startChallenge({
   challengeId,
   organizationId,
@@ -331,6 +359,24 @@ async function startChallenge({
         await challenge.save();
       }
       if (challenge.processingRun.resetPending) {
+        await require("../evaluationReplacement.model").updateMany(
+          {
+            challengeId,
+            organization: organizationId,
+            state: { $in: ["queued", "processing", "draft", "failed"] },
+          },
+          {
+            $set: { state: "discarded", discardedAt: new Date() },
+            $unset: { activeKey: 1 },
+            $push: {
+              events: {
+                action: "discarded_by_challenge_rerun",
+                at: new Date(),
+                actor: clerkUserId,
+              },
+            },
+          },
+        );
         await require("../../challenge/lib/challengeDebriefService").resetChallengeDebriefForRerun(
           { challengeId, organizationId },
         );
@@ -411,8 +457,29 @@ async function enqueuePending(challengeId) {
 }
 
 async function recoverDispatch() {
+  const replacementJobs = await SimulationJob.find({
+    purpose: "replacement",
+    dryRun: false,
+    $or: [
+      { status: { $in: ["pending", "running"] } },
+      { dispatchReserved: true },
+    ],
+  }).select("_id");
+  for (const job of replacementJobs) {
+    try {
+      await enqueueReplacementJob(job._id);
+    } catch (error) {
+      if (error.statusCode !== 409)
+        console.error(
+          "Replacement dispatch recovery failed:",
+          job._id,
+          error.message,
+        );
+    }
+  }
   const ids = await SimulationJob.distinct("challengeId", {
     dryRun: false,
+    purpose: { $ne: "replacement" },
     simulationMode: { $in: ["direct", "batch"] },
     $or: [
       { status: { $in: ["pending", "running"] } },
@@ -439,6 +506,7 @@ module.exports = {
   updateSettings,
   startChallenge,
   dispatchChallenge,
+  enqueueReplacementJob,
   dispatchLocked,
   enqueuePending,
   recoverDispatch,

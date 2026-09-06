@@ -7,7 +7,7 @@ async function getJobsForScenario(challengeId: string) {
     `${API_HOST}/${API_VERSION}/admin/job/challenge/${challengeId}`,
     {
       headers: await TokenHandler.getHeaders(),
-    }
+    },
   );
   return response.data;
 }
@@ -17,7 +17,7 @@ async function getById(jobId: string) {
     `${API_HOST}/${API_VERSION}/admin/job/${jobId}`,
     {
       headers: await TokenHandler.getHeaders(),
-    }
+    },
   );
   return response.data;
 }
@@ -28,18 +28,54 @@ async function retry(jobId: string) {
     {},
     {
       headers: await TokenHandler.getHeaders(),
-    }
+    },
   );
   return response.data;
 }
 
-async function processPending(limit: number = 10) {
+async function processPending(limit: number = 10, challengeId?: string) {
   const response = await axios.post(
     `${API_HOST}/${API_VERSION}/admin/job/process-pending`,
-    { limit },
+    { limit, challengeId },
     {
       headers: await TokenHandler.getHeaders(),
-    }
+    },
+  );
+  return response.data;
+}
+
+async function rerunStudent(challengeId: string, decisionId: string) {
+  const response = await axios.post(
+    `${API_HOST}/${API_VERSION}/admin/job/challenge/${challengeId}/decision/${decisionId}/rerun`,
+    {},
+    { headers: await TokenHandler.getHeaders() },
+  );
+  return response.data;
+}
+
+async function publishReplacement(replacementId: string) {
+  const response = await axios.post(
+    `${API_HOST}/${API_VERSION}/admin/job/replacement/${replacementId}/publish`,
+    {},
+    { headers: await TokenHandler.getHeaders() },
+  );
+  return response.data;
+}
+
+async function discardReplacement(replacementId: string) {
+  const response = await axios.post(
+    `${API_HOST}/${API_VERSION}/admin/job/replacement/${replacementId}/discard`,
+    {},
+    { headers: await TokenHandler.getHeaders() },
+  );
+  return response.data;
+}
+
+async function notifyReplacement(replacementId: string) {
+  const response = await axios.post(
+    `${API_HOST}/${API_VERSION}/admin/job/replacement/${replacementId}/notify`,
+    {},
+    { headers: await TokenHandler.getHeaders() },
   );
   return response.data;
 }
@@ -50,7 +86,7 @@ async function cancel(jobId: string) {
     {},
     {
       headers: await TokenHandler.getHeaders(),
-    }
+    },
   );
   return response.data;
 }
@@ -60,7 +96,7 @@ async function deleteJob(jobId: string) {
     `${API_HOST}/${API_VERSION}/admin/job/${jobId}`,
     {
       headers: await TokenHandler.getHeaders(),
-    }
+    },
   );
   return response.data;
 }
@@ -70,6 +106,10 @@ const jobService = {
   getById,
   retry,
   processPending,
+  rerunStudent,
+  publishReplacement,
+  discardReplacement,
+  notifyReplacement,
   cancel,
   deleteJob,
 };

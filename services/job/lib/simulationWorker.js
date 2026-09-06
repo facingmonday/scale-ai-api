@@ -75,9 +75,25 @@ class SimulationWorker {
 
     try {
       await job.markRunning();
+      if (job.purpose === "replacement" && job.replacementId) {
+        const EvaluationReplacement = require("../evaluationReplacement.model");
+        await EvaluationReplacement.updateOne(
+          { _id: job.replacementId, state: { $in: ["queued", "failed"] } },
+          {
+            $set: { state: "processing", error: null },
+            $push: {
+              events: {
+                action: "processing_started",
+                at: new Date(),
+                actor: job.updatedBy,
+              },
+            },
+          },
+        );
+      }
       // A worker can die after saving the ledger but before completing the job.
       // Reconcile that durable result instead of recalculating or emailing twice.
-      if (job.processingRunId && !job.dryRun) {
+      if (job.purpose !== "replacement" && job.processingRunId && !job.dryRun) {
         const existing = await LedgerEntry.findOne({
           challengeId: job.challengeId,
           userId: job.userId,
@@ -133,23 +149,41 @@ class SimulationWorker {
 
       const completedJob = await SimulationJob.findOneAndUpdate(
         { _id: job._id, status: "running" },
-        { $set: { status: "completed", completedAt: new Date(), error: null } },
-        { new: true }
+        {
+          $set: {
+            status: "completed",
+            completedAt: new Date(),
+            error: null,
+            ...(job.purpose === "replacement"
+              ? { dispatchReserved: false }
+              : {}),
+          },
+          $push: {
+            history: {
+              action: "processing_completed",
+              at: new Date(),
+              actor: job.updatedBy,
+            },
+          },
+        },
+        { new: true },
       );
       if (!completedJob) {
         if (writtenEntry?._id) {
           await LedgerEntry.deleteOne({ _id: writtenEntry._id });
           await Decision.updateOne(
             { _id: job.decisionId },
-            { $set: { ledgerEntryId: null, processingStatus: "pending" } }
+            { $set: { ledgerEntryId: null, processingStatus: "pending" } },
           );
         }
         return { success: true, cancelled: true, jobId: String(job._id) };
       }
       job.status = completedJob.status;
       job.completedAt = completedJob.completedAt;
-      await this.updateSubmissionStatus(job, "completed");
-      await this.recordLedgerCompletionEvents(job);
+      if (job.purpose !== "replacement") {
+        await this.updateSubmissionStatus(job, "completed");
+        await this.recordLedgerCompletionEvents(job);
+      }
 
       return {
         success: true,
@@ -173,10 +207,33 @@ class SimulationWorker {
       }
       if (isFinalAttempt) {
         await job.markFailed(error.message);
-        await this.updateSubmissionStatus(job, "failed").catch((err) => {
-          console.error(`Error updating decision status:`, err);
-        });
-        await this.recordLedgerCompletionEvents(job);
+        if (job.purpose === "replacement" && job.replacementId) {
+          job.dispatchReserved = false;
+          await job.save();
+          const EvaluationReplacement = require("../evaluationReplacement.model");
+          await EvaluationReplacement.updateOne(
+            {
+              _id: job.replacementId,
+              state: { $in: ["queued", "processing"] },
+            },
+            {
+              $set: { state: "failed", error: error.message },
+              $push: {
+                events: {
+                  action: "processing_failed",
+                  at: new Date(),
+                  actor: job.updatedBy,
+                  details: { error: error.message },
+                },
+              },
+            },
+          );
+        } else {
+          await this.updateSubmissionStatus(job, "failed").catch((err) => {
+            console.error(`Error updating decision status:`, err);
+          });
+          await this.recordLedgerCompletionEvents(job);
+        }
       } else {
         job.status = "pending";
         job.error = error.message;
@@ -370,7 +427,30 @@ class SimulationWorker {
       studentFeedback,
       aiMetadata: aiResult.aiMetadata,
       calculationContext,
+      suppressNotification: job.suppressNotifications === true,
     };
+
+    if (job.purpose === "replacement") {
+      const EvaluationReplacement = require("../evaluationReplacement.model");
+      const replacement = await EvaluationReplacement.findOneAndUpdate(
+        { _id: job.replacementId, state: "processing" },
+        {
+          $set: { state: "draft", result: ledgerInput, error: null },
+          $push: {
+            events: {
+              action: "draft_created",
+              at: new Date(),
+              actor: job.updatedBy,
+            },
+          },
+        },
+        { new: true },
+      );
+      if (!replacement) {
+        throw new Error("Replacement evaluation is no longer active");
+      }
+      return null;
+    }
 
     const entry = await LedgerEntry.createLedgerEntry(
       ledgerInput,

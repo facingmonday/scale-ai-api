@@ -23,6 +23,16 @@ const simulationJobSchema = new mongoose.Schema({
     ref: "Member",
     required: true,
   },
+  purpose: {
+    type: String,
+    enum: ["standard", "replacement"],
+    default: "standard",
+  },
+  replacementId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "EvaluationReplacement",
+    default: null,
+  },
   processingRunId: { type: String, default: null },
   simulationMode: { type: String, enum: ["direct", "batch"] },
   simulationConcurrency: { type: Number, min: 1, max: 20 },
@@ -51,6 +61,10 @@ const simulationJobSchema = new mongoose.Schema({
     default: null,
   },
   dryRun: {
+    type: Boolean,
+    default: false,
+  },
+  suppressNotifications: {
     type: Boolean,
     default: false,
   },
@@ -96,6 +110,20 @@ const simulationJobSchema = new mongoose.Schema({
   ledgerCompletionReconciledAt: {
     type: Date,
     default: null,
+  },
+  history: {
+    type: [
+      new mongoose.Schema(
+        {
+          action: { type: String, required: true },
+          at: { type: Date, default: Date.now, required: true },
+          actor: { type: String, default: null },
+          details: { type: mongoose.Schema.Types.Mixed, default: null },
+        },
+        { _id: false },
+      ),
+    ],
+    default: [],
   },
 }).add(baseSchema);
 
@@ -143,6 +171,8 @@ simulationJobSchema.statics.createJob = async function (
     )
       return existing;
     existing.processingRunId = input.processingRunId || null;
+    existing.purpose = input.purpose || "standard";
+    existing.replacementId = input.replacementId || null;
     existing.simulationMode = input.simulationMode;
     existing.simulationConcurrency = input.simulationConcurrency;
     existing.dispatchReserved = false;
@@ -152,6 +182,7 @@ simulationJobSchema.statics.createJob = async function (
     existing.startedAt = null;
     existing.completedAt = null;
     existing.dryRun = input.dryRun || false;
+    existing.suppressNotifications = input.suppressNotifications || false;
     // Clear any previously-prepared OpenAI/batch state so reruns don't reuse stale payloads.
     existing.openaiRequest = null;
     existing.openaiRequestRawMessages = null;
@@ -179,6 +210,8 @@ simulationJobSchema.statics.createJob = async function (
 
   const job = new this({
     processingRunId: input.processingRunId || null,
+    purpose: input.purpose || "standard",
+    replacementId: input.replacementId || null,
     simulationMode: input.simulationMode,
     simulationConcurrency: input.simulationConcurrency,
     dispatchReserved: false,
@@ -192,6 +225,7 @@ simulationJobSchema.statics.createJob = async function (
     startedAt: null,
     completedAt: null,
     dryRun: input.dryRun || false,
+    suppressNotifications: input.suppressNotifications || false,
     ledgerCompletionTracking: true,
     ledgerCompletionReconciledAt: null,
     organization: organizationId,
@@ -244,6 +278,7 @@ simulationJobSchema.methods.markRunning = async function () {
   this.status = "running";
   this.startedAt = new Date();
   this.attempts += 1;
+  this.history.push({ action: "processing_started", actor: this.updatedBy });
   await this.save();
   return this;
 };
@@ -256,6 +291,7 @@ simulationJobSchema.methods.markCompleted = async function () {
   this.status = "completed";
   this.completedAt = new Date();
   this.error = null;
+  this.history.push({ action: "processing_completed", actor: this.updatedBy });
   await this.save();
   return this;
 };
@@ -269,6 +305,11 @@ simulationJobSchema.methods.markFailed = async function (errorMessage) {
   this.status = "failed";
   this.completedAt = new Date();
   this.error = errorMessage;
+  this.history.push({
+    action: "processing_failed",
+    actor: this.updatedBy,
+    details: { error: errorMessage },
+  });
   await this.save();
   return this;
 };
@@ -289,7 +330,7 @@ simulationJobSchema.methods.markCancelled = async function (reason) {
  * Reset job for retry
  * @returns {Promise<Object>} Updated job
  */
-simulationJobSchema.methods.reset = async function () {
+simulationJobSchema.methods.reset = async function (options = {}) {
   this.status = "pending";
   this.startedAt = null;
   this.completedAt = null;
@@ -309,7 +350,11 @@ simulationJobSchema.methods.reset = async function () {
     submittedAt: null,
     completedAt: null,
   };
-  this.ledgerEntryId = null;
+  if (!options.preserveLedgerEntry) this.ledgerEntryId = null;
+  this.history.push({
+    action: options.action || "retry_queued",
+    actor: options.actor || this.updatedBy,
+  });
   await this.save();
   return this;
 };

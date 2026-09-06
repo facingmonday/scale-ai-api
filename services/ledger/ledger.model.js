@@ -340,6 +340,10 @@ const ledgerEntrySchema = new mongoose.Schema({
     ),
     default: undefined,
   },
+  suppressNotification: {
+    type: Boolean,
+    default: false,
+  },
   aiMetadata: {
     model: { type: String, required: true },
     runId: { type: String, required: true },
@@ -441,6 +445,7 @@ ledgerEntrySchema.pre("save", function (next) {
 ledgerEntrySchema.post("save", async function (doc) {
   try {
     if (doc._wasNew && doc.challengeId) {
+      if (doc.suppressNotification) return;
       const Challenge = require("../challenge/challenge.model");
       const challenge = await Challenge.findById(doc.challengeId)
         .select("feedbackReleaseMode suppressNotifications")
@@ -473,7 +478,15 @@ ledgerEntrySchema.statics.sendResultsNotifications = async function (challengeId
   }
 };
 
-async function createLedgerCreatedNotification(ledgerEntry) {
+ledgerEntrySchema.statics.sendResultNotification = async function (ledgerEntryId) {
+  const entry = await this.findById(ledgerEntryId);
+  if (!entry) throw new Error("Ledger entry not found");
+  // This method is only called by the teacher's explicit Notify action. It
+  // intentionally overrides temporary challenge-level suppression flags.
+  await createLedgerCreatedNotification(entry, { force: true });
+};
+
+async function createLedgerCreatedNotification(ledgerEntry, options = {}) {
   const Notification = require("../notifications/notifications.model");
   const Challenge = require("../challenge/challenge.model");
 
@@ -484,7 +497,10 @@ async function createLedgerCreatedNotification(ledgerEntry) {
     );
     return;
   }
-  if (ledgerEntry.constructor.shouldSuppressNotifications(challenge)) {
+  if (
+    !options.force &&
+    ledgerEntry.constructor.shouldSuppressNotifications(challenge)
+  ) {
     return;
   }
 
@@ -1355,6 +1371,7 @@ ledgerEntrySchema.statics.createLedgerEntry = async function (
     randomEvent: input.randomEvent || null,
     summary: input.summary,
     studentFeedback: input.studentFeedback || undefined,
+    suppressNotification: input.suppressNotification === true,
     aiMetadata: {
       model: input.aiMetadata.model,
       runId: input.aiMetadata.runId,

@@ -15,6 +15,16 @@ const {
   requireMemberAuth,
 } = require("../../middleware/auth");
 
+// Challenge email management shares challenge administration permissions.
+const emailController = require("./challengeEmail.controller");
+const emailBase = "/admin/challenges/:challengeId";
+router.get(`${emailBase}/emails`, requireAuth(), checkRole("org:admin"), emailController.list);
+router.post(`${emailBase}/emails/preview`, requireAuth(), checkRole("org:admin"), emailController.preview);
+router.post(`${emailBase}/emails`, requireAuth(), checkRole("org:admin"), emailController.send);
+router.post(`${emailBase}/reminders`, requireAuth(), checkRole("org:admin"), emailController.schedule);
+router.put(`${emailBase}/reminders/:reminderId`, requireAuth(), checkRole("org:admin"), emailController.schedule);
+router.delete(`${emailBase}/reminders/:reminderId`, requireAuth(), checkRole("org:admin"), emailController.cancel);
+
 // Admin routes - require org:admin role
 // Put specific routes before parameterized routes
 /**
