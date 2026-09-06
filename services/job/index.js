@@ -14,6 +14,22 @@ const { requireAuth, checkRole } = require("../../middleware/auth");
 // All routes require org:admin role
 router.use(requireAuth(), checkRole("org:admin"));
 
+// Replacement evaluations are deliberately student-scoped and silent. A
+// separate endpoint is used for publishing and for notifying the student.
+router.post(
+  "/challenge/:challengeId/decision/:decisionId/rerun",
+  controller.rerunStudentEvaluation,
+);
+router.post(
+  "/replacement/:replacementId/publish",
+  controller.publishReplacement,
+);
+router.post(
+  "/replacement/:replacementId/discard",
+  controller.discardReplacement,
+);
+router.post("/replacement/:replacementId/notify", controller.notifyReplacement);
+
 // Get jobs for a challenge
 /**
  * @openapi

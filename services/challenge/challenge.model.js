@@ -1923,6 +1923,7 @@ scenarioSchema.statics.runScenarioLifecycleCheck = async function (
   const locked = await this.closeDueSubmissions(now);
   const processed = await this.processDueOutcomes(now);
   const released = await this.releaseDelayedFeedback(now);
+  const reminders = await require("./lib/challengeEmailService").dispatchDue(now);
 
   return {
     now,
@@ -1930,6 +1931,7 @@ scenarioSchema.statics.runScenarioLifecycleCheck = async function (
     locked,
     processed,
     released,
+    reminders,
     publishedCount: published.filter((result) => result.status === "published")
       .length,
     lockedCount: locked.filter((result) => result.status === "locked").length,

@@ -1,3 +1,4 @@
+import ChallengeEmails from "../../../components/ChallengeEmails";
 import ChallengeProcessingSettings from "../../../components/ChallengeProcessingSettings";
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -664,6 +665,8 @@ const Challenge: React.FC = () => {
                 </div>
               )}
             </FormProvider>
+
+            {id && <ChallengeEmails key={id} challengeId={id} />}
 
             <ChallengeProcessingSettings
               key={`${challenge._id}:${challenge.simulationMode}:${challenge.simulationConcurrency}`}

@@ -10,7 +10,7 @@ const Challenge = require("../challenge/challenge.model");
 const LedgerEntry = require("./ledger.model");
 const Notification = require("../notifications/notifications.model");
 
-test("bulk result release creates no notifications for simulation challenges", async (t) => {
+test("global and per-evaluation suppression prevent automatic notifications", async (t) => {
   await setupTestDb();
   t.after(teardownTestDb);
 
@@ -43,6 +43,32 @@ test("bulk result release creates no notifications for simulation challenges", a
   });
 
   await LedgerEntry.sendResultsNotifications(challenge._id);
+
+  assert.equal(await Notification.countDocuments({}), 0);
+
+  const retryChallenge = await Challenge.create({
+    classroomId,
+    title: "Teacher retry challenge",
+    feedbackReleaseMode: "IMMEDIATE",
+    organization: organizationId,
+    createdBy: actor,
+    updatedBy: actor,
+  });
+  await LedgerEntry.create({
+    classroomId,
+    challengeId: retryChallenge._id,
+    userId: new mongoose.Types.ObjectId(),
+    summary: "Silently retried result",
+    suppressNotification: true,
+    aiMetadata: {
+      model: "test-model",
+      runId: "retry-run",
+      generatedAt: new Date(),
+    },
+    organization: organizationId,
+    createdBy: actor,
+    updatedBy: actor,
+  });
 
   assert.equal(await Notification.countDocuments({}), 0);
 });

@@ -18,6 +18,11 @@ const NotificationSchema = new mongoose.Schema(
       ref: { type: String, required: true }, // Profiles the model name dynamically
     },
     sender: { type: String, required: false },
+    challengeEmailRunId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ChallengeEmail",
+      index: true,
+    },
     automationTaskRunId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "AutomationTaskRun",

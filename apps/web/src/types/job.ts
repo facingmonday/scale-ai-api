@@ -26,7 +26,24 @@ export interface PopulatedSubmission {
 /**
  * SimulationJob status
  */
-export type JobStatus = "pending" | "running" | "completed" | "failed";
+export type JobStatus =
+  "pending" | "running" | "completed" | "failed" | "cancelled";
+
+export interface EvaluationReplacement {
+  _id: string;
+  state:
+    "queued" | "processing" | "draft" | "failed" | "published" | "discarded";
+  result?: Record<string, unknown> | null;
+  originalResult?: Record<string, unknown> | null;
+  error?: string | null;
+  notifiedAt?: Date | string | null;
+  events?: Array<{
+    action: string;
+    at: Date | string;
+    actor?: string | null;
+    details?: Record<string, unknown> | null;
+  }>;
+}
 
 /**
  * SimulationJob model
@@ -43,6 +60,14 @@ export interface SimulationJob extends BaseSchema {
   startedAt?: Date | null;
   completedAt?: Date | null;
   dryRun: boolean; // Default: false
+  purpose?: "standard" | "replacement";
+  replacementId?: string | EvaluationReplacement | null;
+  history?: Array<{
+    action: string;
+    at: Date | string;
+    actor?: string | null;
+    details?: Record<string, unknown> | null;
+  }>;
   /** Exact hardened request persisted for OpenAI Batch processing. */
   openaiRequest?: Record<string, unknown> | null;
   /** Prompt messages before platform-policy hardening. */
