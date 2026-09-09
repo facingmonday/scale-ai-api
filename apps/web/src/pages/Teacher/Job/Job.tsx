@@ -475,8 +475,8 @@ const JobDetail: React.FC = () => {
           <div className="mb-4">
             <h2 className="heading-lg mb-1">OpenAI request</h2>
             <p className="text-sm text-text-muted">
-              Exact hardened request body persisted for this job and used in
-              its OpenAI Batch item.
+              Exact hardened OpenAI request body saved for this job, whether
+              processed individually or in a batch.
             </p>
             {job.openaiRequestPreparedAt && (
               <p className="mt-1 text-xs text-text-muted">
@@ -492,8 +492,9 @@ const JobDetail: React.FC = () => {
             />
           ) : (
             <div className="rounded-md border border-dashed border-ui-border bg-ui-muted p-4 text-sm text-text-muted">
-              No persisted OpenAI request is available for this job. Requests
-              are currently persisted when a batch payload is prepared.
+              No saved OpenAI request is available for this job. Requests are
+              saved when individual or batch processing prepares them. Older
+              jobs may not have a saved request.
             </div>
           )}
 

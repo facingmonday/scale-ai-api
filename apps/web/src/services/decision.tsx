@@ -1,18 +1,15 @@
 import TokenHandler from "./base";
 import { API_HOST, API_VERSION } from "../config";
 import axios from "axios";
+import { authenticatedRequest } from "./authenticatedRequest";
 
 async function submit(data: {
   challengeId: string;
   variables: Record<string, unknown>;
   challengeVariableAnswers: Record<string, unknown>;
 }) {
-  const response = await axios.post(
-    `${API_HOST}/${API_VERSION}/student/decision`,
-    data,
-    {
-      headers: await TokenHandler.getHeaders(),
-    }
+  const response = await authenticatedRequest((headers) =>
+    axios.post(`${API_HOST}/${API_VERSION}/student/decision`, data, { headers })
   );
   return response.data;
 }
@@ -25,12 +22,8 @@ async function update(
     challengeVariableAnswers: Record<string, unknown>;
   }
 ) {
-  const response = await axios.put(
-    `${API_HOST}/${API_VERSION}/student/decision/${decisionId}`,
-    data,
-    {
-      headers: await TokenHandler.getHeaders(),
-    }
+  const response = await authenticatedRequest((headers) =>
+    axios.put(`${API_HOST}/${API_VERSION}/student/decision/${decisionId}`, data, { headers })
   );
   return response.data;
 }

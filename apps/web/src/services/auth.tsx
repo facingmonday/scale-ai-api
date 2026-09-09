@@ -1,11 +1,12 @@
 import TokenHandler from "./base";
 import { API_HOST, API_VERSION } from "../config";
 import axios from "axios";
+import { authenticatedRequest } from "./authenticatedRequest";
 
 async function getMe() {
-  const response = await axios.get(`${API_HOST}/${API_VERSION}/auth/me`, {
-    headers: await TokenHandler.getHeaders(),
-  });
+  const response = await authenticatedRequest((headers) =>
+    axios.get(`${API_HOST}/${API_VERSION}/auth/me`, { headers })
+  );
   return response.data;
 }
 

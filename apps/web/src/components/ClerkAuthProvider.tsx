@@ -17,14 +17,7 @@ export const ClerkAuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   useEffect(() => {
     // Set up the token getter function for TokenHandler
-    TokenHandler.setTokenGetter(async () => {
-      try {
-        return await getToken();
-      } catch (error) {
-        console.error("Error getting token:", error);
-        return null;
-      }
-    });
+    TokenHandler.setTokenGetter((options) => getToken(options));
   }, [getToken]);
 
   return <>{children}</>;

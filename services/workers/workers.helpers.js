@@ -319,6 +319,8 @@ function setupGracefulShutdown(server, scheduledJobs) {
       const stoppedCount = ServiceRunner.stopAllJobs();
       console.log(`🛑 Stopped ${stoppedCount} active jobs`);
 
+      await require("../decision/lib/decisionReceiptService").stopRecovery();
+
       // Close queues
       const { closeQueues } = require("../../lib/queues");
       await closeQueues(5000);

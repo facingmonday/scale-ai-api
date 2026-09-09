@@ -18,6 +18,16 @@ const NotificationSchema = new mongoose.Schema(
       ref: { type: String, required: true }, // Profiles the model name dynamically
     },
     sender: { type: String, required: false },
+    decisionReceipt: {
+      type: new mongoose.Schema({
+        decisionId: { type: mongoose.Schema.Types.ObjectId, required: true },
+        challengeId: { type: mongoose.Schema.Types.ObjectId, required: true },
+        classroomId: { type: mongoose.Schema.Types.ObjectId, required: true },
+        savedAt: { type: Date, required: true },
+        kind: { type: String, enum: ["submit", "update"], required: true },
+      }, { _id: false }),
+      default: undefined,
+    },
     challengeEmailRunId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "ChallengeEmail",
@@ -83,6 +93,8 @@ NotificationSchema.index(
   { unique: true, sparse: true },
 );
 
+NotificationSchema.index({ templateSlug: 1, status: 1, _id: 1 });
+
 // Static method: getReceiver
 NotificationSchema.statics.getReceiver = async function (
   recipient,
@@ -91,7 +103,7 @@ NotificationSchema.statics.getReceiver = async function (
   organizationId,
   options = {}
 ) {
-  const { resolveEmail = true } = options || {};
+  const { resolveEmail = true, throwOnError = false } = options || {};
   if (recipient.type === "Guest") {
     // For guests (users who don't exist yet), use email from templateData
     if (!templateData || (!templateData.email && !templateData.phoneNumber)) {
@@ -157,7 +169,7 @@ NotificationSchema.statics.getReceiver = async function (
       // IMPORTANT:
       // Avoid hitting Clerk in the API process when we create notifications in bulk
       // (e.g. challenge publish). Email can be resolved later in the email worker.
-      const email = resolveEmail ? await member.getEmailFromClerk() : "";
+      const email = resolveEmail ? await member.getEmailFromClerk({ throwOnError }) : "";
 
       return {
         email: email,
@@ -169,6 +181,7 @@ NotificationSchema.statics.getReceiver = async function (
         },
       };
     } catch (error) {
+      if (throwOnError) throw error;
       console.error("Error fetching member from database:", error);
       return null;
     }
@@ -403,6 +416,8 @@ NotificationSchema.statics.sendPushNotification = async function (
 };
 
 NotificationSchema.post("save", async function () {
+  // Receipts own their enqueue/recovery flow and eligibility checks.
+  if (this.decisionReceipt) return;
   try {
     // For email notifications that haven't been sent yet
     if (this.type === "email" && !this.metadata?.emailSent) {

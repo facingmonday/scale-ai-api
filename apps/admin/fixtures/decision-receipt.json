@@ -1,0 +1,11 @@
+{
+  "challenge": { "title": "Pricing strategy" },
+  "classroom": { "name": "Business Simulation" },
+  "receiptNumber": "6a000000000000000000000001",
+  "savedTime": "Sep 9, 2026 at 2:34:05 PM CDT",
+  "kind": "update",
+  "variables": { "price": 0, "advertise": false, "notes": "First line\nSecond line with <special> & characters", "optional": "" },
+  "challengeVariableAnswers": { "reason": "We chose this strategy to test demand while keeping our costs low." },
+  "labels": { "decision:price": "Price", "decision:advertise": "Advertising enabled", "challenge:reason": "Explain your strategy" },
+  "link": "https://example.com/class/demo/challenge/demo"
+}

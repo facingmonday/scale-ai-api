@@ -520,7 +520,7 @@ app.get("/api/classrooms", async (req, res) => {
 });
 
 // React Email templates and fixtures
-const templateSlugs = ["challenge-created", "challenge-closed", "challenge-reminder", "challenge-announcement"];
+const templateSlugs = ["decision-receipt", "challenge-created", "challenge-closed", "challenge-reminder", "challenge-announcement"];
 
 app.get("/api/emails/templates", (req, res) => {
   res.json(templateSlugs);
