@@ -1248,7 +1248,7 @@ ledgerEntrySchema.statics.normalizeAndValidateAISimulationResult = async functio
 /**
  * Run the AI simulation for a single context.
  */
-ledgerEntrySchema.statics.runAISimulation = async function (context) {
+ledgerEntrySchema.statics.runAISimulation = async function (context, options = {}) {
   const classroomId =
     context?.challenge?.classroomId ||
     context?.decision?.classroomId ||
@@ -1262,6 +1262,10 @@ ledgerEntrySchema.statics.runAISimulation = async function (context) {
   const { rawMessages, request } = await this.buildAISimulationOpenAIRequest(
     context
   );
+  // Await persistence before sending so failed calls remain inspectable too.
+  if (options.onRequestPrepared) {
+    await options.onRequestPrepared({ rawMessages, request });
+  }
   const response = await openai.chat.completions.create(request);
   const debugContext = {
     classroomId: classroomId ? String(classroomId) : null,

@@ -2,38 +2,27 @@ import type { IOrganization } from "../types/organization";
 
 // ClerkTokenHandler for Clerk authentication
 class ClerkTokenHandler {
-  private tokenGetter: (() => Promise<string | null>) | null = null;
+  private tokenGetter: ((options?: { skipCache?: boolean }) => Promise<string | null>) | null = null;
 
   // ---------------------------------------------------------------------------
   // Token handling
   // ---------------------------------------------------------------------------
 
   // Set the token getter function (called from ClerkAuthProvider)
-  setTokenGetter(getter: () => Promise<string | null>) {
+  setTokenGetter(getter: (options?: { skipCache?: boolean }) => Promise<string | null>) {
     this.tokenGetter = getter;
   }
 
   // Get token from Clerk
-  async getToken(): Promise<string | null> {
-    try {
-      // Preferred method: injected token getter
-      if (this.tokenGetter) {
-        return await this.tokenGetter();
-      }
+  async getToken(options?: { skipCache?: boolean }): Promise<string | null> {
+    // Let network failures propagate so they are not mistaken for sign-out.
+    if (this.tokenGetter) return this.tokenGetter(options);
 
-      // Fallback: Clerk on window
-      if (typeof window !== "undefined" && (window as any).Clerk) {
-        const clerk = (window as any).Clerk;
-        if (clerk.session) {
-          return await clerk.session.getToken();
-        }
-      }
-
-      return null;
-    } catch (error) {
-      console.error("Error getting token from Clerk session:", error);
-      return null;
-    }
+    if (typeof window === "undefined") return null;
+    const clerk = (window as Window & {
+      Clerk?: { session?: { getToken: (options?: { skipCache?: boolean }) => Promise<string | null> } };
+    }).Clerk;
+    return clerk?.session ? clerk.session.getToken(options) : null;
   }
 
   // ---------------------------------------------------------------------------
@@ -63,8 +52,8 @@ class ClerkTokenHandler {
   // Headers (Organization context)
   // ---------------------------------------------------------------------------
 
-  async getHeaders(): Promise<Record<string, string>> {
-    const token = await this.getToken();
+  async getHeaders(options?: { skipCache?: boolean }): Promise<Record<string, string>> {
+    const token = await this.getToken(options);
 
     const currentOrganization = this.getCurrentOrganization();
 

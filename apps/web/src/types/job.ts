@@ -68,7 +68,7 @@ export interface SimulationJob extends BaseSchema {
     actor?: string | null;
     details?: Record<string, unknown> | null;
   }>;
-  /** Exact hardened request persisted for OpenAI Batch processing. */
+  /** Exact hardened request persisted for individual or batch processing. */
   openaiRequest?: Record<string, unknown> | null;
   /** Prompt messages before platform-policy hardening. */
   openaiRequestRawMessages?: Array<Record<string, unknown>> | null;

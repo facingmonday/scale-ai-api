@@ -861,6 +861,56 @@
           }
         }
       },
+      "ChallengeEmailAudienceInput": {
+        "type": "object",
+        "required": [
+          "audience"
+        ],
+        "properties": {
+          "audience": {
+            "type": "string",
+            "enum": [
+              "all",
+              "missing"
+            ]
+          }
+        }
+      },
+      "ChallengeEmailSendInput": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ChallengeEmailAudienceInput"
+          },
+          {
+            "type": "object",
+            "required": [
+              "requestKey"
+            ],
+            "properties": {
+              "requestKey": {
+                "type": "string",
+                "description": "Client UUID reused when retrying the same logical send."
+              }
+            }
+          }
+        ]
+      },
+      "ChallengeReminderInput": {
+        "type": "object",
+        "required": [
+          "localTime"
+        ],
+        "properties": {
+          "localTime": {
+            "type": "string",
+            "description": "YYYY-MM-DDTHH:mm in the classroom timezone; must be a future, unambiguous local time."
+          },
+          "requestKey": {
+            "type": "string",
+            "description": "Client UUID, required when creating a reminder."
+          }
+        }
+      },
       "Challenge": {
         "type": "object",
         "required": [
@@ -1030,6 +1080,24 @@
             "type": "object",
             "description": "Map of resolved challenge variables."
           }
+        }
+      }
+    },
+    "parameters": {
+      "ChallengeEmailChallengeId": {
+        "in": "path",
+        "name": "challengeId",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "ChallengeEmailReminderId": {
+        "in": "path",
+        "name": "reminderId",
+        "required": true,
+        "schema": {
+          "type": "string"
         }
       }
     }
@@ -4950,6 +5018,218 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/v1/admin/challenges/{challengeId}/emails": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ChallengeEmailChallengeId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "Challenges"
+        ],
+        "summary": "List upcoming reminders and recent email runs with delivery counts",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Data contains timezone and runs",
+            "including queued": null,
+            "sent": null,
+            "skipped": null,
+            "failed and pending counts.": null
+          },
+          "403": {
+            "description": "Classroom administration access required."
+          },
+          "404": {
+            "description": "Challenge not found in this organization."
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Challenges"
+        ],
+        "summary": "Dispatch a challenge announcement or missing-decision reminder",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChallengeEmailSendInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Data contains runId. Consult send history for delivery status."
+          },
+          "400": {
+            "description": "Invalid audience or request key."
+          },
+          "409": {
+            "description": "Challenge unavailable or conflicting request key."
+          }
+        }
+      }
+    },
+    "/v1/admin/challenges/{challengeId}/emails/preview": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ChallengeEmailChallengeId"
+        }
+      ],
+      "post": {
+        "tags": [
+          "Challenges"
+        ],
+        "summary": "Preview standard challenge email content and eligible recipient count",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChallengeEmailAudienceInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Subject",
+            "templateSlug": null,
+            "templateData": null,
+            "recipientCount": null,
+            "unavailable": null,
+            "deliveryDisabled and suppressed flags.": null
+          }
+        }
+      }
+    },
+    "/v1/admin/challenges/{challengeId}/reminders": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ChallengeEmailChallengeId"
+        }
+      ],
+      "post": {
+        "tags": [
+          "Challenges"
+        ],
+        "summary": "Schedule a reminder for students with missing decisions",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ChallengeReminderInput"
+                  },
+                  {
+                    "required": [
+                      "requestKey"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Reminder stored with UTC sendAt and classroom timezone."
+          },
+          "400": {
+            "description": "Invalid reminder date or request key."
+          },
+          "409": {
+            "description": "Submissions are closed."
+          }
+        }
+      }
+    },
+    "/v1/admin/challenges/{challengeId}/reminders/{reminderId}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ChallengeEmailChallengeId"
+        },
+        {
+          "$ref": "#/components/parameters/ChallengeEmailReminderId"
+        }
+      ],
+      "put": {
+        "tags": [
+          "Challenges"
+        ],
+        "summary": "Change the time of a pending reminder",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChallengeReminderInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated reminder."
+          },
+          "400": {
+            "description": "Invalid reminder date."
+          },
+          "409": {
+            "description": "Reminder already started or unavailable."
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Challenges"
+        ],
+        "summary": "Cancel a pending reminder",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cancelled reminder."
+          },
+          "409": {
+            "description": "Reminder already started or unavailable."
           }
         }
       }

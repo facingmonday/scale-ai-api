@@ -122,7 +122,14 @@ class SimulationWorker {
         }
       }
       const context = await this.fetchJobContext(job);
-      const aiResult = await LedgerEntry.runAISimulation(context);
+      const aiResult = await LedgerEntry.runAISimulation(context, {
+        onRequestPrepared: async ({ rawMessages, request }) => {
+          job.openaiRequest = request;
+          job.openaiRequestRawMessages = rawMessages;
+          job.openaiRequestPreparedAt = new Date();
+          await job.save();
+        },
+      });
 
       const stillActive = await SimulationJob.exists({
         _id: job._id,

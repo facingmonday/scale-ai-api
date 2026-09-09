@@ -12,7 +12,7 @@ import {
   useClerk,
 } from "@clerk/clerk-react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import { AuthenticationRequiredError } from "../services/authenticatedRequest";
 import authService from "../services/auth";
 import TokenHandler from "../services/base";
 import type { Classroom } from "../types/classroom";
@@ -125,16 +125,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   // Token bridge (replaces ClerkAuthProvider)
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    TokenHandler.setTokenGetter(async () => {
-      try {
-        if (CLERK_JWT_TEMPLATE) {
-          return await getToken({ template: CLERK_JWT_TEMPLATE });
-        }
-        return await getToken();
-      } catch {
-        return null;
-      }
-    });
+    TokenHandler.setTokenGetter((options) =>
+      getToken({ ...options, ...(CLERK_JWT_TEMPLATE ? { template: CLERK_JWT_TEMPLATE } : {}) })
+    );
   }, [getToken]);
 
   // ---------------------------------------------------------------------------
@@ -155,15 +148,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       setAuthError(null);
       try {
-        // If Clerk can't give us a token, don't spam the backend with a guaranteed 401.
-        const token = await TokenHandler.getToken();
-        if (!token) {
-          setAuthError(
-            "Missing auth token from Clerk. If your backend requires a JWT template, set VITE_CLERK_JWT_TEMPLATE."
-          );
-          await clerk.signOut();
-          return undefined;
-        }
         const data = await authService.getMe();
         const classroom = data?.activeClassroom || null;
         const routesData = data?.routes || [];
@@ -173,11 +157,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         return { activeClassroom: classroom, routes: routesData };
       } catch (err) {
         console.error("Failed to fetch auth context:", err);
-        const status = axios.isAxiosError(err) ? err.response?.status : undefined;
-
-        if (status === 401) {
+        if (err instanceof AuthenticationRequiredError) {
           setAuthError(
-            "Unauthorized (401) while calling /v1/auth/me. This usually means the Clerk token is missing/invalid for the backend."
+            "Your session has expired. Please sign in again."
           );
           await clerk.signOut();
           return undefined;

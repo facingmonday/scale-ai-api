@@ -5,6 +5,10 @@ import React, {
   useState,
   useMemo,
 } from "react";
+import { useClerk } from "@clerk/clerk-react";
+import axios from "axios";
+import { AuthenticationRequiredError } from "@/services/authenticatedRequest";
+import { readChallengeDraft, writeChallengeDraft, clearChallengeDraft, persistChallengeDraft } from "@/utils/challengeDraft";
 import { useParams, useNavigate } from "react-router-dom";
 import { Dialog } from "primereact/dialog";
 import { Button } from "primereact/button";
@@ -44,7 +48,8 @@ import SubmissionDeadlineCard from "@/components/SubmissionDeadlineCard";
 const ScenarioPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { activeClassroom, refetchMe } = useAuth();
+  const { activeClassroom, refetchMe, user } = useAuth();
+  const clerk = useClerk();
   const globalContext = useGlobalContext();
   const [challenge, setScenario] = useState<Challenge | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -57,6 +62,12 @@ const ScenarioPage: React.FC = () => {
   >([]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(false);
+  const operationInProgress = useRef(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const draftKey = user?.id && activeClassroom?._id && id
+    ? `challenge-draft:${user.id}:${activeClassroom._id}:${id}` : null;
+  const restoredDraftKey = useRef<string | null>(null);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const form = useForm<{
     variables: Record<string, unknown>;
@@ -66,12 +77,16 @@ const ScenarioPage: React.FC = () => {
     mode: "onChange",
   });
 
-  // Ref to reliably check unsaved changes in focus handler (avoids stale closure after refetchMe)
-  const hasUnsavedChangesRef = useRef(false);
-  hasUnsavedChangesRef.current = form.formState.isDirty;
+  // Persist edits before a session change can unmount the page. Drafts are
+  // scoped to the student, classroom and challenge in this browser tab.
+  useEffect(() => {
+    return persistChallengeDraft(form, draftKey);
+  }, [draftKey, form]);
 
   const activeClassroomRef = useRef(activeClassroom);
-  activeClassroomRef.current = activeClassroom;
+  useEffect(() => {
+    activeClassroomRef.current = activeClassroom;
+  }, [activeClassroom]);
 
   const fetchScenario = useCallback(
     async (
@@ -220,23 +235,41 @@ const ScenarioPage: React.FC = () => {
         // without replacing a student's in-progress answers. If the challenge
         // became read-only while the page was blurred, the server remains
         // authoritative and the form should show the submitted/default values.
-        if (!preserveUnsavedValues || isReadOnlyView) {
+        if (!preserveUnsavedValues || !form.formState.isDirty || isReadOnlyView) {
           // Use reset (not setValue) so defaultValues are updated and isDirty clears
           form.reset({
             variables: variablesRecord,
             challengeVariableAnswers: challengeVariableAnswersRecord,
           });
+          if (draftKey && restoredDraftKey.current !== draftKey && !isReadOnlyView) {
+            restoredDraftKey.current = draftKey;
+            const draft = readChallengeDraft(draftKey);
+            if (draft) {
+              for (const key of Object.keys(variablesRecord)) {
+                if (Object.prototype.hasOwnProperty.call(draft.variables, key)) {
+                  form.setValue(`variables.${key}`, draft.variables[key], { shouldDirty: true });
+                }
+              }
+              for (const key of Object.keys(challengeVariableAnswersRecord)) {
+                if (Object.prototype.hasOwnProperty.call(draft.challengeVariableAnswers, key)) {
+                  form.setValue(`challengeVariableAnswers.${key}`, draft.challengeVariableAnswers[key], { shouldDirty: true });
+                }
+              }
+              setSubmissionError("Your unsent answers were restored. Review them and submit to save your changes.");
+            }
+          }
           // Explicitly trigger validation to update isValid state
           await form.trigger();
         }
       } catch (err) {
         console.error("Failed to fetch challenge:", err);
-        if (!silent) setError("Failed to load challenge");
+        if (silent) throw err;
+        setError("Failed to load challenge");
       } finally {
         if (!silent) setIsLoading(false);
       }
     },
-    [id, form]
+    [id, form, draftKey]
   );
 
   const fetchStore = useCallback(async () => {
@@ -271,8 +304,8 @@ const ScenarioPage: React.FC = () => {
     void fetchStore();
   }, [fetchStore]);
 
-  const handleSubmit = form.handleSubmit(async (values) => {
-    if (!id || isSubmitting || !challenge || !profile) {
+  const handleSubmit = () => form.handleSubmit(async (values) => {
+    if (!id || operationInProgress.current || !challenge || !profile) {
       if (!profile) {
         globalContext?.showToast?.(
           "You must create a profile before submitting",
@@ -282,7 +315,10 @@ const ScenarioPage: React.FC = () => {
       return;
     }
 
+    operationInProgress.current = true;
     setIsSubmitting(true);
+    setSubmissionError(null);
+    writeChallengeDraft(draftKey, values);
     try {
       const decision = challenge.decision as Decision | undefined;
       const isUpdate = decision?._id;
@@ -292,8 +328,9 @@ const ScenarioPage: React.FC = () => {
         "loading"
       );
 
+      let savedResponse;
       if (isUpdate && decision._id) {
-        await decisionService.update(decision._id, {
+        savedResponse = await decisionService.update(decision._id, {
           challengeId: id,
           variables: values.variables ?? {},
           challengeVariableAnswers: values.challengeVariableAnswers ?? {},
@@ -303,7 +340,7 @@ const ScenarioPage: React.FC = () => {
           "success"
         );
       } else {
-        await decisionService.submit({
+        savedResponse = await decisionService.submit({
           challengeId: id,
           variables: values.variables ?? {},
           challengeVariableAnswers: values.challengeVariableAnswers ?? {},
@@ -313,32 +350,68 @@ const ScenarioPage: React.FC = () => {
           "success"
         );
       }
-      // Refresh challenge to get the updated decision
-      await fetchScenario();
+      const savedDecision = (savedResponse.data ?? savedResponse) as Decision;
+      setScenario((current) => current ? { ...current, decision: savedDecision } : current);
+      clearChallengeDraft(draftKey);
+      form.reset(values);
       setShowSuccessDialog(true);
+      // A failed follow-up read must not misreport a confirmed save as failure
+      // or leave a first-time submission looking like it still needs creating.
+      await fetchScenario(undefined, true).catch(() => {
+        setSubmissionError("Your decision was saved, but we could not refresh the challenge. Please refresh when your connection is available.");
+      });
     } catch (e) {
       console.error("Failed to submit challenge:", e);
       const errorMessage = getErrorMessage(e);
+      setSubmissionError(`Your changes have not been confirmed as submitted. ${errorMessage}`);
       globalContext?.showToast?.(errorMessage, "error");
+      if (e instanceof AuthenticationRequiredError) {
+        // SignedOut displays sign-in at the current URL, whose sign-in button
+        // returns here. The draft will be restored after authentication.
+        await clerk.signOut().catch(() => {
+          setSubmissionError("Your changes have not been submitted. Please sign in again and retry.");
+        });
+      }
     } finally {
+      operationInProgress.current = false;
       setIsSubmitting(false);
     }
-  });
+  })();
 
   useEffect(() => {
     const handleFocus = async () => {
-      if (!id) return;
-      // Capture before any async work - refetchMe can trigger re-renders that affect formState reads
-      const preserveUnsavedValues = hasUnsavedChangesRef.current;
-      await refetchMe();
-      await fetchScenario(undefined, true, preserveUnsavedValues);
+      if (!id || document.visibilityState === "hidden" || operationInProgress.current) return;
+      operationInProgress.current = true;
+      setIsCheckingSession(true);
+      if (form.formState.isDirty) writeChallengeDraft(draftKey, form.getValues());
+      try {
+        const auth = await refetchMe();
+        if (!auth) {
+          setSubmissionError("We could not verify your session. Check your connection or sign in again before submitting changes.");
+          return;
+        }
+        if (auth.activeClassroom?._id !== activeClassroomRef.current?._id) return;
+        await fetchScenario(auth.activeClassroom, true, true);
+      } catch (error) {
+        setSubmissionError("We could not refresh this challenge. Please check your connection and retry before submitting changes.");
+        if (axios.isAxiosError(error) && error.response?.status === 401) {
+          await clerk.signOut().catch(() => undefined);
+        }
+      } finally {
+        operationInProgress.current = false;
+        setIsCheckingSession(false);
+      }
     };
 
     window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleFocus);
+    window.addEventListener("pageshow", handleFocus);
     return () => {
       window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleFocus);
+      window.removeEventListener("pageshow", handleFocus);
     };
-  }, [id, fetchScenario, refetchMe]);
+  }, [id, fetchScenario, refetchMe, form, draftKey, clerk]);
 
   const decision = challenge?.decision as Decision | undefined;
 
@@ -384,8 +457,10 @@ const ScenarioPage: React.FC = () => {
     if (!isCalculatingResults) return;
 
     const refresh = () => {
-      if (document.visibilityState === "visible") {
-        void fetchScenario(undefined, true);
+      if (document.visibilityState === "visible" && !operationInProgress.current) {
+        void fetchScenario(undefined, true).catch(() => {
+          setSubmissionError("We could not refresh challenge results. Please check your connection and retry.");
+        });
       }
     };
     const intervalId = window.setInterval(refresh, 15_000);
@@ -431,6 +506,7 @@ const ScenarioPage: React.FC = () => {
         </div>
       ) : (
         <FormProvider {...form}>
+          <fieldset disabled={isSubmitting || isCheckingSession} className="m-0 min-w-0 border-0 p-0">
           <div className={`page ${showUnsavedBanner ? "pb-16" : ""}`}>
             <div className="container">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
@@ -469,15 +545,17 @@ const ScenarioPage: React.FC = () => {
                 <div className="flex items-center gap-3 sm:justify-end">
                   {canSubmit && (
                     <button
-                      className={`btn-teal w-full sm:w-auto ${isSubmitting || !form.formState.isValid
+                      className={`btn-teal w-full sm:w-auto ${isSubmitting || isCheckingSession || !form.formState.isValid
                         ? "btn-disabled"
                         : ""
                         }`}
                       onClick={() => void handleSubmit()}
-                      disabled={isSubmitting || !form.formState.isValid}
+                      disabled={isSubmitting || isCheckingSession || !form.formState.isValid}
                       type="button"
                     >
-                      {isSubmitting
+                      {isCheckingSession
+                        ? "Checking session..."
+                        : isSubmitting
                         ? hasSubmission
                           ? "Updating..."
                           : "Submitting..."
@@ -488,6 +566,12 @@ const ScenarioPage: React.FC = () => {
                   )}
                 </div>
               </div>
+
+              {submissionError && (
+                <div role="alert" className="mb-6">
+                  <Alert variant="warning" title="Submission status" message={submissionError} />
+                </div>
+              )}
 
               {submissionDeadline && !challengeLocked && (
                 <SubmissionDeadlineCard deadline={submissionDeadline} />
@@ -537,7 +621,7 @@ const ScenarioPage: React.FC = () => {
                   <VariablesForm
                     variables={challengeVariableDefinitions}
                     namePrefix="challengeVariableAnswers"
-                    readOnly={isReadOnly}
+                    readOnly={isReadOnly || isSubmitting || isCheckingSession}
                     title="Challenge Variables"
                     description={
                       isReadOnly
@@ -563,7 +647,7 @@ const ScenarioPage: React.FC = () => {
                   <div className="card mb-6">
                     <VariablesForm
                       variables={decisionVariableDefinitions}
-                      readOnly={isReadOnly}
+                      readOnly={isReadOnly || isSubmitting || isCheckingSession}
                       title={submissionVariablesDisplayTitle}
                       description={
                         isReadOnly
@@ -619,6 +703,7 @@ const ScenarioPage: React.FC = () => {
               </span>
             </div>
           )}
+          </fieldset>
         </FormProvider>
       )}
 

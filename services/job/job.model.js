@@ -68,7 +68,7 @@ const simulationJobSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
-  // Prepared OpenAI payload (for Batch processing).
+  // Prepared OpenAI payload for individual or batch processing.
   // Stored as schema-light to allow OpenAI SDK shape changes without migrations.
   openaiRequest: {
     type: mongoose.Schema.Types.Mixed,
