@@ -420,7 +420,7 @@ memberSchema.methods.removeOrganizationMembership = function (organization) {
 };
 
 // Methods for fetching email/phone from Clerk
-memberSchema.methods.getContactFromClerk = async function () {
+memberSchema.methods.getContactFromClerk = async function (options = {}) {
   if (
     this.isSimulationUser ||
     String(this.clerkUserId || "").startsWith("sim_")
@@ -442,6 +442,7 @@ memberSchema.methods.getContactFromClerk = async function () {
       phone: primaryPhone?.phoneNumber || "",
     };
   } catch (error) {
+    if (options.throwOnError) throw error;
     console.error("Error fetching contact info from Clerk:", error);
     return { email: "", phone: "" };
   }
@@ -521,11 +522,12 @@ memberSchema.methods.getProfileFromClerk = async function () {
   };
 };
 
-memberSchema.methods.getEmailFromClerk = async function () {
+memberSchema.methods.getEmailFromClerk = async function (options = {}) {
   try {
-    const { email } = await this.getContactFromClerk();
+    const { email } = await this.getContactFromClerk(options);
     return email;
   } catch (error) {
+    if (options.throwOnError) throw error;
     console.error("Error fetching email from Clerk:", error);
     return "";
   }

@@ -1,3 +1,4 @@
+const decisionReceipts = require("./lib/decisionReceiptService");
 const mongoose = require("mongoose");
 const Decision = require("./decision.model");
 const Challenge = require("../challenge/challenge.model");
@@ -156,6 +157,10 @@ exports.submitWeeklyDecisions = async function (req, res) {
       { challengeVariableAnswers }
     );
 
+    decisionReceipts.afterResponse(res, { decision, challenge: { _id: challenge._id, title: challenge.title, suppressNotifications: challenge.suppressNotifications },
+      classroom: { _id: classDoc._id, name: classDoc.name, organization: organizationId, automationSettings: classDoc.automationSettings },
+      actor: clerkUserId, kind: "submit" });
+
     // Trigger student submission tasks asynchronously (do not block the response)
     const AutomationTask = require("../ai/automationTask.model");
     AutomationTask.trigger("AFTER_STUDENT_SUBMISSION", {
@@ -264,6 +269,10 @@ exports.updateWeeklyDecisions = async function (req, res) {
       clerkUserId,
       { challengeVariableAnswers }
     );
+
+    decisionReceipts.afterResponse(res, { decision, challenge: { _id: challenge._id, title: challenge.title, suppressNotifications: challenge.suppressNotifications },
+      classroom: { _id: classDoc._id, name: classDoc.name, organization: organizationId, automationSettings: classDoc.automationSettings },
+      actor: clerkUserId, kind: "update" });
 
     res.json({
       success: true,
