@@ -414,6 +414,8 @@ const ScenarioPage: React.FC = () => {
   }, [id, fetchScenario, refetchMe, form, draftKey, clerk]);
 
   const decision = challenge?.decision as Decision | undefined;
+  const hasAutomaticAnswers =
+    !!decision?.generation?.method && decision.generation.method !== "MANUAL";
 
   const hasSubmission = !!decision;
   const challengeLocked = isChallengeLockedForStudents(challenge);
@@ -625,7 +627,9 @@ const ScenarioPage: React.FC = () => {
                     title="Challenge Variables"
                     description={
                       isReadOnly
-                        ? "View your submitted answers for this challenge."
+                        ? hasAutomaticAnswers
+                          ? "View the automatically populated answers for this challenge."
+                          : "View your submitted answers for this challenge."
                         : "Answer the questions for this challenge."
                     }
                   />
@@ -651,7 +655,9 @@ const ScenarioPage: React.FC = () => {
                       title={submissionVariablesDisplayTitle}
                       description={
                         isReadOnly
-                          ? "View your submitted values for this challenge."
+                          ? hasAutomaticAnswers
+                            ? "View the automatically populated values for this challenge."
+                            : "View your submitted values for this challenge."
                           : "Configure your decisions for this challenge."
                       }
                     />

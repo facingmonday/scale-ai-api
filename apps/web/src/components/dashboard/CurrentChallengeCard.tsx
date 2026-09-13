@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
 import ledgerService from "../../services/ledger";
-import { normalizeScenarioId, unwrap } from "./utils";
+import { normalizeScenarioId } from "./utils";
 import { isChallengeLockedForStudents } from "@/utils/challengeStatus";
 import type { ScenarioWithVariables } from "../../types/challenge";
 import type { LedgerEntry } from "../../types/ledger";
@@ -40,12 +40,9 @@ const CurrentScenarioCard: React.FC<CurrentScenarioCardProps> = ({
 
     const fetchLedger = async () => {
       try {
-        const entryRes = await ledgerService.getEntryForScenarioAndUser(
-          challengeId,
-          user.id
-        );
+        const entry = await ledgerService.getMyEntryForScenario(challengeId);
         if (cancelled) return;
-        setLedgerEntry(unwrap(entryRes) as LedgerEntry | null);
+        setLedgerEntry(entry);
       } catch {
         if (cancelled) return;
         setLedgerEntry(null);

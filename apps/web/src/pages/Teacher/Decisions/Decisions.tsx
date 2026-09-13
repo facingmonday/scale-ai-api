@@ -996,9 +996,8 @@ const Decisions: React.FC = () => {
                   loading={isLoading}
                   dataKey="_id"
                   onRowClick={(e) => {
-                    const row = e.data as { _rowType?: string; _id: string };
-                    if (row._rowType !== "submitted") return; // missing row
-                    navigate(`/decisions/${row._id}`);
+                    const decision = e.data as SubmissionWithProcessingStatus;
+                    navigate(`/decisions/${decision._id}`);
                   }}
                   selectionMode="single"
                   lazy

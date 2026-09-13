@@ -62,6 +62,9 @@ router.use("/", require("./outcome"));
 // Decision routes
 router.use("/", require("./decision"));
 
+// Read-only activity recorded for a student in a classroom.
+router.use("/", require("./studentActivity"));
+
 // Ledger routes
 router.use("/admin/ledger", require("./ledger"));
 

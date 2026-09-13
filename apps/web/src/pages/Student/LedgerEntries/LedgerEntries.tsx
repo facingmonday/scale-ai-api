@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import BasicLayout from "../../../components/Layouts/BasicLayout";
-import ledgerService from "../../../services/ledger";
 import challengeService from "../../../services/challenge";
 import { useUser } from "@clerk/clerk-react";
 import { useAuth } from "../../../context/AuthContext";
@@ -31,24 +30,9 @@ const LedgerEntries: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await ledgerService.getEntryForScenarioAndUser(
-        challengeId,
-        user.id
-      );
-      const ledgerData = (response?.data || response) as LedgerEntry | null;
-      setEntry(ledgerData || null);
-
-      try {
-        const challengeResponse = await challengeService.getById(
-          challengeId,
-          "student"
-        );
-        const challengeData =
-          (challengeResponse.data || challengeResponse) as Challenge;
-        setChallenge(challengeData);
-      } catch (e) {
-        console.error("Failed to fetch challenge:", e);
-      }
+      const response = await challengeService.getById(challengeId, "student");
+      setChallenge(response.data as Challenge);
+      setEntry(response.data?.ledgerEntry ?? null);
     } catch (err: any) {
       if (err?.response?.status === 404) {
         setEntry(null);

@@ -67,11 +67,8 @@ const StudentActionBanner: React.FC = () => {
           // Fetch ledger entry
           if (user?.id) {
             try {
-              const entryRes = await ledgerService.getEntryForScenarioAndUser(
-                nextScenarioId,
-                user.id
-              );
-              setLatestLedgerEntry(unwrap(entryRes) as any);
+              const entry = await ledgerService.getMyEntryForScenario(nextScenarioId);
+              setLatestLedgerEntry(entry);
             } catch {
               setLatestLedgerEntry(null);
             }
