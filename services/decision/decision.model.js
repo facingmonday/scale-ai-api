@@ -465,7 +465,6 @@ submissionSchema.statics.updateSubmission = async function (
   decision.markModified("challengeVariableAnswers");
   decision.updatedBy = clerkUserId;
   decision.updatedDate = new Date();
-  await decision.save();
 
   // Delete existing variable values
   await VariableValue.deleteMany({
@@ -492,6 +491,16 @@ submissionSchema.statics.updateSubmission = async function (
       await VariableValue.insertMany(variableDocs);
     }
   }
+
+  // A student's accepted update replaces automatic participation metadata.
+  // Save the answers and classification only after the decision values succeed.
+  decision.generation = {
+    method: "MANUAL",
+    forwardedFromScenarioId: null,
+    forwardedFromSubmissionId: null,
+    meta: null,
+  };
+  await decision.save();
 
   // Return decision with variables populated (auto-loaded via plugin)
   const updatedSubmission = await this.findOne({

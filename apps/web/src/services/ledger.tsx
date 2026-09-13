@@ -1,6 +1,8 @@
 import TokenHandler from "./base";
 import { API_HOST, API_VERSION } from "../config";
 import axios from "axios";
+import challengeService from "./challenge";
+import type { LedgerEntry } from "../types/ledger";
 
 async function getHistoryForUser(classroomId: string, userId: string) {
   const response = await axios.get(
@@ -22,14 +24,10 @@ async function getEntriesForScenario(challengeId: string) {
   return response.data;
 }
 
-async function getEntryForScenarioAndUser(challengeId: string, userId: string) {
-  const response = await axios.get(
-    `${API_HOST}/${API_VERSION}/admin/ledger/challenge/${challengeId}/user/${userId}`,
-    {
-      headers: await TokenHandler.getHeaders(),
-    }
-  );
-  return response.data;
+async function getMyEntryForScenario(challengeId: string): Promise<LedgerEntry | null> {
+  // The student endpoint derives ownership from the session and enforces feedback release.
+  const response = await challengeService.getById(challengeId, "student");
+  return response.data?.ledgerEntry ?? null;
 }
 
 async function overrideEntry(ledgerId: string, data: any) {
@@ -60,7 +58,7 @@ async function getCalculationDetails(
 const ledgerService = {
   getHistoryForUser,
   getEntriesForScenario,
-  getEntryForScenarioAndUser,
+  getMyEntryForScenario,
   overrideEntry,
   getCalculationDetails,
 };

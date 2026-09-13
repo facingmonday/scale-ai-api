@@ -38,6 +38,7 @@ import type { Profile } from "../../../types/profile";
 import type { StudentDashboardResponse } from "../../../types/dashboard";
 import Alert from "../../../components/Alert";
 import LoadingOverlay from "../../../components/LoadingOverlay";
+import StudentActivity from "../../../components/StudentActivity";
 
 const Dashboard: React.FC = () => {
   const { activeClassroom, setNewActiveClassroom, organization } = useAuth();
@@ -780,6 +781,7 @@ const Dashboard: React.FC = () => {
             metricDefinitions={studentDashboard?.metricDefinitions}
             hasProfile={Boolean(studentDashboard?.profile)}
           />
+          {classroomId && <StudentActivity key={`${classroomId}-${user?.id}`} classroomId={classroomId} />}
           <StudentLearningResources />
 
           <div className="flex items-start gap-3 rounded-xl border border-brand-teal/20 bg-brand-teal/10 px-4 py-3 text-xs leading-5 text-text-secondary">

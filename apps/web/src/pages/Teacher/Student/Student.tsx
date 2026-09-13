@@ -11,6 +11,7 @@ import StudentStoreView from "../../../components/StudentProfileView";
 import { useAuth } from "../../../context/AuthContext";
 import type { MemberWithVirtuals } from "../../../types/member";
 import LoadingOverlay from "../../../components/LoadingOverlay";
+import StudentActivity from "../../../components/StudentActivity";
 
 const Student: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -422,6 +423,12 @@ const Student: React.FC = () => {
                   />
                 </div>
               </>
+            )}
+
+            {activeClassroomId && id && (
+              <div className="mb-6">
+                <StudentActivity key={`${activeClassroomId}-${id}`} classroomId={activeClassroomId} studentId={id} />
+              </div>
             )}
 
             {/* Danger Zone */}

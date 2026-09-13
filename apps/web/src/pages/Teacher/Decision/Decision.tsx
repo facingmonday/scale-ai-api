@@ -286,6 +286,9 @@ const SubmissionPage: React.FC = () => {
     return "Decision Variables";
   }, [decision]);
 
+  const hasAutomaticAnswers =
+    !!decision?.generation?.method && decision.generation.method !== "MANUAL";
+
   if (error) {
     return (
       <BasicLayout>
@@ -566,7 +569,9 @@ const SubmissionPage: React.FC = () => {
                 <VariablesDisplay
                   variables={scenarioVariablesDisplay}
                   title={"Challenge Answers"}
-                  description="Student's submitted answers for this challenge."
+                  description={hasAutomaticAnswers
+                    ? "Automatically populated answers for this challenge."
+                    : "Student's submitted answers for this challenge."}
                 />
               </div>
             )}
@@ -577,7 +582,9 @@ const SubmissionPage: React.FC = () => {
                   <VariablesDisplay
                     variables={submissionVariablesDisplay}
                     title={submissionVariablesDisplayTitle}
-                    description="Student's submitted values for this challenge."
+                    description={hasAutomaticAnswers
+                      ? "Automatically populated values for this challenge."
+                      : "Student's submitted values for this challenge."}
                   />
                 </div>
               )}

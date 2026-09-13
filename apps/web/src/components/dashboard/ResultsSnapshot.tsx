@@ -57,11 +57,8 @@ const ResultsSnapshot: React.FC<ResultsSnapshotProps> = ({
     const fetchLedger = async () => {
       setIsLoading(true);
       try {
-        const entryRes = await ledgerService.getEntryForScenarioAndUser(
-          challengeId,
-          user.id
-        );
-        setLedgerEntry(unwrap(entryRes) as any);
+        const entry = await ledgerService.getMyEntryForScenario(challengeId);
+        setLedgerEntry(entry);
       } catch {
         setLedgerEntry(null);
       } finally {
