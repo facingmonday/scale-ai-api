@@ -9,9 +9,10 @@ const FLOATING_AI_HELPER_ENABLED = false;
 interface Props {
   children?: ReactNode;
   loading?: boolean;
+  constrainWidth?: boolean;
 }
 
-const BasicLayout: React.FC<Props> = ({ children }: Props) => {
+const BasicLayout: React.FC<Props> = ({ children, constrainWidth = false }: Props) => {
   const [isSmallScreen, setIsSmallScreen] = useState(false);
 
   useEffect(() => {
@@ -32,6 +33,7 @@ const BasicLayout: React.FC<Props> = ({ children }: Props) => {
         <main
           className="flex-grow py-2 flex flex-col"
           style={{
+            minWidth: constrainWidth ? 0 : undefined,
             margin: isSmallScreen ? "0px 10px 20px 10px" : "0px 20px 20px 20px",
           }}
         >

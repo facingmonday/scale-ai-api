@@ -3185,6 +3185,478 @@
         }
       }
     },
+    "/v1/admin/class/{classroomId}/gradebook": {
+      "get": {
+        "tags": [
+          "Gradebook"
+        ],
+        "summary": "Teacher-only completion grades for a classroom",
+        "description": "New challenges only. Computes grades on demand without changing submissions. See the Teacher Gradebook guide for filters, score states and totals.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "classroomId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "name",
+                "earned",
+                "percentage"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "direction",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "challengeIds",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated challenge IDs"
+          },
+          {
+            "in": "query",
+            "name": "includeRemoved",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Data contains columns",
+            "rows": null,
+            "totalStudents": null,
+            "page": null,
+            "limit": null,
+            "defaultChallengePoints and evaluatedAt.": null
+          },
+          "403": {
+            "description": "Teacher classroom access required."
+          },
+          "404": {
+            "description": "Classroom not found or gradebook disabled."
+          }
+        }
+      }
+    },
+    "/v1/admin/class/{classroomId}/gradebook/export": {
+      "post": {
+        "tags": [
+          "Gradebook"
+        ],
+        "summary": "Download gradebook or detailed scores as CSV",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "classroomId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "layout": {
+                    "type": "string",
+                    "enum": [
+                      "gradebook",
+                      "detailed"
+                    ],
+                    "default": "gradebook"
+                  },
+                  "search": {
+                    "type": "string"
+                  },
+                  "challengeIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "includeRemoved": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "sort": {
+                    "type": "string",
+                    "enum": [
+                      "name",
+                      "earned",
+                      "percentage"
+                    ]
+                  },
+                  "direction": {
+                    "type": "string",
+                    "enum": [
+                      "asc",
+                      "desc"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authenticated CSV download containing all matching students."
+          },
+          "429": {
+            "description": "Export concurrency limit reached."
+          }
+        }
+      }
+    },
+    "/v1/admin/class/{classroomId}/gradebook/settings": {
+      "get": {
+        "tags": [
+          "Gradebook"
+        ],
+        "summary": "Read the classroom default points (5 when unset)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "classroomId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Data contains defaultChallengePoints."
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Gradebook"
+        ],
+        "summary": "Set default points for future challenges only",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "classroomId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "defaultChallengePoints"
+                ],
+                "properties": {
+                  "defaultChallengePoints": {
+                    "type": "number",
+                    "minimum": 0,
+                    "multipleOf": 0.01
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default saved without changing existing challenge maxima."
+          }
+        }
+      }
+    },
+    "/v1/admin/class/{classroomId}/gradebook/challenges/{challengeId}/students/{studentId}/adjustment": {
+      "put": {
+        "tags": [
+          "Gradebook"
+        ],
+        "summary": "Assign points, excuse work, or restore automatic grading",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "classroomId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "challengeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "studentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "SCALE member ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "mode",
+                  "reason",
+                  "expectedRevision"
+                ],
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "POINTS",
+                      "EXCUSED",
+                      "AUTOMATIC"
+                    ]
+                  },
+                  "points": {
+                    "type": "number",
+                    "minimum": 0,
+                    "multipleOf": 0.01
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "expectedRevision": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Adjustment saved with an atomic history entry."
+          },
+          "409": {
+            "description": "Revision conflict; refresh and review before retrying."
+          }
+        }
+      }
+    },
+    "/v1/admin/class/{classroomId}/gradebook/challenges/{challengeId}/exclusion": {
+      "put": {
+        "tags": [
+          "Gradebook"
+        ],
+        "summary": "Exclude or restore a challenge in classroom totals",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "classroomId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "challengeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "excluded",
+                  "reason",
+                  "expectedRevision"
+                ],
+                "properties": {
+                  "excluded": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "expectedRevision": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Exclusion saved; individual adjustments are retained."
+          },
+          "409": {
+            "description": "Revision conflict."
+          }
+        }
+      }
+    },
+    "/v1/admin/class/{classroomId}/gradebook/challenges/{challengeId}/students/{studentId}/history": {
+      "get": {
+        "tags": [
+          "Gradebook"
+        ],
+        "summary": "Read student adjustment history, newest first",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "classroomId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "challengeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "studentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Data contains revision",
+            "up to 100 changes": null,
+            "and nextBefore.": null
+          }
+        }
+      }
+    },
+    "/v1/admin/class/{classroomId}/gradebook/challenges/{challengeId}/history": {
+      "get": {
+        "tags": [
+          "Gradebook"
+        ],
+        "summary": "Read challenge exclusion history, newest first",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "classroomId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "challengeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Data contains revision",
+            "up to 100 changes": null,
+            "and nextBefore.": null
+          }
+        }
+      }
+    },
     "/v1/enrollment/my-classes": {
       "get": {
         "summary": "Get user classes",
@@ -4198,6 +4670,63 @@
         }
       }
     },
+    "/v1/admin/class/{classroomId}/attention": {
+      "get": {
+        "summary": "List students needing teacher attention",
+        "description": "Reports repeated missed submissions, incomplete profiles, and inactive seats for current students. Requires org:admin and classroom access.",
+        "tags": [
+          "Classrooms"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "classroomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Student attention report with category counts and suggested actions."
+          }
+        }
+      }
+    },
+    "/v1/admin/class/{classroomId}/calendar-reminders": {
+      "get": {
+        "summary": "Get scheduled reminders for the classroom calendar",
+        "tags": [
+          "Classrooms"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "classroomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pending scheduled reminders, scoped to this classroom."
+          }
+        }
+      }
+    },
     "/v1/admin/classrooms/{classroomId}/preflight": {
       "get": {
         "summary": "Check classroom readiness",
@@ -4396,6 +4925,160 @@
         "responses": {
           "200": {
             "description": "Classroom deleted."
+          }
+        }
+      }
+    },
+    "/v1/admin/challenges/wizard/suggestions": {
+      "post": {
+        "summary": "Suggest three alternatives for a challenge wizard step",
+        "description": "Read-only generation scoped to an authorized classroom. Accepts classroomId, step (challenge, variable, outcome), accepted draft, optional direction, and recent rejected summaries.",
+        "tags": [
+          "Challenges"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "classroomId",
+                  "step"
+                ],
+                "properties": {
+                  "classroomId": {
+                    "type": "string"
+                  },
+                  "step": {
+                    "type": "string",
+                    "enum": [
+                      "challenge",
+                      "variable",
+                      "outcome"
+                    ]
+                  },
+                  "draft": {
+                    "type": "object"
+                  },
+                  "direction": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "rejected": {
+                    "type": "array",
+                    "maxItems": 12,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 800
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Three typed candidates in data.candidates."
+          },
+          "502": {
+            "description": "Generation failed or returned invalid suggestions."
+          }
+        }
+      }
+    },
+    "/v1/admin/challenges/wizard/schedule": {
+      "post": {
+        "summary": "Propose a future challenge schedule from classroom history",
+        "description": "Accepts classroomId; returns data.schedule, data.timeZone, and data.explanation. Local date strings are in the classroom timezone.",
+        "tags": [
+          "Challenges"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "classroomId"
+                ],
+                "properties": {
+                  "classroomId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Schedule proposed at least 24 hours in the future."
+          }
+        }
+      }
+    },
+    "/v1/admin/challenges/wizard": {
+      "post": {
+        "summary": "Create a reviewed wizard challenge without another AI call",
+        "description": "Saves challenge, variable definitions, unapproved outcome, and schedule after validating the complete draft. Uses the existing creation response envelope.",
+        "tags": [
+          "Challenges"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "classroomId",
+                  "draft",
+                  "schedule"
+                ],
+                "properties": {
+                  "classroomId": {
+                    "type": "string"
+                  },
+                  "draft": {
+                    "type": "object",
+                    "description": "Contains challenge (title and description), variables, and outcome (notes and hiddenNotes)."
+                  },
+                  "schedule": {
+                    "type": "object",
+                    "description": "Existing challenge schedule and processing fields, using classroom-local dates."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Challenge and related records created."
+          },
+          "400": {
+            "description": "Draft or schedule failed validation."
+          },
+          "409": {
+            "description": "WIZARD_SCHEDULE_STALE with a proposal to review; no records saved."
           }
         }
       }

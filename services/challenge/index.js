@@ -27,6 +27,73 @@ router.delete(`${emailBase}/reminders/:reminderId`, requireAuth(), checkRole("or
 
 // Admin routes - require org:admin role
 // Put specific routes before parameterized routes
+const wizardController = require("./challengeWizard.controller");
+/**
+ * @openapi
+ * /v1/admin/challenges/wizard/suggestions:
+ *   post:
+ *     summary: Suggest three alternatives for a challenge wizard step
+ *     description: Read-only generation scoped to an authorized classroom. Accepts classroomId, step (challenge, variable, outcome), accepted draft, optional direction, and recent rejected summaries.
+ *     tags: [Challenges]
+ *     security: [{ BearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [classroomId, step]
+ *             properties:
+ *               classroomId: { type: string }
+ *               step: { type: string, enum: [challenge, variable, outcome] }
+ *               draft: { type: object }
+ *               direction: { type: string, maxLength: 1000 }
+ *               rejected: { type: array, maxItems: 12, items: { type: string, maxLength: 800 } }
+ *     responses:
+ *       200: { description: Three typed candidates in data.candidates. }
+ *       502: { description: Generation failed or returned invalid suggestions. }
+ * /v1/admin/challenges/wizard/schedule:
+ *   post:
+ *     summary: Propose a future challenge schedule from classroom history
+ *     description: Accepts classroomId; returns data.schedule, data.timeZone, and data.explanation. Local date strings are in the classroom timezone.
+ *     tags: [Challenges]
+ *     security: [{ BearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [classroomId]
+ *             properties:
+ *               classroomId: { type: string }
+ *     responses:
+ *       200: { description: Schedule proposed at least 24 hours in the future. }
+ * /v1/admin/challenges/wizard:
+ *   post:
+ *     summary: Create a reviewed wizard challenge without another AI call
+ *     description: Saves challenge, variable definitions, unapproved outcome, and schedule after validating the complete draft. Uses the existing creation response envelope.
+ *     tags: [Challenges]
+ *     security: [{ BearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [classroomId, draft, schedule]
+ *             properties:
+ *               classroomId: { type: string }
+ *               draft: { type: object, description: "Contains challenge (title and description), variables, and outcome (notes and hiddenNotes)." }
+ *               schedule: { type: object, description: "Existing challenge schedule and processing fields, using classroom-local dates." }
+ *     responses:
+ *       201: { description: Challenge and related records created. }
+ *       400: { description: Draft or schedule failed validation. }
+ *       409: { description: "WIZARD_SCHEDULE_STALE with a proposal to review; no records saved." }
+ */
+router.post("/admin/challenges/wizard/suggestions", requireAuth(), checkRole("org:admin"), wizardController.suggestions);
+router.post("/admin/challenges/wizard/schedule", requireAuth(), checkRole("org:admin"), wizardController.schedule);
+router.post("/admin/challenges/wizard", requireAuth(), checkRole("org:admin"), wizardController.create);
 /**
  * @openapi
  * /v1/admin/challenges:

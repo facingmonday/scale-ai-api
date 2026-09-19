@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
+const { validPoints } = require("../../lib/gradingSettings");
 const Enrollment = require("../enrollment/enrollment.model");
 const Challenge = require("../challenge/challenge.model");
 const Decision = require("../decision/decision.model");
@@ -281,6 +282,13 @@ async function buildLeaderboardCategory({
  *             $ref: '#/components/schemas/LeaderboardCategory'
  */
 const classroomSchema = new mongoose.Schema({
+  gradingSettings: {
+    type: new mongoose.Schema({
+      defaultChallengePoints: { type: Number, required: true, validate: validPoints },
+    }, { _id: false }),
+    default: undefined,
+    select: false,
+  },
   name: {
     type: String,
     required: true,
@@ -834,7 +842,7 @@ classroomSchema.statics.validateAdminAccess = async function (
   const classDoc = await this.findOne({
     _id: classroomId,
     organization: organizationId,
-  });
+  }, "+gradingSettings");
 
   if (!classDoc) {
     throw new Error("Class not found");
@@ -1428,6 +1436,11 @@ classroomSchema.statics.deleteClassroom = async function (
 
   // 12. Finally, delete the classroom itself
   await this.findByIdAndDelete(classroomId);
+
+  require("../grading/grading.cleanup").afterDeletion({
+    organization: organizationId,
+    classroomId,
+  });
   stats.classroomDeleted = true;
 
   return stats;

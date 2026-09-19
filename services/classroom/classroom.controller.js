@@ -326,6 +326,10 @@ exports.updateClass = async function (req, res) {
       organizationId,
     );
 
+    if (req.body.gradingSettings !== undefined) {
+      classroom.gradingSettings = { defaultChallengePoints: require("../../lib/gradingSettings").validatePoints(req.body.gradingSettings?.defaultChallengePoints, "defaultChallengePoints") };
+    }
+
     // Update allowed fields
     if (name !== undefined) {
       classroom.name = name;

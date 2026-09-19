@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import BasicLayout from "../../../components/Layouts/BasicLayout";
 import { useAuth } from "../../../context/AuthContext";
 import challengeService from "../../../services/challenge";
@@ -7,34 +7,18 @@ import { useGlobalContext } from "../../../context/GlobalContext";
 import { useNavigate } from "react-router-dom";
 import LoadingOverlay from "../../../components/LoadingOverlay";
 import ChallengeCreateWithAI from "../../../components/ChallengeCreateWithAI";
+import ChallengeCreateWizard from "../../../components/ChallengeCreateWizard";
+import ChallengeScheduleOverview from "../../../components/ChallengeScheduleOverview";
+import { classroomTimezone, matchesScheduleFilter } from "../../../utils/challengeCalendar";
+import type { ChallengeScheduleFilter, ChallengeScheduleItem } from "../../../utils/challengeCalendar";
 
-type ScenarioListItem = {
-  _id?: string;
-  id?: string;
-  title?: string;
-  name?: string;
-  description?: string;
-  isPublished?: boolean;
-  isClosed?: boolean;
-  isFeedbackReleased?: boolean;
-  createdDate?: string | Date;
-  createdAt?: string | Date;
-  publishAt?: string | Date | null;
-  publishMode?: "MANUAL" | "SCHEDULED";
-  submissionDeadlineAt?: string | Date | null;
-  closeSubmissionsAt?: string | Date | null;
-  processAt?: string | Date | null;
-  feedbackReleaseAt?: string | Date | null;
-  automationMode?: "MANUAL" | "FULL";
-  automationStatus?: string;
-  automationError?: string | null;
-};
+type ScenarioListItem = ChallengeScheduleItem;
 
-const formatDateTime = (value?: string | Date | null) => {
+const formatDateTime = (value: string | Date | null | undefined, timezone: string) => {
   if (!value) return "Not scheduled";
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "Not scheduled";
-  return date.toLocaleString();
+  return date.toLocaleString(undefined, { timeZone: timezone });
 };
 
 const formatAutomationStatus = (status?: string) => {
@@ -75,9 +59,17 @@ const getServiceErrorMessage = (error: unknown, fallback: string) => {
 const Challenges: React.FC = () => {
   const { activeClassroom } = useAuth();
   const globalContext = useGlobalContext();
-  const [challenges, setScenarios] = useState<ScenarioListItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loadedChallenges, setScenarios] = useState<ScenarioListItem[]>([]);
+  const [loadedClassroomId, setLoadedClassroomId] = useState<string | null>(null);
+  const challenges = loadedClassroomId === activeClassroom?._id ? loadedChallenges : [];
+  const [isLoading, setIsLoading] = useState(Boolean(activeClassroom?._id));
   const [isAICreateOpen, setIsAICreateOpen] = useState(false);
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const requestSequence = useRef(0);
+  const [filterSelection, setFilterSelection] = useState<{ classroomId: string; value: ChallengeScheduleFilter }>({ classroomId: "", value: "all" });
+  const scheduleFilter = filterSelection.classroomId === activeClassroom?._id ? filterSelection.value : "all";
+  const visibleChallenges = challenges.filter((challenge) => matchesScheduleFilter(challenge, scheduleFilter));
+  const timezone = classroomTimezone(activeClassroom?.automationSettings?.timezone);
 
   const handleProcessNow = async (challengeId: string) => {
     try {
@@ -140,41 +132,39 @@ const Challenges: React.FC = () => {
         className="mt-5 w-full rounded-xl border border-ui-border bg-ui-surface-hover/60 px-3 py-4 sm:px-5"
         aria-label="Challenge progress"
       >
-        <div className="flex w-full items-start">
+        <div className="challenge-progress-stages">
           {stages.map((stage, idx) => {
             const isCompleted = idx < activeIndex;
             const isActive = idx === activeIndex;
 
             return (
-              <React.Fragment key={stage.key}>
-                <div className="flex min-w-14 flex-col items-center text-center">
-                  <div
-                    className={`flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold transition-colors ${
-                      isCompleted
-                        ? "bg-brand-teal text-text-primary shadow-sm"
-                        : isActive
-                          ? "bg-brand-blue text-white shadow-sm ring-4 ring-brand-blue/20"
-                          : "border-2 border-ui-border bg-ui-surface text-text-muted"
-                    }`}
-                    aria-current={isActive ? "step" : undefined}
-                  >
-                    {isCompleted ? "✓" : idx + 1}
-                  </div>
-                  <span
-                    className={`mt-2 text-[10px] font-medium sm:text-xs ${
-                      isActive
-                        ? "font-semibold text-brand-teal"
-                        : isCompleted
-                          ? "text-text-secondary"
-                          : "text-text-muted"
-                    }`}
-                  >
-                    {stage.label}
-                  </span>
+              <div key={stage.key} className="challenge-progress-stage">
+                <div
+                  className={`flex size-7 items-center justify-center rounded-full text-[11px] font-bold transition-colors ${
+                    isCompleted
+                      ? "bg-brand-teal text-text-primary shadow-sm"
+                      : isActive
+                        ? "bg-brand-blue text-white shadow-sm ring-4 ring-brand-blue/20"
+                        : "border-2 border-ui-border bg-ui-surface text-text-muted"
+                  }`}
+                  aria-current={isActive ? "step" : undefined}
+                >
+                  {isCompleted ? "✓" : idx + 1}
                 </div>
+                <span
+                  className={`mt-2 text-[10px] font-medium sm:text-xs ${
+                    isActive
+                      ? "font-semibold text-brand-teal"
+                      : isCompleted
+                        ? "text-text-secondary"
+                        : "text-text-muted"
+                  }`}
+                >
+                  {stage.label}
+                </span>
                 {idx < stages.length - 1 && (
                   <div
-                    className={`mx-1 mt-3 h-[2px] min-w-3 flex-1 rounded-full sm:mx-3 ${
+                    className={`challenge-progress-connector ${
                       idx < activeIndex
                         ? "bg-brand-teal"
                         : "bg-ui-border"
@@ -182,7 +172,7 @@ const Challenges: React.FC = () => {
                     aria-hidden="true"
                   />
                 )}
-              </React.Fragment>
+              </div>
             );
           })}
         </div>
@@ -195,18 +185,22 @@ const Challenges: React.FC = () => {
   const fetchScenarios = useCallback(async () => {
     const classroomId = activeClassroom?._id;
     if (!classroomId) return;
+    const request = ++requestSequence.current;
 
     setIsLoading(true);
     setError(null);
     try {
       const response = await challengeService.getAll(classroomId, "admin");
+      if (request !== requestSequence.current) return;
       const list = (response?.data ?? response ?? []) as ScenarioListItem[];
       setScenarios(Array.isArray(list) ? list : []);
+      setLoadedClassroomId(classroomId);
     } catch (err) {
+      if (request !== requestSequence.current) return;
       console.error("Failed to fetch challenges:", err);
       setError("Failed to load challenges");
     } finally {
-      setIsLoading(false);
+      if (request === requestSequence.current) setIsLoading(false);
     }
   }, [activeClassroom?._id]);
 
@@ -214,11 +208,12 @@ const Challenges: React.FC = () => {
     if (activeClassroom?._id) {
       void fetchScenarios();
     }
+    return () => { requestSequence.current += 1; };
   }, [activeClassroom?._id, fetchScenarios]);
 
   if (error) {
     return (
-      <BasicLayout>
+      <BasicLayout constrainWidth>
         <div className="page">
           <div className="container">
             <h1 className="heading-xl mb-6">Teacher Challenges</h1>
@@ -238,30 +233,29 @@ const Challenges: React.FC = () => {
   }
 
   return (
-    <BasicLayout>
-      <LoadingOverlay loading={isLoading} />
+    <BasicLayout constrainWidth>
+      <LoadingOverlay loading={Boolean(activeClassroom?._id) && isLoading} />
       <div className="page">
         <div className="container w-full">
-          <div className="mb-6 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+          <div className="mb-6">
             <h1 className="heading-xl">Teacher Challenges</h1>
-            <div className="flex flex-wrap gap-2">
-              <button
-                className="btn-outline inline-flex items-center gap-2"
-                onClick={() => setIsAICreateOpen(true)}
-                disabled={!activeClassroom?._id}
-              >
-                <i className="pi pi-sparkles" aria-hidden="true" />
-                Create Challenge with AI
-              </button>
-              <button
-                className="btn-teal"
-                onClick={() => navigate("/challenges/new")}
-                disabled={!activeClassroom?._id}
-              >
-                + Create Challenge
-              </button>
-            </div>
+            <p className="mt-2 text-sm text-text-secondary">Plan your classroom schedule and manage each challenge.</p>
           </div>
+
+          {activeClassroom?._id && (
+            <ChallengeScheduleOverview
+              key={`${activeClassroom._id}:${timezone}`}
+              classroomId={activeClassroom._id}
+              timezone={timezone}
+              challenges={challenges}
+              loading={isLoading}
+              filter={scheduleFilter}
+              onFilter={(value) => setFilterSelection({ classroomId: activeClassroom._id, value })}
+              onCreateWithAI={() => setIsAICreateOpen(true)}
+              onCreateWithWizard={() => setIsWizardOpen(true)}
+              onRefresh={() => void fetchScenarios()}
+            />
+          )}
 
           {challenges.length === 0 ? (
             <div className="card text-center py-12">
@@ -292,7 +286,12 @@ const Challenges: React.FC = () => {
             </div>
           ) : (
             <div className="flex w-full flex-col gap-4">
-                  {[...challenges]
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="heading-md">{({ all: "All challenges", open: "Open challenges", scheduled: "Scheduled challenges", drafts: "Draft challenges", review: "Challenges needing review" })[scheduleFilter]} ({visibleChallenges.length})</h2>
+                {scheduleFilter !== "all" && <button type="button" className="text-sm font-medium text-text-brand hover:underline" onClick={() => setFilterSelection({ classroomId: activeClassroom?._id || "", value: "all" })}>Show all challenges</button>}
+              </div>
+              {visibleChallenges.length === 0 && <div className="card text-sm text-text-secondary">No challenges match this status.</div>}
+                  {[...visibleChallenges]
                     .sort((a, b) => {
                       const aDate = new Date(
                         a.publishAt || a.createdDate || a.createdAt || 0,
@@ -342,7 +341,7 @@ const Challenges: React.FC = () => {
                                       aria-hidden="true"
                                     />
                                     {challenge.publishMode === "SCHEDULED"
-                                      ? `Opens ${formatDateTime(challenge.publishAt)}`
+                                      ? `Opens ${formatDateTime(challenge.publishAt, timezone)}`
                                       : "Opens when published"}
                                   </span>
                                   <span className="flex items-center gap-1.5">
@@ -353,6 +352,7 @@ const Challenges: React.FC = () => {
                                     Due{" "}
                                     {formatDateTime(
                                       challenge.submissionDeadlineAt,
+                                      timezone,
                                     )}
                                   </span>
                                 </div>
@@ -452,6 +452,15 @@ const Challenges: React.FC = () => {
           )}
         </div>
       </div>
+      {activeClassroom?._id && (
+        <ChallengeCreateWizard
+          key={activeClassroom._id}
+          visible={isWizardOpen}
+          classroomId={activeClassroom._id}
+          onHide={() => setIsWizardOpen(false)}
+          onSuccess={(challengeId) => navigate(`/challenges/${challengeId}`)}
+        />
+      )}
       {activeClassroom?._id && (
         <ChallengeCreateWithAI
           visible={isAICreateOpen}

@@ -1,3 +1,5 @@
+import { lazy } from "react";
+export const gradebook = lazy(() => import("./Gradebook/Gradebook"));
 export { default as classrooms } from "./Classrooms";
 export { default as classroom } from "./Classroom";
 export { default as dashboard } from "./Dashboard";

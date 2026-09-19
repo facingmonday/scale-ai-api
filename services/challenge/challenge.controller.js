@@ -281,7 +281,7 @@ exports.createScenario = async function (req, res) {
     }
 
     // Verify admin access
-    await Classroom.validateAdminAccess(
+    const classroom = await Classroom.validateAdminAccess(
       classroomId,
       clerkUserId,
       organizationId,
@@ -307,6 +307,7 @@ exports.createScenario = async function (req, res) {
       classroomId,
       {
         title,
+        pointsPossible: req.body.pointsPossible,
         description,
         variables,
         imageUrl,
@@ -321,6 +322,7 @@ exports.createScenario = async function (req, res) {
       },
       organizationId,
       clerkUserId,
+      { classroom },
     );
 
     // Trigger challenge created tasks asynchronously (do not block the response)
@@ -374,7 +376,7 @@ exports.createScenarioWithAI = async function (req, res) {
       return res.status(400).json({ error: "classroomId is required" });
     }
 
-    await Classroom.validateAdminAccess(
+    const classroom = await Classroom.validateAdminAccess(
       classroomId,
       clerkUserId,
       organizationId,
@@ -382,6 +384,8 @@ exports.createScenarioWithAI = async function (req, res) {
 
     const challenge = await challengeAiService.createChallengeFromPrompt({
       classroomId,
+      ...(classroom ? { classroom } : {}),
+      ...(req.body.pointsPossible !== undefined ? { pointsPossible: req.body.pointsPossible } : {}),
       prompt,
       timeZone,
       organizationId,
@@ -450,6 +454,10 @@ exports.updateScenario = async function (req, res) {
       clerkUserId,
       organizationId,
     );
+
+    if (req.body.pointsPossible !== undefined || req.body.grading !== undefined) {
+      return res.status(400).json({ error: "Challenge point values freeze at creation and cannot be changed." });
+    }
 
     // Check if can be edited
     if (!challenge.canEdit()) {
@@ -1537,10 +1545,12 @@ exports.getScenarioByIdForStudent = async function (req, res) {
         ])
       : [[], []];
 
+    const studentChallenge = { ...challenge };
+    delete studentChallenge.grading;
     res.json({
       success: true,
       data: {
-        ...challenge,
+        ...studentChallenge,
         decision: decision || null,
         outcome: safeOutcome,
         ledgerEntry: canViewResults
