@@ -185,6 +185,15 @@ const StudentDashboardInsights: React.FC<StudentDashboardInsightsProps> = ({
         </div>
       </section>
 
+      {latestEntry && filterMetricsForDisplay(metricDefinitions, "kpi").length > 0 && (
+        <section aria-label="Your latest stats">
+          <MetricsKpiRow
+            entry={latestEntry}
+            definitions={metricDefinitions}
+          />
+        </section>
+      )}
+
       {latestResult && latestEntry && (
         <section className="card">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
