@@ -89,15 +89,22 @@ test("invalid/missing history falls back; settings supply dates and delays", () 
   assert.equal(result.schedule.processAt, "2026-09-17T23:00");
   assert.equal(result.schedule.feedbackReleaseAt, "2026-09-18T23:00");
 });
-test("24-hour limit is inclusive and stale schedules need review", () => {
+test("suggested lead time does not restrict or replace reviewed opening dates", () => {
   const now = new Date("2026-09-14T13:00:00Z");
   const s = suggestSchedule(classroom, [], now).schedule;
-  s.publishAt = "2026-09-15T08:00";
-  assert.doesNotThrow(() => parseSchedule(s, classroom, now));
-  assert.throws(
-    () => parseSchedule(s, classroom, new Date(now.getTime() + 1)),
-    { code: "WIZARD_SCHEDULE_STALE", statusCode: 409 },
-  );
+  for (const [opening, expected] of [
+    ["2026-09-14T08:05", "2026-09-14T13:05:00.000Z"],
+    ["2026-09-14T08:00", "2026-09-14T13:00:00.000Z"],
+    ["2026-09-14T07:00", "2026-09-14T12:00:00.000Z"],
+    ["2026-09-15T07:59", "2026-09-15T12:59:00.000Z"],
+  ]) {
+    const reviewed = parseSchedule({ ...s, publishAt: opening }, classroom);
+    assert.equal(reviewed.publishAt.toISOString(), expected);
+    assert.equal(
+      reviewed.submissionDeadlineAt.toISOString(),
+      new Date(`${s.submissionDeadlineAt}-05:00`).toISOString(),
+    );
+  }
 });
 test("manual opening needs no dates and discards a suggested opening", () => {
   const now = new Date("2026-09-15T12:00:00Z");

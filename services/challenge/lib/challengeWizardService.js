@@ -416,14 +416,7 @@ async function create(args, input) {
     input.draft,
   );
   const settings = parse(settingsSchema, input.schedule);
-  let schedule;
-  try {
-    schedule = parseSchedule(settings, args.classroom, args.now);
-  } catch (error) {
-    if (error.code === "WIZARD_SCHEDULE_STALE")
-      error.proposal = await getSchedule(args);
-    throw error;
-  }
+  const schedule = parseSchedule(settings, args.classroom);
   return ai.createChallengeFromSpec({
     ...args,
     pointsPossible,

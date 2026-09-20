@@ -72,7 +72,7 @@ const wizardController = require("./challengeWizard.controller");
  * /v1/admin/challenges/wizard:
  *   post:
  *     summary: Create a reviewed wizard challenge without another AI call
- *     description: Saves challenge, variable definitions, unapproved outcome, and schedule after validating the complete draft. Uses the existing creation response envelope.
+ *     description: Saves challenge, variable definitions, unapproved outcome, and the reviewed schedule after validating the complete draft. Suggested dates are editable; creation has no minimum opening lead time. Uses the existing creation response envelope.
  *     tags: [Challenges]
  *     security: [{ BearerAuth: [] }]
  *     requestBody:
@@ -89,7 +89,6 @@ const wizardController = require("./challengeWizard.controller");
  *     responses:
  *       201: { description: Challenge and related records created. }
  *       400: { description: Draft or schedule failed validation. }
- *       409: { description: "WIZARD_SCHEDULE_STALE with a proposal to review; no records saved." }
  */
 router.post("/admin/challenges/wizard/suggestions", requireAuth(), checkRole("org:admin"), wizardController.suggestions);
 router.post("/admin/challenges/wizard/schedule", requireAuth(), checkRole("org:admin"), wizardController.schedule);

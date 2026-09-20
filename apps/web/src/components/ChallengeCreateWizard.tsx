@@ -172,27 +172,6 @@ export default function ChallengeCreateWizard({
       onHide();
       onSuccess(result._id);
     } catch (error) {
-      const data = (
-        error as {
-          response?: {
-            data?: { code?: string; proposal?: WizardScheduleProposal };
-          };
-        }
-      ).response?.data;
-      if (data?.code === "WIZARD_SCHEDULE_STALE" && data.proposal) {
-        const fresh = data.proposal;
-        setProposal({
-          ...fresh,
-          schedule: {
-            ...proposal.schedule,
-            publishAt: fresh.schedule.publishAt,
-            submissionDeadlineAt: fresh.schedule.submissionDeadlineAt,
-            closeSubmissionsAt: fresh.schedule.closeSubmissionsAt,
-            processAt: fresh.schedule.processAt,
-            feedbackReleaseAt: fresh.schedule.feedbackReleaseAt,
-          },
-        });
-      }
       setCreateError(textError(error));
     } finally {
       savingRef.current = false;

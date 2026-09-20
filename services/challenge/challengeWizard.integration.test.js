@@ -554,16 +554,28 @@ test("boolean switches save successfully", async () => {
     "switch",
   );
 });
-test("stale schedule returns a fresh proposal without writing", async () => {
+test("wizard saves reviewed near-term, immediate and past openings without refreshing the schedule", async () => {
   const args = await seed();
   const schedule = (await service.getSchedule(args)).schedule;
-  schedule.publishAt = "2026-09-15T12:00";
-  await assert.rejects(service.create(args, { draft, schedule }), (error) => {
-    assert.equal(error.code, "WIZARD_SCHEDULE_STALE");
-    assert.ok(error.proposal.schedule.publishAt > schedule.publishAt);
-    return true;
-  });
-  assert.equal(await Challenge.countDocuments(), 0);
+  for (const [publishAt, expected] of [
+    ["2026-09-15T07:05", "2026-09-15T12:05:00.000Z"],
+    ["2026-09-15T07:00", "2026-09-15T12:00:00.000Z"],
+    ["2026-09-15T06:00", "2026-09-15T11:00:00.000Z"],
+  ]) {
+    const result = await service.create(args, {
+      draft,
+      schedule: { ...schedule, publishAt },
+    });
+    const saved = await Challenge.findById(result._id).lean();
+    assert.equal(saved.publishAt.toISOString(), expected);
+    assert.equal(
+      saved.submissionDeadlineAt.toISOString(),
+      new Date(`${schedule.submissionDeadlineAt}-05:00`).toISOString(),
+    );
+    assert.equal(saved.publishMode, "SCHEDULED");
+    assert.equal(await Outcome.countDocuments({ challengeId: result._id }), 1);
+  }
+  assert.equal(await Challenge.countDocuments(), 3);
 });
 test("controllers check real classroom access before reading/generating/saving", async (t) => {
   const args = await seed();

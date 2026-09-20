@@ -67,7 +67,6 @@ function handler(action) {
               ? "Unable to complete the wizard request. Please try again."
               : error.message,
           code: error.code,
-          proposal: error.proposal,
         });
     } finally {
       res.off("close", onClose);

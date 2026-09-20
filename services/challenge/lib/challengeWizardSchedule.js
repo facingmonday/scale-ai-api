@@ -179,7 +179,7 @@ function suggestSchedule(classroom, challenges, now = new Date()) {
   };
 }
 
-function parseSchedule(input, classroom, now = new Date()) {
+function parseSchedule(input, classroom) {
   const zone = classroomZone(classroom);
   const result = { ...input, publishMode: input.publishMode || "SCHEDULED" };
   for (const field of DATE_FIELDS) {
@@ -230,14 +230,6 @@ function parseSchedule(input, classroom, now = new Date()) {
     result.feedbackReleaseMode === "DELAYED"
   )
     throw fail("Delayed feedback requires automatic processing.");
-  if (result.publishAt && result.publishAt.getTime() < now.getTime() + DAY) {
-    throw Object.assign(
-      fail(
-        "Opening must be at least 24 hours from now. Review the refreshed schedule.",
-      ),
-      { statusCode: 409, code: "WIZARD_SCHEDULE_STALE" },
-    );
-  }
   return result;
 }
 module.exports = { classroomZone, suggestSchedule, parseSchedule };

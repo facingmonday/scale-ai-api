@@ -19,9 +19,8 @@ export default function ScheduleEditor({
           {proposal.explanation}
         </p>
         <p className="mt-1 text-sm font-medium">
-          All times in {proposal.timeZone.replaceAll("_", " ")}.
-          {proposal.schedule.publishMode === "SCHEDULED" &&
-            " Automatic opening must be at least 24 hours away."}
+          All times in {proposal.timeZone.replaceAll("_", " ")}. These dates
+          are suggestions; adjust them to fit your class.
         </p>
       </div>
       <ChallengeScheduleFields
