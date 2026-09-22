@@ -24,6 +24,7 @@ export default function Header() {
     organization,
     activeClassroom,
     userRole,
+    routes,
     switchOrganization,
   } = useAuth();
 
@@ -134,6 +135,18 @@ export default function Header() {
                           }}
                         >
                           Students
+                        </button>
+                      )}
+                      {routes.some((route) => route.key === "gradebook") && userRole === "org:admin" && (
+                        <button
+                          type="button"
+                          className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-ui-muted"
+                          onClick={() => {
+                            navigate("/gradebook");
+                            setOpenMobileMenu(false);
+                          }}
+                        >
+                          Gradebook
                         </button>
                       )}
                       {userRole === "org:member" && (
@@ -338,6 +351,18 @@ export default function Header() {
                           }}
                         >
                           Students
+                        </button>
+                      )}
+                      {routes.some((route) => route.key === "gradebook") && userRole === "org:admin" && (
+                        <button
+                          type="button"
+                          className="w-full text-left px-4 py-2 text-sm text-text-primary hover:bg-ui-muted"
+                          onClick={() => {
+                            navigate("/gradebook");
+                            setOpenUserMenu(false);
+                          }}
+                        >
+                          Gradebook
                         </button>
                       )}
                       {userRole === "org:member" && (

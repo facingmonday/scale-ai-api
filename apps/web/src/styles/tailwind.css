@@ -81,7 +81,20 @@
    COMPONENTS
 ========================= */
 @layer components {
+  .challenge-schedule-fields {
+    @apply grid grid-cols-1 gap-4 md:grid-cols-2;
+  }
+
   /* ---------- Layout ---------- */
+
+  /* Avoid PrimeFlex's .grid display and negative margins in metric rows. */
+  .metrics-kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+    gap: 0.75rem;
+    width: 100%;
+    margin: 0;
+  }
 
   .page {
     @apply min-h-screen bg-ui-bg;
@@ -96,6 +109,77 @@
   }
   .classroom-card-grid {
     @apply grid grid-cols-1 md:grid-cols-3 gap-6;
+  }
+
+  /* Keep calendar layout separate from PrimeFlex's .grid and percentage .w-* utilities. */
+  .challenge-planning {
+    @apply mb-8 grid grid-cols-1 gap-4 lg:grid-cols-3;
+  }
+
+  .challenge-planning-panel {
+    @apply min-w-0 p-4 sm:p-5;
+  }
+
+  .challenge-calendar-weekdays {
+    @apply grid grid-cols-7 gap-1 text-center text-xs text-text-secondary;
+  }
+
+  .challenge-calendar-days {
+    @apply mt-1 grid grid-cols-7 gap-1;
+  }
+
+  .challenge-calendar-day {
+    @apply flex h-11 min-w-0 flex-col items-center justify-center gap-1
+           rounded-md border text-sm transition-colors
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal;
+  }
+
+  .challenge-calendar-icon-button {
+    @apply inline-flex size-9 shrink-0 items-center justify-center rounded-md
+           border border-ui-border hover:bg-ui-muted disabled:opacity-50
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal;
+  }
+
+  .challenge-calendar-event-dot {
+    @apply block size-1 shrink-0 rounded-full;
+  }
+
+  .challenge-calendar-legend-dot {
+    @apply block size-1.5 shrink-0 rounded-full;
+  }
+
+  .challenge-calendar-agenda-dot {
+    @apply block size-2 shrink-0 rounded-full;
+  }
+
+  .challenge-calendar-deadline-text {
+    @apply text-orange-700 dark:text-orange-300;
+  }
+
+  .challenge-calendar-results-dot {
+    @apply bg-teal-600 dark:bg-brand-teal;
+  }
+
+  .challenge-calendar-results-text {
+    @apply text-teal-700 dark:text-brand-teal;
+  }
+
+  .challenge-overview-stats {
+    @apply mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4;
+  }
+
+  .challenge-progress-stages {
+    @apply grid w-full grid-cols-5 items-start;
+  }
+
+  .challenge-progress-stage {
+    @apply relative flex min-w-0 flex-col items-center text-center;
+  }
+
+  .challenge-progress-connector {
+    @apply absolute top-3 h-0.5 rounded-full;
+    left: calc(50% + var(--spacing) * 4);
+    width: calc(100% - var(--spacing) * 8);
   }
 
   .danger-zone-card {

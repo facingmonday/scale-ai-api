@@ -1,3 +1,4 @@
+import ChallengePointsField from "../../../components/ChallengePointsField";
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import BasicLayout from "../../../components/Layouts/BasicLayout";
@@ -29,6 +30,7 @@ const ChallengeCreate: React.FC = () => {
     missingSubmissionPolicy: "SKIP",
     punishAbsentStudents: "none",
   });
+  const [pointsPossible, setPointsPossible] = useState<number | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,6 +47,7 @@ const ChallengeCreate: React.FC = () => {
     try {
       const payload = await challengeService.create({
         classroomId: activeClassroom._id,
+        pointsPossible,
         title: values.title.trim(),
         description: values.description.trim() || undefined,
         imageUrl: values.imageUrl?.trim() || undefined,
@@ -121,6 +124,8 @@ const ChallengeCreate: React.FC = () => {
               <span>{error}</span>
             </div>
           )}
+
+          {activeClassroom && <div className="mb-4"><ChallengePointsField key={activeClassroom._id} classroomId={activeClassroom._id} value={pointsPossible} onChange={setPointsPossible} disabled={isSubmitting} /></div>}
 
           <ChallengeForm
             values={values}

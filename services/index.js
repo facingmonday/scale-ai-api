@@ -26,6 +26,7 @@ router.use("/licensing", require("./licensing"));
 router.use("/join", require("./join"));
 
 // Classroom routes
+router.use("/admin/class/:classroomId/gradebook", require("./grading"));
 router.get(
   "/admin/classrooms/:classroomId/preflight",
   requireAuth(),

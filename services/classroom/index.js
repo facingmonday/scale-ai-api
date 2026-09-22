@@ -7,6 +7,8 @@
  */
 const express = require("express");
 const controller = require("./classroom.controller");
+const attentionController = require("./classroomAttention.controller");
+const calendarController = require("./classroomCalendar.controller");
 const router = express.Router();
 
 const { requireAuth, checkRole } = require("../../middleware/auth");
@@ -145,6 +147,55 @@ router.get(
   requireAuth(),
   checkRole("org:admin"),
   controller.getClassDashboard
+);
+
+/**
+ * @openapi
+ * /v1/admin/class/{classroomId}/attention:
+ *   get:
+ *     summary: List students needing teacher attention
+ *     description: Reports repeated missed submissions, incomplete profiles, and inactive seats for current students. Requires org:admin and classroom access.
+ *     tags: [Classrooms]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - name: classroomId
+ *         in: path
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Student attention report with category counts and suggested actions.
+ */
+router.get(
+  "/:classroomId/attention",
+  requireAuth(),
+  checkRole("org:admin"),
+  attentionController.getClassroomAttention,
+);
+
+/**
+ * @openapi
+ * /v1/admin/class/{classroomId}/calendar-reminders:
+ *   get:
+ *     summary: Get scheduled reminders for the classroom calendar
+ *     tags: [Classrooms]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - name: classroomId
+ *         in: path
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Pending scheduled reminders, scoped to this classroom.
+ */
+router.get(
+  "/:classroomId/calendar-reminders",
+  requireAuth(),
+  checkRole("org:admin"),
+  calendarController.getCalendarReminders,
 );
 
 /**

@@ -15,7 +15,8 @@ export default defineConfig({
         text: 'Architecture & Guides',
         items: [
           { text: 'Application Architecture', link: '/guides/application-architecture' },
-          { text: 'Challenge Emails & Reminders', link: '/guides/challenge-emails' }
+          { text: 'Challenge Emails & Reminders', link: '/guides/challenge-emails' },
+          { text: 'Teacher Gradebook', link: '/guides/gradebook' }
         ]
       },
       {

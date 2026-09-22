@@ -14,6 +14,7 @@ import {
 } from "../../utils/formatMetric";
 import { formatProfileType } from "./utils";
 import StudentResultExplanation from "../StudentResultExplanation";
+import { aggregateStudentMetrics } from "../../utils/aggregateStudentMetrics";
 
 interface StudentDashboardInsightsProps {
   dashboard: StudentDashboardResponse;
@@ -64,6 +65,25 @@ const StudentDashboardInsights: React.FC<StudentDashboardInsightsProps> = ({
   const latestResult = dashboard.latestResult;
   const statistics = dashboard.classStatistics;
   const metricDefinitions = dashboard.metricDefinitions;
+
+  const cumulativeEntry = useMemo(
+    () => ({ metrics: aggregateStudentMetrics(dashboard.recentResults, metricDefinitions) }) as LedgerEntry,
+    [dashboard.recentResults, metricDefinitions]
+  );
+  const cumulativeDefinitions = useMemo(() => {
+    const descriptions = {
+      sum: "Total across all released challenges in this classroom.",
+      avg: "Average across released challenges with a recorded value.",
+      min: "Lowest value across all released challenges in this classroom.",
+      max: "Highest value across all released challenges in this classroom.",
+      last: "Latest available value from this classroom’s released challenges.",
+      none: "Latest available value from this classroom’s released challenges.",
+    };
+    return metricDefinitions.map((definition) => ({
+      ...definition,
+      description: descriptions[definition.aggregation] || descriptions.last,
+    }));
+  }, [metricDefinitions]);
 
   const comparisonDefinitions = useMemo(() => {
     const kpis = sortMetricDefinitions(
@@ -184,6 +204,21 @@ const StudentDashboardInsights: React.FC<StudentDashboardInsightsProps> = ({
           </div>
         </div>
       </section>
+
+      {dashboard.recentResults.length > 0 && filterMetricsForDisplay(metricDefinitions, "kpi").length > 0 && (
+        <section aria-label="Classroom totals">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold text-text-primary">Classroom totals</h2>
+            <p className="text-xs text-text-muted">
+              Across {dashboard.recentResults.length} released {dashboard.recentResults.length === 1 ? "challenge" : "challenges"}
+            </p>
+          </div>
+          <MetricsKpiRow
+            entry={cumulativeEntry}
+            definitions={cumulativeDefinitions}
+          />
+        </section>
+      )}
 
       {latestResult && latestEntry && (
         <section className="card">

@@ -43,6 +43,7 @@ export interface CreateVariableDefinitionRequest {
  * Create Challenge Request
  */
 export interface CreateScenarioRequest {
+  pointsPossible?: number;
   simulationMode?: "direct" | "batch";
   simulationConcurrency?: number;
   classroomId: string;
@@ -70,6 +71,7 @@ export interface CreateScenarioRequest {
  * Create a complete challenge from instructor-provided source text.
  */
 export interface CreateScenarioWithAIRequest {
+  pointsPossible?: number;
   classroomId: string;
   prompt: string;
   timeZone?: string;

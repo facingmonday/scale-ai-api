@@ -53,6 +53,8 @@ exports.me = async function (req, res, next) {
         role: req.classroomRole,
         studentId: req.enrollment?.studentId || "",
       };
+      // Do not rely only on the model's default projection for shared auth data.
+      if (membership.role !== "org:admin") delete activeClassroomResponse.gradingSettings;
     }
 
     const billing = await SeatPool.getBillingSummary({

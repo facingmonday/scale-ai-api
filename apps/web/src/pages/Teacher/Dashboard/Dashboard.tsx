@@ -39,6 +39,7 @@ import {
 } from "@/utils/challengeStatus";
 import LoadingOverlay from "../../../components/LoadingOverlay";
 import ClassroomReadinessPanel from "@/components/dashboard/ClassroomReadinessPanel";
+import NeedsAttention from "@/components/dashboard/NeedsAttention";
 
 const PLAN_LABELS: Record<string, string> = {
   org_seats: "Organization Seats",
@@ -227,6 +228,15 @@ const Dashboard: React.FC = () => {
       enrolledStudents,
     };
   }, [challenges, dashboard?.students, dashboard?.submissionsCompleted]);
+
+  const attentionRefreshKey = JSON.stringify([
+    rosterRefreshKey,
+    dashboard?.submissionsCompleted,
+    challenges.map((challenge) => [
+      challenge._id, challenge.isPublished, challenge.isClosed,
+      challenge.publishAt, challenge.submissionDeadlineAt, challenge.closeSubmissionsAt,
+    ]),
+  ]);
 
   // Fetch dashboard once; pass it to child components that need it.
   const fetchDashboard = useCallback(async (silent = false) => {
@@ -767,6 +777,13 @@ const Dashboard: React.FC = () => {
               />
             </div>
           </div>
+        </div>
+        <div className="container">
+          <NeedsAttention
+            key={classroomId}
+            classroomId={activeClassroom._id}
+            refreshKey={attentionRefreshKey}
+          />
         </div>
         <div className="container">
           <LeaderboardSnapshot

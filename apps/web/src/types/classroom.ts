@@ -28,6 +28,7 @@ export interface ClassroomAutomationSettings {
  * Classroom model
  */
 export interface Classroom extends BaseSchema {
+  gradingSettings?: { defaultChallengePoints: number };
   name: string;
   description: string;
   isActive: boolean;

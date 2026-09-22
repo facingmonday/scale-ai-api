@@ -1,3 +1,4 @@
+import ChallengePointsField from "./ChallengePointsField";
 import React, { useMemo, useState } from "react";
 import { Dialog } from "primereact/dialog";
 import { InputTextarea } from "primereact/inputtextarea";
@@ -20,6 +21,7 @@ const ChallengeCreateWithAI: React.FC<Props> = ({
   onHide,
   onSuccess,
 }) => {
+  const [pointsPossible, setPointsPossible] = useState<number | undefined>();
   const [prompt, setPrompt] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +33,7 @@ const ChallengeCreateWithAI: React.FC<Props> = ({
 
   const reset = () => {
     setPrompt("");
+    setPointsPossible(undefined);
     setError(null);
     setIsSubmitting(false);
   };
@@ -50,6 +53,7 @@ const ChallengeCreateWithAI: React.FC<Props> = ({
     try {
       const response = await challengeService.createWithAI({
         classroomId,
+        pointsPossible,
         prompt: prompt.trim(),
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
@@ -103,7 +107,9 @@ const ChallengeCreateWithAI: React.FC<Props> = ({
             onClick={() => void handleSubmit()}
             disabled={!isValid || isSubmitting}
           >
-            {isSubmitting && (
+            <ChallengePointsField key={classroomId} classroomId={classroomId} value={pointsPossible} onChange={setPointsPossible} disabled={isSubmitting} />
+
+        {isSubmitting && (
               <i className="pi pi-spin pi-spinner" aria-hidden="true" />
             )}
             {isSubmitting ? "Creating Challenge..." : "Submit"}
@@ -119,7 +125,9 @@ const ChallengeCreateWithAI: React.FC<Props> = ({
           <p id="ai-challenge-prompt-help" className="mb-2 text-sm text-text-muted">
             Paste everything you have—the title, scenario, student decisions,
             schedule, and outcome. You can review and edit the generated
-            challenge afterward.
+            challenge afterward. If no opening is specified or the generated
+            opening is in the past, it will open tomorrow at 8:00 AM in the
+            classroom’s timezone.
           </p>
           <InputTextarea
             id="ai-challenge-prompt"

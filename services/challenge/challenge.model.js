@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const baseSchema = require("../../lib/baseSchema");
+const { creationGrading, validPoints } = require("../../lib/gradingSettings");
 const VariableDefinition = require("../variableDefinition/variableDefinition.model");
 const VariableValue = require("../variableDefinition/variableValue.model");
 const variablePopulationPlugin = require("../../lib/variablePopulationPlugin");
@@ -112,6 +113,18 @@ const scenarioSchema = new mongoose.Schema({
   title: {
     type: String,
     required: true,
+  },
+  // No default: loading or saving an old challenge must not enable grading.
+  grading: {
+    type: new mongoose.Schema({
+      pointsPossible: { type: Number, required: true, validate: validPoints, immutable: true },
+      method: { type: String, enum: ["COMPLETION"], required: true, immutable: true },
+      policyVersion: { type: Number, enum: [1], required: true, immutable: true },
+      includedAt: { type: Date, required: true, immutable: true },
+    }, { _id: false }),
+    default: undefined,
+    select: false,
+    immutable: true,
   },
   description: {
     type: String,
@@ -457,9 +470,11 @@ scenarioSchema.statics.createScenario = async function (
   scenarioData,
   organizationId,
   clerkUserId,
+  { classroom } = {},
 ) {
   // Get next week number
   const week = await this.getNextWeekNumber(classroomId);
+  const grading = week === 0 ? undefined : creationGrading(scenarioData.pointsPossible, classroom);
   // Extract variables and imageUrl from scenarioData
   const {
     variables,
@@ -538,6 +553,7 @@ scenarioSchema.statics.createScenario = async function (
     const challenge = new this({
       classroomId,
       week,
+      grading,
       title: scenarioFields.title,
       description: scenarioFields.description || "",
       imageUrl: imageUrl || null,
@@ -577,6 +593,7 @@ scenarioSchema.statics.createScenario = async function (
   const challenge = new this({
     classroomId,
     week,
+    grading,
     title: scenarioFields.title,
     description: scenarioFields.description || "",
     imageUrl: imageUrl || null,
@@ -1485,6 +1502,12 @@ scenarioSchema.statics.deleteScenario = async function (challengeId) {
 
   // 9. Finally, delete the challenge itself
   await this.findByIdAndDelete(challengeId);
+
+  require("../grading/grading.cleanup").afterDeletion({
+    organization: challenge.organization,
+    classroomId: challenge.classroomId,
+    challengeId: challenge._id,
+  });
 
   return challenge;
 };

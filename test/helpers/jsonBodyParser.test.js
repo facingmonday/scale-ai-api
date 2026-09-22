@@ -39,6 +39,13 @@ test("JSON body parser", async (t) => {
     assert.equal(response.body.length, body.csv.length);
   });
 
+  await t.test("accepts wizard drafts and suggestion context within the AI limit", async () => {
+    for (const suffix of ["wizard", "wizard/suggestions", "wizard/schedule"]) {
+      await request(buildApp()).post(`/v1/admin/challenges/${suffix}`).send(body).expect(200);
+    }
+    await request(buildApp()).post("/v1/admin/challenges/wizard").send({ csv: "x".repeat(1024 * 1024) }).expect(413);
+  });
+
   await t.test("keeps the default limit for other endpoints", async () => {
     const response = await request(buildApp())
       .post("/v1/licensing/summary")

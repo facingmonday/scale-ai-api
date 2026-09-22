@@ -228,7 +228,7 @@ variableDefinitionSchema.statics.createDefinition = async function (
   const validCombinations = {
     number: ["number", "slider", "knob"],
     string: ["text", "dropdown", "selectbutton", "multiple-choice"],
-    boolean: ["checkbox"],
+    boolean: ["checkbox", "switch"],
     select: ["dropdown"],
   };
 

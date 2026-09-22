@@ -6,7 +6,7 @@ const defaultJsonParser = express.json();
 
 const ROSTER_IMPORT_PATH =
   /^\/v1\/licensing\/classrooms\/[^/]+\/roster-import\/?$/;
-const CHALLENGE_AI_PATH = /^\/v1\/admin\/challenges\/ai\/?$/;
+const CHALLENGE_AI_PATH = /^\/v1\/admin\/challenges\/(?:ai|wizard(?:\/suggestions|\/schedule)?)\/?$/;
 
 function jsonBodyParser(req, res, next) {
   let parser = defaultJsonParser;

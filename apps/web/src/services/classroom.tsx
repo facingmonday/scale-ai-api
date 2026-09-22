@@ -7,6 +7,8 @@ import type {
 } from "../types/dashboard";
 import type { BillingMode, JoinPolicy } from "../types/licensing";
 import type { ClassroomAutomationSettings } from "../types/classroom";
+import type { ClassroomAttention } from "../types/classroomAttention";
+import type { CalendarReminder } from "../utils/challengeCalendar";
 import type {
   ClassroomReadiness,
   ReadinessOperation,
@@ -59,6 +61,22 @@ async function getStudentDashboard(
     },
   );
   return response.data.data;
+}
+
+async function getAttention(classroomId: string, signal?: AbortSignal): Promise<ClassroomAttention> {
+  const response = await axios.get<ClassroomAttention>(
+    `${API_HOST}/${API_VERSION}/admin/class/${classroomId}/attention`,
+    { headers: await TokenHandler.getHeaders(), signal },
+  );
+  return response.data;
+}
+
+async function getCalendarReminders(classroomId: string, signal?: AbortSignal): Promise<CalendarReminder[]> {
+  const response = await axios.get<{ reminders: CalendarReminder[] }>(
+    `${API_HOST}/${API_VERSION}/admin/class/${classroomId}/calendar-reminders`,
+    { headers: await TokenHandler.getHeaders(), signal },
+  );
+  return response.data.reminders;
 }
 
 async function getPreflight(
@@ -116,6 +134,7 @@ async function update(
     accessCode: string;
     allowAnonymousJoin: boolean;
     automationSettings: ClassroomAutomationSettings;
+    gradingSettings: { defaultChallengePoints: number };
   }>,
 ) {
   const response = await axios.put(
@@ -165,6 +184,8 @@ async function restoreTemplate(
 const classroomService = {
   create,
   getAdminDashboard,
+  getAttention,
+  getCalendarReminders,
   getStudentDashboard,
   getPreflight,
   inviteStudent,

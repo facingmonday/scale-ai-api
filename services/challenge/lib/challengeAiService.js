@@ -16,6 +16,7 @@ const challengeSchema = {
     "title",
     "description",
     "scheduleMentioned",
+    "openingMentioned",
     "publishAt",
     "submissionDeadlineAt",
     "variables",
@@ -25,6 +26,7 @@ const challengeSchema = {
     title: { type: "string" },
     description: { type: "string" },
     scheduleMentioned: { type: "boolean" },
+    openingMentioned: { type: "boolean" },
     publishAt: { type: ["string", "null"] },
     submissionDeadlineAt: { type: ["string", "null"] },
     variables: {
@@ -103,10 +105,13 @@ function validatePrompt(prompt) {
   return prompt.trim();
 }
 
-function resolveTimeZone(timeZone) {
-  if (typeof timeZone !== "string" || !timeZone.trim()) return "UTC";
-  const candidate = timeZone.trim();
-  return DateTime.now().setZone(candidate).isValid ? candidate : "UTC";
+function resolveTimeZone(...timeZones) {
+  for (const timeZone of timeZones) {
+    if (typeof timeZone !== "string" || !timeZone.trim()) continue;
+    const candidate = timeZone.trim();
+    if (DateTime.now().setZone(candidate).isValid) return candidate;
+  }
+  return "UTC";
 }
 
 function parseGeneratedDate(value, fieldName) {
@@ -120,7 +125,12 @@ function parseGeneratedDate(value, fieldName) {
 
 function getDefaultSchedule(now = new Date(), timeZone = "UTC") {
   const zone = resolveTimeZone(timeZone);
-  const publishAt = DateTime.fromJSDate(now).toUTC().toJSDate();
+  const publishAt = DateTime.fromJSDate(now)
+    .setZone(zone)
+    .plus({ days: 1 })
+    .set({ hour: 8, minute: 0, second: 0, millisecond: 0 })
+    .toUTC()
+    .toJSDate();
   const submissionDeadlineAt = DateTime.fromJSDate(now)
     .setZone(zone)
     .plus({ days: 2 })
@@ -140,19 +150,27 @@ function normalizeSchedule(spec, { now = new Date(), timeZone = "UTC" } = {}) {
   const defaults = getDefaultSchedule(now, timeZone);
   if (!spec.scheduleMentioned) return defaults;
 
-  const publishAt =
-    parseGeneratedDate(spec.publishAt, "publishAt") || defaults.publishAt;
-  const submissionDeadlineAt =
+  const suggestedOpening = spec.openingMentioned
+    ? parseGeneratedDate(spec.publishAt, "publishAt")
+    : null;
+  const useDefaultOpening = !suggestedOpening || suggestedOpening < now;
+  const publishAt = useDefaultOpening ? defaults.publishAt : suggestedOpening;
+  let submissionDeadlineAt =
     parseGeneratedDate(
       spec.submissionDeadlineAt,
       "submissionDeadlineAt",
     ) || defaults.submissionDeadlineAt;
 
   if (submissionDeadlineAt.getTime() < publishAt.getTime()) {
-    throw createHttpError(
-      "AI generated a submission deadline before the start date",
-      502,
-    );
+    if (useDefaultOpening) {
+      // An old deadline must not invalidate the corrected opening.
+      submissionDeadlineAt = defaults.submissionDeadlineAt;
+    } else {
+      throw createHttpError(
+        "AI generated a submission deadline before the start date",
+        502,
+      );
+    }
   }
 
   return {
@@ -350,10 +368,10 @@ function normalizeGeneratedSpec(spec, scheduleOptions = {}) {
   };
 }
 
-async function generateChallengeSpec(prompt, { now = new Date(), timeZone } = {}) {
+async function generateChallengeSpec(prompt, { now, timeZone } = {}) {
   const validatedPrompt = validatePrompt(prompt);
   const zone = resolveTimeZone(timeZone);
-  const localNow = DateTime.fromJSDate(now).setZone(zone).toISO();
+  const localNow = DateTime.fromJSDate(now || new Date()).setZone(zone).toISO();
 
   let response;
   try {
@@ -374,8 +392,9 @@ async function generateChallengeSpec(prompt, { now = new Date(), timeZone } = {}
             "Set required true for student decisions. Only create variables explicitly supported by the source text.",
             "Put student-visible preconfigured results in outcome.notes. Write those notes as 1 to 3 short prose paragraphs separated by a blank line, with no heading, label, bullets, numbering, or markdown. Put instructor-only implementation guidance in outcome.hiddenNotes.",
             "Set scheduleMentioned true only when the source text explicitly gives a start date/time, deadline, close time, or duration.",
-            "When scheduleMentioned is true, resolve the supplied schedule relative to the provided local time and return ISO-8601 timestamps with an offset.",
-            "When no schedule is stated, set scheduleMentioned false and both date fields to null; the server will apply its default schedule.",
+            "Set openingMentioned true only when the source text explicitly says when the challenge should open, start, or be released. A submission deadline, duration, or a date in the scenario's story alone is not an opening instruction. Never invent or infer an opening from a deadline or duration. Without an opening instruction, set openingMentioned false and publishAt null.",
+            "When scheduleMentioned is true, resolve the supplied schedule relative to the provided local time and return ISO-8601 timestamps with an offset. Leave unspecified date fields null. The default opening is the following calendar morning at 08:00 in the supplied time zone; use that as the starting point for an explicitly requested duration when no opening is supplied.",
+            "When no schedule is stated, set scheduleMentioned and openingMentioned false and both date fields to null; the server will apply its default schedule. Dates describing events in the scenario are not challenge scheduling instructions. The server overrides missing or past openings with the following morning at 08:00.",
           ].join("\n"),
         },
         {
@@ -412,7 +431,8 @@ async function generateChallengeSpec(prompt, { now = new Date(), timeZone } = {}
     throw createHttpError("AI returned an invalid challenge", 502);
   }
 
-  return normalizeGeneratedSpec(spec, { now, timeZone: zone });
+  // Recheck after generation so a slow response cannot save an opening in the past.
+  return normalizeGeneratedSpec(spec, { now: now || new Date(), timeZone: zone });
 }
 
 async function rollbackGeneratedChallenge(challengeId, organizationId) {
@@ -434,13 +454,24 @@ async function rollbackGeneratedChallenge(challengeId, organizationId) {
 
 async function createChallengeFromPrompt({
   classroomId,
+  classroom,
+  pointsPossible,
   prompt,
   timeZone,
   organizationId,
   clerkUserId,
-  now = new Date(),
+  now,
 }) {
-  const generated = await generateChallengeSpec(prompt, { now, timeZone });
+  require("../../../lib/gradingSettings").creationGrading(pointsPossible, classroom);
+  const generated = await generateChallengeSpec(prompt, {
+    now,
+    timeZone: resolveTimeZone(classroom?.automationSettings?.timezone, timeZone),
+  });
+  return createChallengeFromSpec({ generated, classroomId, organizationId, clerkUserId, classroom, pointsPossible });
+}
+
+// Shared persistence for reviewed wizard drafts and source-text generation.
+async function createChallengeFromSpec({ generated, classroomId, organizationId, clerkUserId, classroom, pointsPossible }) {
   let challenge;
 
   try {
@@ -449,15 +480,17 @@ async function createChallengeFromPrompt({
       {
         title: generated.title,
         description: generated.description,
-        ...generated.schedule,
-        publishMode: generated.schedule.publishAt ? "SCHEDULED" : "MANUAL",
         automationMode: "FULL",
+        ...generated.schedule,
+        pointsPossible,
+        publishMode: generated.schedule.publishAt ? "SCHEDULED" : "MANUAL",
         automationStatus: generated.schedule.publishAt
           ? "SCHEDULED"
           : "UNSCHEDULED",
       },
       organizationId,
       clerkUserId,
+      { classroom },
     );
 
     for (const variable of generated.variables) {
@@ -504,6 +537,7 @@ module.exports = {
   MIN_PROMPT_LENGTH,
   challengeSchema,
   createChallengeFromPrompt,
+  createChallengeFromSpec,
   generateChallengeSpec,
   getDefaultSchedule,
   normalizeGeneratedSpec,

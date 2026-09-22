@@ -1,3 +1,4 @@
+import GradingDefaultSettings from "../../../components/GradingDefaultSettings";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog } from "primereact/dialog";
 import { Button } from "primereact/button";
@@ -603,6 +604,8 @@ const TeacherClassroom: React.FC = () => {
             </div>
           </div>
           )}
+
+          {!isLoadingClassroom && !loadError && activeTab === "details" && classroomId && <div className="mb-4"><GradingDefaultSettings key={classroomId} classroomId={classroomId} /></div>}
 
           {!isLoadingClassroom && !loadError && activeTab === "automation" && (
           <div className="card">

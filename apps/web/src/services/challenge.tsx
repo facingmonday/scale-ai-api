@@ -1,6 +1,7 @@
 import TokenHandler from "./base";
 import { API_HOST, API_VERSION } from "../config";
 import axios from "axios";
+import type { WizardCandidate, WizardDraft, WizardSchedule, WizardScheduleProposal, WizardSuggestionRequest } from "../types/challengeWizard";
 import type {
   CreateScenarioRequest,
   CreateScenarioWithAIRequest,
@@ -266,6 +267,18 @@ async function updateProcessingSettings(
 }
 
 const challengeService = {
+  async wizardSuggestions(data: WizardSuggestionRequest, signal?: AbortSignal): Promise<WizardCandidate[]> {
+    const response = await axios.post(`${API_HOST}/${API_VERSION}/admin/challenges/wizard/suggestions`, data, { headers: await TokenHandler.getHeaders(), signal });
+    return response.data.data.candidates;
+  },
+  async wizardSchedule(classroomId: string, signal?: AbortSignal): Promise<WizardScheduleProposal> {
+    const response = await axios.post(`${API_HOST}/${API_VERSION}/admin/challenges/wizard/schedule`, { classroomId }, { headers: await TokenHandler.getHeaders(), signal });
+    return response.data.data;
+  },
+  async createWithWizard(classroomId: string, draft: WizardDraft, schedule: WizardSchedule, pointsPossible?: number): Promise<{ _id: string }> {
+    const response = await axios.post(`${API_HOST}/${API_VERSION}/admin/challenges/wizard`, { classroomId, draft, schedule, pointsPossible }, { headers: await TokenHandler.getHeaders() });
+    return response.data.data;
+  },
   updateProcessingSettings,
   create,
   createWithAI,
