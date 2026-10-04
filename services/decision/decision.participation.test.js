@@ -26,6 +26,9 @@ function submissionFixture(t, method = "DEFAULTS", failure = null) {
   const writes = [];
   const originalGeneration = decision.toObject().generation;
 
+  // Unit coverage of classification only; real rollback/retry semantics are
+  // exercised against MongoDB in decision.atomic.integration.test.js.
+  t.mock.method(Decision.db, "transaction", async (callback) => callback({}));
   t.mock.method(Decision, "findOne", async () => decision);
   t.mock.method(Challenge, "findById", async () => ({
     isPublished: true, isClosed: false,

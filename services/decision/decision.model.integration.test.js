@@ -12,7 +12,7 @@ const VariableDefinition = require("../variableDefinition/variableDefinition.mod
 const Decision = require("./decision.model");
 
 test("create and update persist challenge variable answers on the student decision", async (t) => {
-  await setupTestDb();
+  await setupTestDb({ replicaSet: true });
   t.after(async () => {
     await teardownTestDb();
   });

@@ -395,7 +395,7 @@ submissionSchema.statics.updateSubmission = async function (
   updateOptions = {}
 ) {
   // Find existing decision
-  const decision = await this.findOne({ classroomId, challengeId, userId });
+  const decision = await this.findOne({ organization: organizationId, classroomId, challengeId, userId });
   if (!decision) {
     throw new Error("Decision not found");
   }
@@ -447,63 +447,85 @@ submissionSchema.statics.updateSubmission = async function (
       { challengeId }
     );
 
-  const configuredChallengeVariables = await challenge.getVariables();
-  const existingChallengeVariableAnswers =
-    decision.challengeVariableAnswers &&
-    typeof decision.challengeVariableAnswers === "object" &&
-    Object.keys(decision.challengeVariableAnswers).length > 0
-      ? decision.challengeVariableAnswers
-      : configuredChallengeVariables;
-  const challengeVariableAnswers = await this.prepareChallengeVariableAnswers(
-    classroomId,
-    challengeId,
-    updateOptions.challengeVariableAnswers ?? existingChallengeVariableAnswers
-  );
+  // A replica set (or mongos) is required. Never fall back to nontransactional
+  // writes: even a partial insert or metadata-save failure must retain old answers.
+  // Re-read inside each retry so an omitted challenge answer uses current state.
+  await this.db.transaction(async (session) => {
+    const currentDecision = await this.findOne({
+      _id: decision._id,
+      organization: organizationId,
+      classroomId,
+      challengeId,
+      userId,
+    }, null, { session });
+    if (!currentDecision) {
+      throw new Error("Decision not found");
+    }
 
-  // Update decision document
-  decision.challengeVariableAnswers = challengeVariableAnswers;
-  decision.markModified("challengeVariableAnswers");
-  decision.updatedBy = clerkUserId;
-  decision.updatedDate = new Date();
+    const configuredChallengeVariables = await challenge.getVariables();
+    const existingChallengeVariableAnswers =
+      currentDecision.challengeVariableAnswers &&
+      typeof currentDecision.challengeVariableAnswers === "object" &&
+      Object.keys(currentDecision.challengeVariableAnswers).length > 0
+        ? currentDecision.challengeVariableAnswers
+        : configuredChallengeVariables;
+    const challengeVariableAnswers = await this.prepareChallengeVariableAnswers(
+      classroomId,
+      challengeId,
+      updateOptions.challengeVariableAnswers ?? existingChallengeVariableAnswers
+    );
 
-  // Delete existing variable values
-  await VariableValue.deleteMany({
-    classroomId,
-    appliesTo: "decision",
-    ownerId: decision._id,
-  });
+    // Update decision document
+    currentDecision.challengeVariableAnswers = challengeVariableAnswers;
+    currentDecision.markModified("challengeVariableAnswers");
+    currentDecision.updatedBy = clerkUserId;
+    currentDecision.updatedDate = new Date();
 
-  // Create new variable values if provided
-  if (variablesToSave && Object.keys(variablesToSave).length > 0) {
-    const variableEntries = Object.entries(variablesToSave);
-    const variableDocs = variableEntries.map(([key, value]) => ({
+    // Delete existing variable values
+    await VariableValue.deleteMany({
+      organization: organizationId,
       classroomId,
       appliesTo: "decision",
-      ownerId: decision._id,
-      variableKey: key,
-      value: value,
-      organization: organizationId,
-      createdBy: clerkUserId,
-      updatedBy: clerkUserId,
-    }));
+      ownerId: currentDecision._id,
+    }, { session });
 
-    if (variableDocs.length > 0) {
-      await VariableValue.insertMany(variableDocs);
+    // Create new variable values if provided
+    if (variablesToSave && Object.keys(variablesToSave).length > 0) {
+      const variableEntries = Object.entries(variablesToSave);
+      const variableDocs = variableEntries.map(([key, value]) => ({
+        classroomId,
+        appliesTo: "decision",
+        ownerId: currentDecision._id,
+        variableKey: key,
+        value: value,
+        organization: organizationId,
+        createdBy: clerkUserId,
+        updatedBy: clerkUserId,
+      }));
+
+      if (variableDocs.length > 0) {
+        await VariableValue.insertMany(variableDocs, { session });
+      }
     }
-  }
 
-  // A student's accepted update replaces automatic participation metadata.
-  // Save the answers and classification only after the decision values succeed.
-  decision.generation = {
-    method: "MANUAL",
-    forwardedFromScenarioId: null,
-    forwardedFromSubmissionId: null,
-    meta: null,
-  };
-  await decision.save();
+    // A student's accepted update replaces automatic participation metadata.
+    // The answers and classification commit together with the decision values.
+    currentDecision.generation = {
+      method: "MANUAL",
+      forwardedFromScenarioId: null,
+      forwardedFromSubmissionId: null,
+      meta: null,
+    };
+    await currentDecision.save({ session });
+  }, {
+    readPreference: "primary",
+    readConcern: { level: "snapshot" },
+    writeConcern: { w: "majority" },
+  });
 
   // Return decision with variables populated (auto-loaded via plugin)
   const updatedSubmission = await this.findOne({
+    organization: organizationId,
     classroomId,
     challengeId,
     userId,
