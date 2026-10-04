@@ -16,11 +16,15 @@ successful update wins. Retrying the same replacement does not accumulate rows.
 
 Answer updates require a transaction-capable replica set or sharded cluster. A
 standalone MongoDB server rejects the operation before any answer writes; there is
-no unsafe fallback. `MONGO_URL` / `MONGO_URI` can supply a replica-set connection
-string. The checked-in DigitalOcean app spec declares managed MongoDB 8 with an SRV address,
-but that config alone does not verify the deployed topology. Verify transaction
-support in the target environment before rolling out this change. No deployment
-or production database checks are part of this fix.
+no unsafe fallback. The API builds its connection from the split `MONGO_SCHEME`,
+`MONGO_USERNAME`, `MONGO_PASSWORD`, `MONGO_HOSTNAME`, and `MONGO_DB` settings; it does
+not read `MONGO_URL` or `MONGO_URI`. The worker connection helper supports those
+direct connection-string overrides before falling back to the split settings.
+
+The checked-in DigitalOcean app spec declares managed MongoDB 8 with an SRV
+address, but that config alone does not verify the deployed topology. Verify
+transaction support in the target environment before rolling out this change.
+No deployment or production database checks are part of this fix.
 
 ## Regression verification
 
