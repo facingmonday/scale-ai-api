@@ -11,6 +11,7 @@ const {
 const Classroom = require("../classroom/classroom.model");
 const Challenge = require("../challenge/challenge.model");
 const Enrollment = require("../enrollment/enrollment.model");
+const Profile = require("../profile/profile.model");
 const Member = require("../members/member.model");
 const Decision = require("../decision/decision.model");
 const { GradeAdjustment, GradeExclusion } = require("./grading.model");
@@ -93,6 +94,45 @@ function target(f, challenge = 0, student = 0) {
     userId: String(f.students[student]._id),
   };
 }
+
+test("gradebook separates student and store names and scopes store search to the classroom and tenant", async () => {
+  const f = await fixture();
+  await Profile.collection.insertMany([
+    {
+      organization: f.organizationId,
+      classroomId: new mongoose.Types.ObjectId(f.classroomId),
+      userId: f.students[0]._id,
+      shopName: "Ada's Market",
+    },
+    {
+      organization: f.organizationId,
+      classroomId: id(),
+      userId: f.students[0]._id,
+      shopName: "Other classroom store",
+    },
+    {
+      organization: id(),
+      classroomId: new mongoose.Types.ObjectId(f.classroomId),
+      userId: f.students[1]._id,
+      shopName: "Other tenant store",
+    },
+  ]);
+  const data = await service.getGradebook(f);
+  assert.equal(data.rows[0].name, "Student 0000 Example");
+  assert.equal(data.rows[0].storeName, "Ada's Market");
+  assert.equal(data.rows[1].storeName, "");
+  const matching = await service.getGradebook({
+    ...f,
+    filters: service.parseFilters({ search: "ADA'S MARKET" }),
+  });
+  assert.equal(matching.totalStudents, 1);
+  assert.equal(matching.rows[0].userId, String(f.students[0]._id));
+  const outside = await service.getGradebook({
+    ...f,
+    filters: service.parseFilters({ search: "Other" }),
+  });
+  assert.equal(outside.totalStudents, 0);
+});
 
 test("batched gradebook reads are tenant-scoped and include students with no profile or decision", async () => {
   const f = await fixture();

@@ -3,16 +3,29 @@
  * Each test file should call setupTestDb() in before() and teardownTestDb() in after().
  */
 const mongoose = require("mongoose");
-const { MongoMemoryServer } = require("mongodb-memory-server");
+const {
+  MongoMemoryServer,
+  MongoMemoryReplSet,
+} = require("mongodb-memory-server");
 
 let memoryServer = null;
 
-async function setupTestDb() {
+async function setupTestDb({ replicaSet = false } = {}) {
   if (mongoose.connection.readyState !== 0) {
     await mongoose.disconnect();
   }
 
-  memoryServer = await MongoMemoryServer.create();
+  // Partial indexes with $in require MongoDB 6+. Match this in the rollout audit.
+  const binary = { version: process.env.MONGOMS_VERSION || "7.0.14" };
+  memoryServer = replicaSet
+    ? await MongoMemoryReplSet.create({
+        binary,
+        replSet: { count: 1, storageEngine: "wiredTiger" },
+      })
+    : await MongoMemoryServer.create({
+        binary,
+        instance: { storageEngine: "wiredTiger" },
+      });
   const uri = memoryServer.getUri();
   await mongoose.connect(uri);
   return mongoose.connection;
@@ -32,7 +45,7 @@ async function teardownTestDb() {
 async function clearCollections() {
   const collections = mongoose.connection.collections;
   await Promise.all(
-    Object.values(collections).map((collection) => collection.deleteMany({}))
+    Object.values(collections).map((collection) => collection.deleteMany({})),
   );
 }
 

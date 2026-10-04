@@ -24,6 +24,7 @@
     "ngrok": "ngrok start --config ~/.ngrok/ngrok.yml --all",
     "email:preview": "npm --prefix apps/admin run start",
     "sync:clerk": "node scripts/sync-clerk.js",
+    "audit:seat-credits": "node scripts/audit-seat-credits.js",
     "sim:cli": "echo '⚠️  The CLI tool has been converted into a web interface! Start the admin server using \"npm run dev:all\" (or \"npm run dev:admin\") and open http://localhost:5174 in your browser.'",
     "install:web": "npm --prefix apps/web ci",
     "install:admin": "npm --prefix apps/admin ci",

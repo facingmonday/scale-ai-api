@@ -465,7 +465,7 @@ function ClassroomGradebook({ classroomId }: { classroomId: string }) {
             <input
               id="grade-search"
               className="input"
-              placeholder="Name or student number"
+              placeholder="Student name, store name, or student number"
               value={filters.search}
               onChange={(e) => changeFilters({ search: e.target.value })}
             />
@@ -560,24 +560,48 @@ function ClassroomGradebook({ classroomId }: { classroomId: string }) {
                 : ""}
           </span>
         </div>
-        <div className="max-h-[65vh] overflow-auto" aria-busy={loading}>
-          <table className="w-full border-collapse text-sm">
+        <div
+          className="relative isolate max-h-[65vh] overflow-auto focus-visible:outline-2 focus-visible:outline-offset-2"
+          aria-busy={loading}
+          role="region"
+          aria-label="Gradebook — scroll horizontally to view challenges"
+          tabIndex={0}
+        >
+          <table
+            className="w-full table-fixed border-separate border-spacing-0 text-sm [&_th]:border-b [&_th]:border-border [&_td]:border-b [&_td]:border-border"
+            style={{ minWidth: `${41 + (data?.columns.length ?? 0) * 11}rem` }}
+          >
             <caption className="sr-only">
               Student completion points by challenge
             </caption>
+            <colgroup>
+              <col className="w-48" />
+              <col className={data?.columns.length ? "w-48" : undefined} />
+              {data?.columns.map((column) => (
+                <col key={column.id} />
+              ))}
+              <col className="w-36" />
+              <col className="w-32" />
+            </colgroup>
             <thead className="sticky top-0 z-20 bg-card">
               <tr className="border-b border-border text-left">
                 <th
                   scope="col"
-                  className="sticky left-0 z-30 min-w-56 bg-card p-4"
+                  className="z-30 bg-card p-4 lg:sticky lg:left-0"
                 >
-                  Student
+                  Student name
+                </th>
+                <th
+                  scope="col"
+                  className="z-30 bg-card p-4 shadow-[1px_0_0_var(--color-border)] lg:sticky lg:left-48"
+                >
+                  Store name
                 </th>
                 {data?.columns.map((column) => (
                   <th
                     scope="col"
                     key={column.id}
-                    className="min-w-36 max-w-56 p-3 align-top"
+                    className="bg-card p-3 align-top break-words"
                   >
                     <button
                       type="button"
@@ -596,10 +620,16 @@ function ClassroomGradebook({ classroomId }: { classroomId: string }) {
                     </button>
                   </th>
                 ))}
-                <th scope="col" className="min-w-36 p-4">
+                <th
+                  scope="col"
+                  className="sticky right-32 z-30 bg-card p-4 shadow-[-1px_0_0_var(--color-border)]"
+                >
                   Earned / possible
                 </th>
-                <th scope="col" className="min-w-32 p-4">
+                <th
+                  scope="col"
+                  className="sticky right-0 z-30 bg-card p-4"
+                >
                   Current grade
                 </th>
               </tr>
@@ -612,7 +642,7 @@ function ClassroomGradebook({ classroomId }: { classroomId: string }) {
                 >
                   <th
                     scope="row"
-                    className="sticky left-0 z-10 bg-card p-4 text-left font-normal"
+                    className="z-10 bg-card p-4 text-left font-normal break-words lg:sticky lg:left-0"
                   >
                     <Link
                       to={`/students/${row.userId}?classroomId=${encodeURIComponent(classroomId)}`}
@@ -625,6 +655,11 @@ function ClassroomGradebook({ classroomId }: { classroomId: string }) {
                       {row.isRemoved ? " · Removed" : ""}
                     </span>
                   </th>
+                  <td className="z-10 bg-card p-4 break-words shadow-[1px_0_0_var(--color-border)] lg:sticky lg:left-48">
+                    {row.storeName || (
+                      <span className="text-text-muted">No store yet</span>
+                    )}
+                  </td>
                   {row.cells.map((cell, index) => (
                     <td key={cell.challengeId} className="p-2">
                       <button
@@ -660,11 +695,11 @@ function ClassroomGradebook({ classroomId }: { classroomId: string }) {
                       </button>
                     </td>
                   ))}
-                  <td className="p-4 font-medium tabular-nums">
+                  <td className="sticky right-32 z-10 bg-card p-4 font-medium tabular-nums shadow-[-1px_0_0_var(--color-border)]">
                     {number(row.totals.earnedPoints)} /{" "}
                     {number(row.totals.possiblePoints)}
                   </td>
-                  <td className="p-4 font-semibold tabular-nums">
+                  <td className="sticky right-0 z-10 bg-card p-4 font-semibold tabular-nums">
                     {row.totals.percentage === null
                       ? "—"
                       : `${number(row.totals.percentage)}%`}
