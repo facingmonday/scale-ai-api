@@ -22,7 +22,7 @@ const { getUsersRoutes } = require("../../lib/routes");
 
 const id = () => new mongoose.Types.ObjectId();
 test.before(async () => {
-  await setupTestDb();
+  await setupTestDb({ replicaSet: true });
   await Promise.all([GradeAdjustment.init(), GradeExclusion.init()]);
 });
 test.after(teardownTestDb);
