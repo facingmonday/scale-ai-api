@@ -433,10 +433,9 @@ test("Classroom Model Integration Tests", async (t) => {
       }
     ]);
 
-    // Outcome for pending approvals count
+    // Legacy outcomes need not have a denormalized classroomId.
     await Outcome.create({
       challengeId: challenge._id,
-      classroomId: classDoc._id,
       approved: false,
       organization: orgId,
       createdBy: "test",
