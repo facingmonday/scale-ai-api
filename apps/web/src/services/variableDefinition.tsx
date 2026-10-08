@@ -47,7 +47,7 @@ async function update(
   return response.data;
 }
 
-async function getAll(classroomId: string, appliesTo?: string, challengeId?: string) {
+async function getAll(classroomId: string, appliesTo?: string, challengeId?: string, signal?: AbortSignal) {
   const url = new URL(`${API_HOST}/${API_VERSION}/admin/variables`);
   url.searchParams.append("classroomId", classroomId);
   if (appliesTo) {
@@ -57,7 +57,8 @@ async function getAll(classroomId: string, appliesTo?: string, challengeId?: str
     url.searchParams.append("challengeId", challengeId);
   }
   const response = await axios.get(url.toString(), {
-    headers: await TokenHandler.getHeaders(),
+    headers: await TokenHandler.getHeaders({ signal }),
+    signal,
   });
   return response.data;
 }

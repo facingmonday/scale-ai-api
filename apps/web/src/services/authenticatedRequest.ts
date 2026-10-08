@@ -12,13 +12,15 @@ export class AuthenticationRequiredError extends Error {
 // failure: the server may already have saved a submission in the latter case.
 export async function authenticatedRequest<T>(
   request: (headers: Record<string, string>) => Promise<T>,
+  signal?: AbortSignal,
 ): Promise<T> {
   for (let attempt = 0; attempt < 2; attempt++) {
-    const headers = await TokenHandler.getHeaders({ skipCache: attempt === 1 });
+    const headers = await TokenHandler.getHeaders({ skipCache: attempt === 1, signal });
     if (!headers.Authorization) throw new AuthenticationRequiredError();
     try {
       return await request(headers);
     } catch (error) {
+      signal?.throwIfAborted();
       if (!axios.isAxiosError(error) || error.response?.status !== 401) throw error;
       if (attempt === 1) throw new AuthenticationRequiredError();
     }

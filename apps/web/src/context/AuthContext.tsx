@@ -64,7 +64,7 @@ interface AuthContextType {
   setNewActiveClassroom: (classroom: Classroom) => Promise<void>;
   clearActiveClassroom: () => Promise<void>;
   logout: () => Promise<void>;
-  refetchMe: () => Promise<
+  refetchMe: (signal?: AbortSignal) => Promise<
     | { activeClassroom: Classroom | null; routes: BackendRouteNode[] }
     | undefined
   >;
@@ -136,6 +136,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const fetchMe = useCallback(
     async (opts?: {
       silent?: boolean;
+      signal?: AbortSignal;
     }): Promise<
       | { activeClassroom: Classroom | null; routes: BackendRouteNode[] }
       | undefined
@@ -148,7 +149,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       setAuthError(null);
       try {
-        const data = await authService.getMe();
+        const data = await authService.getMe(opts?.signal);
+        opts?.signal?.throwIfAborted();
         const classroom = data?.activeClassroom || null;
         const routesData = data?.routes || [];
         setRoutes(routesData);
@@ -156,6 +158,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         setBilling(data?.billing || null);
         return { activeClassroom: classroom, routes: routesData };
       } catch (err) {
+        opts?.signal?.throwIfAborted();
         console.error("Failed to fetch auth context:", err);
         if (err instanceof AuthenticationRequiredError) {
           setAuthError(
@@ -338,7 +341,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         setNewActiveClassroom,
         clearActiveClassroom,
         logout,
-        refetchMe: () => fetchMe({ silent: true }),
+        refetchMe: (signal) => fetchMe({ silent: true, signal }),
         hasAccess,
         authError,
         billing,

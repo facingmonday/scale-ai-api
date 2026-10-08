@@ -3,9 +3,10 @@ import { API_HOST, API_VERSION } from "../config";
 import axios from "axios";
 import { authenticatedRequest } from "./authenticatedRequest";
 
-async function getMe() {
+async function getMe(signal?: AbortSignal) {
   const response = await authenticatedRequest((headers) =>
-    axios.get(`${API_HOST}/${API_VERSION}/auth/me`, { headers })
+    axios.get(`${API_HOST}/${API_VERSION}/auth/me`, { headers, signal }),
+    signal
   );
   return response.data;
 }

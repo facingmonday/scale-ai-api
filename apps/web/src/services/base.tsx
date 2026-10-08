@@ -1,3 +1,4 @@
+import { abortable } from "../utils/requestDeadline";
 import type { IOrganization } from "../types/organization";
 
 // ClerkTokenHandler for Clerk authentication
@@ -52,8 +53,10 @@ class ClerkTokenHandler {
   // Headers (Organization context)
   // ---------------------------------------------------------------------------
 
-  async getHeaders(options?: { skipCache?: boolean }): Promise<Record<string, string>> {
-    const token = await this.getToken(options);
+  async getHeaders(options?: { skipCache?: boolean; signal?: AbortSignal }): Promise<Record<string, string>> {
+    options?.signal?.throwIfAborted();
+    const token = await abortable(this.getToken({ skipCache: options?.skipCache }), options?.signal);
+    options?.signal?.throwIfAborted();
 
     const currentOrganization = this.getCurrentOrganization();
 

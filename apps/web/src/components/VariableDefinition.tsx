@@ -12,35 +12,13 @@ import { RadioButton } from "primereact/radiobutton";
 import type { VariableDefinition as VariableDefinitionModel } from "../types/variableDefinition";
 import { useVariableDefinitionFormContext } from "./VariableDefinitionFormContext";
 
+import { normalizeVariableAnswer, validateVariableAnswer, variableFieldId } from "../utils/variableAnswer";
+
 type Props = {
   definition: VariableDefinitionModel;
   readOnly?: boolean;
   actions?: React.ReactNode;
 };
-
-function coerceInitial(
-  dataType: VariableDefinitionModel["dataType"],
-  value: unknown
-) {
-  if (value === undefined) return undefined;
-  if (value === null) return null;
-  switch (dataType) {
-    case "number": {
-      if (typeof value === "number") return value;
-      const n = Number(value);
-      return Number.isFinite(n) ? n : undefined;
-    }
-    case "boolean": {
-      if (typeof value === "boolean") return value;
-      if (value === "true") return true;
-      if (value === "false") return false;
-      return undefined;
-    }
-    case "string":
-    default:
-      return String(value);
-  }
-}
 
 /**
  * Rounds a number to a specific number of decimal places to avoid floating-point precision issues
@@ -97,7 +75,7 @@ const VariableDefinition: React.FC<Props> = ({
   }, [definition.options]);
 
   return (
-    <div className="card relative w-full h-full flex flex-column justify-between">
+    <div id={variableFieldId(fieldName)} tabIndex={-1} aria-label={label} className="card relative w-full h-full flex flex-column justify-between">
       {actions && (
         <div className="absolute right-3 top-3 z-10">
           {actions}
@@ -122,10 +100,10 @@ const VariableDefinition: React.FC<Props> = ({
           control={control}
           name={fieldName}
           rules={{
-            required: definition.required ? "This field is required" : false,
+            validate: (value) => validateVariableAnswer(definition, value),
           }}
           render={({ field, fieldState }) => {
-            const value = coerceInitial(definition.dataType, field.value);
+            const value = normalizeVariableAnswer(definition.dataType, field.value);
             const invalid = !!fieldState.error;
 
             // PrimeReact inputs generally prefer `disabled` for read-only mode.
@@ -179,7 +157,7 @@ const VariableDefinition: React.FC<Props> = ({
               return (
                 <div className="flex flex-col gap-2 mb-2 items-center w-full">
                   <Dropdown
-                    value={value ?? null}
+                    value={typeof value === "string" ? value : null}
                     options={dropdownOptions}
                     disabled={isReadOnly}
                     className={`w-full ${invalid ? "p-invalid" : ""}`}
@@ -199,7 +177,7 @@ const VariableDefinition: React.FC<Props> = ({
               return (
                 <div className="flex flex-col gap-2 items-center">
                   <SelectButton
-                    value={value ?? null}
+                    value={typeof value === "string" ? value : null}
                     options={dropdownOptions}
                     disabled={isReadOnly}
                     onChange={(e) => field.onChange(e.value)}
@@ -257,11 +235,7 @@ const VariableDefinition: React.FC<Props> = ({
               const min = definition.min ?? 0;
               const max = definition.max ?? 100;
               const numericValue: number =
-                typeof value === "number"
-                  ? value
-                  : typeof definition.defaultValue === "number"
-                  ? definition.defaultValue
-                  : min;
+                typeof value === "number" && Number.isFinite(value) ? value : min;
 
               // Determine if we're dealing with decimals or integers
               // Check if min, max, or defaultValue have decimal parts
@@ -313,7 +287,7 @@ const VariableDefinition: React.FC<Props> = ({
                       {min} – {max}
                     </span>
                     <span className="tabular-nums">
-                      {roundedValue.toFixed(decimalPlaces)}
+                      {typeof value === "number" && Number.isFinite(value) ? roundedValue.toFixed(decimalPlaces) : "Choose a value"}
                     </span>
                   </div>
                   <Slider
@@ -349,11 +323,7 @@ const VariableDefinition: React.FC<Props> = ({
               const min = definition.min ?? 0;
               const max = definition.max ?? 100;
               const numericValue: number =
-                typeof value === "number"
-                  ? value
-                  : typeof definition.defaultValue === "number"
-                  ? definition.defaultValue
-                  : min;
+                typeof value === "number" && Number.isFinite(value) ? value : min;
 
               // Determine if we're dealing with decimals or integers
               // Check if min, max, or defaultValue have decimal parts
@@ -413,7 +383,7 @@ const VariableDefinition: React.FC<Props> = ({
                     }}
                   />
                   <span className="tabular-nums text-sm">
-                    {roundedValue.toFixed(decimalPlaces)}
+                    {typeof value === "number" && Number.isFinite(value) ? roundedValue.toFixed(decimalPlaces) : "Choose a value"}
                   </span>
                   {invalid && (
                     <p className="text-red-400 text-sm text-center">
@@ -428,7 +398,7 @@ const VariableDefinition: React.FC<Props> = ({
               return (
                 <div className="flex flex-col gap-2 items-center w-full">
                   <InputNumber
-                    value={typeof value === "number" ? value : null}
+                    value={typeof value === "number" && Number.isFinite(value) ? value : null}
                     disabled={isReadOnly}
                     className={`w-full ${invalid ? "p-invalid" : ""}`}
                     min={definition.min ?? undefined}
