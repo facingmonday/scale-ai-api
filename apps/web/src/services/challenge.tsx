@@ -176,14 +176,15 @@ async function getAll(classroomId: string, role: "student" | "admin") {
   return response.data;
 }
 
-async function getById(challengeId: string, role: "student" | "admin") {
+async function getById(challengeId: string, role: "student" | "admin", signal?: AbortSignal) {
   const url = new URL(
     `${API_HOST}/${API_VERSION}/${role ?? "admin"}/challenges/${challengeId}`,
   );
   // Request decision variables to be populated
   url.searchParams.append("populate", "decision.variables");
   const response = await axios.get(url.toString(), {
-    headers: await TokenHandler.getHeaders(),
+    headers: await TokenHandler.getHeaders({ signal }),
+    signal,
   });
   return response.data;
 }

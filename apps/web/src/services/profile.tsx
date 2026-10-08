@@ -22,11 +22,12 @@ async function create(data: {
   return response.data;
 }
 
-async function getStudentStore(classroomId: string) {
+async function getStudentStore(classroomId: string, signal?: AbortSignal) {
   const url = new URL(`${API_HOST}/${API_VERSION}/student/profile`);
   url.searchParams.append("classroomId", classroomId);
   const response = await axios.get(url.toString(), {
-    headers: await TokenHandler.getHeaders(),
+    headers: await TokenHandler.getHeaders({ signal }),
+    signal,
   });
   return response.data;
 }

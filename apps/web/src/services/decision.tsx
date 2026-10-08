@@ -7,9 +7,10 @@ async function submit(data: {
   challengeId: string;
   variables: Record<string, unknown>;
   challengeVariableAnswers: Record<string, unknown>;
-}) {
+}, signal?: AbortSignal) {
   const response = await authenticatedRequest((headers) =>
-    axios.post(`${API_HOST}/${API_VERSION}/student/decision`, data, { headers })
+    axios.post(`${API_HOST}/${API_VERSION}/student/decision`, data, { headers, signal }),
+    signal
   );
   return response.data;
 }
@@ -20,10 +21,12 @@ async function update(
     challengeId: string;
     variables: Record<string, unknown>;
     challengeVariableAnswers: Record<string, unknown>;
-  }
+  },
+  signal?: AbortSignal,
 ) {
   const response = await authenticatedRequest((headers) =>
-    axios.put(`${API_HOST}/${API_VERSION}/student/decision/${decisionId}`, data, { headers })
+    axios.put(`${API_HOST}/${API_VERSION}/student/decision/${decisionId}`, data, { headers, signal }),
+    signal
   );
   return response.data;
 }
@@ -74,7 +77,7 @@ async function getById(decisionId: string, role: "student" | "admin") {
 async function getStudentSubmissions(params?: {
   classroomId?: string;
   challengeId?: string;
-}) {
+}, signal?: AbortSignal) {
   const url = new URL(`${API_HOST}/${API_VERSION}/student/decisions`);
 
   if (params?.classroomId) {
@@ -86,7 +89,8 @@ async function getStudentSubmissions(params?: {
   }
 
   const response = await axios.get(url.toString(), {
-    headers: await TokenHandler.getHeaders(),
+    headers: await TokenHandler.getHeaders({ signal }),
+    signal,
   });
   return response.data;
 }

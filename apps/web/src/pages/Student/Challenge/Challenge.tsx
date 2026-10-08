@@ -23,7 +23,7 @@ import Outcome from "@/components/Outcome";
 import VariablesForm from "@/components/VariablesForm";
 import { useAuth } from "@/context/AuthContext";
 import { useGlobalContext } from "@/context/GlobalContext";
-import { FormProvider, useForm } from "react-hook-form";
+import { FormProvider, useForm, type FieldErrors } from "react-hook-form";
 import type { Challenge } from "@/types/challenge";
 import type { Decision } from "@/types/decision";
 import type { Profile } from "@/types/profile";
@@ -45,6 +45,14 @@ import Alert from "@/components/Alert";
 import StoreSummary from "@/components/ProfileSummary";
 import SubmissionDeadlineCard from "@/components/SubmissionDeadlineCard";
 
+import { normalizeVariableAnswer, focusVariableField } from "@/utils/variableAnswer";
+import { withRequestDeadline, RequestTimeoutError } from "@/utils/requestDeadline";
+
+type ChallengeAnswers = {
+  variables: Record<string, unknown>;
+  challengeVariableAnswers: Record<string, unknown>;
+};
+
 const ScenarioPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -64,23 +72,30 @@ const ScenarioPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(false);
   const operationInProgress = useRef(false);
+  const requestVersion = useRef(0);
+  const challengeReady = useRef(false);
+  const activeOperation = useRef<AbortController | null>(null);
+  const needsSubmissionRefresh = useRef(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [showValidationErrors, setShowValidationErrors] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const draftKey = user?.id && activeClassroom?._id && id
     ? `challenge-draft:${user.id}:${activeClassroom._id}:${id}` : null;
   const restoredDraftKey = useRef<string | null>(null);
+  // Form-state dirty flags update on render. A pageshow/focus refresh can finish
+  // before that render, so protect restored/edited answers synchronously too.
+  const hasPendingAnswers = useRef(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
-  const form = useForm<{
-    variables: Record<string, unknown>;
-    challengeVariableAnswers: Record<string, unknown>;
-  }>({
+  const form = useForm<ChallengeAnswers>({
     defaultValues: { variables: {}, challengeVariableAnswers: {} },
     mode: "onChange",
+    shouldFocusError: false,
   });
 
   // Persist edits before a session change can unmount the page. Drafts are
   // scoped to the student, classroom and challenge in this browser tab.
   useEffect(() => {
-    return persistChallengeDraft(form, draftKey);
+    return persistChallengeDraft(form, draftKey, () => { hasPendingAnswers.current = true; });
   }, [draftKey, form]);
 
   const activeClassroomRef = useRef(activeClassroom);
@@ -93,7 +108,9 @@ const ScenarioPage: React.FC = () => {
       classroomOverride?: typeof activeClassroom,
       silent = false,
       preserveUnsavedValues = false,
-    ) => {
+      parentSignal?: AbortSignal,
+    ) => withRequestDeadline(async (signal) => {
+      const version = ++requestVersion.current;
       if (!id) return;
 
       const classroom = classroomOverride ?? activeClassroomRef.current;
@@ -106,14 +123,15 @@ const ScenarioPage: React.FC = () => {
       if (!silent) setError(null);
       try {
         // Fetch challenge
-        const scenarioResp = await challengeService.getById(id, "student");
+        const scenarioResp = await challengeService.getById(id, "student", signal);
         const scenarioData = (scenarioResp.data || scenarioResp) as Challenge;
 
         // Get variable definitions from API
         const varDefsResponse = await variableDefinitionsService.getAll(
           classroom._id,
           undefined,
-          id
+          id,
+          signal
         );
         const allDefs = ((varDefsResponse?.data ?? varDefsResponse ?? []) as VariableDefinition[]);
         const scenarioDefs = allDefs.filter((def) => def.appliesTo === "challenge");
@@ -130,7 +148,7 @@ const ScenarioPage: React.FC = () => {
               await decisionService.getStudentSubmissions({
                 classroomId: classroom._id,
                 challengeId: id,
-              });
+              }, signal);
             const submissionsList = (submissionResponse?.data ??
               submissionResponse ??
               []) as Decision[];
@@ -147,6 +165,7 @@ const ScenarioPage: React.FC = () => {
               };
             }
           } catch (submissionErr) {
+            signal.throwIfAborted();
             console.warn(
               "Failed to fetch decision variables separately:",
               submissionErr
@@ -155,9 +174,10 @@ const ScenarioPage: React.FC = () => {
           }
         }
 
+        signal.throwIfAborted();
+        if (version !== requestVersion.current) throw new DOMException("Superseded", "AbortError");
+        challengeReady.current = true;
         setScenario(scenarioData);
-
-
 
         // Get challenge variables from the challenge data
         const scenarioVariables =
@@ -182,11 +202,11 @@ const ScenarioPage: React.FC = () => {
         const scenarioVariablesWithValues: VariableDefinitionWithValue[] =
           scenarioDefsForDisplay.map((def) => ({
             ...def,
-            value:
+            value: normalizeVariableAnswer(def.dataType,
               submittedChallengeVariableAnswers[def.key] ??
               scenarioVariables[def.key] ??
               def.defaultValue ??
-              (def.dataType === "number" ? 0 : ""),
+              (def.dataType === "number" ? 0 : def.dataType === "boolean" ? false : "")),
           }));
 
         setChallengeVariableDefinitions(scenarioVariablesWithValues);
@@ -213,10 +233,10 @@ const ScenarioPage: React.FC = () => {
         const variablesWithValues: VariableDefinitionWithValue[] =
           submissionDefsForForm.map((def) => ({
             ...def,
-            value:
+            value: normalizeVariableAnswer(def.dataType,
               submissionVariables[def.key] ??
               def.defaultValue ??
-              (def.dataType === "number" ? 0 : ""),
+              (def.dataType === "number" ? 0 : def.dataType === "boolean" ? false : "")),
           }));
 
         setDecisionVariableDefinitions(variablesWithValues);
@@ -235,7 +255,8 @@ const ScenarioPage: React.FC = () => {
         // without replacing a student's in-progress answers. If the challenge
         // became read-only while the page was blurred, the server remains
         // authoritative and the form should show the submitted/default values.
-        if (!preserveUnsavedValues || !form.formState.isDirty || isReadOnlyView) {
+        if (!preserveUnsavedValues || !hasPendingAnswers.current || isReadOnlyView) {
+          hasPendingAnswers.current = false;
           // Use reset (not setValue) so defaultValues are updated and isDirty clears
           form.reset({
             variables: variablesRecord,
@@ -245,67 +266,122 @@ const ScenarioPage: React.FC = () => {
             restoredDraftKey.current = draftKey;
             const draft = readChallengeDraft(draftKey);
             if (draft) {
+              hasPendingAnswers.current = true;
               for (const key of Object.keys(variablesRecord)) {
                 if (Object.prototype.hasOwnProperty.call(draft.variables, key)) {
-                  form.setValue(`variables.${key}`, draft.variables[key], { shouldDirty: true });
+                  const def = variablesWithValues.find((item) => item.key === key);
+                  if (def?.isActive) form.setValue(`variables.${key}`, normalizeVariableAnswer(def.dataType, draft.variables[key]), { shouldDirty: true });
                 }
               }
               for (const key of Object.keys(challengeVariableAnswersRecord)) {
                 if (Object.prototype.hasOwnProperty.call(draft.challengeVariableAnswers, key)) {
-                  form.setValue(`challengeVariableAnswers.${key}`, draft.challengeVariableAnswers[key], { shouldDirty: true });
+                  const def = scenarioVariablesWithValues.find((item) => item.key === key);
+                  if (def?.isActive) form.setValue(`challengeVariableAnswers.${key}`, normalizeVariableAnswer(def.dataType, draft.challengeVariableAnswers[key]), { shouldDirty: true });
                 }
               }
-              setSubmissionError("Your unsent answers were restored. Review them and submit to save your changes.");
+              setDraftRestored(true);
             }
           }
-          // Explicitly trigger validation to update isValid state
-          await form.trigger();
         }
+        return scenarioData;
       } catch (err) {
+        if (signal.aborted || version !== requestVersion.current) throw err;
         console.error("Failed to fetch challenge:", err);
         if (silent) throw err;
         setError("Failed to load challenge");
       } finally {
-        if (!silent) setIsLoading(false);
+        if (!silent && version === requestVersion.current && !parentSignal?.aborted) setIsLoading(false);
       }
-    },
+    }, parentSignal),
     [id, form, draftKey]
   );
 
-  const fetchStore = useCallback(async () => {
-    if (!activeClassroom?._id) {
+  const classroomId = activeClassroom?._id;
+  const fetchStore = useCallback(async (parentSignal?: AbortSignal) => {
+    if (!classroomId) {
       setIsLoadingStore(false);
       return;
     }
 
     setIsLoadingStore(true);
     try {
-      const response = await profileService.getStudentStore(activeClassroom._id);
+      const response = await withRequestDeadline((signal) => profileService.getStudentStore(classroomId, signal), parentSignal);
+      parentSignal?.throwIfAborted();
       if (response.data) {
         setStore(response.data);
       } else {
         setStore(null);
       }
     } catch (err) {
+      if (parentSignal?.aborted) return;
       console.error("Failed to fetch profile:", err);
       setStore(null);
     } finally {
-      setIsLoadingStore(false);
+      if (!parentSignal?.aborted) setIsLoadingStore(false);
     }
-  }, [activeClassroom?._id]);
+  }, [classroomId]);
 
   useEffect(() => {
+    const controller = new AbortController();
+    challengeReady.current = false;
     if (id) {
-      void fetchScenario();
+      void fetchScenario(undefined, false, false, controller.signal).catch(() => {
+        if (!controller.signal.aborted) setError("Could not load the challenge. Please try again.");
+      });
     }
+    return () => {
+      controller.abort();
+      activeOperation.current?.abort();
+      operationInProgress.current = false;
+    };
   }, [id, fetchScenario]);
 
+  // Run after Controllers mount, and remove fields that are no longer editable.
   useEffect(() => {
-    void fetchStore();
+    if (isLoading || !challenge) return;
+    const readOnly = !challenge.isPublished || isChallengeLockedForStudents(challenge);
+    for (const [prefix, definitions] of [
+      ["variables", decisionVariableDefinitions],
+      ["challengeVariableAnswers", challengeVariableDefinitions],
+    ] as const) {
+      const keys = new Set(definitions.filter((def) => readOnly || def.isActive).map((def) => def.key));
+      for (const key of Object.keys(form.getValues(prefix) ?? {})) {
+        if (!keys.has(key)) form.unregister(`${prefix}.${key}`);
+      }
+      for (const def of definitions.filter((item) => item.isActive)) {
+        // New definitions can arrive during a background refresh.
+        if (form.getValues(`${prefix}.${def.key}`) === undefined) {
+          form.setValue(`${prefix}.${def.key}`, def.value);
+        }
+      }
+    }
+    void form.trigger();
+  }, [isLoading, challenge, decisionVariableDefinitions, challengeVariableDefinitions, form]);
+
+  const validationItems = (errors: FieldErrors<ChallengeAnswers>) =>
+    ([
+      ["challengeVariableAnswers", challengeVariableDefinitions],
+      ["variables", decisionVariableDefinitions],
+    ] as const).flatMap(([prefix, definitions]) =>
+      [...definitions].filter((def) => def.isActive).sort((a, b) => (a.label || a.key).localeCompare(b.label || b.key))
+        .flatMap((def) => {
+          const error = errors[prefix]?.[def.key];
+          return error ? [{ name: `${prefix}.${def.key}`, label: def.label || def.key, message: String(error.message || "Check this answer") }] : [];
+        }),
+    );
+  const validationErrors = showValidationErrors ? validationItems(form.formState.errors) : [];
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void Promise.resolve().then(() => {
+      if (!controller.signal.aborted) return fetchStore(controller.signal);
+    });
+    return () => controller.abort();
   }, [fetchStore]);
 
-  const handleSubmit = () => form.handleSubmit(async (values) => {
-    if (!id || operationInProgress.current || !challenge || !profile) {
+  const handleSubmit = async () => {
+    if (!id || isLoading || isLoadingStore || operationInProgress.current || !challenge || !profile ||
+        !challenge.isPublished || isChallengeLockedForStudents(challenge)) {
       if (!profile) {
         globalContext?.showToast?.(
           "You must create a profile before submitting",
@@ -318,52 +394,77 @@ const ScenarioPage: React.FC = () => {
     operationInProgress.current = true;
     setIsSubmitting(true);
     setSubmissionError(null);
-    writeChallengeDraft(draftKey, values);
+    const controller = new AbortController();
+    activeOperation.current = controller;
     try {
-      const decision = challenge.decision as Decision | undefined;
-      const isUpdate = decision?._id;
+      await form.handleSubmit(async (values) => {
+        writeChallengeDraft(draftKey, values);
+        await withRequestDeadline(async (signal) => {
+          const currentChallenge = challenge;
+          if (needsSubmissionRefresh.current) {
+            const refreshed = await fetchScenario(undefined, true, true, signal);
+            if (!refreshed) throw new Error("Could not check your previous submission. Please try again.");
+            if (!refreshed.isPublished || isChallengeLockedForStudents(refreshed)) throw new Error("This challenge is no longer open for submissions.");
+            needsSubmissionRefresh.current = false;
+            // Definitions may have changed. Require a fresh validation on a new click.
+            setSubmissionError("Your submission status was refreshed. Review your answers and click Submit or Update Decision again.");
+            return;
+          }
+          const decision = currentChallenge.decision as Decision | undefined;
+          const isUpdate = decision?._id;
 
-      globalContext?.showToast?.(
-        isUpdate ? "Updating decision..." : "Submitting challenge...",
-        "loading"
-      );
+          globalContext?.showToast?.(
+            isUpdate ? "Updating decision..." : "Submitting challenge...",
+            "loading"
+          );
 
-      let savedResponse;
-      if (isUpdate && decision._id) {
-        savedResponse = await decisionService.update(decision._id, {
-          challengeId: id,
-          variables: values.variables ?? {},
-          challengeVariableAnswers: values.challengeVariableAnswers ?? {},
-        });
-        globalContext?.showToast?.(
-          "Decision updated successfully",
-          "success"
-        );
-      } else {
-        savedResponse = await decisionService.submit({
-          challengeId: id,
-          variables: values.variables ?? {},
-          challengeVariableAnswers: values.challengeVariableAnswers ?? {},
-        });
-        globalContext?.showToast?.(
-          "Challenge submitted successfully",
-          "success"
-        );
-      }
-      const savedDecision = (savedResponse.data ?? savedResponse) as Decision;
-      setScenario((current) => current ? { ...current, decision: savedDecision } : current);
-      clearChallengeDraft(draftKey);
-      form.reset(values);
-      setShowSuccessDialog(true);
-      // A failed follow-up read must not misreport a confirmed save as failure
-      // or leave a first-time submission looking like it still needs creating.
-      await fetchScenario(undefined, true).catch(() => {
-        setSubmissionError("Your decision was saved, but we could not refresh the challenge. Please refresh when your connection is available.");
-      });
+          let savedResponse;
+          if (isUpdate && decision._id) {
+            savedResponse = await decisionService.update(decision._id, {
+              challengeId: id,
+              variables: values.variables ?? {},
+              challengeVariableAnswers: values.challengeVariableAnswers ?? {},
+            }, signal);
+            signal.throwIfAborted();
+            globalContext?.showToast?.(
+              "Decision updated successfully",
+              "success"
+            );
+          } else {
+            savedResponse = await decisionService.submit({
+              challengeId: id,
+              variables: values.variables ?? {},
+              challengeVariableAnswers: values.challengeVariableAnswers ?? {},
+            }, signal);
+            signal.throwIfAborted();
+            globalContext?.showToast?.(
+              "Challenge submitted successfully",
+              "success"
+            );
+          }
+          const savedDecision = (savedResponse.data ?? savedResponse) as Decision;
+          signal.throwIfAborted();
+          setScenario((current) => current ? { ...current, decision: savedDecision } : current);
+          clearChallengeDraft(draftKey);
+          hasPendingAnswers.current = false;
+          setDraftRestored(false);
+          setShowValidationErrors(false);
+          form.reset(values);
+          setShowSuccessDialog(true);
+        }, controller.signal);
+      }, (errors) => {
+        setShowValidationErrors(true);
+        const first = validationItems(errors)[0];
+        if (first) focusVariableField(first.name);
+      })();
     } catch (e) {
+      if (controller.signal.aborted) return;
+      if (e instanceof RequestTimeoutError || (axios.isAxiosError(e) && !e.response)) {
+        needsSubmissionRefresh.current = true;
+      }
       console.error("Failed to submit challenge:", e);
       const errorMessage = getErrorMessage(e);
-      setSubmissionError(`Your changes have not been confirmed as submitted. ${errorMessage}`);
+      setSubmissionError(`Your changes have not been confirmed as submitted. ${errorMessage}${needsSubmissionRefresh.current ? " Your answers are kept here. Click again to check the saved submission before retrying." : ""}`);
       globalContext?.showToast?.(errorMessage, "error");
       if (e instanceof AuthenticationRequiredError) {
         // SignedOut displays sign-in at the current URL, whose sign-in button
@@ -373,33 +474,45 @@ const ScenarioPage: React.FC = () => {
         });
       }
     } finally {
-      operationInProgress.current = false;
-      setIsSubmitting(false);
+      if (activeOperation.current === controller) {
+        activeOperation.current = null;
+        operationInProgress.current = false;
+        setIsSubmitting(false);
+      }
     }
-  })();
+  };
 
   useEffect(() => {
     const handleFocus = async () => {
-      if (!id || document.visibilityState === "hidden" || operationInProgress.current) return;
+      if (!id || !challengeReady.current || document.visibilityState === "hidden" || operationInProgress.current) return;
       operationInProgress.current = true;
+      const controller = new AbortController();
+      activeOperation.current = controller;
       setIsCheckingSession(true);
-      if (form.formState.isDirty) writeChallengeDraft(draftKey, form.getValues());
+      if (hasPendingAnswers.current) writeChallengeDraft(draftKey, form.getValues());
       try {
-        const auth = await refetchMe();
-        if (!auth) {
-          setSubmissionError("We could not verify your session. Check your connection or sign in again before submitting changes.");
-          return;
-        }
-        if (auth.activeClassroom?._id !== activeClassroomRef.current?._id) return;
-        await fetchScenario(auth.activeClassroom, true, true);
+        await withRequestDeadline(async (signal) => {
+          const auth = await refetchMe(signal);
+          signal.throwIfAborted();
+          if (!auth) {
+            setSubmissionError("We could not verify your session. Check your connection or sign in again before submitting changes.");
+            return;
+          }
+          if (auth.activeClassroom?._id !== activeClassroomRef.current?._id) return;
+          await fetchScenario(auth.activeClassroom, true, true, signal);
+        }, controller.signal);
       } catch (error) {
+        if (controller.signal.aborted) return;
         setSubmissionError("We could not refresh this challenge. Please check your connection and retry before submitting changes.");
         if (axios.isAxiosError(error) && error.response?.status === 401) {
           await clerk.signOut().catch(() => undefined);
         }
       } finally {
-        operationInProgress.current = false;
-        setIsCheckingSession(false);
+        if (activeOperation.current === controller) {
+          activeOperation.current = null;
+          operationInProgress.current = false;
+          setIsCheckingSession(false);
+        }
       }
     };
 
@@ -469,11 +582,12 @@ const ScenarioPage: React.FC = () => {
     return () => window.clearInterval(intervalId);
   }, [fetchScenario, isCalculatingResults]);
 
+  const deadlineAt = challenge?.submissionDeadlineAt;
   const submissionDeadline = useMemo(() => {
-    if (!challenge?.submissionDeadlineAt) return null;
-    const date = new Date(challenge.submissionDeadlineAt);
+    if (!deadlineAt) return null;
+    const date = new Date(deadlineAt);
     return Number.isNaN(date.getTime()) ? null : date;
-  }, [challenge?.submissionDeadlineAt]);
+  }, [deadlineAt]);
 
   if (error) {
     return (
@@ -482,7 +596,7 @@ const ScenarioPage: React.FC = () => {
           <div className="container">
             <div className="card text-center">
               <p className="text-red-400 mb-4">{error}</p>
-              <button onClick={() => void fetchScenario()} className="btn-teal">
+              <button onClick={() => void fetchScenario().catch(() => setError("Could not load the challenge. Please try again."))} className="btn-teal">
                 Try Again
               </button>
             </div>
@@ -547,12 +661,12 @@ const ScenarioPage: React.FC = () => {
                 <div className="flex items-center gap-3 sm:justify-end">
                   {canSubmit && (
                     <button
-                      className={`btn-teal w-full sm:w-auto ${isSubmitting || isCheckingSession || !form.formState.isValid
+                      className={`btn-teal w-full sm:w-auto ${isLoading || isLoadingStore || isSubmitting || isCheckingSession
                         ? "btn-disabled"
                         : ""
                         }`}
                       onClick={() => void handleSubmit()}
-                      disabled={isSubmitting || isCheckingSession || !form.formState.isValid}
+                      disabled={isLoading || isLoadingStore || isSubmitting || isCheckingSession}
                       type="button"
                     >
                       {isCheckingSession
@@ -569,6 +683,26 @@ const ScenarioPage: React.FC = () => {
                 </div>
               </div>
 
+              {validationErrors.length > 0 && (
+                <div role="alert" className="mb-6">
+                  <Alert variant="error" title="Check your answers" message={
+                    <ul>
+                      {validationErrors.map((item) => (
+                        <li key={item.name}>
+                          <button type="button" className="underline text-left" onClick={() => focusVariableField(item.name)}>
+                            {item.label}: {item.message}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  } />
+                </div>
+              )}
+              {draftRestored && (
+                <div role="status" className="mb-6">
+                  <Alert variant="info" title="Answers restored" message="Your unsent answers were restored. Review them and submit to save your changes." />
+                </div>
+              )}
               {submissionError && (
                 <div role="alert" className="mb-6">
                   <Alert variant="warning" title="Submission status" message={submissionError} />

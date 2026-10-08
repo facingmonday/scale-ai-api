@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo } from "react";
-import { useFormContext, FormProvider, useForm } from "react-hook-form";
+import { useFormContext, FormProvider, useForm, Controller } from "react-hook-form";
 import VariableDefinition from "./VariableDefinition";
 import { VariableDefinitionFormProvider } from "./VariableDefinitionFormProvider";
 import type { VariableDefinition as VariableDefinitionModel } from "../types/variableDefinition";
+import { InputSwitch } from "primereact/inputswitch";
 import { Checkbox } from "primereact/checkbox";
 
 export type VariableDefinitionsFormValues = {
@@ -89,6 +90,7 @@ const VariableDefinitionsForm: React.FC<{ disabled?: boolean }> = ({
 }) => {
   const {
     register,
+    control,
     watch,
     setValue,
     formState: { errors },
@@ -96,6 +98,13 @@ const VariableDefinitionsForm: React.FC<{ disabled?: boolean }> = ({
 
   const dataType = watch("dataType");
   const inputType = watch("inputType");
+
+  const defaultValueText = watch("defaultValueText");
+  useEffect(() => {
+    if (dataType === "boolean" && !["true", "false"].includes((defaultValueText ?? "").toLowerCase())) {
+      setValue("defaultValueText", "false", { shouldDirty: true, shouldValidate: true });
+    }
+  }, [dataType, defaultValueText, setValue]);
 
   // Watch all form values for preview
   const formValues = watch();
@@ -329,19 +338,40 @@ const VariableDefinitionsForm: React.FC<{ disabled?: boolean }> = ({
           <label className="label" htmlFor="vd-defaultValueText">
             Default value
           </label>
-          <input
-            id="vd-defaultValueText"
-            className="input"
-            placeholder={
-              dataType === "boolean"
-                ? "true or false"
-                : dataType === "number"
-                ? "e.g. 10"
-                : "Optional"
-            }
-            disabled={disabled}
-            {...register("defaultValueText")}
-          />
+          {dataType === "boolean" ? (
+            <Controller
+              name="defaultValueText"
+              control={control}
+              render={({ field }) => (
+                <div className="flex items-center gap-2">
+                  {inputType === "switch" ? (
+                    <InputSwitch
+                      inputId="vd-defaultValueText"
+                      checked={field.value?.toLowerCase() === "true"}
+                      disabled={disabled}
+                      onChange={(e) => field.onChange(e.value ? "true" : "false")}
+                    />
+                  ) : (
+                    <Checkbox
+                      inputId="vd-defaultValueText"
+                      checked={field.value?.toLowerCase() === "true"}
+                      disabled={disabled}
+                      onChange={(e) => field.onChange(e.checked ? "true" : "false")}
+                    />
+                  )}
+                  <span>{field.value?.toLowerCase() === "true" ? "True (Yes)" : "False (No)"}</span>
+                </div>
+              )}
+            />
+          ) : (
+            <input
+              id="vd-defaultValueText"
+              className="input"
+              placeholder={dataType === "number" ? "e.g. 10" : "Optional"}
+              disabled={disabled}
+              {...register("defaultValueText")}
+            />
+          )}
         </div>
 
         <div className="flex flex-row gap-4 mt-2">

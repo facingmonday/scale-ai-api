@@ -6,17 +6,21 @@ type ChallengeDraft = {
 };
 
 export function persistChallengeDraft(
-  form: Pick<UseFormReturn<ChallengeDraft>, "subscribe">,
+  form: Pick<UseFormReturn<ChallengeDraft>, "watch">,
   key: string | null,
+  onEdit?: () => void,
 ) {
-  return form.subscribe({
-    formState: { values: true },
-    callback: ({ values, type }) => {
-      // Ignore hydration and resets, especially the reset after a successful
-      // submission; only student input should create a draft.
-      if (type === "change") writeChallengeDraft(key, values);
-    },
+  // watch receives the original event metadata. subscribe merges formState and
+  // can retain a previous event's `type: change` on hydration/reset events.
+  const subscription = form.watch((values, { type }) => {
+    if (type !== "change") return;
+    onEdit?.();
+    writeChallengeDraft(key, {
+      variables: values.variables ?? {},
+      challengeVariableAnswers: values.challengeVariableAnswers ?? {},
+    });
   });
+  return () => subscription.unsubscribe();
 }
 
 export function writeChallengeDraft(key: string | null, values: ChallengeDraft) {
