@@ -8,6 +8,7 @@
  *
  * What it does:
  * - Upserts Clerk Organizations -> `Organization`
+ * - Applies organization privateMetadata.seatGrant credits once per grant ID
  * - Upserts Clerk Users -> `Member`
  * - Rebuilds `Member.organizationMemberships` from Clerk organization memberships
  *
@@ -28,11 +29,10 @@
  */
 const mongoose = require("mongoose");
 
-require("../lib/load-local-env")();
-
 const { clerkClient } = require("@clerk/express");
 const Member = require("../services/members/member.model");
 const Organization = require("../services/organizations/organization.model");
+const { applyClerkSeatGrant } = require("../services/licensing/seatCredit.service");
 
 function parseArgs(argv) {
   const args = {
@@ -235,7 +235,24 @@ function buildMinimalMemberOnInsert(clerkUserId) {
   };
 }
 
+async function applyOrganizationSeatGrants(clerkOrgs, orgByClerkId, { dryRun = false } = {}) {
+  for (const clerkOrg of clerkOrgs) {
+    const result = await applyClerkSeatGrant({
+      organizationId: orgByClerkId.get(clerkOrg.id)?._id,
+      privateMetadata: clerkOrg.privateMetadata,
+      actor: "clerk_sync",
+      dryRun,
+    });
+    if (result.dryRun) {
+      console.log(`(dry-run) Would evaluate seat grant ${result.referenceId} (${result.quantity} seats) for ${clerkOrg.id}; previously credited IDs add no seats`);
+    } else if (result.credit) {
+      console.log(`Seat grant for ${clerkOrg.id}: ${result.duplicate ? "already applied" : "credited"}`);
+    }
+  }
+}
+
 async function main() {
+  require("../lib/load-local-env")();
   const args = parseArgs(process.argv);
 
   if (args.help) {
@@ -263,7 +280,7 @@ Options:
     process.exit(1);
   }
 
-  await mongoose.connect(mongoUrl);
+  await mongoose.connect(mongoUrl, args.dryRun ? { autoIndex: false, autoCreate: false } : {});
   console.log("✅ Connected to MongoDB");
 
   try {
@@ -305,6 +322,8 @@ Options:
     }).select("_id clerkOrganizationId name slug imageUrl");
 
     const orgByClerkId = new Map(orgDocs.map((d) => [d.clerkOrganizationId, d]));
+
+    await applyOrganizationSeatGrants(filteredOrgs, orgByClerkId, { dryRun: args.dryRun });
 
     // 2) Users -> Members
     const clerkUsers = await listAllPages({
@@ -414,7 +433,11 @@ Options:
   }
 }
 
-main().catch((err) => {
-  console.error("Sync failed:", err?.message || err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error("Sync failed:", err?.message || err);
+    process.exit(1);
+  });
+}
+
+module.exports = { applyOrganizationSeatGrants };

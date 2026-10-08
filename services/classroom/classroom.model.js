@@ -448,17 +448,46 @@ classroomSchema.statics.getDashboard = async function (
   const classDoc = await this.findOne({
     _id: classroomId,
     organization: organizationId,
-  });
+  })
+    .select("name description isActive")
+    .lean();
 
   if (!classDoc) {
     throw new Error("Class not found");
   }
 
-  // Count students (members with role 'member')
-  const studentCount = await Enrollment.countByClass(classroomId);
-
-  // Get active challenge
-  const activeScenario = await Challenge.getActiveScenario(classroomId);
+  const MetricDefinition = require("../metricDefinition/metricDefinition.model");
+  // These reads are independent; avoid paying each database round trip serially.
+  const [
+    studentCount,
+    activeScenario,
+    leaderboardDefinitions,
+    metricDefinitionCount,
+    publishedScenarios,
+  ] = await Promise.all([
+    Enrollment.countByClass(classroomId),
+    Challenge.getActiveScenario(classroomId),
+    MetricDefinition.find({
+      classroomId,
+      organization: organizationId,
+      isActive: true,
+      dataType: "number",
+    })
+      .sort({ sortOrder: 1, label: 1 })
+      .lean(),
+    MetricDefinition.countDocuments({
+      classroomId,
+      organization: organizationId,
+    }),
+    Challenge.find({
+      classroomId,
+      organization: organizationId,
+      isPublished: true,
+      isClosed: false,
+    })
+      .select("_id")
+      .lean(),
+  ]);
   const activeScenarioData = activeScenario
     ? {
         id: activeScenario._id,
@@ -473,75 +502,50 @@ classroomSchema.statics.getDashboard = async function (
       }
     : null;
 
-  // Count completed decisions for active challenge
-  let submissionsCompleted = 0;
-  if (activeScenario) {
-    const decisions = await Decision.getSubmissionsByScenario(
-      activeScenario._id
-    );
-    submissionsCompleted = decisions.length;
-  }
-
-  const MetricDefinition = require("../metricDefinition/metricDefinition.model");
-  const [leaderboardDefinitions, metricDefinitionCount] = await Promise.all([
-    MetricDefinition.find({
-      classroomId,
-      organization: organizationId,
-      isActive: true,
-      dataType: "number",
-    }).sort({ sortOrder: 1, label: 1 }),
-    MetricDefinition.countDocuments({
-      classroomId,
-      organization: organizationId,
-    }),
-  ]);
   const leaderboardDef =
     MetricDefinition.selectLeaderboardDefinition(leaderboardDefinitions);
   const leaderboardSelections =
     MetricDefinition.selectLeaderboardDefinitions(leaderboardDefinitions);
 
-  let leaderboardTop10 = [];
-  let leaderboardMetric = null;
-  const leaderboards = await Promise.all(
-    leaderboardSelections.map(({ definition, direction }) =>
-      buildLeaderboardCategory({
-        classroomId,
-        organizationId,
-        definition,
-        direction,
-      })
-    )
+  const [submissionsCompleted, categories, pendingApprovals] = await Promise.all([
+    // Loading decisions just to count them also hydrates jobs, members, ledger
+    // entries, and triggers per-decision variable queries in post-init hooks.
+    activeScenario
+      ? Decision.countDocuments({
+          classroomId,
+          organization: organizationId,
+          challengeId: activeScenario._id,
+        })
+      : 0,
+    Promise.all(
+      leaderboardSelections.map(({ definition, direction }) =>
+        buildLeaderboardCategory({
+          classroomId,
+          organizationId,
+          definition,
+          direction,
+          // Reuse the primary metric's aggregation for both ranking surfaces.
+          limit: definition.key === leaderboardDef?.key ? 10 : 5,
+        })
+      )
+    ),
+    publishedScenarios.length
+      ? Outcome.countDocuments({
+          organization: organizationId,
+          challengeId: { $in: publishedScenarios.map((scenario) => scenario._id) },
+          approved: false,
+        })
+      : 0,
+  ]);
+  const primaryCategory = categories.find(
+    ({ metric }) => metric.key === leaderboardDef?.key
   );
-
-  if (leaderboardDef) {
-    const primaryCategory = await buildLeaderboardCategory({
-      classroomId,
-      organizationId,
-      definition: leaderboardDef,
-      direction:
-        leaderboardDef.leaderboardSortDirection === "asc" ? "asc" : "desc",
-      limit: 10,
-    });
-    leaderboardMetric = primaryCategory.metric;
-    leaderboardTop10 = primaryCategory.entries;
-  }
-
-  // Get pending approvals (published challenges with outcomes that are not approved)
-  const publishedScenarios = await Challenge.find({
-    classroomId,
-    isPublished: true,
-    isClosed: false,
-  }).select("_id");
-
-  let pendingApprovals = 0;
-  if (publishedScenarios.length > 0) {
-    const scenarioIds = publishedScenarios.map((s) => s._id);
-    const pendingOutcomes = await Outcome.countDocuments({
-      challengeId: { $in: scenarioIds },
-      approved: false,
-    });
-    pendingApprovals = pendingOutcomes;
-  }
+  const leaderboardMetric = primaryCategory?.metric || null;
+  const leaderboardTop10 = primaryCategory?.entries || [];
+  const leaderboards = categories.map((category) => ({
+    ...category,
+    entries: category.entries.slice(0, 5),
+  }));
 
   return {
     className: classDoc.name,

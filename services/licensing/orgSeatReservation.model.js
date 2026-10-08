@@ -35,7 +35,7 @@ orgSeatReservationSchema.index(
   { organization: 1, email: 1 },
   {
     unique: true,
-    partialFilterExpression: { status: { $ne: "revoked" } },
+    partialFilterExpression: { status: { $in: ["reserved", "claimed"] } },
   },
 );
 orgSeatReservationSchema.index({ organization: 1, status: 1 });

@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const Enrollment = require("../enrollment/enrollment.model");
+const Profile = require("../profile/profile.model");
 const Challenge = require("../challenge/challenge.model");
 const Decision = require("../decision/decision.model");
 const { GradeAdjustment, GradeExclusion } = require("./grading.model");
@@ -54,7 +55,10 @@ function parseFilters(input = {}) {
   };
 }
 
-function buildRoster(enrollments, { includeRemoved, search }) {
+function buildRoster(enrollments, { includeRemoved, search }, profiles = []) {
+  const stores = new Map(
+    profiles.map((profile) => [String(profile.userId), profile.shopName || ""]),
+  );
   const byUser = new Map();
   for (const enrollment of enrollments) {
     const member = enrollment.userId;
@@ -71,6 +75,7 @@ function buildRoster(enrollments, { includeRemoved, search }) {
           [member.firstName, member.lastName].filter(Boolean).join(" ") ||
           "Unnamed student",
         studentNumber: enrollment.studentId || "",
+        storeName: stores.get(userId) || "",
         joinedAt,
         isRemoved: !!enrollment.isRemoved,
         removedAt: enrollment.removedAt || null,
@@ -97,7 +102,7 @@ function buildRoster(enrollments, { includeRemoved, search }) {
     (s) =>
       (includeRemoved || !s.isRemoved) &&
       (!search ||
-        `${s.firstName} ${s.lastName} ${s.studentNumber}`
+        `${s.firstName} ${s.lastName} ${s.studentNumber} ${s.storeName}`
           .toLowerCase()
           .includes(search)),
   );
@@ -122,7 +127,7 @@ async function loadContext({
 }) {
   const scope = { classroomId, organization: organizationId };
   // Projection-only raw reads avoid variable population and unrelated model hooks.
-  const [enrollments, challenges, exclusions] = await Promise.all([
+  const [enrollments, challenges, exclusions, profiles] = await Promise.all([
     Enrollment.find({ ...scope, role: "member" })
       .select("userId studentId joinedAt createdDate isRemoved removedAt")
       .populate({
@@ -161,6 +166,13 @@ async function loadContext({
       .select("challengeId excluded reason revision")
       .maxTimeMS(QUERY_MS)
       .lean(),
+    Profile.collection
+      .find(castScope(scope), {
+        projection: { userId: 1, shopName: 1 },
+        maxTimeMS: QUERY_MS,
+      })
+      .limit(10001)
+      .toArray(),
   ]);
   if (enrollments.length > 10000 || challenges.length > 1000)
     throw fail("This classroom exceeds the preview gradebook size limit.", 413);
@@ -182,7 +194,7 @@ async function loadContext({
     signal,
     deadline,
     defaultChallengePoints: defaultPoints(classroom),
-    roster: buildRoster(enrollments, filters),
+    roster: buildRoster(enrollments, filters, profiles),
     challenges: selected,
     exclusions: new Map(exclusions.map((e) => [String(e.challengeId), e])),
   };

@@ -107,9 +107,7 @@ const ChallengeCreateWithAI: React.FC<Props> = ({
             onClick={() => void handleSubmit()}
             disabled={!isValid || isSubmitting}
           >
-            <ChallengePointsField key={classroomId} classroomId={classroomId} value={pointsPossible} onChange={setPointsPossible} disabled={isSubmitting} />
-
-        {isSubmitting && (
+            {isSubmitting && (
               <i className="pi pi-spin pi-spinner" aria-hidden="true" />
             )}
             {isSubmitting ? "Creating Challenge..." : "Submit"}
@@ -146,6 +144,14 @@ const ChallengeCreateWithAI: React.FC<Props> = ({
             <span>{prompt.length.toLocaleString()} / {MAX_PROMPT_LENGTH.toLocaleString()}</span>
           </div>
         </div>
+
+        <ChallengePointsField
+          key={classroomId}
+          classroomId={classroomId}
+          value={pointsPossible}
+          onChange={setPointsPossible}
+          disabled={isSubmitting}
+        />
 
         {isSubmitting && (
           <div

@@ -47,6 +47,18 @@ const seatPoolSchema = new mongoose.Schema({
   },
 }).add(baseSchema);
 
+seatPoolSchema.index(
+  { organization: 1, planKey: 1 },
+  {
+    unique: true,
+    name: "unique_active_org_seat_pool",
+    partialFilterExpression: {
+      planKey: PLAN_KEYS.ORG_SEATS,
+      status: { $in: ACTIVE_POOL_STATUSES },
+    },
+  },
+);
+
 seatPoolSchema.virtual("remainingSeats").get(function () {
   if (this.totalSeats === null || this.totalSeats === undefined) return null;
   return Math.max(this.totalSeats - (this.usedSeats || 0), 0);
@@ -86,7 +98,9 @@ seatPoolSchema.statics.computeOrgSeatAvailability = function ({
   };
 };
 
-seatPoolSchema.statics.getOrgSeatAvailability = async function (organizationId) {
+seatPoolSchema.statics.getOrgSeatAvailability = async function (
+  organizationId,
+) {
   const OrgSeatReservation = require("./orgSeatReservation.model");
   const [pool, reservedUnclaimed] = await Promise.all([
     this.findOne({
@@ -118,31 +132,41 @@ seatPoolSchema.statics.getOrgSeatAvailability = async function (organizationId) 
 seatPoolSchema.statics.findOrCreateOrgSeatPool = async function (
   organization,
   createdBy = "system",
+  { session } = {},
 ) {
   const orgId = organization._id || organization;
-  let pool = await this.findOne({
+  const filter = {
     organization: orgId,
     planKey: PLAN_KEYS.ORG_SEATS,
     status: { $in: ACTIVE_POOL_STATUSES },
-  });
-
-  if (!pool) {
-    pool = new this({
-      planKey: PLAN_KEYS.ORG_SEATS,
-      scope: "organization",
-      purchaserOrganizationId: orgId,
-      totalSeats: 0,
-      usedSeats: 0,
-      status: "active",
-      organization: orgId,
-      createdBy,
-      updatedBy: createdBy,
-      metadata: { source: "org_seat_pool" },
-    });
-    await pool.save();
+  };
+  await this.init();
+  try {
+    return await this.findOneAndUpdate(
+      filter,
+      {
+        $setOnInsert: {
+          planKey: PLAN_KEYS.ORG_SEATS,
+          scope: "organization",
+          purchaserOrganizationId: orgId,
+          totalSeats: 0,
+          usedSeats: 0,
+          status: "active",
+          organization: orgId,
+          createdBy,
+          updatedBy: createdBy,
+          metadata: { source: "org_seat_pool" },
+        },
+      },
+      { upsert: true, new: true, session },
+    );
+  } catch (error) {
+    // Inside a transaction the caller must retry the entire transaction.
+    if (error.code !== 11000 || session) throw error;
+    const pool = await this.findOne(filter);
+    if (!pool) throw error;
+    return pool;
   }
-
-  return pool;
 };
 
 seatPoolSchema.statics.getOrgSeatPoolSummary = async function (organizationId) {
@@ -218,7 +242,10 @@ seatPoolSchema.statics.claimFloatingPrepaidSeatAtomically = async function ({
   return pool;
 };
 
-seatPoolSchema.statics.getBillingSummary = async function ({ user, organization }) {
+seatPoolSchema.statics.getBillingSummary = async function ({
+  user,
+  organization,
+}) {
   const SeatClaim = require("./seatClaim.model");
   const Classroom = require("../classroom/classroom.model");
   const Enrollment = require("../enrollment/enrollment.model");

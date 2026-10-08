@@ -2,6 +2,10 @@
 
 Organization seat billing uses Stripe Checkout and webhooks.
 
+Organization purchases and Clerk promotional grants use the same transactional
+seat-credit service. See [organization seat credits](../licensing/README.md) for
+grant metadata, duplicate protection, and the required rollout preflight.
+
 ## Required environment variables
 
 ```env

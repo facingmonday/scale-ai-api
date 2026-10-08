@@ -52,6 +52,7 @@ export interface GradeRow {
   firstName: string;
   lastName: string;
   name: string;
+  storeName: string;
   studentNumber: string;
   isRemoved: boolean;
   joinedAt: string | null;

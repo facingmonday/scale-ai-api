@@ -4,7 +4,7 @@ const StripeCheckoutRecord = require("../licensing/stripeCheckoutRecord.model");
 const SeatClaim = require("../licensing/seatClaim.model");
 const Classroom = require("../classroom/classroom.model");
 const Member = require("../members/member.model");
-const SeatPool = require("../licensing/seatPool.model");
+const { addSeats } = require("../licensing/seatCredit.service");
 
 function verifyWebhookSignature(rawBody, signature) {
   const { secretKey, webhookSecret } = getStripeConfig();
@@ -23,82 +23,130 @@ async function processCheckoutSessionCompleted(session) {
   const purchaserUserId = metadata.purchaserUserId;
   const classroomId = metadata.classroomId;
 
-  if (!type || !organizationId) {
+  if (
+    !sessionId ||
+    !["org_seats", "student_seat"].includes(type) ||
+    !organizationId
+  ) {
     throw new Error("Stripe checkout session missing required metadata");
   }
 
-  const quantity =
-    type === "org_seats" ? Math.max(Number(metadata.quantity || 1), 1) : 1;
+  // Completed records also cover purchases made before the credit ledger existed.
+  await StripeCheckoutRecord.init();
+  const existing = await StripeCheckoutRecord.findOne({
+    stripeSessionId: sessionId,
+  });
+  if (
+    existing &&
+    (String(existing.organization) !== String(organizationId) ||
+      existing.type !== type)
+  ) {
+    throw new Error(
+      "Stripe checkout session conflicts with its recorded organization or type",
+    );
+  }
+  if (existing?.status === "completed")
+    return { duplicate: true, record: existing };
 
-  const lock = await StripeCheckoutRecord.findOneAndUpdate(
+  const quantity = type === "org_seats" ? Number(metadata.quantity) : 1;
+  if (!Number.isSafeInteger(quantity) || quantity <= 0) {
+    throw new Error("Stripe checkout seat quantity must be a positive integer");
+  }
+
+  let record = existing;
+  if (!record) {
+    try {
+      record = await StripeCheckoutRecord.findOneAndUpdate(
+        { stripeSessionId: sessionId },
+        {
+          $setOnInsert: {
+            stripeSessionId: sessionId,
+            type,
+            purchaserUserId,
+            classroomId: classroomId || undefined,
+            quantity,
+            status: "pending",
+            organization: organizationId,
+            updatedBy: "stripe_webhook",
+            metadata: {
+              ...metadata,
+              paymentStatus: session.payment_status,
+            },
+            createdBy: "stripe_webhook",
+          },
+        },
+        { upsert: true, new: true },
+      );
+    } catch (error) {
+      if (error.code !== 11000) throw error;
+      record = await StripeCheckoutRecord.findOne({
+        stripeSessionId: sessionId,
+      });
+      if (!record) throw error;
+    }
+  }
+
+  if (
+    String(record.organization) !== String(organizationId) ||
+    record.type !== type ||
+    record.quantity !== quantity
+  ) {
+    throw new Error(
+      "Stripe checkout session conflicts with its recorded seat purchase",
+    );
+  }
+  // Never regress a completed record to processing during a concurrent replay.
+  const processingRecord = await StripeCheckoutRecord.findOneAndUpdate(
     {
-      stripeSessionId: sessionId,
+      _id: record._id,
+      organization: organizationId,
       status: { $ne: "completed" },
     },
-    {
-      $set: {
-        stripeSessionId: sessionId,
-        type,
-        purchaserUserId,
-        classroomId: classroomId || undefined,
-        quantity,
-        status: "processing",
-        organization: organizationId,
-        updatedBy: "stripe_webhook",
-        metadata: {
-          ...metadata,
-          paymentStatus: session.payment_status,
-        },
-      },
-      $setOnInsert: {
-        createdBy: "stripe_webhook",
-      },
-    },
-    { upsert: true, new: true }
+    { $set: { status: "processing", updatedBy: "stripe_webhook" } },
+    { new: true },
   );
-
-  const alreadyCompleted = await StripeCheckoutRecord.findOne({
-    stripeSessionId: sessionId,
-    status: "completed",
-  });
-  if (alreadyCompleted && String(alreadyCompleted._id) !== String(lock._id)) {
-    return { duplicate: true, record: alreadyCompleted };
-  }
-  if (lock.status === "completed") {
-    return { duplicate: true, record: lock };
+  if (!processingRecord) {
+    return {
+      duplicate: true,
+      record: await StripeCheckoutRecord.findById(record._id),
+    };
   }
 
   let result = {};
 
   if (type === "org_seats") {
-    const pool = await SeatPool.findOrCreateOrgSeatPool(
-      { _id: organizationId },
-      "stripe_webhook"
-    );
-    pool.totalSeats = (pool.totalSeats || 0) + quantity;
-    pool.updatedBy = "stripe_webhook";
-    await pool.save();
-    result = { pool, quantity };
+    const creditResult = await addSeats({
+      organizationId,
+      quantity,
+      source: "stripe",
+      referenceId: sessionId,
+      actor: "stripe_webhook",
+    });
+    result = { pool: creditResult.pool, quantity, credit: creditResult.credit };
   } else if (type === "student_seat") {
     if (!classroomId || !purchaserUserId) {
       throw new Error(
-        "Student seat checkout missing classroomId or purchaserUserId"
+        "Student seat checkout missing classroomId or purchaserUserId",
       );
     }
 
     const classroom = await Classroom.findById(classroomId);
     if (!classroom) {
-      throw new Error(`Classroom not found for student seat checkout: ${classroomId}`);
+      throw new Error(
+        `Classroom not found for student seat checkout: ${classroomId}`,
+      );
     }
 
     const member = await Member.findById(purchaserUserId);
     if (!member) {
-      throw new Error(`Member not found for student seat checkout: ${purchaserUserId}`);
+      throw new Error(
+        `Member not found for student seat checkout: ${purchaserUserId}`,
+      );
     }
 
     const existingClaim = await SeatClaim.findActiveClaim(
       classroomId,
-      purchaserUserId
+      purchaserUserId,
     );
     if (existingClaim) {
       result = { claim: existingClaim, alreadyClaimed: true };
@@ -142,8 +190,8 @@ async function processCheckoutSessionCompleted(session) {
     throw new Error(`Unknown Stripe checkout type: ${type}`);
   }
 
-  const record = await StripeCheckoutRecord.findByIdAndUpdate(
-    lock._id,
+  record = await StripeCheckoutRecord.findByIdAndUpdate(
+    processingRecord._id,
     {
       $set: {
         status: "completed",
@@ -151,7 +199,7 @@ async function processCheckoutSessionCompleted(session) {
         updatedBy: "stripe_webhook",
       },
     },
-    { new: true }
+    { new: true },
   );
 
   return { duplicate: false, type, record, ...result };

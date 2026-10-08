@@ -101,9 +101,19 @@ organizationSchema.statics.findBySlug = function (slug) {
 
 organizationSchema.statics.ensureByClerkId = async function (clerkOrganizationId) {
   const { clerkClient } = require("@clerk/express");
+  const { applyClerkSeatGrant } = require("../licensing/seatCredit.service");
 
   let organization = await this.findByClerkId(clerkOrganizationId);
-  if (organization) return organization;
+  if (organization) {
+    // Retry a grant if an earlier provisioning attempt saved the organization
+    // but failed to credit it. These fields are only imported from Clerk.
+    await applyClerkSeatGrant({
+      organizationId: organization._id,
+      privateMetadata: organization.privateMetadata,
+      actor: "clerk_provisioning",
+    });
+    return organization;
+  }
 
   const clerkOrg = await clerkClient.organizations.getOrganization({
     organizationId: clerkOrganizationId,
@@ -122,12 +132,23 @@ organizationSchema.statics.ensureByClerkId = async function (clerkOrganizationId
     clerkUpdatedAt: new Date(clerkOrg.updatedAt),
   };
 
-  organization = await this.findOneAndUpdate(
-    { clerkOrganizationId: clerkOrg.id },
-    { $set: organizationData },
-    { new: true, upsert: true },
-  );
+  try {
+    organization = await this.findOneAndUpdate(
+      { clerkOrganizationId: clerkOrg.id },
+      { $set: organizationData },
+      { new: true, upsert: true },
+    );
+  } catch (error) {
+    if (error.code !== 11000) throw error;
+    organization = await this.findByClerkId(clerkOrg.id);
+    if (!organization) throw error;
+  }
 
+  await applyClerkSeatGrant({
+    organizationId: organization._id,
+    privateMetadata: organizationData.privateMetadata,
+    actor: "clerk_provisioning",
+  });
   return organization;
 };
 

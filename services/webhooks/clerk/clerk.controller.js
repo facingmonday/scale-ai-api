@@ -1,6 +1,7 @@
 const Member = require("../../members/member.model");
 const Organization = require("../../organizations/organization.model");
 const ClassroomTemplate = require("../../classroomTemplate/classroomTemplate.model");
+const { applyClerkSeatGrant } = require("../../licensing/seatCredit.service");
 
 // Helper function to convert Clerk user to Member data
 const convertClerkUserToMemberData = (clerkUser) => {
@@ -187,7 +188,13 @@ const organizationCreated = async (orgData) => {
 
     if (!organization) {
       organization = new Organization(organizationData);
-      await organization.save();
+      try {
+        await organization.save();
+      } catch (error) {
+        if (error.code !== 11000) throw error;
+        organization = await Organization.findByClerkId(orgData.id);
+        if (!organization) throw error;
+      }
       console.log(
         "Created new organization:",
         organization.clerkOrganizationId
@@ -248,6 +255,10 @@ const organizationCreated = async (orgData) => {
       );
     }
 
+    await applyClerkSeatGrant({
+      organizationId: organization._id,
+      privateMetadata: organizationData.privateMetadata,
+    });
     return organization;
   } catch (error) {
     console.error("Error processing organization.created webhook:", error);
@@ -261,23 +272,27 @@ const organizationUpdated = async (orgData) => {
 
     const organizationData = convertClerkOrgToOrgData(orgData);
 
-    let organization = await Organization.findByClerkId(orgData.id);
-
-    if (organization) {
-      // Update existing organization
-      Object.assign(organization, organizationData);
-      await organization.save();
-      console.log("Updated organization:", organization.clerkOrganizationId);
-    } else {
-      // Create new organization if it doesn't exist
-      organization = new Organization(organizationData);
-      await organization.save();
-      console.log(
-        "Created new organization from update:",
-        organization.clerkOrganizationId
+    let organization;
+    try {
+      organization = await Organization.findOneAndUpdate(
+        { clerkOrganizationId: orgData.id },
+        { $set: organizationData },
+        { new: true, upsert: true },
       );
+    } catch (error) {
+      if (error.code !== 11000) throw error;
+      organization = await Organization.findOneAndUpdate(
+        { clerkOrganizationId: orgData.id },
+        { $set: organizationData },
+        { new: true },
+      );
+      if (!organization) throw error;
     }
 
+    await applyClerkSeatGrant({
+      organizationId: organization._id,
+      privateMetadata: organizationData.privateMetadata,
+    });
     return organization;
   } catch (error) {
     console.error("Error processing organization.updated webhook:", error);

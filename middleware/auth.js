@@ -3,6 +3,7 @@ const Member = require("../services/members/member.model");
 const Organization = require("../services/organizations/organization.model");
 const Enrollment = require("../services/enrollment/enrollment.model");
 const Classroom = require("../services/classroom/classroom.model");
+const { applyClerkSeatGrant } = require("../services/licensing/seatCredit.service");
 
 // Combined middleware to authenticate and load user data
 const requireAuth = (options = {}) => {
@@ -138,30 +139,7 @@ const requireAuth = (options = {}) => {
           );
 
           try {
-            // Fetch organization data from Clerk
-            const clerkOrg = await clerkClient.organizations.getOrganization({
-              organizationId: auth.orgId,
-            });
-
-            const organizationData = {
-              clerkOrganizationId: clerkOrg.id,
-              name: clerkOrg.name,
-              slug: clerkOrg.slug,
-              imageUrl: clerkOrg.imageUrl,
-              maxAllowedMemberships: clerkOrg.maxAllowedMemberships || 1000,
-              adminDeleteEnabled: clerkOrg.adminDeleteEnabled !== false,
-              publicMetadata: clerkOrg.publicMetadata || {},
-              privateMetadata: clerkOrg.privateMetadata || {},
-              clerkCreatedAt: new Date(clerkOrg.createdAt),
-              clerkUpdatedAt: new Date(clerkOrg.updatedAt),
-            };
-
-            // Use findOneAndUpdate with upsert to avoid race conditions
-            organization = await Organization.findOneAndUpdate(
-              { clerkOrganizationId: auth.orgId },
-              { $set: organizationData },
-              { new: true, upsert: true }
-            );
+            organization = await Organization.ensureByClerkId(auth.orgId);
 
             console.log(
               `✅ Auto-created organization for Clerk org ${auth.orgId}`
@@ -213,6 +191,11 @@ const requireAuth = (options = {}) => {
             }
           }
         } else {
+          await applyClerkSeatGrant({
+            organizationId: organization._id,
+            privateMetadata: organization.privateMetadata,
+            actor: "clerk_provisioning",
+          });
           // Organization exists, but check if member has membership synced
           const membership = member.getOrganizationMembership(organization);
           if (!membership && auth.orgId) {
