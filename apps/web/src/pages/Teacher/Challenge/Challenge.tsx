@@ -35,6 +35,7 @@ import ScenarioRemoveOutcomeAction from "@/components/ChallengeRemoveOutcomeActi
 import ScenarioStoreTypeSummary from "@/components/ChallengeProfileTypeSummary";
 import MissingScenarioSubmissionsList from "@/components/MissingChallengeDecisionsList";
 import TeacherDebriefCard from "@/components/TeacherDebriefCard";
+import DownloadChallengeResultsButton from "@/components/DownloadChallengeResultsButton";
 
 const toDateTimeLocalValue = (value?: string | Date | null) => {
   if (!value) return "";
@@ -506,7 +507,7 @@ const Challenge: React.FC = () => {
         <div className="page">
           <div className="container">
             <FormProvider {...form}>
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
                 <h1 className="heading-xl">
                   {challenge.title || (challenge as { name?: string }).name}
                   {(() => {
@@ -522,7 +523,10 @@ const Challenge: React.FC = () => {
                     );
                   })()}
                 </h1>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                  {activeClassroom && (
+                    <DownloadChallengeResultsButton challenge={challenge} classroom={activeClassroom} />
+                  )}
                   {!isEditing && !challenge.isClosed ? (
                     <button
                       className="btn-outline"
